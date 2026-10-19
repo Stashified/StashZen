@@ -1,25 +1,12 @@
 /* StashZen — project page. Palette and type match the app's Blueprint dark theme. */
 
+/* One variable face, as in the app: Inter 100–900 from a single woff2. */
 @font-face {
-  font-family: 'Barlow';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 900;
   font-display: swap;
-  src: url('fonts/barlow-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Barlow';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('fonts/barlow-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Barlow Condensed';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('fonts/barlow-condensed-600.woff2') format('woff2');
+  src: url('fonts/inter-latin.woff2') format('woff2');
 }
 
 :root {
@@ -34,8 +21,8 @@
   --text-primary: #f5f8fa;
   --text-secondary: #a7b6c2;
   --text-muted: #8a9ba8;
-  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-condensed: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-condensed: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 10px;
   --wrap: 1180px;
 }
