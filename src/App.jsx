@@ -246,6 +246,10 @@ export default function App() {
           onPlay: handleScenePlay,
           onPlayAt: playSceneAt,
           onActivityChange: handleSceneActivityChange,
+          // A gallery chip in the detail page leaves for the Galleries tab.
+          // The tab change is what closes the page (useDetailSelection's
+          // effect), so this is the only thing the chip does.
+          onGallerySelect: handleGallerySelect,
         }}
         actionMenu={{
           menu: actionMenu,

@@ -1,6 +1,6 @@
 {
     "name": "stashzen",
-    "version": "0.28.0",
+    "version": "0.30.0",
     "description": "StashZen — a Stash client for Samsung Tizen TVs, with D-pad navigation",
     "license": "MIT",
     "type": "module",
@@ -13,7 +13,7 @@
         "postbuild": "node scripts/check-bundle.mjs",
         "preview": "vite preview",
         "lint": "eslint .",
-        "test": "npm run test:filters && npm run test:draft && npm run test:chain && npm run test:queue && npm run test:progress && npm run test:request-key && npm run test:keys && npm run test:bundle-guard && npm run test:target",
+        "test": "npm run test:filters && npm run test:draft && npm run test:chain && npm run test:queue && npm run test:progress && npm run test:request-key && npm run test:keys && npm run test:bundle-guard && npm run test:target && npm run test:batch",
         "test:filters": "node scripts/test-translate.mjs",
         "test:draft": "node scripts/test-criterion-draft.mjs",
         "test:chain": "node scripts/test-filter-chain.mjs",
@@ -31,7 +31,8 @@
         "verify:criteria": "node scripts/verify-criteria.mjs",
         "verify:art": "node scripts/verify-mockart.mjs",
         "sheet": "node scripts/contact-sheet.mjs",
-        "gen:schema": "node scripts/gen-filter-schema.mjs"
+        "gen:schema": "node scripts/gen-filter-schema.mjs",
+        "test:batch": "node scripts/test-api-batch.mjs"
     },
     "dependencies": {
         "react": "^18.2.0",

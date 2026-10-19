@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActionButton } from '../tvActions.jsx';
-import { loadServerStatus, startLibraryScan } from '../../utils/serverService.js';
+import { loadServerStatus, startLibraryScan, stopJob } from '../../utils/serverService.js';
 import { getSettings } from '../../utils/settings.js';
+import { focusByIdWhenReady } from '../../utils/focus.js';
 import { useSectionLoader } from '../../hooks/useSectionLoader.js';
+import { ServerJobRow } from './ServerJobRow.jsx';
 import styles from '../SettingsPanel.module.css';
 
 // ── Server status ─────────────────────────────────────────
@@ -10,13 +12,6 @@ const SERVER_STATUS_LABELS = {
   OK: 'OK',
   NEEDS_MIGRATION: 'Needs migration',
   SETUP: 'Setup required',
-};
-
-const JOB_STATUS_LABELS = {
-  RUNNING: 'Running',
-  READY: 'Queued',
-  STOPPING: 'Stopping',
-  FAILED: 'Failed',
 };
 
 export function ServerStatusSection() {
@@ -32,7 +27,13 @@ export function ServerStatusSection() {
   const [scanMessage, setScanMessage] = useState('');
   const scanRef = useRef(0);
 
-  useEffect(() => () => { scanRef.current += 1; }, []);
+  // Stopping is a third phase, separate from the scan's: the two can be in
+  // flight at once and neither message should overwrite the other. `id` says
+  // which row the in-flight request belongs to, so the other rows stay live.
+  const [stopState, setStopState] = useState({ phase: 'idle', id: null, message: '' });
+  const stopRef = useRef(0);
+
+  useEffect(() => () => { scanRef.current += 1; stopRef.current += 1; }, []);
 
   const handleClick = () => {
     if (phase === 'loading') return;
@@ -72,6 +73,34 @@ export function ServerStatusSection() {
     }
   };
 
+  // Stopping removes the row on the next snapshot, and the row is where focus
+  // currently sits. Move focus *before* load(): the refresh unmounts the job
+  // body, and a focused element that is removed leaves the D-pad with nowhere
+  // to start from.
+  const handleStop = async (job) => {
+    if (stopState.phase === 'stopping') return;
+    const token = ++stopRef.current;
+    setStopState({ phase: 'stopping', id: job.id, message: '' });
+    try {
+      await stopJob(job.id);
+      if (token !== stopRef.current) return;
+      focusByIdWhenReady('settings-server');
+      setStopState({
+        phase: 'stopped',
+        id: job.id,
+        message: getSettings().useMock
+          ? 'Test mode — the sample job was removed; no job was stopped on a server.'
+          : `Stopping "${job.description}" — press Refresh if it is still listed.`,
+      });
+      load();
+    } catch (e) {
+      if (token !== stopRef.current) return;
+      // The row stays where it is and keeps focus: the user is one press from
+      // trying again, and nothing was stopped.
+      setStopState({ phase: 'error', id: job.id, message: e.message });
+    }
+  };
+
   return (
     <div className={styles.section} ref={sectionRef}>
       <div className={styles.sectionRow}>
@@ -99,6 +128,16 @@ export function ServerStatusSection() {
           : scanPhase === 'started' ? scanMessage : ''}
       </div>
 
+      <div
+        className={`${styles.statNotice} ${stopState.phase === 'error' ? styles.statError : ''}`}
+        role="status"
+        aria-live="polite"
+      >
+        {stopState.phase === 'error'
+          ? `Couldn't stop the job${stopState.message ? ` — ${stopState.message}` : ''}`
+          : stopState.phase === 'stopped' ? stopState.message : ''}
+      </div>
+
       {phase === 'ready' && status && (
         <div className={styles.serverBody} role="group" aria-label="Server status">
           <div className={styles.serverHeadline}>
@@ -116,27 +155,15 @@ export function ServerStatusSection() {
           {status.jobs.length === 0 ? (
             <div className={styles.serverIdle}>No jobs running.</div>
           ) : (
-            status.jobs.map(job => {
-              const pct = job.progress == null
-                ? null
-                : Math.max(0, Math.min(100, Math.round(job.progress * 100)));
-              return (
-                <div key={job.id} className={styles.jobRow}>
-                  <div className={styles.jobMeta}>
-                    <span className={styles.jobDescription}>{job.description}</span>
-                    <span className={styles.jobStatus}>
-                      {JOB_STATUS_LABELS[job.status] || job.status}
-                      {pct != null ? ` · ${pct}%` : ''}
-                    </span>
-                  </div>
-                  {pct != null && (
-                    <div className={styles.jobTrack} aria-hidden="true">
-                      <div className={styles.jobFill} style={{ width: `${pct}%` }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            status.jobs.map(job => (
+              <ServerJobRow
+                key={job.id}
+                job={job}
+                stopping={stopState.phase === 'stopping' && stopState.id === job.id}
+                onStop={handleStop}
+                styles={styles}
+              />
+            ))
           )}
         </div>
       )}

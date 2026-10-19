@@ -27,6 +27,8 @@ function generateMockStudios() {
     // The two sorts the Related group offers that the row did not carry. From
     // a separate stream so no existing fixture value moves.
     const extra = makeRng(`studio-sort-${i}`);
+    // A third stream for the hero enrichment fields, for the same reason.
+    const hero = makeRng(`studio-extra2-${i}`);
     return {
       id: `studio-${i + 1}`,
       name,
@@ -41,6 +43,13 @@ function generateMockStudios() {
       group_count: Math.floor(rng() * 4),
       tag_count: Math.floor(extra() * 40),
       child_count: Math.floor(extra() * 5),
+      parentStudio: hero() > 0.75 && i > 0
+        ? { id: `studio-${i}`, name: STUDIOS[(i - 1) % STUDIOS.length] }
+        : null,
+      aliases: hero() > 0.55 ? [`${name} Alt`] : [],
+      details: hero() > 0.5
+        ? `${name} is a sample studio description used to exercise the hero's clamped blurb.`
+        : null,
       created_at: MOCK_EPOCH - i * 86400000,
       updated_at: MOCK_EPOCH - i * 3600000,
     };
@@ -62,12 +71,18 @@ const FIND_STUDIOS_QUERY = `
         gallery_count
         performer_count
         group_count
+        parent_studio {
+          id
+          name
+        }
+        aliases
+        details
       }
     }
   }
 `;
 
-function normalizeStudio(s) {
+export function normalizeStudio(s) {
   return {
     id: s.id,
     name: s.name,
@@ -81,6 +96,11 @@ function normalizeStudio(s) {
     gallery_count: s.gallery_count || 0,
     performer_count: s.performer_count || 0,
     group_count: s.group_count || 0,
+    parentStudio: s.parent_studio
+      ? { id: s.parent_studio.id, name: s.parent_studio.name }
+      : null,
+    aliases: (s.aliases || []).filter(Boolean),
+    details: s.details || null,
   };
 }
 

@@ -18,13 +18,16 @@
 import { withApiKey } from './stashUrl.js';
 import { createEntityService } from './entityService.js';
 import { coverArt, makeRng } from './mockArt.js';
-import { GALLERY_TITLES } from './mockLibrary.js';
+import { GALLERY_TITLES, STUDIOS } from './mockLibrary.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
 function generateMockGalleries() {
   return GALLERY_TITLES.map((title, i) => {
     const rng = makeRng(`gallery-${i}`);
+    // The enrichment fields draw from their own stream so none of the pinned
+    // values above move.
+    const extra = makeRng(`gallery-extra-${i}`);
     const year = 2019 + (i % 6);
     const month = (i % 12) + 1;
     const day = (i % 28) + 1;
@@ -38,6 +41,13 @@ function generateMockGalleries() {
       performer_count: Math.floor(rng() * 12),
       tag_count: Math.floor(rng() * 20),
       file_count: 1 + Math.floor(rng() * 120),
+      // Folder is the one enrichment field a real library almost always has;
+      // studio and photographer are sparse, which the UI must survive.
+      folder: `GALLERY_${String(i + 1).padStart(3, '0')}`,
+      studio: extra() > 0.4
+        ? { id: `studio-${(i % STUDIOS.length) + 1}`, name: STUDIOS[i % STUDIOS.length] }
+        : null,
+      photographer: extra() > 0.75 ? `Photographer ${String.fromCharCode(65 + (i % 26))}` : null,
       created_at: MOCK_EPOCH - i * 86400000,
       updated_at: MOCK_EPOCH - i * 3600000,
     };
@@ -54,6 +64,14 @@ const FIND_GALLERIES_QUERY = `
         date
         rating100
         image_count
+        studio {
+          id
+          name
+        }
+        photographer
+        folder {
+          basename
+        }
         paths {
           cover
         }
@@ -62,7 +80,7 @@ const FIND_GALLERIES_QUERY = `
   }
 `;
 
-function normalizeGallery(g) {
+export function normalizeGallery(g) {
   return {
     id: g.id,
     title: g.title,
@@ -71,6 +89,9 @@ function normalizeGallery(g) {
     date: g.date || null,
     rating: g.rating100 != null ? (g.rating100 / 10).toFixed(1) : null,
     image_count: g.image_count || 0,
+    studio: g.studio ? { id: g.studio.id, name: g.studio.name } : null,
+    photographer: g.photographer || null,
+    folder: g?.folder?.basename || null,
   };
 }
 

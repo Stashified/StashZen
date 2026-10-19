@@ -9,18 +9,29 @@
  * Backspace / Tizen Back returns to the performer grid.
  */
 
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import VideoGrid from '../components/VideoGrid.jsx';
 import ControlsPanel from '../components/ControlsPanel.jsx';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useBackKey } from '../hooks/useBackKey.js';
+import { useFlash } from '../hooks/useFlash.js';
 import { isBackKey, focusScopeOf } from '../utils/input.js';
-import { loadPerformerDetail } from '../utils/performerService.js';
+import { loadPerformerDetail, updatePerformer } from '../utils/performerService.js';
+import { ActionButton } from './sceneDetail/ActionButton.jsx';
+import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
+import {
+  ageFromBirthdate, formatHeight, formatGender, formatCareer,
+  webLinks, formatDeathDate, ratingFromCard,
+} from './performerDetail/format.js';
 import styles from './PerformerDetailPage.module.css';
 
 // Alias lists can be long (Stash stores every name a performer has worked
 // under). Four chips plus a count keeps the hero from growing without bound.
+// Tags and links get the same treatment: these are all free-text lists whose
+// length is up to the library, and the hero must not push the grid off-screen.
 const MAX_ALIAS_CHIPS = 4;
+const MAX_TAG_CHIPS = 5;
+const MAX_LINK_CHIPS = 3;
 
 // Scene sort groups for the inner video grid — same set as Home, but
 // kept local so we don't have to thread them down from App.
@@ -62,68 +73,6 @@ const DEFAULT_DETAIL_CONTROLS = {
   cols:  4,
   search: '',
 };
-
-// Compute an age string from an ISO birthdate
-function ageFromBirthdate(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age;
-}
-
-function formatHeight(cm) {
-  if (!cm) return null;
-  // Round to whole inches first, then split. Rounding only the remainder
-  // prints 5′12″ for, say, 182 cm; carrying the 12 is the same mistake a
-  // careless clock makes at 59.6 minutes.
-  const totalInches = Math.round(cm / 2.54);
-  const ft = Math.floor(totalInches / 12);
-  const inches = totalInches % 12;
-  return `${cm} cm · ${ft}′${inches}″`;
-}
-
-// GenderEnum is SCREAMING_SNAKE and is not meant to be read raw. Unknown
-// values (a newer Stash adds one) fall back to words rather than disappearing.
-function formatGender(value) {
-  if (!value) return null;
-  const labels = {
-    MALE: 'Male',
-    FEMALE: 'Female',
-    TRANSGENDER_MALE: 'Transgender male',
-    TRANSGENDER_FEMALE: 'Transgender female',
-    INTERSEX: 'Intersex',
-    NON_BINARY: 'Non-binary',
-  };
-  return labels[value] || String(value).replace(/_/g, ' ').toLowerCase();
-}
-
-// Stash stores career bounds as strings, in practice a date ("1999-04-01").
-function yearOf(value) {
-  const m = String(value).match(/^\d{4}/);
-  return m ? m[0] : String(value);
-}
-
-// Prefer the two bounds; `career_length` is a free string ("12 years") and is
-// only the fallback when neither bound is recorded.
-function formatCareer({ careerStart, careerEnd, careerLength } = {}) {
-  if (careerStart && careerEnd) return `${yearOf(careerStart)}–${yearOf(careerEnd)}`;
-  if (careerStart) return `${yearOf(careerStart)}–`;
-  if (careerEnd) return `–${yearOf(careerEnd)}`;
-  return careerLength || null;
-}
-
-// There is no browser on a TV, so a performer's website is shown by host.
-function hostOf(url) {
-  try {
-    return new URL(url).host || null;
-  } catch {
-    return null;
-  }
-}
 
 // ── Back button — focusable so mouse/click users have a path ─
 function BackButton({ onClick }) {
@@ -195,6 +144,85 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
     return () => { cancelled = true; };
   }, [performer]);
 
+  // ── Rating and favourite (the two writes this page offers) ─
+  // Seeded from the card so the hero is right on the first paint, then
+  // replaced by the detail answer. The card's `rating` is a display string;
+  // every write below uses the detail query's `rating100`.
+  const [edits, setEdits] = useState(() => ({
+    rating100: ratingFromCard(performer),
+    favorite: !!performer.favorite,
+  }));
+  const [notice, flash] = useFlash();
+  const ratingAttempt = useRef(0);
+  const favoriteAttempt = useRef(0);
+
+  const cardRating = performer.rating;
+  const cardFavorite = performer.favorite;
+  useEffect(() => {
+    setEdits({
+      rating100: ratingFromCard({ rating: cardRating }),
+      favorite: !!cardFavorite,
+    });
+    // A response aimed at the previous performer must not be adopted here.
+    ratingAttempt.current += 1;
+    favoriteAttempt.current += 1;
+  }, [performer.id, cardRating, cardFavorite]);
+
+  useEffect(() => {
+    if (!profile) return;
+    // The detail answer is authoritative: in a live library the card's
+    // rounded display value and the stored value can differ, and a write
+    // must start from what Stash actually has.
+    setEdits(prev => ({
+      rating100: profile.rating100 ?? prev.rating100,
+      favorite: profile.favorite ?? prev.favorite,
+    }));
+    ratingAttempt.current += 1;
+    favoriteAttempt.current += 1;
+  }, [profile]);
+
+  // Editable only once the real values are on screen, and never in Test mode
+  // where the ids belong to generated data with no row behind them.
+  const canEdit = profileStatus === 'ready' && profile?.writable !== false;
+
+  const setRating = async (stars) => {
+    if (!canEdit) return;
+    const next = Math.max(0, Math.min(100, stars * 10));
+    const prev = edits.rating100;
+    const attempt = ++ratingAttempt.current;
+    setEdits(e => ({ ...e, rating100: next }));
+    try {
+      const server = await updatePerformer(performer.id, { rating100: next });
+      if (attempt !== ratingAttempt.current) return;
+      if (server.rating100 != null) {
+        setEdits(e => ({ ...e, rating100: server.rating100 }));
+      }
+    } catch (e) {
+      if (attempt !== ratingAttempt.current) return;
+      setEdits(prevEdits => ({ ...prevEdits, rating100: prev }));
+      flash(`Rating not saved — ${e.message}`);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!canEdit) return;
+    const next = !edits.favorite;
+    const prev = edits.favorite;
+    const attempt = ++favoriteAttempt.current;
+    setEdits(e => ({ ...e, favorite: next }));
+    try {
+      const server = await updatePerformer(performer.id, { favorite: next });
+      if (attempt !== favoriteAttempt.current) return;
+      if (server.favorite != null) {
+        setEdits(e => ({ ...e, favorite: !!server.favorite }));
+      }
+    } catch (e) {
+      if (attempt !== favoriteAttempt.current) return;
+      setEdits(prevEdits => ({ ...prevEdits, favorite: prev }));
+      flash(`Favourite not saved — ${e.message}`);
+    }
+  };
+
   // Page-level Back handler — capture phase so the global Back doesn't fire
   // its tab-switching behaviour first.
   //
@@ -222,12 +250,22 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
   const gender = formatGender(profile?.gender ?? performer.gender);
   const aliases = profile?.aliases || [];
   const career = profile ? formatCareer(profile) : null;
-  const website = profile?.url ? (hostOf(profile.url) || profile.url) : null;
+  const rating = edits.rating100 > 0 ? (edits.rating100 / 10).toFixed(1) : null;
+  const { links, omitted: omittedLinks } = webLinks(profile?.urls, MAX_LINK_CHIPS);
+  const tags = profile?.tags || [];
   const facts = [
     career && { key: 'career', label: 'Career', value: career },
+    profile?.ethnicity && { key: 'ethnicity', label: 'Ethnicity', value: profile.ethnicity },
+    profile?.hairColor && { key: 'hair', label: 'Hair', value: profile.hairColor },
+    profile?.eyeColor && { key: 'eyes', label: 'Eyes', value: profile.eyeColor },
+    profile?.weight && { key: 'weight', label: 'Weight', value: profile.weight },
     profile?.measurements && { key: 'measurements', label: 'Measurements', value: profile.measurements },
+    profile?.piercings && { key: 'piercings', label: 'Piercings', value: profile.piercings, clamp: true },
+    profile?.fakeTits && { key: 'fake-tits', label: 'Fake tits', value: profile.fakeTits, clamp: true },
     profile?.tattoos && { key: 'tattoos', label: 'Tattoos', value: profile.tattoos, clamp: true },
-    website && { key: 'website', label: 'Website', value: website, url: profile.url },
+    formatDeathDate(profile?.deathDate) && {
+      key: 'died', label: 'Died', value: formatDeathDate(profile.deathDate),
+    },
   ].filter(Boolean);
 
   return (
@@ -253,7 +291,7 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
         <div className={styles.heroRight}>
           <h1 className={styles.name}>
             {performer.name}
-            {performer.favorite && <span className={styles.favorite} aria-label="Favorite">★</span>}
+            {edits.favorite && <span className={styles.favorite} aria-label="Favorite">★</span>}
           </h1>
 
           {performer.disambiguation && (
@@ -264,9 +302,14 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
             <span className={styles.sceneCount}>
               <strong>{performer.scene_count}</strong> {performer.scene_count === 1 ? 'scene' : 'scenes'}
             </span>
-            {performer.rating && (
-              <span className={styles.rating}>★ {performer.rating}</span>
+            {profile?.oCounter > 0 && <span>{profile.oCounter} likes</span>}
+            {profile?.imageCount > 0 && (
+              <span>{profile.imageCount} {profile.imageCount === 1 ? 'image' : 'images'}</span>
             )}
+            {profile?.galleryCount > 0 && (
+              <span>{profile.galleryCount} {profile.galleryCount === 1 ? 'gallery' : 'galleries'}</span>
+            )}
+            {rating && <span className={styles.rating}>★ {rating}</span>}
             {gender && <span aria-label={`Gender: ${gender}`}>{gender}</span>}
             {performer.country && <span>{performer.country}</span>}
             {age != null && <span>Age {age}</span>}
@@ -288,19 +331,72 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
           {facts.length > 0 && (
             <div className={styles.profileRow} role="group" aria-label="Performer profile">
               {facts.map(fact => (
-                <span
-                  key={fact.key}
-                  className={`${styles.profileChip} ${fact.url ? styles.profileUrl : ''}`}
-                  aria-label={fact.url ? `Website: ${fact.url}` : undefined}
-                >
+                <span key={fact.key} className={styles.profileChip}>
                   {fact.label} <span className={fact.clamp ? styles.profileChipText : undefined}>{fact.value}</span>
                 </span>
               ))}
             </div>
           )}
 
+          {links.length > 0 && (
+            <div className={styles.linksRow} role="group" aria-label="Links">
+              <span className={styles.aliasLabel}>Links</span>
+              {links.map(link => (
+                <span
+                  key={link.host}
+                  className={`${styles.profileChip} ${styles.profileUrl}`}
+                  aria-label={`Website: ${link.url}`}
+                >
+                  {link.host}
+                </span>
+              ))}
+              {omittedLinks > 0 && (
+                <span className={styles.chipMore}>+{omittedLinks}</span>
+              )}
+            </div>
+          )}
+
+          {tags.length > 0 && (
+            <div className={styles.tagsRow} role="group" aria-label="Performer tags">
+              <span className={styles.aliasLabel}>Tags</span>
+              {tags.slice(0, MAX_TAG_CHIPS).map(tag => (
+                <span key={tag.id} className={styles.aliasChip}>{tag.name}</span>
+              ))}
+              {tags.length > MAX_TAG_CHIPS && (
+                <span className={styles.chipMore}>+{tags.length - MAX_TAG_CHIPS}</span>
+              )}
+            </div>
+          )}
+
+          {(profileStatus === 'ready') && (
+            <div className={styles.actionRow} role="group" aria-label="Performer actions">
+              <RatingStepper
+                rating100={edits.rating100}
+                disabled={!canEdit}
+                onChange={setRating}
+                idPrefix="performer-rating"
+                zone="performer-detail"
+                styles={styles}
+              />
+              <ActionButton
+                id="performer-favorite"
+                label="Favourite"
+                icon="★"
+                active={edits.favorite}
+                disabled={!canEdit}
+                onEnter={toggleFavorite}
+                zone="performer-detail"
+                styles={styles}
+              />
+            </div>
+          )}
+
           {performer.details && (
             <p className={styles.bio}>{performer.details}</p>
+          )}
+
+          {notice && (
+            <div className={styles.profileWarn} role="status">{notice}</div>
           )}
 
           {profileStatus === 'error' && (

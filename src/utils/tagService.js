@@ -27,6 +27,8 @@ const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 function generateMockTags() {
   return TAG_NAMES.map((name, i) => {
     const rng = makeRng(`tag-${i}`);
+    // Separate stream: the values below are pinned by the harness.
+    const extra = makeRng(`tag-extra-${i}`);
     return {
       id: `tag-${i + 1}`,
       name,
@@ -41,6 +43,13 @@ function generateMockTags() {
       gallery_count: Math.floor(rng() * 40),
       performer_count: Math.floor(rng() * 30),
       studio_count: Math.floor(rng() * 6),
+      // A real library's tags are mostly undescribed; roughly half here get
+      // a description and aliases so both the populated and the empty hero
+      // paths are reachable in Test mode.
+      description: extra() > 0.5
+        ? `${name} is a sample tag description used to exercise the hero's clamped blurb.`
+        : null,
+      aliases: extra() > 0.55 ? [`${name} alias`, `${name} alt`] : [],
       created_at: MOCK_EPOCH - i * 86400000,
       updated_at: MOCK_EPOCH - i * 3600000,
     };
@@ -62,12 +71,14 @@ const FIND_TAGS_QUERY = `
         gallery_count
         performer_count
         studio_count
+        description
+        aliases
       }
     }
   }
 `;
 
-function normalizeTag(t) {
+export function normalizeTag(t) {
   return {
     id: t.id,
     name: t.name,
@@ -85,6 +96,8 @@ function normalizeTag(t) {
     gallery_count: t.gallery_count || 0,
     performer_count: t.performer_count || 0,
     studio_count: t.studio_count || 0,
+    description: t.description || null,
+    aliases: (t.aliases || []).filter(Boolean),
   };
 }
 

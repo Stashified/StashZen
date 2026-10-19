@@ -34,6 +34,17 @@ MODE = {
     # keeps career_length; "slow" and "fail" delay, so the card-first paint and
     # the failure path are both observable.
     "performerDetail": "ok", "resume": 0, "oSeed": 0,
+    # performerUpdate: "slow" holds the answer long enough to see the
+    # optimistic value with the request still in flight; "fail" is the rollback
+    # path.
+    "performerUpdate": "ok",
+    # findImage (the viewer's info panel): "slow" keeps the loading state on
+    # screen; "fail" is the panel's error state.
+    "imageInfo": "ok",
+    # stopJob: "slow" holds the button in flight; "fail" is a transport error;
+    # "false" is the server refusing (StopJob returns Boolean!), which the app
+    # must treat as a failure rather than a stop.
+    "stopJob": "ok",
     # "ok" serves real playable bytes at /scene/{n}/preview; "missing" 404s
     # them, which is what this server actually does for every scene nobody has
     # run Stash's Generate > Previews on.
@@ -222,6 +233,13 @@ SCENE = {
     "studio": {"id": "1", "name": "Harness Studio"},
     "tags": [{"id": str(i), "name": f"tag-{i}"} for i in range(10)],
     "performers": [{"id": "1", "name": "Performer One"}],
+    # Two, so the chip row's focus walk has somewhere to go; none of the
+    # listing's galleries share these ids, so "selected the scene's gallery"
+    # and "selected some gallery off a different tab" are distinguishable.
+    "galleries": [
+        {"id": "7001", "title": "VERIFY gallery one"},
+        {"id": "7002", "title": "VERIFY gallery two"},
+    ],
     "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
     "files": [{
         "duration": 3725.5, "width": 1920, "height": 1080,
@@ -464,6 +482,21 @@ def listing_marker(n):
 # absence of the ones the card already carries.
 PERFORMER_FETCHES = []
 
+# Every performerUpdate mutation this run, `{input}`. The input is the whole
+# contract: which performer, and which field moved to which value.
+PERFORMER_UPDATES = []
+
+# Every FindImageInfo query this run, `{id, query}`. The query text is kept so
+# a check can prove the client asked for `visual_files` — asking for `files`
+# is invalid on Image and the fake would happily answer either.
+IMAGE_INFO_FETCHES = []
+
+# Every stopJob mutation this run, `{job_id, query}`, and the ids a successful
+# stop removed from the fake queue. `/clear` resets both, so each phase starts
+# from the full fixture.
+STOP_FETCHES = []
+STOPPED_JOB_IDS = set()
+
 # Deliberately adversarial against the two mistakes the page could make:
 #   • the card says FEMALE and this says NON_BINARY, so "shows the card's
 #     gender" and "adopted the server's" are distinguishable on screen;
@@ -473,6 +506,16 @@ PERFORMER_FETCHES = []
 #   • the URL has a scheme and a path, so a host-only chip is provably not the
 #     raw string.
 # Every string contains VERIFY, so no check can pass on incidental page text.
+#
+# The enrichment in 0.29.0 adds a second set of adversarial values:
+#   • `urls` has two entries on ONE host and four distinct hosts in total, so a
+#     chip-per-URL (the naive fix) repeats a label and is visible, and the
+#     3-chip cap plus "+1" is visible too;
+#   • every free-text field is distinct and VERIFY-prefixed, so a fact row that
+#     printed the wrong field cannot pass;
+#   • the counts are non-zero and different from each other;
+#   • rating/favourite are the values the write path must adopt, and they
+#     disagree with the card (which the driver passes in as 0/unliked).
 PERFORMER_DETAIL = {
     "id": "8701",
     "gender": "NON_BINARY",
@@ -482,7 +525,29 @@ PERFORMER_DETAIL = {
     "career_length": "99 years",
     "tattoos": "VERIFY tattoo: anchor on left forearm",
     "measurements": "VERIFY 34-24-35",
-    "url": "https://profile-8701.verify.invalid/about",
+    "ethnicity": "VERIFY ethnicity",
+    "hair_color": "VERIFY hair",
+    "eye_color": "VERIFY eyes",
+    "weight": 61,
+    "piercings": "VERIFY piercings",
+    "fake_tits": "VERIFY fake",
+    "death_date": None,
+    "o_counter": 7,
+    "image_count": 11,
+    "gallery_count": 2,
+    "urls": [
+        "https://profile-8701.verify.invalid/about",
+        "https://profile-8701.verify.invalid/gallery",
+        "https://second-8701.verify.invalid/",
+        "https://third-8701.verify.invalid/",
+        "https://fourth-8701.verify.invalid/",
+    ],
+    "tags": [
+        {"id": "t1", "name": "VERIFY performer tag one"},
+        {"id": "t2", "name": "VERIFY performer tag two"},
+    ],
+    "rating100": 75,
+    "favorite": True,
 }
 
 # Every LibraryStats / ServerStatus call, with the query text. Keeping the
@@ -592,9 +657,56 @@ SERVER_STATUS = {
     "version": {"version": "0.31.1-harness"},
     "systemStatus": {"status": "NEEDS_MIGRATION", "appSchema": 31, "databaseSchema": 30},
     "jobQueue": [
-        {"id": "job-1", "status": "RUNNING", "description": "VERIFY scan running", "progress": 0.42},
-        {"id": "job-2", "status": "FINISHED", "description": "VERIFY finished job", "progress": 1.0},
+        # Four subtasks: the row shows three, so the fourth's absence is a real
+        # assertion rather than a coincidence of the fixture.
+        {
+            "id": "job-1", "status": "RUNNING", "description": "VERIFY scan running",
+            "progress": 0.42,
+            "subTasks": [
+                "VERIFY subtask one", "VERIFY subtask two",
+                "VERIFY subtask three", "VERIFY subtask four",
+            ],
+            "error": None,
+            "startTime": "2024-05-01T09:30:00Z",
+        },
+        {"id": "job-2", "status": "FINISHED", "description": "VERIFY finished job",
+         "progress": 1.0, "subTasks": [], "error": None, "startTime": None},
+        # Failed jobs are shown but not stoppable; the error line is the only
+        # thing on screen that can identify this row.
+        {
+            "id": "job-3", "status": "FAILED", "description": "VERIFY failed job",
+            "progress": 0.18, "subTasks": [],
+            "error": "VERIFY failure reason: the media folder is not mounted",
+            "startTime": "2024-05-01T09:05:00Z",
+        },
     ],
+}
+
+
+# The viewer's info panel. Every relational list is longer than the panel's
+# cap on purpose: 8 tags → "6 +2", 7 performers → "6 +1", 6 galleries → "4 +2".
+# File facts arrive under `visual_files` because Image has no `files` field.
+IMAGE_INFO = {
+    "id": "1",
+    "title": "VERIFY image info title",
+    "date": "2024-03-09",
+    "details": "VERIFY image details. " * 20,
+    "code": "VERIFY-CODE",
+    "rating100": 75,
+    "o_counter": 3,
+    "studio": {"id": "1", "name": "VERIFY image studio"},
+    "photographer": "VERIFY photographer",
+    "tags": [{"id": f"t{i}", "name": f"VERIFY info tag {i}"} for i in range(1, 9)],
+    "performers": [
+        {"id": f"p{i}", "name": f"VERIFY info performer {i}"} for i in range(1, 8)],
+    "galleries": [
+        {"id": f"g{i}", "title": f"VERIFY info gallery {i}"} for i in range(1, 7)],
+    "visual_files": [{"size": 5 * 1024 * 1024, "width": 4000, "height": 3000}],
+    "paths": {
+        "thumbnail": "/image/1/thumb.png",
+        "image": "/image/1/full.png",
+        "preview": None,
+    },
 }
 
 
@@ -677,6 +789,18 @@ def listing_tag(n):
         "gallery_count": n % 13,
         "performer_count": n % 17,
         "studio_count": n % 6,
+        # The carousel hero's description and aliases. Roughly half the rows
+        # have each, so moving the focus reaches both the populated and the
+        # empty blurb without a mode switch. Row 4 carries an overlong
+        # description on purpose: the hero's two-line clamp can only be
+        # measured on text that would otherwise overflow, and it has to sit in
+        # the carousel's *first page* (five rows) or the driver cannot focus
+        # it until the strip pages in more.
+        "description": (
+            "VERIFY long tag description. " * 40 if n == 4
+            else f"VERIFY tag description {n}" if n % 2 == 0 else None
+        ),
+        "aliases": [f"VERIFY alias {n}a", f"VERIFY alias {n}b"] if n % 3 == 0 else [],
     }
 
 
@@ -698,6 +822,19 @@ def listing_studio(n):
         "tag_count": n % 19,
         "child_count": n % 4,
         "organized": n % 2 == 0,
+        # The hero's parent/aliases/details. Each appears on a different
+        # residue so all four combinations (all, some, none) are reachable by
+        # walking a few cards. Row 5's details are overlong so the blurb's
+        # two-line clamp is measurable; see the note on the tag fixture.
+        "parent_studio": (
+            {"id": str(n - 1), "name": f"VERIFY studio {n - 1}"}
+            if n % 4 == 0 and n > 1 else None
+        ),
+        "aliases": [f"VERIFY studio alias {n}"] if n % 3 == 0 else [],
+        "details": (
+            "VERIFY long studio details. " * 40 if n == 5
+            else f"VERIFY studio details {n}" if n % 5 == 0 else None
+        ),
     }
 
 
@@ -722,6 +859,15 @@ def listing_gallery(n):
         "rating100": (n * 11) % 101,
         "organized": n % 2 == 0,
         "date": "2024-03-09",
+        # The card's second line and the hero's meta. Studio is on a third of
+        # the rows, photographer on a quarter, the folder always — so the
+        # subtitle's fallback order is observable by walking three cards.
+        "studio": (
+            {"id": str(n), "name": f"VERIFY gallery studio {n}"}
+            if n % 3 != 0 else None
+        ),
+        "photographer": f"VERIFY photographer {n}" if n % 4 == 0 else None,
+        "folder": {"basename": f"VERIFY folder {n}"},
     }
 
 
@@ -819,6 +965,10 @@ class Handler(SimpleHTTPRequestHandler):
                 STREAMS_FETCHES.clear()
                 STREAM_FETCHES.clear()
                 PERFORMER_FETCHES.clear()
+                PERFORMER_UPDATES.clear()
+                IMAGE_INFO_FETCHES.clear()
+                STOP_FETCHES.clear()
+                STOPPED_JOB_IDS.clear()
                 STATS_FETCHES.clear()
                 STATUS_FETCHES.clear()
                 SCAN_FETCHES.clear()
@@ -874,6 +1024,15 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/performerfetches"):
             with LOCK:
                 return self._json(list(PERFORMER_FETCHES))
+        if self.path.startswith("/performerupdates"):
+            with LOCK:
+                return self._json(list(PERFORMER_UPDATES))
+        if self.path.startswith("/imageinfofetches"):
+            with LOCK:
+                return self._json(list(IMAGE_INFO_FETCHES))
+        if self.path.startswith("/stopfetches"):
+            with LOCK:
+                return self._json(list(STOP_FETCHES))
         if self.path.startswith("/statsfetches"):
             with LOCK:
                 return self._json(list(STATS_FETCHES))
@@ -1076,6 +1235,26 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"errors": [{"message": "simulated scan failure"}]})
             return self._json({"data": {"metadataScan": "job-scan-1"}})
 
+        # Stopping a job. `stopJob(job_id: ID!): Boolean!` — the answer is the
+        # whole result, and `false` is a refusal the app must not read as a
+        # stop. A successful stop removes the row from subsequent snapshots,
+        # which is what makes the focus-before-refresh rule observable: the
+        # row the D-pad was on genuinely goes away.
+        if "StopJob" in query or "stopJob" in query:
+            job_id = str(variables.get("jobId") or variables.get("job_id") or "")
+            with LOCK:
+                STOP_FETCHES.append({"job_id": job_id, "query": query})
+                mode = MODE.get("stopJob", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated stop failure"}]})
+            if mode == "false":
+                return self._json({"data": {"stopJob": False}})
+            with LOCK:
+                STOPPED_JOB_IDS.add(job_id)
+            return self._json({"data": {"stopJob": True}})
+
         if "ServerStatus" in query:
             with LOCK:
                 STATUS_FETCHES.append(query)
@@ -1090,10 +1269,15 @@ class Handler(SimpleHTTPRequestHandler):
                     "systemStatus": {"status": "OK", "appSchema": 31, "databaseSchema": 31},
                     "jobQueue": [],
                 }})
+            with LOCK:
+                jobs = [
+                    dict(j) for j in SERVER_STATUS["jobQueue"]
+                    if j["id"] not in STOPPED_JOB_IDS
+                ]
             return self._json({"data": {
                 "version": dict(SERVER_STATUS["version"]),
                 "systemStatus": dict(SERVER_STATUS["systemStatus"]),
-                "jobQueue": [dict(j) for j in SERVER_STATUS["jobQueue"]],
+                "jobQueue": jobs,
             }})
 
         # The connection test. The setup screen's Test and Connect buttons both
@@ -1398,11 +1582,34 @@ class Handler(SimpleHTTPRequestHandler):
             if mode == "sparse":
                 row.update(
                     gender=None, alias_list=[], career_start=None, career_end=None,
-                    career_length=None, tattoos=None, measurements=None, url=None,
+                    career_length=None, tattoos=None, measurements=None,
+                    ethnicity=None, hair_color=None, eye_color=None, weight=None,
+                    piercings=None, fake_tits=None, death_date=None,
+                    o_counter=0, image_count=0, gallery_count=0,
+                    urls=[], tags=[], rating100=None, favorite=False,
                 )
             elif mode == "length-only":
                 row.update(career_start=None, career_end=None, career_length="12 years")
             return self._json({"data": {"findPerformer": row}})
+
+        # The performer profile's two writes. Logged before the mode is
+        # consulted so a rejected attempt is distinguishable from no attempt.
+        if "PerformerUpdate" in query or "performerUpdate" in query:
+            inp = dict(variables.get("input") or {})
+            with LOCK:
+                PERFORMER_UPDATES.append({"input": inp})
+                mode = MODE.get("performerUpdate", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated performer write failure"}]})
+            if "rating100" not in inp and "favorite" not in inp:
+                return self._json({"errors": [{"message": "VERIFY empty update input"}]})
+            return self._json({"data": {"performerUpdate": {
+                "id": str(inp.get("id")),
+                "rating100": inp.get("rating100"),
+                "favorite": inp.get("favorite"),
+            }}})
 
         if "FindPerformers" in query:
             f = variables.get("filter") or {}
@@ -1423,6 +1630,30 @@ class Handler(SimpleHTTPRequestHandler):
             ]
             return self._json({"data": {"findPerformers": {
                 "count": PERFORMER_COUNT, "performers": rows}}})
+
+        # The image viewer's info panel. Placed above the four-section loop
+        # because that loop matches `FindImages` — which is not a substring of
+        # this operation's name, but the two are one letter apart and ordering
+        # them deliberately is cheaper than re-learning that the hard way.
+        if "FindImageInfo" in query:
+            iid = str(variables.get("id"))
+            with LOCK:
+                IMAGE_INFO_FETCHES.append({"id": iid, "query": query})
+                mode = MODE.get("imageInfo", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated image info failure"}]})
+            # The studio name carries the requested id. Every other field is
+            # identical across images, so a stale answer displayed under the
+            # *next* image would otherwise be indistinguishable from the right
+            # one — and that is precisely the race the driver's slow-mode
+            # step-with-the-panel-open check exists to catch.
+            return self._json({"data": {"findImage": {
+                **IMAGE_INFO,
+                "id": iid,
+                "studio": {"id": "1", "name": f"VERIFY image studio {iid}"},
+            }}})
 
         # ── The four browse-only sections ──
         # One handler each, in the same shape as the performer listing above:

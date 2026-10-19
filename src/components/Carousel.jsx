@@ -128,7 +128,7 @@ export default function Carousel({
   // slot is centered. CSS handles the visual scaling for off-center
   // cards via the depth indices on `.slot`.
   const focused = items[focusedIndex] || items[0];
-  const { title, meta = [] } = hero(focused);
+  const { title, meta = [], blurb = null } = hero(focused);
 
   return (
     <div
@@ -150,6 +150,10 @@ export default function Carousel({
             </span>
           ))}
         </div>
+        {/* A tag description or studio details can be paragraphs. The CSS
+            clamps this to two lines, which is what keeps the strip's height
+            from depending on the focused row. */}
+        {blurb && <p className={styles.heroBlurb}>{blurb}</p>}
         <div className={styles.heroCounter}>
           <span className={styles.heroCounterCur}>{focusedIndex + 1}</span>
           <span className={styles.heroCounterSep}>/</span>

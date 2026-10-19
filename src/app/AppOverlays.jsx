@@ -43,6 +43,7 @@ export default function AppOverlays({
           onPlay={sceneDetail.onPlay}
           onPlayAt={sceneDetail.onPlayAt}
           onActivityChange={sceneDetail.onActivityChange}
+          onGallerySelect={sceneDetail.onGallerySelect}
         />
       )}
 

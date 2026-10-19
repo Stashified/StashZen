@@ -423,6 +423,42 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The current task list, already prose, one line and ellipsised: a scan can
+   report several at once and the row must not grow with the queue. */
+.jobSubtasks {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobStart {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two lines is the budget: a server error can be a path or a stack phrase,
+   and one bad job must not push the actions below it off the panel. */
+.jobError {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--red);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.jobFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
 .jobTrack {
   height: 4px;
   background: var(--border);

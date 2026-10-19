@@ -85,16 +85,22 @@ const FIND_PERFORMERS_QUERY = `
 
 // One performer, in full, for the detail page. Deliberately *not* folded into
 // the listing query above: that one runs 40 rows at a time, and nothing on a
-// card draws an alias or a tattoo. The fields left out here — details,
-// scene_count, image_path, favorite, country, birthdate, height_cm, rating100
-// — are already on the card the page was opened from, so re-fetching them
-// would duplicate work and widen a payload whose only job is to fill in what
-// the card cannot know.
+// card draws an alias or a tattoo.
+//
+// `rating100` and `favorite` are the exception to "the card already has it".
+// The card holds `rating`, a one-decimal display string; the page writes a
+// rating back, and a write must be based on the value Stash actually stores,
+// not on a string formatted for the grid. That is the same rule that makes
+// `canEdit` false until the scene detail lands (see useSceneDetailData).
+//
+// `url` is deprecated on Performer and is replaced by `urls`; selecting the
+// old field would keep the app on a path Stash has already moved away from.
 //
 // Every field was checked against the live 0.31.1 schema. `career_start` and
 // `career_end` are Strings (not years-as-Int), `alias_list` is `[String!]!`
-// so it is never null, and `gender` is a GenderEnum whose six values are
-// MALE, FEMALE, TRANSGENDER_MALE, TRANSGENDER_FEMALE, INTERSEX, NON_BINARY.
+// so it is never null, `urls` is `[String!]!`, and `gender` is a GenderEnum
+// whose six values are MALE, FEMALE, TRANSGENDER_MALE, TRANSGENDER_FEMALE,
+// INTERSEX, NON_BINARY.
 const FIND_PERFORMER_DETAIL_QUERY = `
   query FindPerformerDetail($id: ID!) {
     findPerformer(id: $id) {
@@ -106,7 +112,23 @@ const FIND_PERFORMER_DETAIL_QUERY = `
       career_length
       tattoos
       measurements
-      url
+      urls
+      ethnicity
+      hair_color
+      eye_color
+      weight
+      piercings
+      fake_tits
+      death_date
+      o_counter
+      image_count
+      gallery_count
+      rating100
+      favorite
+      tags {
+        id
+        name
+      }
     }
   }
 `;
@@ -122,14 +144,30 @@ export function normalizePerformerDetail(p) {
     careerLength: p.career_length || null,
     tattoos: p.tattoos || null,
     measurements: p.measurements || null,
-    url: p.url || null,
+    ethnicity: p.ethnicity || null,
+    hairColor: p.hair_color || null,
+    eyeColor: p.eye_color || null,
+    weight: p.weight || null,
+    piercings: p.piercings || null,
+    fakeTits: p.fake_tits || null,
+    deathDate: p.death_date || null,
+    oCounter: p.o_counter || 0,
+    imageCount: p.image_count || 0,
+    galleryCount: p.gallery_count || 0,
+    urls: (p.urls || []).filter(Boolean),
+    tags: (p.tags || []).map(t => ({ id: t.id, name: t.name })),
+    rating100: p.rating100 ?? null,
+    favorite: !!p.favorite,
+    writable: true,
   };
 }
 
 // Mock performers are generated per request and have ids like `perf-7`, so
 // there is no server row to read. Echo the card's gender and leave the rest
 // null: the page stays on its real render path and simply hides the profile
-// block, the same trade `mockDetail` makes for scenes.
+// block, the same trade `mockDetail` makes for scenes. `writable: false`
+// keeps the rating and favourite controls disabled in Test mode, where the
+// ids belong to generated data with no row behind them.
 function mockPerformerDetail(performer) {
   if (!performer) return null;
   return {
@@ -141,7 +179,21 @@ function mockPerformerDetail(performer) {
     careerLength: null,
     tattoos: null,
     measurements: null,
-    url: null,
+    ethnicity: null,
+    hairColor: null,
+    eyeColor: null,
+    weight: null,
+    piercings: null,
+    fakeTits: null,
+    deathDate: null,
+    oCounter: 0,
+    imageCount: 0,
+    galleryCount: 0,
+    urls: [],
+    tags: [],
+    rating100: null,
+    favorite: !!performer.favorite,
+    writable: false,
   };
 }
 
@@ -159,6 +211,53 @@ export async function loadPerformerDetail(performer) {
     id: String(performer.id),
   });
   return normalizePerformerDetail(data?.findPerformer);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MUTATIONS
+// ═══════════════════════════════════════════════════════════
+
+const PERFORMER_UPDATE_MUTATION = `
+  mutation PerformerUpdate($input: PerformerUpdateInput!) {
+    performerUpdate(input: $input) {
+      id
+      rating100
+      favorite
+    }
+  }
+`;
+
+/**
+ * Write a rating or favourite flag. `rating100` is Stash's 0–100 rating;
+ * 0 clears it, which is what Stash's own UI writes.
+ *
+ * `PerformerUpdateInput.urls` is a single String, not the `urls` list the
+ * query returns, so profile links are read-only here.
+ */
+export async function updatePerformer(id, patch) {
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    return { id: String(id), ...patch };
+  }
+  const input = { id: String(id) };
+  if (patch.rating100 != null) {
+    input.rating100 = Math.max(0, Math.min(100, Math.round(patch.rating100)));
+  }
+  if (patch.favorite != null) input.favorite = !!patch.favorite;
+  const data = await runQuery(PERFORMER_UPDATE_MUTATION, { input });
+  if (!data?.performerUpdate) throw new Error('the server returned no performer');
+  clearPerformerPages();
+  return data.performerUpdate;
+}
+
+/**
+ * Drop cached performer pages after a write. The Performers grid unmounts
+ * while the detail page is open (TabContent swaps the page), so Back mounts
+ * a fresh grid that fetches page 1 — this is what makes the new rating or
+ * favourite appear there.
+ */
+export function clearPerformerPages() {
+  performerCache.clear();
 }
 
 function normalizePerformer(p) {
