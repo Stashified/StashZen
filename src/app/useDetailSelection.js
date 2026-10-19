@@ -9,7 +9,7 @@
  * to close it.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
 import { focusByIdWhenReady } from '../utils/focus.js';
 
@@ -83,10 +83,14 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   // deliberately left on the old path (see handleMarkerSelect) — a marker
   // is a timestamp inside a scene, so putting a scene browser in front of
   // it would drop the position the user actually asked for.
-  const handleVideoSelect = (video) => {
-    sceneCardFocus.remember(document.activeElement);
+  // `remember` is a stable useCallback; the useRestoreFocus() object itself is
+  // fresh every render, so depending on the object would defeat the memoized
+  // cards this feeds.
+  const rememberSceneCard = sceneCardFocus.remember;
+  const handleVideoSelect = useCallback((video) => {
+    rememberSceneCard(document.activeElement);
     setSelectedScene(video);
-  };
+  }, [rememberSceneCard]);
 
   const handleSceneClose = () => {
     setSelectedScene(null);

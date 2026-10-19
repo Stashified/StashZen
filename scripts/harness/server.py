@@ -1241,6 +1241,14 @@ class Handler(SimpleHTTPRequestHandler):
             # invisible precisely when rows existed.
             if mode == "fail-page-2" and entry["page"] == 2:
                 return self._json({"errors": [{"message": "VERIFY page 2 refused"}]})
+            # `empty-page-2` is the no-progress page: the count still says rows
+            # exist, but page 2 adds none. The listing must stop there rather
+            # than advance into page 3 — the harness proves it by scrolling to
+            # the bottom and checking no page-3 request was made.
+            if mode == "empty-page-2" and entry["page"] == 2:
+                return self._json({
+                    "data": {"findScenes": {"count": SCENE_COUNT, "scenes": []}}
+                })
             # `short` is a listing that has ended: one full first row and a
             # second row holding one card. The rail driver's R11 needs that
             # last lone card, because it is the state in which the content

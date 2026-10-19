@@ -15,6 +15,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './EntityGrid.module.css';
 
 const PAGE_SIZE = 40;
@@ -34,8 +35,8 @@ export default function EntityGrid({ controls, view, objectFilter, searchQuery, 
     items, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be here
-    deps: [sort, order, objectFilter, searchQuery],
+    // ← critical: sort and order MUST be in the key
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
   // Handed to each card, because the Images section's selection opens a viewer

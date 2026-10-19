@@ -76,6 +76,18 @@ export function isTextInput(el) {
 }
 
 /**
+ * Escape and the hardware Back key only — Backspace is never Back here.
+ *
+ * `isBackKey` below treats Backspace as Back when no text field has focus.
+ * Some layers are stricter on purpose: the filter builder's dialogs predate
+ * that rule and never closed on Backspace, so adding a shared hook must not
+ * quietly give them a new way to close. Pass this as `useBackKey`'s `isBack`.
+ */
+export function isHardBackKey(e) {
+  return e.key === 'Escape' || e.keyCode === TIZEN_BACK;
+}
+
+/**
  * The Back keys, with Backspace belonging to a text field when one has focus.
  *
  * Escape and the hardware Back key always count: they have no text-editing

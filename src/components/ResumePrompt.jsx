@@ -26,9 +26,9 @@
  * people. Nothing is written by either answer, so there is nothing to undo.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK } from '../utils/input.js';
+import { useBackKey } from '../hooks/useBackKey.js';
 import { formatTime } from '../utils/format.js';
 import styles from './ResumePrompt.module.css';
 
@@ -56,20 +56,10 @@ export default function ResumePrompt({ sceneTitle, seconds, onChoose }) {
   const resume = useCallback(() => onChoose?.('resume'), [onChoose]);
   const at = formatTime(seconds, { padMinutes: true });
 
-  useEffect(() => {
-    const handler = (e) => {
-      // Backspace is included, unlike in MarkerModal: there is no text field
-      // here for it to belong to, and the player itself already treats
-      // Backspace as Back.
-      const isBack = e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK;
-      if (!isBack) return;
-      e.preventDefault();
-      e.stopPropagation();
-      resume();
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [resume]);
+  // Backspace is Back here, unlike in MarkerModal: there is no text field for
+  // it to belong to, and the player itself already treats it as Back. That is
+  // exactly `isBackKey`'s default rule.
+  useBackKey(resume);
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Resume playback">

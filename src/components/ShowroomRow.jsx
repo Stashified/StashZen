@@ -25,11 +25,17 @@
  * for it as the strip's last element.
  */
 
+import { useMemo } from 'react';
 import VideoCard from './VideoCard.jsx';
 import EntityCard from './EntityCard.jsx';
 import PerformerCard from './PerformerCard.jsx';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from '../pages/ShowroomPage.module.css';
+
+// Module constant, not a literal in the render: `nextId` is a VideoCard prop,
+// and a fresh object each render would give the memoized cards a new prop and
+// re-render every shelf on each Home render.
+const TOP_EDGE = { up: 'nav-home' };
 
 function SeeAllTile({ row, onSelect, nextId }) {
   const { ref, focused } = useFocusable({
@@ -64,6 +70,18 @@ export default function ShowroomRow({
   onVideoSelect, onVideoLongPress, onStudioSelect,
   onPerformerSelect, onGallerySelect, onSeeAll,
 }) {
+  // Before the empty-row return below: hooks must run in the same order on
+  // every render, and an empty shelf is a legitimate render.
+  //
+  // What a card hands back on select/long-press. `fetchPage: null` is the
+  // app's established "this listing has nowhere to extend into" marker (see
+  // `single()` in App.jsx) — a long-press "play all" from a shelf queues the
+  // five scenes the user can actually see.
+  const list = useMemo(
+    () => ({ items, total: items.length, page: 1, fetchPage: null }),
+    [items],
+  );
+
   // A row with nothing in it is not a shelf. It is also not an error state:
   // a library with no galleries legitimately has no gallery shelf, so the row
   // simply does not exist.
@@ -84,18 +102,12 @@ export default function ShowroomRow({
     );
   }
 
-  // What a card hands back on select/long-press. `fetchPage: null` is the
-  // app's established "this listing has nowhere to extend into" marker (see
-  // `single()` in App.jsx) — a long-press "play all" from a shelf queues the
-  // five scenes the user can actually see.
-  const list = { items, total: items.length, page: 1, fetchPage: null };
-
   // Up out of the top shelf leaves Home for the rail, and the rail row that
   // belongs to Home is the active one — the same rule Left already follows.
   // Without the edge the geometry picks the *nearest* row above the card,
   // which is Scenes: a row the user is not on, one Down press from the wrong
   // part of the rail. Measured at 1920x1080 in showroom-entry's H11.
-  const topEdge = isTop ? { up: 'nav-home' } : null;
+  const topEdge = isTop ? TOP_EDGE : null;
 
   return (
     <section className={styles.row} data-showroom-row={row.key}>

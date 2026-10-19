@@ -93,8 +93,20 @@ function parseVtt(text, vttUrl) {
   return cues;
 }
 
-// Module-level cache so flipping between videos in Random doesn't re-fetch
+// Module-level cache so flipping between videos in Random doesn't re-fetch.
+// Bounded: a long channel-surfing session would otherwise hold every VTT it
+// has ever seen (plus its sprite rects) until the app restarts. Map preserves
+// insertion order, so deleting and re-setting on a hit makes the first key the
+// least recently used one to evict.
 const vttCache = new Map(); // vttUrl → cues[]
+const MAX_CACHE_ENTRIES = 24;
+
+function cacheVtt(url, cues) {
+  vttCache.set(url, cues);
+  while (vttCache.size > MAX_CACHE_ENTRIES) {
+    vttCache.delete(vttCache.keys().next().value);
+  }
+}
 
 export function useSpriteVtt(vttUrl) {
   const [ready, setReady] = useState(false);
@@ -106,17 +118,24 @@ export function useSpriteVtt(vttUrl) {
     setReady(false);
     setError(null);
 
-    if (!vttUrl) return;
+    if (!vttUrl) return undefined;
 
-    // Cache hit
+    // Cache hit — touch it so it is not the next entry evicted.
     if (vttCache.has(vttUrl)) {
-      cuesRef.current = vttCache.get(vttUrl);
+      const cues = vttCache.get(vttUrl);
+      vttCache.delete(vttUrl);
+      vttCache.set(vttUrl, cues);
+      cuesRef.current = cues;
       setReady(true);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
-    fetch(vttUrl)
+    // The cleanup below can run while the request is still open (channel
+    // surfing unmounts the player); aborting frees it instead of letting a
+    // body nobody wants finish arriving.
+    const controller = new AbortController();
+    fetch(vttUrl, { signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`VTT HTTP ${res.status}`);
         return res.text();
@@ -124,7 +143,7 @@ export function useSpriteVtt(vttUrl) {
       .then(text => {
         if (cancelled) return;
         const cues = parseVtt(text, vttUrl);
-        vttCache.set(vttUrl, cues);
+        cacheVtt(vttUrl, cues);
         cuesRef.current = cues;
         setReady(true);
       })
@@ -133,7 +152,10 @@ export function useSpriteVtt(vttUrl) {
         setError(e.message);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [vttUrl]);
 
   const getCue = useCallback((seconds) => {

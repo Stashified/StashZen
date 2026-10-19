@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
-import { TIZEN_BACK, isTextInput } from '../utils/input.js';
+import { useBackKey } from '../hooks/useBackKey.js';
 import {
   fetchTagOptions,
   fetchRecentMarkerTags,
@@ -153,25 +153,16 @@ export default function MarkerModal({
   const savingRef = useRef(false);
   useEffect(() => { savingRef.current = saving; });
 
-  // Back/Escape, capture phase — see the header.
-  useEffect(() => {
-    const handler = (e) => {
-      const isBack = e.key === 'Escape' || e.keyCode === TIZEN_BACK;
-      const isBackspace = e.key === 'Backspace';
-      if (!isBack && !isBackspace) return;
-      // Backspace belongs to the field it was typed in. TIZEN_BACK never does.
-      if (isBackspace && isTextInput(document.activeElement)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      // Mid-save there is nothing safe to close: the write may already be in
-      // flight, and closing would orphan it — the marker might be created
-      // with the player already back on screen and no confirmation shown.
-      if (savingRef.current) return;
-      onClose?.();
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  // Back/Escape, capture phase — see the header. The default predicate is the
+  // hand-written rule: Escape and TIZEN_BACK always count, Backspace belongs
+  // to the text field it was typed in.
+  useBackKey(() => {
+    // Mid-save there is nothing safe to close: the write may already be in
+    // flight, and closing would orphan it — the marker might be created
+    // with the player already back on screen and no confirmation shown.
+    if (savingRef.current) return;
+    onClose?.();
+  });
 
   const nudge = useCallback((delta) => {
     setSeconds(prev => {

@@ -39,9 +39,10 @@
  *               16:9. See the note on `--slot-w` in Carousel.module.css.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './Carousel.module.css';
 
 const PAGE_SIZE = 40;
@@ -69,10 +70,13 @@ export default function Carousel({
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
-    deps: [sort, order, objectFilter, searchQuery],
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
-  const listing = { items, total, page, fetchPage };
+  const listing = useMemo(
+    () => ({ items, total, page, fetchPage }),
+    [items, total, page, fetchPage],
+  );
 
   // Reset the focused slot when the list underneath is replaced — otherwise
   // the strip would try to centre an index that no longer exists.

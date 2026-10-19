@@ -13,6 +13,7 @@ import PerformerCard from './PerformerCard.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchPerformers } from '../utils/performerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './PerformerGrid.module.css';
 
 const PAGE_SIZE = 40;
@@ -31,8 +32,8 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
     items: performers, total, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be here
-    deps: [sort, order, objectFilter, searchQuery],
+    // ← critical: sort and order MUST be in the key
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
   const scrollRef = useRef(null);

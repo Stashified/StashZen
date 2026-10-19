@@ -18,7 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK } from '../utils/input.js';
+import { useBackKey } from '../hooks/useBackKey.js';
 import styles from './ActionMenu.module.css';
 
 // How long the keydowns have to stop before the press counts as over. A
@@ -49,18 +49,10 @@ function MenuItem({ id, label, hint, onSelect, autoFocus }) {
 
 export default function ActionMenu({ title, subtitle, items = [], onClose }) {
   // Capture phase, so Back/Esc closes the menu even though the grid's own
-  // focus is what the key would otherwise reach.
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK) {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  // focus is what the key would otherwise reach. The hook registers once and
+  // holds the handler in a ref, so `onClose` changing does not move this
+  // listener relative to the other window-capture handlers.
+  useBackKey(onClose);
 
   // ── Take focus only once the press that opened this is over ──
   // The menu mounts mid-press: the user is still holding OK. Focus is what

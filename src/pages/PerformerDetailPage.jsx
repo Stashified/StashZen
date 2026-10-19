@@ -9,11 +9,12 @@
  * Backspace / Tizen Back returns to the performer grid.
  */
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import VideoGrid from '../components/VideoGrid.jsx';
 import ControlsPanel from '../components/ControlsPanel.jsx';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK, isTextInput, focusScopeOf } from '../utils/input.js';
+import { useBackKey } from '../hooks/useBackKey.js';
+import { isBackKey, focusScopeOf } from '../utils/input.js';
 import { loadPerformerDetail } from '../utils/performerService.js';
 import styles from './PerformerDetailPage.module.css';
 
@@ -194,34 +195,24 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
     return () => { cancelled = true; };
   }, [performer]);
 
-  // Page-level Back handler — capture phase so the global Back
-  // doesn't fire its tab-switching behaviour first.
-  useEffect(() => {
-    const onKey = (e) => {
-      // Only Backspace belongs to the search field. This guard used to
-      // return for *every* key while a text field had focus, so with the
-      // cursor in the search box the remote's Back did nothing — and
-      // App.jsx deliberately delegates Back to this page, so there was no
-      // fallback. Only D-padding out of the field got the user out.
-      if (isTextInput(document.activeElement) && e.key === 'Backspace') return;
-
-      // A nested layer owns Back while it is open — an open sort/filter
-      // dropdown (`data-focus-trap`) or the long-press action menu
-      // (`role="dialog"`). This listener is registered when the page mounts,
-      // so it runs before theirs on the shared window capture target, and
-      // `stopPropagation` cannot suppress a sibling listener. Without the
-      // check, one Back closed the dropdown and left the page as well.
-      if (focusScopeOf(document.activeElement)) return;
-
-      if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK) {
-        e.preventDefault();
-        e.stopPropagation();
-        onBack?.();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onBack]);
+  // Page-level Back handler — capture phase so the global Back doesn't fire
+  // its tab-switching behaviour first.
+  //
+  // The predicate carries the two yields the hand-written handler had. Only
+  // Backspace belongs to the search field (`isBackKey` does that test; this
+  // guard once returned for *every* key while a text field had focus, which
+  // swallowed the remote's Back entirely). A nested layer owns Back while it
+  // is open — an open sort/filter dropdown (`data-focus-trap`) or the
+  // long-press action menu (`role="dialog"`) — and this listener is
+  // registered when the page mounts, so it runs before theirs on the shared
+  // window capture target. Doing the scope test in the predicate rather than
+  // in the handler also means this listener does not preventDefault a key the
+  // nested layer handles.
+  const pageIsBack = useCallback(
+    (e) => isBackKey(e) && !focusScopeOf(document.activeElement),
+    [],
+  );
+  useBackKey(() => onBack?.(), { isBack: pageIsBack });
 
   const age = ageFromBirthdate(performer.birthdate);
   const height = formatHeight(performer.height_cm);

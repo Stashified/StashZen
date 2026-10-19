@@ -19,6 +19,7 @@
 import '../../src/index.css';
 import { createRoot } from 'react-dom/client';
 import ErrorBoundary from '../../src/components/ErrorBoundary.jsx';
+import PlayerErrorBoundary from '../../src/components/PlayerErrorBoundary.jsx';
 
 const results = [];
 function check(name, pass, detail) {
@@ -108,6 +109,39 @@ async function run() {
 
   check('E8 the driver saw no uncaught error escape',
     !window.__escaped, `escaped=${window.__escaped || 0}`);
+
+  // ── The player's own boundary ────────────────────────────
+  // The global ErrorBoundary is the last resort and replaces the whole app;
+  // for a render failure inside the player that is too much — the session is
+  // still good, and the fix is to close the player and keep browsing. This
+  // mounts PlayerErrorBoundary where AppOverlays does, around a child that
+  // cannot render.
+  function PlayerBomb() { throw new Error('VERIFY player failure'); }
+  let closeCalls = 0;
+  const logged = [];
+  const realError = console.error;
+  console.error = (...args) => { logged.push(args); };
+  try {
+    root.render(
+      <PlayerErrorBoundary onClose={() => { closeCalls += 1; }}>
+        <PlayerBomb />
+      </PlayerErrorBoundary>,
+    );
+    // Well past the microtask that closes the player.
+    await sleep(300);
+  } finally {
+    console.error = realError;
+  }
+
+  check('P1 a player render error is closed, not turned into the app recovery screen',
+    !document.querySelector('[role="alertdialog"]')
+      && !document.body.textContent.includes('Something went wrong'),
+    `recovery screen: ${!!document.querySelector('[role="alertdialog"]')}`);
+  check('P1 the player is closed exactly once',
+    closeCalls === 1, `${closeCalls} call(s)`);
+  check('P1 the failure is logged — the console a TV does not show',
+    logged.some(args => String(args[0]).includes('[StashZen] player render error')),
+    `${logged.length} console.error call(s)`);
 }
 
 async function finish() {

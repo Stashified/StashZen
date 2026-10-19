@@ -14,9 +14,10 @@
  * builder show "Blonde" when the user reopens a filter without a round trip.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
+import { useBackKey } from '../hooks/useBackKey.js';
 import { TIZEN_BACK } from '../utils/input.js';
 import { searchEntities } from '../utils/entitySearch.js';
 import styles from './FilterBuilder.module.css';
@@ -92,18 +93,16 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
   // listener on the same target anyway. What keeps the builder open is
   // FilterBuilder's own `overlayOpenRef` guard, which makes it stand down
   // while any nested layer is up. This handler is the one that actually acts.
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK
-        || (e.key === 'Backspace' && !editing)) {
-        e.preventDefault();
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onCancel, editing]);
+  // Escape and the hardware Back always cancel; Backspace cancels only when
+  // the picker is not in its text-entry mode. This is the picker's own rule —
+  // `isBackKey`'s document-activeElement test is not a substitute for
+  // `editing`, which is what the old handler keyed on.
+  const pickerIsBack = useCallback(
+    (e) => e.key === 'Escape' || e.keyCode === TIZEN_BACK
+      || (e.key === 'Backspace' && !editing),
+    [editing],
+  );
+  useBackKey(onCancel, { isBack: pickerIsBack });
 
   const isChosen = (row) => chosen.some((c) => String(c.id) === String(row.id));
   const toggle = (row) => {

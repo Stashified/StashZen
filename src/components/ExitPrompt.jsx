@@ -9,8 +9,7 @@
  * in useKeyHandler.
  */
 
-import { useEffect } from 'react';
-import { TIZEN_BACK } from '../utils/input.js';
+import { useBackKey } from '../hooks/useBackKey.js';
 import { ActionButton } from './tvActions.jsx';
 import styles from './ExitPrompt.module.css';
 
@@ -22,17 +21,7 @@ import styles from './ExitPrompt.module.css';
 export default function ExitPrompt({ onCancel }) {
   // Capture-phase handler — Back/Esc cancels the prompt itself so
   // the user doesn't immediately re-trigger it.
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK) {
-        e.preventDefault();
-        e.stopPropagation();
-        onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onCancel]);
+  useBackKey(onCancel);
 
   const handleExit = () => {
     // Tizen: real exit. Browser: no-op (browsers won't let pages close

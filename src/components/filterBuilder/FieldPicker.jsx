@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useFocusable } from '../../hooks/useFocusable.js';
-import { TIZEN_BACK } from '../../utils/input.js';
+import { useBackKey } from '../../hooks/useBackKey.js';
+import { isHardBackKey } from '../../utils/input.js';
 import { criteriaFor } from '../../utils/filterCriteria.js';
 import styles from '../FilterBuilder.module.css';
 
@@ -16,15 +17,9 @@ export function FieldPicker({ filterType, used, onAdd, onClose }) {
     return scope === 'common' ? c.common : true;
   });
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK) {
-        e.preventDefault(); e.stopPropagation(); onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  // Escape and the hardware Back only. This dialog never closed on Backspace
+  // and still must not — the shared default would add that.
+  useBackKey(onClose, { isBack: isHardBackKey });
 
   // The dialog takes focus when it opens. These rows are plain buttons and had
   // no `autoFocus`, so opening the picker left focus on the "+ Add criterion"

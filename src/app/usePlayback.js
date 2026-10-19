@@ -6,7 +6,7 @@
  * one and a "queue" one that can drift apart. See playQueue.js.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
 
 export function usePlayback({
@@ -30,16 +30,22 @@ export function usePlayback({
     setPlaySession(session);
   };
 
-  const handleVideoLongPress = (video, list, index) => {
-    menuCardFocus.remember(document.activeElement);
+  // Stable pieces only: the useRestoreFocus() objects are rebuilt every
+  // render, but their `remember` callbacks are not. Depending on the objects
+  // would give every card a new onLongPress identity on each App render and
+  // undo the memoization.
+  const rememberMenuCard = menuCardFocus.remember;
+  const rememberMain = mainFocus.remember;
+  const handleVideoLongPress = useCallback((video, list, index) => {
+    rememberMenuCard(document.activeElement);
     // The menu's Play / Play all / Play from here open the player without ever
     // going through `playSceneAt`, which is the only other thing that records a
     // restore target for it. Without this the player's Back put focus on a
     // stale control from an earlier overlay — or on <body>, leaving the D-pad
     // with nothing to move from. The menu's own close uses the same element.
-    mainFocus.remember(document.activeElement);
+    rememberMain(document.activeElement);
     setActionMenu({ video, list, index });
-  };
+  }, [rememberMenuCard, rememberMain]);
 
   const closeActionMenu = () => {
     setActionMenu(null);

@@ -12,11 +12,12 @@
  * request and the trigger (the focused index nearing the end of the rail).
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import VideoCard from './VideoCard.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoCoverflow.module.css';
 
 const PAGE_SIZE = 40;
@@ -50,10 +51,15 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
-    deps: [sort, order, objectFilter, searchQuery],
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
-  const listing = { items: videos, total, page, fetchPage };
+  // Same memoized identity as the grid: focus moves restyle the slot wrappers,
+  // but the cards inside them can skip the render when their props hold still.
+  const listing = useMemo(
+    () => ({ items: videos, total, page, fetchPage }),
+    [videos, total, page, fetchPage],
+  );
 
   // Reset the focused slot when the list underneath is replaced — otherwise
   // the rail would try to centre an index that no longer exists.
