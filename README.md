@@ -58,15 +58,19 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="Home shelves" width="49%">
-  <img src="docs/screenshots/scene-detail.png" alt="Scene detail with markers" width="49%">
+  <img src="docs/screenshots/scene-detail.png" alt="Scene detail with markers and play actions" width="49%">
 </p>
 <p align="center">
   <img src="docs/screenshots/performers.png" alt="Performers listing" width="49%">
-  <img src="docs/screenshots/performer-detail.png" alt="Performer page" width="49%">
+  <img src="docs/screenshots/performer-detail.png" alt="Performer page with rating and favourite" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/galleries.png" alt="Galleries listing with image counts and folders" width="49%">
+  <img src="docs/screenshots/image-viewer.png" alt="Image viewer with its info panel open" width="49%">
 </p>
 <p align="center">
   <img src="docs/screenshots/settings-stats.png" alt="Settings — library stats" width="49%">
-  <img src="docs/screenshots/settings-server.png" alt="Settings — server status" width="49%">
+  <img src="docs/screenshots/settings-server.png" alt="Settings — server jobs and scan progress" width="49%">
 </p>
 
 <sub>Captured from the app's built-in Test mode; it runs on sample data and needs no server.</sub>
@@ -77,11 +81,14 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 |---|---|
 | D-pad | Move focus. |
 | OK / Enter | Open the focused item or activate the control. On a card this opens its detail page. |
-| Back / Esc | Close the topmost thing — dropdown, page, player. With the player's controls on screen, the first press hides them and the second closes the player. On the main screen it asks to exit. |
+| Back / Esc | Close the topmost thing — dropdown, page, player. With the player's controls on screen, the first press hides them and the second closes the player. In the image viewer, an open info panel closes first. On the main screen it asks to exit. |
 | ← from a card | Returns to the left rail's current tab. |
 | ↑ from the top card row | On a listing tab, jumps to the controls bar (filter, sort, view mode, search). On Home, goes back to the rail. |
 | ↑ / ↓ on the rail | Walks the rail, including Settings at the bottom. |
 | OK on the rail's current row | Reloads that tab in place — re-reads its listing, so scenes added or removed on the server appear without relaunching. |
+| ↑ in the image viewer | Reaches the **Info** button; **OK** opens that image's metadata panel. |
+| ← / → in the image viewer | Previous or next image. With the info panel open it stays open and reloads for the new image. |
+| OK on a gallery chip | A scene detail's **Galleries** row opens that gallery in the Galleries tab. |
 | ← / → in the player | Seek 15 seconds. |
 
 ## Features
@@ -92,15 +99,22 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Browse everything** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images,
   each with sort, search, filters, and grid, carousel, coverflow or list view. Every tab
   remembers its own view mode and column count; opening a marker plays its scene at that
-  timestamp. Switching tabs re-reads the listing, so scenes added or removed on the server
-  appear without relaunching the app.
+  timestamp. Gallery cards show the image count alongside the studio, or the folder when the
+  studio is not set; tag and studio carousels carry Stash's description, aliases and a studio's
+  parent. Switching tabs re-reads the listing, so scenes added or removed on the server appear
+  without relaunching the app.
 - **Filter builder** — build a filter on screen, or load a saved one; saved filters round-trip
   to Stash.
 - **Scene detail** — metadata, rating, organised flag and o-count; **resume** or start from a
   **marker**; **clear progress** (leaves Continue Watching without erasing watch time) and
-  **mark played** (appends one play now).
-- **Performer pages** — profile fields in one query: gender, aliases, career, measurements,
-  tattoos and website, alongside that performer's scenes.
+  **mark played** (appends one play now). When the scene belongs to a gallery, a **Galleries**
+  row hands off to that gallery's listing.
+- **Performer pages** — the profile in one query: aliases, career, ethnicity, hair, eyes, weight,
+  measurements, piercings, tattoos, death date, links and tags, plus scene, image and gallery
+  counts. **Rating** and **Favourite** are editable from the page and written back to Stash.
+- **Image viewer** — open any image full-size and step through the listing with ←/→. **Info**
+  shows what Stash holds for it: studio, photographer, code, resolution, file size, rating,
+  o-count, tags, performers and galleries. The panel is read-only and hides empty fields.
 - **Player** — resume where you left off, queue the whole listing, seek with ←/→, and write play
   count, resume point and o-count back to Stash. HLS is preferred, so the timeline stays
   seekable. The controls say whether the scene is playing **direct** or **transcoded**, and
@@ -110,9 +124,10 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Library stats** — counts, storage and watch time for the whole library, from Stash's own
   aggregates (Settings → *Show library stats*).
 - **Server status** — installed Stash version, schema health (`OK`, needs migration, setup) and
-  the progress of any running scan. **Scan library** starts a scan from the TV using the options
-  saved on Stash's own **Settings → Tasks → Scan** page (covers, previews, sprites and so on);
-  **Refresh** takes a new snapshot (Settings → *Check server status*).
+  every queued or running job with its progress, subtasks, start time and any error. **Stop** asks
+  for a second press before cancelling a job. **Scan library** starts a scan from the TV using the
+  options saved on Stash's own **Settings → Tasks → Scan** page (covers, previews, sprites and so
+  on); **Refresh** takes a new snapshot (Settings → *Check server status*).
 - **Theme** — **Standard** or **OLED**; OLED turns the page true black for OLED panels while
   text, focus ring and artwork stay the same.
 - **PIN lock** — optional four-digit code, asked for on launch.
@@ -132,7 +147,12 @@ narrower than a desktop player's; transcoding is the way around that.
 uses HLS instead; if you see it, HLS output is disabled or unavailable on your server.
 
 **Progress doesn't sync.** The player shows an indicator when a save fails. Usually it is the API
-key: saving activity is a mutation and needs it, unlike plain playback.
+key: saving activity is a mutation and needs it, unlike plain playback. The performer page's rating
+and favourite writes use the same key and report a failure in place.
+
+**An image's Info panel is sparse.** It shows only what Stash holds for that image and hides every
+empty field, so a picture with no studio, tags or performers will be short. That is the data, not a
+failed fetch.
 
 **The app shows "Something went wrong".** That screen is the last-resort error boundary. **Try
 again** re-renders; **Restart** relaunches the widget. If it recurs, note what you were doing and
@@ -181,8 +201,10 @@ Other scripts: `npm run lint`, `npm run build`, `npm run preview`, `npm test` (t
 and `npm run check:compat` — the Tizen 6.5 API and CSS checks, which CI also runs. The offline
 checks under `scripts/` remain for the data layer (`npm run test:filters`, `verify:criteria`,
 `verify:art`). `scripts/harness/` runs the real components in headless Firefox against a fake
-GraphQL endpoint; it catches navigation and layout regressions before a package is built. It
-cannot tell you anything about the TV's media pipeline or on-screen keyboard — only the TV can.
+GraphQL endpoint; it catches navigation and layout regressions before a package is built.
+`scripts/harness/shoot.sh` captures the README screenshots from the same Test-mode app. The
+harness cannot tell you anything about the TV's media pipeline or on-screen keyboard — only the
+TV can.
 
 The UI has no fixed stage: it lays out at whatever viewport it is given, so changing the harness
 window invalidates its geometry-based expectations.
@@ -241,12 +263,12 @@ Never share a `.wgt` built that way — it hands the key to whoever installs it.
 package attached:
 
 ```bash
-git tag v0.14.1
-git push origin v0.14.1
+git tag v0.30.0
+git push origin v0.30.0
 ```
 
-Add these four secrets to the GitHub **environment** named `TIZEN_AUTHOR_P12` (the workflow names
-it explicitly, and a job only sees environment secrets when it declares one):
+Add these four secrets to the GitHub **environment** the workflow declares in its `environment:`
+line (a job only sees environment secrets when it names one):
 
 | Secret | Value |
 |---|---|
@@ -263,17 +285,18 @@ was inlined, so a fresh install always starts on the Setup screen.
 ### Where things are
 
 ```
-src/components/   cards, grids, player, rail, settings, filter builder, PIN pad
-src/pages/        Showroom (Home), Scenes, Performers, Markers, SceneDetail, EntityPage
-src/hooks/        D-pad focus and keys, editable fields, paging, play queue, codec fallback
-src/utils/        Stash services, settings store, filters, playback rules, mock art
-tizen/            manifest and icon
-scripts/          offline checks, art generation, headless harness
+src/components/         cards, grids, carousel, image viewer, rail, settings, filter builder
+src/components/player/  the player's transport, keys, overlays, media and progress hooks
+src/pages/              Showroom (Home), Scenes, Performers, performer and scene detail
+src/hooks/              D-pad focus and keys, paging, playback source, play queue, editable fields
+src/utils/              Stash services, settings store, filters, playback rules, mock art
+tizen/                  manifest and icons
+scripts/                offline checks, art generation, headless harness, screenshot capture
 ```
 
-The three files worth reading first: `src/hooks/useKeyHandler.js` (spatial navigation),
+The three places worth reading first: `src/hooks/useKeyHandler.js` (spatial navigation),
 `src/utils/settings.js` (runtime config and Test mode), and `src/components/VideoPlayer.jsx`
-(keys, queue, writes back to Stash).
+with its hooks under `src/components/player/` (keys, queue, writes back to Stash).
 
 ## License & credits
 
