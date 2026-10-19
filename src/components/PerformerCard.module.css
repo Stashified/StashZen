@@ -1,0 +1,164 @@
+.card {
+  /* Local paint containment and an inset focus ring — see the note in
+     MarkerCard.module.css. */
+  contain: content;
+  display: block;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+  /* No `box-shadow` transition — see VideoCard.module.css. */
+  transition:
+    transform    0.14s var(--ease-tv),
+    border-color 0.10s ease-out;
+  transform-origin: center center;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  transform: scale(1.02);
+}
+
+/* `box-shadow` used to be declared twice in this rule — first the shared
+   `--focus-ring` plus a 24px glow, then a custom three-layer glow. The
+   duplicate was missed when VideoCard and MarkerCard were cleaned up, and
+   because the earlier declaration contains a `var()` Lightning CSS emitted
+   BOTH (see the note in vite.config.js), so the file was shipping bytes
+   that could never render.
+
+   Now a single unblurred, inset ring. The wide blur layers were re-rastered
+   on every focus change and every scroll frame; the ring and the scale carry
+   the same signal for none of the cost. Inset and without a stacking change
+   for the reason in MarkerCard.module.css. */
+.card.focused {
+  border-color: var(--accent);
+  transform: scale(1.05) translateY(-4px);
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* ── Cover (3:4 portrait, matches Stash performer images) ── */
+.cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+/* Home only: the shelf fixes the card's height and the portrait art fills it.
+   `object-fit: cover` keeps the face, cropping the excess top and bottom. */
+.card.fill .cover {
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s var(--ease-tv);
+  animation: imgFade 0.14s ease-out;
+}
+
+.card.focused .img {
+  transform: scale(1.05);
+}
+
+.imgFallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card-hover));
+  font-size: 64px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.coverGradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 45%,
+    rgba(0,0,0,0.85) 100%
+  );
+  z-index: 1;
+  pointer-events: none;
+}
+
+.favorite {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.65);
+  color: var(--rating);
+  font-size: 16px;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.coverInfo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 14px 12px 12px;
+  z-index: 2;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+  line-height: 1.2;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sceneCount {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.75);
+}
+
+.rating {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rating);
+}
+
+@keyframes imgFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

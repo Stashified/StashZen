@@ -1,0 +1,9 @@
+/* Matches the grid wrapper's horizontal padding so the line starts on the same
+   left edge as the first card, rather than on the wrapper's own edge. */
+.stats {
+  flex-shrink: 0;
+  padding: 14px 48px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}

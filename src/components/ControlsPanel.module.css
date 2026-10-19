@@ -1,0 +1,293 @@
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 48px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.controlLabel {
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+/* ── Select ─────────────────────────────────────────────── */
+.selectWrapper {
+  position: relative;
+}
+
+.selectBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 130px;
+  justify-content: space-between;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.selectBtn:hover,
+.selectBtn.focused {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+}
+
+.selectBtn.focused {
+  box-shadow: var(--focus-ring);
+}
+
+.selectBtn.open {
+  border-color: var(--accent);
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* When the dropdown has many grouped items, make it scrollable */
+.dropdownScrollable {
+  max-height: 480px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 220px;
+}
+
+.dropdownScrollable::-webkit-scrollbar {
+  width: 6px;
+}
+.dropdownScrollable::-webkit-scrollbar-track { background: transparent; }
+.dropdownScrollable::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+/* ── Dropdown groups ───────────────────────────────────── */
+.dropdownGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdownGroupHeader {
+  font-family: var(--font-condensed);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 10px 16px 6px;
+  /* Opaque, not a tint: the header is sticky, so rows scroll underneath it.
+     At rgba(0,0,0,0.15) both layers stayed readable at once and the section
+     name sat visibly on top of an option's text — reported from the TV. The
+     hairline is drawn with a shadow rather than a border so it does not
+     change the header's height as it sticks. */
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 0 var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dropdownGroupDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 16px;
+  text-align: left;
+  font-size: 15px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  /* The sticky group header sits over the top row; without this a focused
+     row scrolled into view by the D-pad could come to rest underneath it. */
+  scroll-margin-top: 30px;
+}
+
+.dropdownItem:hover,
+.dropdownItem.focused {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.dropdownItem.focused {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.dropdownItem.selected {
+  color: var(--accent);
+}
+
+.check {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+/* ── Toggle Buttons ─────────────────────────────────────── */
+.orderGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.toggleBtn {
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toggleBtn:hover,
+.toggleBtn.focused {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.toggleBtn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toggleBtn.focused {
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Stepper ────────────────────────────────────────────── */
+.gridSizer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gridX {
+  color: var(--text-muted);
+  font-size: 18px;
+  font-weight: 300;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stepperBtn {
+  width: 32px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: background 0.1s, color 0.1s;
+}
+
+.stepperBtn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.stepperBtn:not(:disabled):hover,
+.stepperBtn.focused {
+  background: var(--bg-card-hover);
+  color: var(--accent);
+}
+
+.stepperBtn:not(:disabled):active {
+  transform: scale(0.88);
+  transition: transform 0.05s ease-out;
+}
+
+.stepperBtn.focused {
+  box-shadow: var(--focus-ring);
+}
+
+.stepperBtn:active {
+  transform: scale(0.92);
+  transition: transform 0.05s ease-out;
+}
+
+.stepperVal {
+  min-width: 32px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  line-height: 36px;
+}
+
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.testResult {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.testOk   { color: var(--green); }
+.testFail { color: var(--red); }

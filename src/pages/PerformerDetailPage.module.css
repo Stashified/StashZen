@@ -1,0 +1,234 @@
+/* =========================================================
+   PerformerDetailPage — Hero + filtered video grid
+   ========================================================= */
+
+.page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Hero header ────────────────────────────────────────── */
+.hero {
+  display: flex;
+  gap: 36px;
+  padding: 32px 48px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(
+      ellipse at 25% 50%,
+      rgba(var(--accent-rgb), 0.08) 0%,
+      rgba(var(--accent-rgb), 0) 50%
+    ),
+    var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.heroLeft {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Back button — top-left of hero ─────────────────────── */
+.backBtn {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 8px 10px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  /* Named properties rather than `all`: this button sits over a scrolling
+     hero image, and `all` would transition box-shadow on focus too. */
+  transition: color 0.15s var(--ease-tv), border-color 0.15s var(--ease-tv);
+  /* Flat scrim, not a backdrop-filter blur — see the note in
+     SettingsPanel.module.css. */
+  background: rgba(var(--scrim-rgb), 0.6);
+}
+
+.backBtn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.backBtn.focused {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Performer image ────────────────────────────────────── */
+.image,
+.imageFallback {
+  width: 280px;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  object-fit: cover;
+  background: var(--bg-elevated);
+  display: block;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.imageFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 96px;
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  color: var(--text-muted);
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card-hover));
+}
+
+/* ── Right-hand text block ──────────────────────────────── */
+.heroRight {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+
+.name {
+  font-family: var(--font-condensed);
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.favorite {
+  color: var(--rating);
+  font-size: 28px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.disambiguation {
+  font-size: 16px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: -8px;
+}
+
+.metaRow {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.metaRow strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.sceneCount {
+  font-family: var(--font-condensed);
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.rating {
+  color: var(--rating);
+  font-weight: 600;
+}
+
+.bio {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 70ch;
+  /* Limit to ~3 lines so a long bio doesn't push the grid off-screen.
+     Users can scroll the inner grid; the hero stays anchored. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Profile fields ─────────────────────────────────────── */
+/* Wrapping rows, not focusable elements: the D-pad never lands here. */
+.aliasRow,
+.profileRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.aliasLabel {
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.aliasChip,
+.profileChip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.aliasChip {
+  white-space: nowrap;
+}
+
+.profileChip {
+  max-width: 100%;
+  white-space: normal;
+}
+
+/* Tattoos are the one free-text fact; two lines is the height cap. */
+.profileChipText {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.profileUrl {
+  background: var(--accent-dim);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.chipMore {
+  padding: 3px 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.profileWarn {
+  font-size: 13px;
+  color: var(--text-muted);
+}

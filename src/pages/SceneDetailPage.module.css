@@ -1,0 +1,479 @@
+/* =========================================================
+   SceneDetailPage — scene detail overlay
+   =========================================================
+   Sized for the 1280x720 Tizen viewport. The two columns are 46/54 rather
+   than even: the hero only needs to be readable, while the right column
+   carries the title, every chip row and all five controls, and it is the
+   side that actually overflows on a long scene. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  /* Same band as SettingsPanel (900), below LockScreen/ExitPrompt/PinPad.
+     Nothing here should ever out-stack those: this page traps Back, so a
+     prompt behind it would be unreachable. */
+  z-index: 900;
+  /* Flat scrim, not a backdrop-filter blur — see the note in
+     SettingsPanel.module.css. This opens over a grid of full-HD covers. */
+  background: rgba(var(--scrim-rgb), 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 46%) minmax(0, 1fr);
+  gap: 28px;
+  width: 100%;
+  max-width: 1180px;
+  max-height: 100%;
+  min-height: 0;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    radial-gradient(
+      ellipse at 12% 8%,
+      rgba(var(--accent-rgb), 0.07) 0%,
+      rgba(var(--accent-rgb), 0) 55%
+    ),
+    var(--bg-surface);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* ── Left column: hero ──────────────────────────────────── */
+.heroCol {
+  position: relative;
+  align-self: start;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.hero,
+.heroFallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--bg-elevated);
+}
+
+.heroFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-condensed);
+  font-size: 96px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card-hover));
+}
+
+.heroBadges {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: rgba(var(--scrim-rgb), 0.78);
+  color: var(--text-primary);
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.badgeRating {
+  /* The one amber element on the page, matching the star colour the
+     PerformerDetailPage hero already uses for its own rating. Opaque, not the
+     92%-alpha it was: the badge sits on the hero still, and a dark ink over a
+     background the image can show through has no fixed contrast ratio. */
+  background: var(--rating);
+  color: #201400;
+  text-shadow: none;
+  /* Pushed to the far end so resolution/duration read as one group and the
+     rating as a separate right-hand mark. */
+  margin-left: auto;
+}
+
+.resumeBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.resumeFill {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* ── Right column ───────────────────────────────────────── */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  /* Two lines at most: a scene title can be a whole filename, and letting
+     it run pushes the controls off a 720p screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.metaItem + .metaItem {
+  position: relative;
+  padding-left: 16px;
+}
+
+.metaItem + .metaItem::before {
+  content: '·';
+  position: absolute;
+  left: 0;
+  color: var(--text-muted);
+}
+
+.code {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Load state ─────────────────────────────────────────── */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.warn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(224, 85, 85, 0.4);
+  background: rgba(224, 85, 85, 0.1);
+  color: var(--red);
+  font-size: 15px;
+}
+
+/* ── Chips ──────────────────────────────────────────────── */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Performers are who the scene is *of*, so they get more weight than the
+   descriptive tags below them. */
+.chipsPerformers .chip {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.chipMore {
+  padding: 3px 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.details {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.stats,
+.tech {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+.urls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.url {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+}
+
+/* ── Markers ────────────────────────────────────────────── */
+.markers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.markersLabel {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+.markerChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv);
+}
+
+.markerChip.markerFocused {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: var(--focus-ring);
+}
+
+.markerTime {
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.markerName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markerTag {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.markerMore {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── Actions ────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Pinned to the bottom of the column so the controls keep the same
+     position on screen whatever the amount of text above them. */
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  /* Named properties, not `all` — see PerformerDetailPage's backBtn. */
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv);
+}
+
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.actionBtn.focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.actionBtn.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.actionBtn.primary.focused {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}
+
+.actionBtn.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.actionIcon {
+  font-size: 15px;
+}
+
+/* ── Rating stepper ─────────────────────────────────────── */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  padding: 2px;
+}
+
+.stepperBtn {
+  width: 38px;
+  height: 34px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1;
+  transition: background-color 0.15s var(--ease-tv);
+}
+
+.stepperBtn:disabled,
+.stepperMuted {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.stepperBtn.focused {
+  background: var(--accent-fill);
+  color: #fff;
+  box-shadow: none;
+}
+
+.stepperVal {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 44px;
+  justify-content: center;
+  font-family: var(--font-condensed);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stepperStar {
+  font-size: 13px;
+  color: var(--amber);
+}
+
+/* ── Status line ────────────────────────────────────────── */
+/* The key legend. Same treatment as the player's own hint row — the app's
+   convention for "here is a key that does something you cannot guess". */
+.hint {
+  margin: 10px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.notice {
+  /* Fixed height so the actions above it never shift when a message
+     appears — a moving focus target is the one thing a remote can't cope
+     with. */
+  min-height: 20px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}

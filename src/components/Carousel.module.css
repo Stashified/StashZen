@@ -1,0 +1,231 @@
+/* =========================================================
+   Carousel — Horizontal carousel layout
+   ========================================================= */
+
+/* `--slot-w` is the width of ONE slot, gap included, and the two other
+   numbers here are derived from it: `.slot` pads 12px each side, and the
+   focused card is scaled 2x. So the 360px default draws a card 336px wide
+   and 189px tall (16:9), which at 2x is 378px of stage height.
+
+   A section whose art is not 16:9 overrides it rather than living with the
+   mismatch. Portrait art is the case that exists: 3:4 at the same focused
+   HEIGHT is 189 * 3/4 = 142px of content, so 166px of slot. Matching height
+   rather than width is the point — the hero sits above the stage and the
+   loading line below it, so a section that grew its focused card would push
+   both, and the strip would sit differently depending on which tab you were
+   on. See PERFORMER_VIEW in carouselViews.js. */
+.carouselWrapper {
+  --slot-w: 360px;
+  --slot-gap: 24px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 32px 0 48px;
+  position: relative;
+}
+
+/* ── Hero (info above the strip) ────────────────────────── */
+.hero {
+  padding: 0 48px 24px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+}
+
+.heroTitle {
+  font-family: var(--font-condensed);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-column: 1;
+  margin-bottom: 8px;
+}
+
+.heroMeta {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 16px;
+  color: var(--text-secondary);
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.heroTag {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 3px 9px;
+  border-radius: 3px;
+}
+
+.heroRating {
+  color: var(--rating);
+  font-weight: 600;
+}
+
+.heroCounter {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: end;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-condensed);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.heroCounterCur {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.heroCounterSep {
+  font-size: 22px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.heroCounterTotal {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ── Stage (clipping viewport for the carousel) ─────────── */
+.stage {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  overflow: hidden;
+  /* Generous vertical padding so scaled-up focused card has breathing
+     room and its glow isn't clipped */
+  padding: 32px 0;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Track (the strip of slots) ─────────────────────────── */
+.track {
+  position: absolute;
+  left: 50%;
+  /* The inline transform on this element provides translateX so the
+     focused slot lands on the stage's horizontal centre. Vertical
+     centering is handled by .stage's flex alignment (which centers
+     this absolutely-positioned element… via parent flex it doesn't,
+     so we set top: 50% and let translateX override safely because
+     our inline transform combines: see note in JSX). To make this
+     simple, we set top:0 and bottom:0 and use flex-align center on
+     the track itself. */
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  transition: transform 0.35s var(--ease-tv);
+  will-change: transform;
+}
+
+/* Slot — fixed width, holds a VideoCard or empty */
+.slot {
+  flex: 0 0 var(--slot-w);
+  width: var(--slot-w);
+  padding: 0 calc(var(--slot-gap) / 2);
+  transition:
+    transform 0.35s var(--ease-tv),
+    opacity   0.35s var(--ease-tv);
+  transform-origin: center center;
+}
+
+/* The focused slot is naturally on top thanks to inline z-index,
+   but bump its visual prominence with a subtle accent glow. The
+   actual focus ring comes from VideoCard itself. */
+.slot[data-offset="0"] {
+  filter: none;
+}
+
+.slot:not([data-offset="0"]) {
+  filter: brightness(0.7);
+}
+
+/* ── Loading more indicator ─────────────────────────────── */
+.loadingMore {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.spinnerSm {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── State (loading / error / empty) ────────────────────── */
+.state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 300px;
+}
+
+.stateText {
+  font-size: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.heroPreview {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 360px;
+  height: 202px;
+  margin-left: -180px;
+  margin-top: -101px;
+  border-radius: 8px;
+  z-index: 5;
+  pointer-events: none;
+  object-fit: cover;
+}

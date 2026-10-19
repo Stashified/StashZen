@@ -1,0 +1,72 @@
+/* PlayerControlsRail — see PlayerControlsRail.jsx for the focus contract. */
+
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  /* Sits below the time/hint row, against the bottom edge of the overlay —
+     the transport row most players put there. */
+  margin-top: 16px;
+}
+
+.railBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  /* Named properties, not `all` — see SceneDetailPage's actionBtn note. */
+  transition: background-color 0.15s var(--ease-tv), color 0.15s var(--ease-tv),
+              transform 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+/*
+ * The two marker buttons are the first controls in the app to lean on
+ * `disabled` for D-pad purposes (findBestCandidate skips a DOM-disabled
+ * element, which is what keeps a dimmed button from becoming an absorbing
+ * wall). They stay in the layout at full size so the rail's geometry doesn't
+ * change with the scene — a rail that reflows when you advance would move the
+ * cursor's neighbours out from under it mid-navigation.
+ */
+.railBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/*
+ * `.railBtn.focused` and not `.focused` — the module is imported into a
+ * component that also renders plain `focused` classes from useFocusable, and
+ * two-class specificity keeps the ring winning over `.active` regardless of
+ * which rule the bundler emits first.
+ */
+.railBtn.focused {
+  background: var(--accent-fill-hi);
+  color: #fff;
+  box-shadow: var(--focus-ring);
+  transform: scale(1.06);
+}
+
+/* Mute on. Reads as "this is engaged" rather than "this has focus", so it
+   survives the focus ring landing on top of it. */
+.railBtn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.railBtn.active.focused {
+  background: var(--accent-fill-hi);
+  color: #fff;
+}
+
+/* Keeps the four groups (transport · scenes · markers · output) readable
+   without labels. Purely decorative — aria-hidden in the JSX. */
+.sep {
+  width: 1px;
+  height: 26px;
+  margin: 0 6px;
+  background: rgba(255, 255, 255, 0.22);
+}

@@ -1,0 +1,143 @@
+/**
+ * usePlayerTransport — everything that moves the playhead or the queue.
+ *
+ * These were separate callbacks in the player shell, and they belong together
+ * because they share one rule: each of them ends by re-arming the controls,
+ * since a press that changes something should also show what it changed. The
+ * only exception is the ends of the queue, where `stepScene` deliberately does
+ * nothing — a key that shows a rail and then refuses to move reads as a press
+ * the app half-heard.
+ */
+
+import { useCallback, useState } from 'react';
+
+export function usePlayerTransport({
+  videoRef,
+  markers,
+  setCurrentTime,
+  setError,
+  showControls,
+  goNext,
+  goPrev,
+}) {
+  // Mute belongs to this playback session, not to the app: it starts off on
+  // every open and is never persisted, because a silent player that the user
+  // cannot hear and did not ask for is indistinguishable from a broken one.
+  const [muted, setMuted] = useState(false);
+
+  /**
+   * Start playback without turning a routine rejection into an error overlay.
+   *
+   * `AbortError` is a play interrupted by a pause or a seek. `NotSupportedError`
+   * is what a source-less element answers — which is the normal state while the
+   * resolver is still fetching a transcode's URL. Reporting that one would put
+   * a permanent raw error over a scene that is about to play underneath it; a
+   * genuine decode failure arrives as a media `error` event and is handled
+   * there, with the fallback given first refusal.
+   */
+  const playQuietly = useCallback((v) => {
+    v.play().catch(e => {
+      if (e?.name === 'AbortError' || e?.name === 'NotSupportedError') return;
+      setError(e.message);
+    });
+  }, [setError]);
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) playQuietly(v);
+    else v.pause();
+    showControls();
+  }, [videoRef, playQuietly, showControls]);
+
+  /**
+   * The remote's play/pause keys, resolved to animations.
+   *
+   * Not three names for one toggle. Tizen has three distinct codes and two of
+   * them mean one thing each: 10252 is the play/pause key and only that one
+   * toggles, while 19 is *pause* and 415 is *play*. Folding 19 and 415 into the
+   * toggle would put a remote with separate keys permanently one press out of
+   * phase — pressing pause on a paused scene would start it, which on a remote
+   * with a dedicated pause key is indistinguishable from the app ignoring you.
+   *
+   * 415 and 19 are also which of Tizen's codes a given TV actually emits, so
+   * this is the one part of the rail that cannot be settled off-device: the
+   * harness can only prove the mapping, not that this remote sends them.
+   */
+  const mediaTransport = useCallback((code) => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (code === 19) {
+      if (!v.paused) v.pause();
+    } else if (code === 415) {
+      if (v.paused) playQuietly(v);
+    } else {
+      togglePlay();
+      return;
+    }
+    showControls();
+  }, [videoRef, playQuietly, togglePlay, showControls]);
+
+  /**
+   * Step to the neighbouring scene. The single path behind ↑/↓ and the rail's
+   * ⏮/⏭, so the rule about the ends of the queue is stated once rather than
+   * being whatever each caller happens to do.
+   *
+   * There is no wrapping: running off either end does nothing at all, and that
+   * includes not raising the controls, because a key that shows a rail and then
+   * refuses to move would read as a press the app half-heard.
+   *
+   * `goPrev` answers synchronously and `goNext` with a promise — it may have to
+   * fetch the next page — so both are normalised rather than each call site
+   * knowing which kind of stepper it holds.
+   */
+  const stepScene = useCallback((dir) => {
+    const moved = dir > 0 ? goNext() : Promise.resolve(goPrev());
+    moved.then((ok) => { if (ok) showControls(); });
+  }, [goNext, goPrev, showControls]);
+
+  // Step to the neighbouring marker. The comparison is strict with a small
+  // tolerance rather than "the marker nearest the cursor", because the cursor
+  // in question is `currentTime`, which drifts continuously: an inclusive
+  // test would re-seek to the marker the user is already sitting on and the
+  // button would look stuck.
+  //
+  // No wrapping. Running off either end does nothing, the same as scene
+  // prev/next at the ends of the queue.
+  const jumpToMarker = useCallback((dir) => () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const t = v.currentTime;
+    let target = null;
+    if (dir > 0) {
+      target = markers.find(m => m.seconds > t + 0.05) || null;
+    } else {
+      for (let i = markers.length - 1; i >= 0; i -= 1) {
+        if (markers[i].seconds < t - 0.05) { target = markers[i]; break; }
+      }
+    }
+    if (!target) return;
+    try { v.currentTime = target.seconds; } catch (e) { return; }
+    // Move the clock and the dot now rather than at the next `timeupdate`,
+    // which is up to 250ms away — the same reason skim() sets it directly.
+    setCurrentTime(target.seconds);
+  }, [videoRef, markers, setCurrentTime]);
+
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+    showControls();
+  }, [videoRef, showControls]);
+
+  return {
+    muted,
+    playQuietly,
+    togglePlay,
+    mediaTransport,
+    stepScene,
+    jumpToMarker,
+    toggleMute,
+  };
+}

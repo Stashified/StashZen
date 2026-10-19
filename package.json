@@ -1,0 +1,49 @@
+{
+    "name": "stashzen",
+    "version": "0.26.0",
+    "description": "StashZen — a Stash client for Samsung Tizen TVs, with D-pad navigation",
+    "license": "MIT",
+    "type": "module",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "postbuild": "node scripts/check-bundle.mjs",
+        "preview": "vite preview",
+        "lint": "eslint .",
+        "test": "npm run test:filters && npm run test:draft && npm run test:chain && npm run test:queue && npm run test:progress && npm run test:keys && npm run test:bundle-guard && npm run test:target",
+        "test:filters": "node scripts/test-translate.mjs",
+        "test:draft": "node scripts/test-criterion-draft.mjs",
+        "test:chain": "node scripts/test-filter-chain.mjs",
+        "test:queue": "node scripts/test-play-queue.mjs",
+        "test:progress": "node scripts/test-progress-reporter.mjs",
+        "test:keys": "node scripts/test-key-routing.mjs",
+        "test:bundle-guard": "node scripts/test-check-bundle.mjs",
+        "test:target": "node scripts/test-build-target.mjs",
+        "check:bundle": "node scripts/check-bundle.mjs",
+        "check:compat": "npm run check:compat:js && npm run check:compat:css",
+        "check:compat:js": "eslint --config eslint.compat.mjs src",
+        "check:compat:css": "node scripts/check-compat-css.mjs",
+        "verify:filters": "node scripts/verify-filters.mjs",
+        "verify:criteria": "node scripts/verify-criteria.mjs",
+        "verify:art": "node scripts/verify-mockart.mjs",
+        "sheet": "node scripts/contact-sheet.mjs",
+        "gen:schema": "node scripts/gen-filter-schema.mjs"
+    },
+    "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@vitejs/plugin-react": "^6.1.2",
+        "doiuse": "^6.0.6",
+        "eslint": "^10.12.0",
+        "eslint-plugin-compat": "^7.0.2",
+        "eslint-plugin-react-hooks": "^7.1.1",
+        "globals": "^17.13.0",
+        "vite": "^8.3.4"
+    }
+}

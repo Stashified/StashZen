@@ -1,0 +1,91 @@
+/* ErrorBoundary — the last-resort screen.
+ *
+ * Solid fill for the same reason LockScreen uses one: by construction there
+ * is nothing behind this panel, so a translucent backdrop would only suggest
+ * an app that is still there.
+ */
+
+.cover {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  padding: 40px;
+}
+
+.panel {
+  width: min(760px, 100%);
+  padding: 40px 44px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin-top: 12px;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.detail {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--bg-base);
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.button {
+  padding: 12px 28px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-condensed);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-tv);
+}
+
+.button.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.button.focused {
+  box-shadow: var(--focus-ring);
+}
+
+.hint {
+  margin-top: 24px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}

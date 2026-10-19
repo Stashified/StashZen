@@ -1,0 +1,54 @@
+/* tvActions.module.css — the flat TV action button.
+ *
+ * Moved here verbatim from SettingsPanel.module.css and ExitPrompt.module.css,
+ * where the five rules below were byte-identical copies. Nothing about them
+ * changed in the move, and that is deliberate: the two panels render the same
+ * button and the extraction is not an opportunity to redesign it.
+ *
+ * Every rule is a *compound* selector (`.actionBtn.focused`, never a bare
+ * `.focused`) so the block is self-contained and can leave those modules
+ * without disturbing the `.focused` each of them still uses for its own
+ * toggles and fields. A bare `.focused` rule would have leaked.
+ *
+ * NOT for SceneDetailPage. Its button is a different control that happens to
+ * share a class name: flex layout with an icon, 10px 18px not 10px 24px, 16px
+ * not 15px, `--text-primary` not `--text-secondary`, `.primary` not
+ * `.actionPrimary`, and a focus treatment that changes the background rather
+ * than only adding a ring. It was never one of the copies.
+ *
+ * Sizes here assume the 1920x1080 CSS-pixel viewport a Samsung TV reports.
+ */
+
+.actionBtn {
+  padding: 10px 24px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-tv);
+}
+
+.actionBtn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.actionBtn.actionPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.actionBtn.actionPrimary:hover {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}
+
+.actionBtn.focused {
+  box-shadow: var(--focus-ring);
+}

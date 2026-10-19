@@ -1,0 +1,54 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.env.production
+.env
+
+# Claude Code machine-local settings (permissions, session state).
+#
+# The `.tmp.*` line is not belt-and-braces: Claude Code writes the settings
+# file by writing a sibling temp file and renaming it, and a `git add -A`
+# that lands in that window commits the temp file. The pattern has to match
+# the temp names, not the real file they become.
+.claude/settings.local.json
+.claude/settings.local.json.tmp.*
+# `.claude/settings.json` is the same kind of file — permissions for whoever
+# is sitting at this machine — and it is ignored for the same reason. It is
+# separate from the `.local` one only in how Claude Code found it, not in what
+# it holds. Ignoring it also keeps it out of reach of the `git commit`
+# wrapper's implicit `-a`.
+.claude/settings.json
+.claude/settings.json.tmp.*
+
+# Built packages. A .wgt built locally from .env.production has the Stash API
+# key compiled in, so these must never be committed.
+*.wgt
+
+# A screenshot of the user's own Stash library, kept in the working tree as the
+# visual reference for the Phase 4 redesign of the look. It is not repo content:
+# it is explicit imagery carrying real scene titles, descriptions and performer
+# thumbnails, so committing it would put the user's library in version control
+# permanently — the same class of mistake as the .wgt above, and the same class
+# as the key that survived its own history rewrite.
+stash_ui.png

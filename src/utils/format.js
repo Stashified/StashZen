@@ -1,0 +1,72 @@
+/**
+ * Shared display formatters.
+ *
+ * formatTime — seconds → "H:MM:SS" (or "M:SS" under an hour).
+ *
+ * Three components had their own near-identical copy of this arithmetic,
+ * and they had drifted in exactly one place: the player floored at
+ * "00:00" and padded the minutes, the two card badges floored at "0:00"
+ * and didn't. The player's padding is the deliberate one — a padded
+ * readout doesn't reflow when playback crosses the one-minute mark,
+ * which is visible on a TV. So the difference is now an explicit flag
+ * rather than two implementations that happened to disagree.
+ */
+
+export function formatTime(seconds, { padMinutes = false } = {}) {
+  if (!isFinite(seconds) || seconds < 0) return padMinutes ? '00:00' : '0:00';
+
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+
+  return h > 0 ? `${h}:${mm}:${ss}` : padMinutes ? `${mm}:${ss}` : `${m}:${ss}`;
+}
+
+/**
+ * Group a count with commas. Done by hand rather than with `toLocaleString`,
+ * whose grouping can vary with the engine's locale data — the harness and the
+ * TV's Chromium 56 should produce the same string.
+ */
+export function formatCount(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return '0';
+  const sign = n < 0 ? '-' : '';
+  const digits = String(Math.abs(n));
+  let out = '';
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += ',';
+    out += digits[i];
+  }
+  return sign + out;
+}
+
+/**
+ * 1024-based sizes, one decimal where it means something. Stash reports byte
+ * sums as integers; `0 B` covers both a missing value and an empty library.
+ */
+export function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let value = n;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const rounded = unit === 0 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded} ${units[unit]}`;
+}
+
+/**
+ * Rounded hours. Rounding rather than flooring matters at the boundary: a
+ * library of 1,250.5 h should read 1,251 h, not 1,250 h.
+ */
+export function formatHours(seconds) {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s <= 0) return '0 h';
+  return `${formatCount(Math.round(s / 3600))} h`;
+}

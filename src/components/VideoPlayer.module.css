@@ -1,0 +1,364 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* ── Buffering ─────────────────────────────────────────── */
+.buffering {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 64px;
+  height: 64px;
+  border: 4px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error ─────────────────────────────────────────────── */
+.errorState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-primary);
+  font-size: 22px;
+}
+.errorHint {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.05em;
+}
+
+/*
+ * The post-write confirmation. Below the top bar and outside `.controls`, so it
+ * is readable whether or not the rail is up — a marker write is silent by
+ * nature (the only other evidence is a 2px tick appearing on the progress bar)
+ * and silencing it is the one outcome the form exists to prevent.
+ */
+.toast {
+  position: absolute;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  margin: 0;
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.85);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  /* Never between the user and the video they are trying to click. */
+  pointer-events: none;
+}
+
+/* ── Skim flash indicators ─────────────────────────────── */
+.skimFlash {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.72);
+  padding: 28px 40px;
+  border-radius: 16px;
+  pointer-events: none;
+  animation: skimFade 0.6s ease-out;
+}
+
+.skimLeft  { left:  10%; }
+.skimRight { right: 10%; }
+
+.skimIcon { font-size: 48px; color: var(--accent); }
+.skimAmount {
+  font-family: var(--font-condensed);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+
+@keyframes skimFade {
+  0%   { opacity: 0; transform: translateY(-50%) scale(0.85); }
+  20%  { opacity: 1; transform: translateY(-50%) scale(1); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1); }
+}
+
+/* ── Controls overlay ──────────────────────────────────── */
+.controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s var(--ease-tv);
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.7) 0%,
+    rgba(0,0,0,0) 20%,
+    rgba(0,0,0,0) 60%,
+    rgba(0,0,0,0.85) 100%
+  );
+}
+
+.controlsVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Top bar ───────────────────────────────────────────── */
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 40px;
+}
+
+.iconBtn {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.iconBtn:hover { background: rgba(255,255,255,0.15); }
+
+.titleBlock { flex: 1; min-width: 0; }
+.title {
+  font-family: var(--font-condensed);
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+.subtitle {
+  font-size: 15px;
+  color: rgba(255,255,255,0.65);
+  margin-top: 2px;
+}
+
+/* Position within the play queue — shown only when there is one. */
+.queueCounter {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+  font-family: var(--font-condensed);
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.55);
+}
+.queueCur {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.queueSep {
+  font-size: 16px;
+  color: rgba(255,255,255,0.35);
+}
+.queueTotal {
+  font-size: 16px;
+}
+
+/* ── Center indicator ──────────────────────────────────── */
+.centerIndicator {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bigPlay {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.55);
+  border: 2px solid rgba(255,255,255,0.4);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 40px;
+  padding-left: 8px;
+}
+
+/* ── Bottom bar ────────────────────────────────────────── */
+.bottomBar {
+  padding: 0 40px 32px;
+}
+
+.progressTrack {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  margin-bottom: 14px;
+  overflow: visible;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.15s linear;
+}
+
+/* One per marker on the current scene. Taller than the track and drawn over
+   the fill, so a marker that is already behind the playhead still reads as a
+   marker rather than disappearing into the accent colour. */
+.markerTick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.progressDot {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  /* The handle, not a focused control: it takes the same step as the bar it
+     rides on (`.progressFill`) and the white ring is what separates them. */
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  transition: left 0.15s linear;
+}
+
+.timeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  color: #fff;
+}
+
+.time {
+  font-family: var(--font-condensed);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.95);
+  min-width: 72px;
+}
+
+.time:last-child { text-align: right; }
+
+.hint {
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.55);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 0 2px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: #fff;
+}
+
+/* Sync state. Mounted only while a save is in flight, has just landed, or is
+   failing — so the ordinary case adds nothing to the row. */
+.syncChip {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.1);
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+}
+
+/* Coloured as well as worded: this is the one state the user has to act on. */
+.syncFailed {
+  border: 1px solid rgba(255,120,120,0.5);
+  background: rgba(200,40,40,0.55);
+  color: #ffd9d9;
+}
+
+/* Direct or transcoded, next to the title. Worded first and coloured second:
+   the tint is for the glance from across the room, the words are what makes
+   it unambiguous up close. Amber for a transcode because that is the state in
+   which the server is doing work, and the one worth noticing when a scene
+   starts slowly or cannot be skimmed as freely. */
+.sourceChip {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.1);
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.75);
+  white-space: nowrap;
+}
+
+.sourceTranscode {
+  border: 1px solid rgba(255,190,90,0.45);
+  background: rgba(120,80,20,0.55);
+  color: #ffe2b0;
+}

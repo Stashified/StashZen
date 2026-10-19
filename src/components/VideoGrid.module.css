@@ -1,0 +1,121 @@
+/* The column that holds the count line and the scroller. `min-height: 0` is
+   load-bearing: without it a flex child refuses to shrink below its content,
+   which is exactly the overflow this app never wants (see App.module.css). */
+.page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.gridWrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 32px 48px 48px;
+  /* Instant, not smooth: see the note in useFocusable.js. useFocusable also
+     passes behavior:'auto' explicitly, so this is belt-and-braces. */
+  scroll-behavior: auto;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+/* ── Sentinel (infinite-scroll trigger) ─────────────────── */
+.sentinel {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.loadingMoreText {
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.spinnerSm {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.endMarker {
+  margin-top: 32px;
+  padding: 24px 0;
+  text-align: center;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Initial states ─────────────────────────────────────── */
+.state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 300px;
+}
+
+.stateText {
+  font-size: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.gridFrame {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.fadeTop, .fadeBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.fadeTop {
+  top: 0;
+  height: 32px;
+  background: linear-gradient(to bottom, var(--bg-base) 0%, transparent 100%);
+}
+
+.fadeBottom {
+  bottom: 0;
+  height: 60px;
+  background: linear-gradient(to top, var(--bg-base) 0%, transparent 100%);
+}

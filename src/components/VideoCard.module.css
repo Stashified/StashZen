@@ -1,0 +1,300 @@
+.card {
+  /* EXPERIMENT (item 7 of the perf plan) — under evaluation, remove if the
+     navigation test regresses.
+     A grid of 40 full-HD covers with only ~10 on screen pays layout, style
+     and paint for the other 30. `content-visibility: auto` lets the engine
+     skip them entirely. The `auto` in `contain-intrinsic-size` is the
+     important half: after a card has rendered once its real size is
+     remembered, so the fallback below only applies before first paint.
+     The size matters because findBestCandidate (useKeyHandler.js) scores
+     candidates from getBoundingClientRect(), and a skipped subtree reports
+     this placeholder rather than its real box. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 192px;
+  /* Paint containment for the focus invalidation, independent of the
+     content-visibility experiment above: `auto` only contains the cards that
+     are skipped, and the busy ones — the ones on screen — are exactly the ones
+     whose invalidation has to stay local. See the note in MarkerCard.module.css
+     for the Live-vs-Test column-count measurement. */
+  contain: content;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  /* 1px, not the 1.5px this was: Stash's cards are bordered by a hairline and
+     a 1.5px stroke on a #30404d fill reads as a chunky frame at ten feet.
+     Radius tightens with it — Blueprint's own cards are near-square (4px)
+     where this was 8px, which is the rounder, more "app-like" corner the
+     rest of the port has been moving away from. */
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  /* `box-shadow` is deliberately NOT transitioned. It used to be — over
+     0.20s — which meant every focus change re-rastered a large blurred
+     shadow repeatedly for 200ms. The ring below is now a plain unblurred
+     one, so it can just appear. `transform` stays: scale is composited and
+     is what makes movement feel fluid. */
+  transition:
+    transform    0.14s var(--ease-tv),
+    border-color 0.10s ease-out;
+  transform-origin: center center;
+  /* Matches the transition above. This was 0.35s, so a tab switch faded the
+     whole grid in for a third of a second after the spinner had already
+     cleared — reading as "slow to load" when the data had long since
+     arrived. The fade is still here, just no longer the slowest thing on
+     screen.
+     (A staggered version of this was evidently intended once — VideoCard set
+     a `--card-index` custom property for exactly that — but no stylesheet
+     ever read it, so it was dead weight. Worth not reviving: staggering a
+     grid this size would spread the fade out, which is the opposite of
+     what a snappier load needs.) */
+  animation: cardIn 0.14s var(--ease-tv) both;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  transform: scale(1.02);
+}
+
+.card.focused {
+  border-color: var(--accent);
+  /* `box-shadow` and `transform` were each declared twice in this rule —
+     an earlier pair, then a refined pair (the second `transform` adds the
+     translateY, the second `box-shadow` trades the shared ring for the
+     custom glow). Only the later pair can win the cascade, so the earlier
+     one never rendered. Removed so the file says what ships; the rendering
+     is unchanged. They are not equally inert to the minifier, though:
+     Lightning CSS drops the duplicate `transform` but still emits the
+     `var()`-containing `box-shadow`, so this does change dist/ bytes. */
+  transform: scale(1.05) translateY(-4px);
+  /* Just the ring. There were two glow layers here as well — a 40px and a
+     60px blur — and on a grid of this size they were among the most
+     expensive pixels on screen, re-rastered on every focus change and on
+     every scroll frame. The ring plus the scale carries the same
+     "this one is selected" signal for none of the cost.
+
+     Inset, and with no `position`/`z-index` on focus: see the note in
+     MarkerCard.module.css. The scale does not reach the grid gap, so an
+     outside ring painted into nothing, while the stacking change it needed
+     made the TV repaint the whole grid on every D-pad press. */
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* ── Thumbnail ────────────────────────────────────────────── */
+.thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+/* Home only. The showroom wrapper fixes each card's height; the info bar keeps
+   its natural height and the thumbnail grows or shrinks into the rest, which
+   is what makes the scene shelf the same size as the three overlay cards. */
+.card.fill .thumb {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s var(--ease-tv);
+  animation: imgFade 0.14s ease-out;
+}
+
+.card.focused .img {
+  transform: scale(1.05);
+}
+
+/* ── Focus preview ────────────────────────────────────────── */
+/* A layer above the cover, below `.overlay` (z-index 2). It starts fully
+   transparent and is only ever revealed by the element reporting a decoded
+   frame, so the cover underneath is what shows for every scene with no
+   preview — which is nearly all of them. Nothing here hides the cover. */
+.preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.25s var(--ease-tv);
+  z-index: 1;
+  /* The card is one big <button>; the video must not swallow clicks. */
+  pointer-events: none;
+}
+
+/* Matches `.card.focused .img` above. The preview fades in *over* a cover that
+   is already scaled by focus, so without the same transform the frame would
+   visibly shrink as it appeared. */
+.previewVisible {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.imgFallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  font-size: 48px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-weight: 700;
+}
+
+/* ── Overlays ─────────────────────────────────────────────── */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.18s;
+  z-index: 2;
+}
+
+.card.focused .overlay,
+.card:hover .overlay {
+  opacity: 1;
+}
+
+.playIcon {
+  font-size: 32px;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.duration {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+  z-index: 3;
+}
+
+/* Solid amber with dark ink, which is how Stash marks a rating and what the
+   detail page's own `.badgeRating` already does. It was amber *text* on a
+   black chip; two treatments for one value in one app is the kind of thing
+   that reads as an accident rather than a style.
+   Opaque rather than translucent for the reason recorded on that badge: the
+   chip sits on the cover, so a dark ink over a background the image can show
+   through has no fixed contrast ratio. */
+.rating {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--rating);
+  color: #201400;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 3px;
+  z-index: 3;
+}
+
+/* ── Info ─────────────────────────────────────────────────── */
+.info {
+  padding: 10px 12px 12px;
+}
+
+/* Two lines rather than one ellipsised line, which is what Stash's own cards
+   do. Real titles here are long and front-loaded ("Broken Latina Whores -
+   2026-10-09 - …"), so a single line ellipsised almost every card in the
+   library down to the studio name — the part that distinguishes one card from
+   the next was the part being cut.
+   `-webkit-line-clamp` is the clamp that exists on this engine (the app is
+   built for one browser, same as the rest of the TV-specific CSS). The
+   fallback is a hard height cap, so the card's pitch stays fixed even if the
+   clamp is ever dropped. */
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: 2.6em;   /* 2 × line-height, the cap the clamp implements */
+}
+
+.meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The accent, not `--text-muted`: on Stash's own cards the date line under the
+   title is the one blue element in the card body, and the year is the nearest
+   thing this card has to it. */
+.year {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.category {
+  font-size: 11px;
+  font-family: var(--font-condensed);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+@keyframes cardIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes imgFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Resume progress indicator ──────────────────────────── */
+/* Sits at the bottom edge of the thumbnail. The fill matches
+   the accent colour so it reads as "your progress" rather than
+   noise. Only rendered when there's meaningful resume_time. */
+.resumeBar {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.resumeFill {
+  height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.6);
+}

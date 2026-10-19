@@ -1,0 +1,438 @@
+/* =========================================================
+   SettingsPanel — Modal overlay
+   ========================================================= */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  /* Deliberately opaque rather than a backdrop-filter blur. This panel opens
+     over a live grid of full-HD covers and playing preview videos, so a
+     full-screen blur re-composites every frame behind it — by far the most
+     expensive thing the menu ever did on the TV. A flat scrim is visually
+     close over a dark UI and costs nothing to keep on screen. */
+  background: rgba(var(--scrim-rgb), 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn 0.2s var(--ease-tv);
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  width: min(640px, 92vw);
+  max-height: 85vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: panelIn 0.25s var(--ease-tv);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.header {
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The brand lockup, restated from FirstRun.module.css — the two screens that
+   name the product should name it the same way. See that file for why this is
+   a copy rather than a shared rule. */
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.brandName {
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.tagline {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Body ───────────────────────────────────────────────── */
+.body {
+  flex: 1;
+  padding: 24px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Mode toggle row ────────────────────────────────────── */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.fieldLabel {
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.toggleGroup {
+  display: flex;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.toggle {
+  padding: 8px 22px;
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-tv);
+}
+
+.toggle:hover {
+  color: var(--text-secondary);
+}
+
+.toggle.toggleActive {
+  background: var(--accent-fill);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.35);
+}
+
+.toggle.focused {
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Live-mode fields ───────────────────────────────────── */
+.liveFields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  transition: opacity 0.2s;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-base);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:hover {
+  border-color: var(--border-strong);
+}
+
+/* Focus lives on the field wrapper, not the input — see useEditableField —
+   so these style the input from the field's state. `.input:focus` stays
+   because while editing the input really is the focused element. */
+.field.focused .input,
+.field.editing .input,
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Selected, not yet being edited: deliberately quieter than the real focus
+   ring, so "ready to type" doesn't read the same as "typing". */
+.field.focused .input {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
+}
+
+/* Same specificity as the rule above, so source order is what makes the
+   stronger ring win while editing. */
+.field.editing .input,
+.input:focus {
+  box-shadow: var(--focus-ring);
+}
+
+/* Rendered whether or not it is visible: one that appeared on focus would
+   shove the buttons below it down a line and back on every selection. */
+.fieldHint {
+  font-size: 11px;
+  line-height: 1;
+  min-height: 11px;
+  color: var(--text-muted);
+  visibility: hidden;
+}
+
+.field.focused .fieldHint,
+.field.editing .fieldHint {
+  visibility: visible;
+}
+
+.input:focus + .icon {
+  animation: searchPulse 1s ease-in-out infinite;
+}
+
+@keyframes searchPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.hint strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* ── Footer ─────────────────────────────────────────────── */
+.footer {
+  padding: 20px 32px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: var(--bg-base);
+}
+
+.footerSpacer {
+  flex: 1;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version {
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* ── Setting sections ───────────────────────────────────────
+   Shared by App lock and the playback preferences. `.lockNotice` below is
+   genuinely lock-specific and stays named for it. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--border);
+}
+
+.sectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sectionStatus {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.sectionActions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+/* Reserves its line so the section doesn't jump when a notice appears. */
+.lockNotice {
+  min-height: 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+/* ── Library stats & server status ─────────────────────────
+   Both are read-only snapshots. Nothing here is focusable: the button in the
+   section row is the only control, so the D-pad never lands on a number. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.statTile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.statValue {
+  font-family: var(--font-condensed);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statLabel {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Always rendered so showing an error does not move the section below it. */
+.statNotice {
+  min-height: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.statError {
+  color: var(--red);
+}
+
+.serverBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.serverHeadline {
+  font-family: var(--font-condensed);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.serverSchema,
+.serverIdle {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.jobRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.jobMeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.jobDescription {
+  font-size: 14px;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobStatus {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jobTrack {
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.jobFill {
+  height: 100%;
+  background: var(--accent-fill);
+  border-radius: 999px;
+  transition: width 0.3s var(--ease-tv);
+}

@@ -1,0 +1,187 @@
+/* ShowroomPage — four shelves, each exactly one screen wide.
+   The page is the vertical scroll container (the same shape as VideoGrid's
+   wrapper, so useKeyHandler's scrollContainerOf sees it). At 1920x1080 the
+   first three shelves are fully in view and the fourth begins just above the
+   fold, which is the "bigger cards, three rows at a time" the TV asked for.
+   That is measured, not assumed: showroom-entry's H2b asserts the section
+   rects. A shorter window scrolls, as before.
+
+   Every card on Home is one size. The second TV pass (0.18.0) found the
+   performer shelf's portrait cards nearly twice the area of the others; the
+   0.18.2 pass makes all four shelves one footprint by giving each card a
+   fixed height here and letting its art fill whatever that leaves (the
+   `.fill` class in each card's sheet). The scene card's info bar is still
+   underneath its image; the other three overlay their text as before. */
+
+.page {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px 48px 48px;
+  /* Instant, not smooth: useFocusable passes behavior:'auto' and
+     scroll-behavior:smooth would fight it. Same note as VideoGrid. */
+  scroll-behavior: auto;
+}
+
+.row {
+  margin-bottom: 28px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.rowError {
+  font-size: 16px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.rowTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+/* Five cards plus See all. Fixed columns, no overflow: the row is the whole
+   shelf, and the tile is the only way past it. `align-items: stretch` (the
+   grid default, stated because it matters here) makes the See-all tile match
+   the fixed card height, so the strip has one bottom edge.
+
+   The height is the sizing contract. 240px at the 1920x1080 TV viewport is
+   ~10% taller than the scene cards were and ~60% taller than the studio and
+   gallery covers, which is the "others a tad bigger" half of the request;
+   the performer cover falls from 3:4 portrait (341px) to the same 240px,
+   which is the "too big" half. Three sections end at ~912px, so the first
+   three shelves still fit and the fourth still peeks — asserted by H2b. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+  --shelf-card-h: 240px;
+}
+
+/* The wrapper is what gives a card from another stylesheet its one height;
+   the card's own `.fill` rule makes its art absorb the difference. */
+.cell {
+  height: var(--shelf-card-h);
+}
+
+.cell > * {
+  height: 100%;
+}
+
+/* ── See-all tile ─────────────────────────────────────────── */
+/* Chrome copied from VideoCard's `.card` so it reads as the same family:
+   one hairline border, 4px radius, the same focus scale and ring. The art
+   block fills whatever height the row's fixed cards have, so the tile and the
+   five cards share one bottom edge. */
+.seeAll {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  transition:
+    transform     0.14s var(--ease-tv),
+    border-color  0.10s ease-out;
+  transform-origin: center center;
+}
+
+.seeAll:hover {
+  border-color: var(--border-strong);
+  transform: scale(1.02);
+}
+
+.seeAllFocused {
+  border-color: var(--accent);
+  z-index: 10;
+  position: relative;
+  transform: scale(1.05) translateY(-4px);
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.seeAllArt {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.seeAllArrow {
+  font-size: 40px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.seeAllInfo {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seeAllTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.seeAllHint {
+  font-size: 11px;
+  font-family: var(--font-condensed);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 6px;
+  border-radius: 3px;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+/* ── States ───────────────────────────────────────────────── */
+.state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.stateText {
+  font-size: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

@@ -1,0 +1,177 @@
+import { useRef } from 'react';
+import {
+  updateSceneRating,
+  setSceneOrganized,
+  addSceneO,
+  resetSceneO,
+  resetSceneProgress,
+  markScenePlayed,
+} from '../../utils/sceneService.js';
+
+/**
+ * The page's six writes.
+ *
+ * Each captures the prior value, paints the new one, writes, and then either
+ * adopts the server's answer or reverts. The server's answer is preferred
+ * over the optimistic value because for the like counter it is an atomic
+ * increment — it can legitimately come back different from what we guessed.
+ *
+ * They are kept separate rather than folded into one helper: they look alike
+ * but differ in what they adopt, which token guards them and what they say.
+ */
+export function useSceneEdits({ detail, setDetail, flash, onActivityChange }) {
+  // Writes that can be in flight together. Each press is its own request, and
+  // the responses are adopted in arrival order unless something says which
+  // press owns the screen. Two quick presses at a slow server can settle out of
+  // order: the first one's count (1) then overwrites the second one's (2), and
+  // a stale failure rolls back over a later success. The counter is a tally, so
+  // the last press is the one the user is looking at — stale answers are
+  // dropped. One token for the o-count because increment and clear write the
+  // same value; play count has its own.
+  const oAttemptRef = useRef(0);
+  const playedAttemptRef = useRef(0);
+
+  const setRating = async (stars) => {
+    const prev = detail.rating100;
+    const next = stars * 10;
+    if (prev === next) return;
+    setDetail(d => ({ ...d, rating100: next }));
+    try {
+      const server = await updateSceneRating(detail.id, next);
+      setDetail(d => ({ ...d, rating100: server }));
+    } catch (e) {
+      setDetail(d => ({ ...d, rating100: prev }));
+      flash(`Rating not saved — ${e.message}`);
+    }
+  };
+
+  const toggleOrganized = async () => {
+    const prev = !!detail.organized;
+    const next = !prev;
+    setDetail(d => ({ ...d, organized: next }));
+    try {
+      const server = await setSceneOrganized(detail.id, next);
+      setDetail(d => ({ ...d, organized: server }));
+      flash(server ? 'Marked as organised' : 'Organised mark removed');
+    } catch (e) {
+      setDetail(d => ({ ...d, organized: prev }));
+      flash(`Not saved — ${e.message}`);
+    }
+  };
+
+  /**
+   * One more, every time.
+   *
+   * This was a toggle — press added one when the counter was zero and removed
+   * one when it was not — which reads as a flag and behaves like a switch. It
+   * is neither: Stash's counter is a tally, and the user's report was that
+   * pressing it three times should leave three. So there is no branch left
+   * here, and the count is the only thing that decides what the button looks
+   * like.
+   *
+   * The optimistic value is a guess. Stash answers with the numbers it actually
+   * holds (its own UI may have written in between), so the response wins
+   * whenever it arrives.
+   */
+  const incrementLike = async () => {
+    const attempt = ++oAttemptRef.current;
+    const prev = detail.oCounter || 0;
+    setDetail(d => ({ ...d, oCounter: prev + 1 }));
+    try {
+      const server = await addSceneO(detail.id);
+      if (attempt !== oAttemptRef.current) return;
+      if (typeof server === 'number') setDetail(d => ({ ...d, oCounter: server }));
+    } catch (e) {
+      if (attempt !== oAttemptRef.current) return;
+      setDetail(d => ({ ...d, oCounter: prev }));
+      flash(`o-count not saved — ${e.message}`);
+    }
+  };
+
+  /**
+   * Hold OK to clear it.
+   *
+   * Deliberately not confirmed and deliberately not on a press: undoing a tally
+   * one press at a time is exactly the tedium a hold exists to skip, and the
+   * gesture is hard enough to perform by accident that a blocking dialog would
+   * cost more than it saves. It also says so afterwards — a destructive action
+   * that reports nothing is indistinguishable from one that failed.
+   */
+  const clearLike = async () => {
+    const prev = detail.oCounter || 0;
+    if (prev === 0) { flash('o-count is already 0'); return; }
+    // The same token as the increments: a press that was in flight when the
+    // hold fired must not bring its count back after the reset.
+    const attempt = ++oAttemptRef.current;
+    setDetail(d => ({ ...d, oCounter: 0 }));
+    try {
+      const server = await resetSceneO(detail.id);
+      if (attempt !== oAttemptRef.current) return;
+      setDetail(d => ({ ...d, oCounter: typeof server === 'number' ? server : 0 }));
+      flash(`o-count cleared (was ${prev})`);
+    } catch (e) {
+      if (attempt !== oAttemptRef.current) return;
+      setDetail(d => ({ ...d, oCounter: prev }));
+      flash(`o-count not cleared — ${e.message}`);
+    }
+  };
+
+  /**
+   * Drop the resume point, which is what removes the scene from Continue
+   * Watching. Watch time is left alone: `sceneResetActivity` resets the two
+   * independently, and "clear progress" is about the place to resume from,
+   * not about erasing that the scene was watched.
+   *
+   * The app is told on success, because the shelf underneath is still mounted
+   * and holds the card this page was opened from — a refetch would not run
+   * until the tab remounted, so App prunes it in place instead.
+   */
+  const clearProgress = async () => {
+    const prev = detail.resumeTime || 0;
+    if (prev <= 0) { flash('No progress to clear'); return; }
+    setDetail(d => ({ ...d, resumeTime: 0 }));
+    try {
+      const ok = await resetSceneProgress(detail.id);
+      if (!ok) throw new Error('the server did not apply it');
+      onActivityChange?.(detail.id, { resumeTime: 0 });
+      flash('Progress cleared');
+    } catch (e) {
+      setDetail(d => ({ ...d, resumeTime: prev }));
+      flash(`Progress not cleared — ${e.message}`);
+    }
+  };
+
+  /**
+   * Count one play now, without playing anything.
+   *
+   * A play is a row in Stash's view history, so this appends one through
+   * `sceneAddPlay` rather than writing a count — the deprecated
+   * `sceneIncrementPlayCount` is not even on this schema. The optimistic
+   * count is a guess, and the server's answer replaces it: `count` is the
+   * resulting total, which may include plays other clients recorded.
+   */
+  const markPlayed = async () => {
+    const attempt = ++playedAttemptRef.current;
+    const prev = detail.playCount || 0;
+    const prevLast = detail.lastPlayedAt || null;
+    setDetail(d => ({
+      ...d,
+      playCount: prev + 1,
+      lastPlayedAt: new Date().toISOString(),
+    }));
+    try {
+      const res = await markScenePlayed(detail.id);
+      if (attempt !== playedAttemptRef.current) return;
+      if (!res.ok) throw res.error || new Error('the write failed');
+      const count = typeof res.count === 'number' ? res.count : prev + 1;
+      setDetail(d => ({ ...d, playCount: count }));
+      flash(`Marked played (${count} ${count === 1 ? 'play' : 'plays'})`);
+    } catch (e) {
+      if (attempt !== playedAttemptRef.current) return;
+      setDetail(d => ({ ...d, playCount: prev, lastPlayedAt: prevLast }));
+      flash(`Not marked played — ${e.message}`);
+    }
+  };
+
+  return { setRating, toggleOrganized, incrementLike, clearLike, clearProgress, markPlayed };
+}

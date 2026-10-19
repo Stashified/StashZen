@@ -1,0 +1,230 @@
+/*
+ * MarkerModal — see MarkerModal.jsx.
+ *
+ * The layout is four horizontal rows on purpose. The D-pad walks within a row
+ * with ←/→ and steps between rows with ↑/↓, so every part of the form is one
+ * press from every other, whatever the row lengths. A wrapping grid of 60 tags
+ * would put the Save button ten presses away from the tag row's last line.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 30;
+}
+
+.panel {
+  width: 980px;
+  max-width: calc(100vw - 80px);
+  padding: 28px 32px 24px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.header {
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-family: var(--font-condensed);
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* ── Row 1: timestamp ──────────────────────────────────── */
+.timeRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.time {
+  min-width: 96px;
+  text-align: center;
+  font-family: var(--font-condensed);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Rows 2–3: tag row and label field ─────────────────── */
+.section {
+  margin-bottom: 18px;
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Distinguished by size, weight and the absence of the label's uppercase —
+ * not by colour. The palette's next step down, `--text-muted` (#55556a on
+ * this panel's #1c1c26), is about a 2.4:1 contrast ratio, which is not
+ * readable from a couch; a hint that has to be squinted at is a decoration.
+ */
+.labelHint {
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+
+/*
+ * One row that scrolls sideways. `overflow-x: auto` (rather than hidden) so
+ * the browser can scroll it, which is what makes `useFocusable`'s
+ * `scrollIntoView({ inline: 'nearest' })` keep the focused chip on screen as
+ * the cursor walks a list that is wider than the panel.
+ */
+.tags {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  scrollbar-width: none;
+}
+
+.tags::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 15px;
+  white-space: nowrap;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv),
+              color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chipSelected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Two classes so the ring beats `.chipSelected` whatever order the bundler
+   emits them in — the same rule as the rail's buttons. */
+.chip.focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Row 3: the label field ───────────────────────────── */
+.field {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 46px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  transition: border-color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+.fieldFocused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 17px;
+  color: var(--text-primary);
+}
+
+/* ── Row 4: buttons ───────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 20px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv),
+              color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn.focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.btnPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btnPrimary.focused {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/*
+ * Reserved height, not a conditional element: this line is the failure
+ * announcement, and the panel must not resize under the cursor when a write
+ * fails — the button the user was about to press again would move.
+ */
+.error {
+  min-height: 22px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--red);
+}

@@ -1,0 +1,132 @@
+/* Full-bleed and opaque, unlike the other overlays: the app has no scrim
+   convention for a full-screen surface, and a picture behind a translucent
+   backdrop would be read against a live grid rather than against black. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+/* The picture takes every pixel the bars do not. `min-height: 0` is
+   load-bearing, same as the grids: a flex child will not shrink below its
+   content, and an image's content is its intrinsic size. */
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 48px;
+}
+
+/* `contain`, not `cover`: the one thing a viewer must never do is crop. */
+.image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+  user-select: none;
+}
+
+.imageLoaded {
+  opacity: 1;
+}
+
+.unavailable {
+  font-family: var(--font-condensed);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 20px 48px 0;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex: none;
+}
+
+.rating {
+  color: var(--rating);
+  font-weight: 600;
+}
+
+.footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 48px 20px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.counter {
+  color: var(--text-secondary);
+}
+
+.counterSep {
+  opacity: 0.6;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

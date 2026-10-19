@@ -1,0 +1,121 @@
+/* ActionMenu — see the note in ExitPrompt.module.css: a flat scrim, not a
+   backdrop-filter blur. The blur costs a full-screen composite on a TV CPU
+   and buys nothing over an opaque layer. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 940;
+  background: rgba(var(--scrim-rgb), 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn 0.16s var(--ease-tv);
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  width: min(420px, 84vw);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  animation: panelIn 0.2s var(--ease-tv);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.header {
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  /* The card's title, whatever length it happens to be — one line, clipped. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s var(--ease-tv), border-color 0.12s var(--ease-tv);
+}
+
+.item:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* No box-shadow transition here — same reason as VideoCard.module.css: on
+   Tizen the transition makes the ring trail the key. The ring itself comes
+   from the token so every surface agrees. */
+.item.focused {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.itemLabel {
+  font-family: var(--font-condensed);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.itemHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.footer {
+  padding: 10px 24px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.footerHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.05em;
+}

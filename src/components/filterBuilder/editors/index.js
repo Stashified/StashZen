@@ -1,0 +1,69 @@
+import { EDITOR } from '../../../utils/filterCriteria.js';
+import { hasOperand } from '../criterionDraft.js';
+import * as text from './text.js';
+import * as number from './number.js';
+import * as enumEditor from './enum.js';
+import * as boolean from './boolean.js';
+import * as multi from './multi.js';
+import * as stashId from './stashId.js';
+
+/**
+ * The criterion editor registry.
+ *
+ * Every editor module exports two descriptions of the same controls, written
+ * side by side in the same file:
+ *
+ *   - `chainIds(field, desc, criterion)` — the D-pad order CriterionRow hands
+ *     to `nextId`, in DOM order.
+ *   - `parts(field, desc, criterion)` — the controls themselves, which
+ *     CriterionRow's one dispatcher renders.
+ *
+ * The two are written independently on purpose. `.rowBody` is `flex-wrap:
+ * wrap`, so a wrapped control's Left is read as "whatever is to the left on
+ * screen" — a footer button — unless the row declares its own order. A chain
+ * entry naming a control that is not rendered and a rendered control missing
+ * from the chain both fall back to that geometry, so the two mistakes look
+ * alike, and only a remote shows either. `scripts/test-filter-chain.mjs`
+ * compares the two for every editor, with and without an operand and for the
+ * range pair; the harness's F10 checks press the keys.
+ *
+ * Keep a new editor's `chainIds` in the same module as its `parts`, and add
+ * the module here.
+ */
+export const EDITORS = {
+  [EDITOR.TEXT]: text,
+  [EDITOR.PHASH]: text,
+  [EDITOR.NUMBER]: number,
+  [EDITOR.DATE]: number,
+  [EDITOR.TIMESTAMP]: number,
+  [EDITOR.ENUM]: enumEditor,
+  [EDITOR.BOOLEAN]: boolean,
+  [EDITOR.TRI]: boolean,
+  [EDITOR.MULTI]: multi,
+  [EDITOR.HIERARCHICAL]: multi,
+  [EDITOR.STASH_ID]: stashId,
+  [EDITOR.STASH_IDS]: stashId,
+};
+
+export const editorFor = (editor) => EDITORS[editor] || null;
+
+/** Every control kind CriterionRow knows how to render. */
+export const PART_KINDS = ['text', 'choice', 'pick'];
+
+// BOOLEAN and TRI have no operand to gate on, but still render their Choice.
+const ALWAYS_SHOWN = new Set([EDITOR.BOOLEAN, EDITOR.TRI]);
+
+/** Whether a criterion shows its editor's controls at all. */
+const shown = (desc, criterion) => ALWAYS_SHOWN.has(desc.editor) || hasOperand(criterion);
+
+/** The chain for the editor's own controls; the row adds remove/modifier. */
+export const editorChainIds = (field, desc, criterion) => {
+  const mod = editorFor(desc.editor);
+  return mod && shown(desc, criterion) ? mod.chainIds(field, desc, criterion) : [];
+};
+
+/** The controls themselves, in DOM order. */
+export const editorParts = (field, desc, criterion) => {
+  const mod = editorFor(desc.editor);
+  return mod && shown(desc, criterion) ? mod.parts(field, desc, criterion) : [];
+};

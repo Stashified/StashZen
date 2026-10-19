@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://stashzen.local/StashZen" version="0.26.0" viewmodes="maximized">
+    <access origin="*" subdomains="true"></access>
+    <tizen:application id="stashzentv.StashZen" package="stashzentv" required_version="6.5"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <!-- The black-background variant; `icon.png` is the original transparent
+         art and is kept untouched. The launcher's white plate on focus is
+         system-drawn, so this only changes the resting tile. Swap the src back
+         to icon.png to revert. -->
+    <icon src="icon-black.png"/>
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
+    <name>StashZen</name>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:profile name="tv-samsung"/>
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

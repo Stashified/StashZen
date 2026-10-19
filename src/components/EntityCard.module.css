@@ -1,0 +1,182 @@
+/* Derived from PerformerCard.module.css rather than shared with it. The two
+   are close but not the same card: this one switches aspect per section, and
+   its cover has no `.sceneCount`-specific rule. Importing PerformerCard's sheet
+   would mean the performer card could not change without changing this one,
+   which is the coupling MarkerGrid→VideoGrid already has and does not
+   particularly want. */
+
+.card {
+  /* Local paint containment and an inset focus ring — see the note in
+     MarkerCard.module.css. Focusing a card used to make it positioned and
+     z-indexed, which invalidates the paint order of the whole grid; with 6
+     columns and full-size artwork that is what made D-pad movement sluggish
+     in Live mode. */
+  contain: content;
+  display: block;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+  /* No `box-shadow` transition — see VideoCard.module.css. */
+  transition:
+    transform    0.14s var(--ease-tv),
+    border-color 0.10s ease-out;
+  transform-origin: center center;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  transform: scale(1.02);
+}
+
+/* A single unblurred ring. See the note on the same rule in
+   PerformerCard.module.css for why the wide glow layers were dropped. */
+.card.focused {
+  border-color: var(--accent);
+  transform: scale(1.05) translateY(-4px);
+  /* Inset: the ring stays inside the card and needs no stacking change. */
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* ── Cover ──────────────────────────────────────────────────
+   Portrait by default — tags are drawn the way performers are. The section
+   that wants landscape says so through the descriptor's `aspect`, which puts
+   `.landscape` on this element.
+
+   This is a design choice, not a measurement: a real library's tag and studio
+   images are whatever the user uploaded, and something has to be chosen for
+   them. Portrait for tags and landscape for studios/galleries/images matches
+   what each kind of picture usually is. */
+.cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.cover.landscape {
+  aspect-ratio: 16 / 9;
+}
+
+/* Home only: the shelf fixes the card's height. This selector outranks
+   `.cover.landscape` so it applies whichever aspect the descriptor asked for. */
+.card.fill .cover {
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s var(--ease-tv);
+  animation: imgFade 0.14s ease-out;
+}
+
+.card.focused .img {
+  transform: scale(1.05);
+}
+
+.imgFallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card-hover));
+  font-size: 64px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.coverGradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 45%,
+    rgba(0,0,0,0.85) 100%
+  );
+  z-index: 1;
+  pointer-events: none;
+}
+
+.favorite {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.65);
+  color: var(--rating);
+  font-size: 16px;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.coverInfo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 14px 12px 12px;
+  z-index: 2;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+  line-height: 1.2;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subtitle {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rating {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rating);
+  flex: none;
+}
+
+@keyframes imgFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

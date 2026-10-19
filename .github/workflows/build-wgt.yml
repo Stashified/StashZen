@@ -1,0 +1,297 @@
+name: Build Tizen .wgt
+
+# Manual runs (Actions → Run workflow) produce a downloadable artifact you can
+# sideload straight onto the TV. Pushing a tag like v0.2.0 does the same build
+# and additionally attaches the .wgt to a GitHub Release.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+# `gh release create` needs to write releases.
+permissions:
+  contents: write
+
+env:
+  # Name of the Tizen security profile generated at build time. Must match the
+  # `-s` argument to `tizen package`; it is not related to any profile that may
+  # exist on your VM.
+  PROFILE_NAME: stashzen
+
+  # Tizen Studio 5.1 CLI-only ("web-cli") installer. This variant installs
+  # headlessly, which is what makes CI signing possible at all — the full SDK
+  # is GUI-driven. If this URL ever 404s, check
+  # https://download.tizen.org/sdk/Installer/ for a newer tizen-studio_* dir
+  # and update both this filename and the cache key below.
+  TIZEN_BIN: tizen-studio_5.1.bin
+  # HTTPS, not HTTP: this installer is executed in the same job that later
+  # handles the signing keys.
+  TIZEN_URL: https://download.tizen.org/sdk/Installer/tizen-studio_5.1/web-cli_Tizen_Studio_5.1_ubuntu-64.bin
+  # Pinned digest of that exact file (297,280,923 bytes, 2026-10-18). If the
+  # URL is ever updated, update this too — the build must fail closed when
+  # the mirror serves something else.
+  TIZEN_SHA256: b31bf32bfde19f8b74cc5a8edb13b8478ae0533e439d61f9ba430b87d1c86717
+
+jobs:
+  build:
+    name: Build and sign
+    runs-on: ubuntu-latest
+
+    # Load-bearing: the signing secrets live in a GitHub *environment*, and a
+    # job only sees environment secrets if it names the environment here.
+    # Without this line they all resolve to empty strings and signing fails.
+    # (The environment happens to share its name with one of its secrets.)
+    environment: StashZen
+
+    steps:
+      # Pinned by commit SHA, not by tag: a moved or compromised tag cannot
+      # change what runs here. The version comments let Dependabot keep them
+      # current; bump the SHA and the comment together.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      # The `tizen` CLI shells out to Java for packaging and signing. The 5.1
+      # toolchain predates the JDK the runner image ships by default, so pin an
+      # era-appropriate one.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      # The CLI download is ~1.5 GB, so cache both the installer and the
+      # installed tree. Bump the `-v1` suffix to force a clean reinstall.
+      - name: Cache Tizen Studio CLI
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          # v2: the first cache generation predates the pinned checksum, so it
+          # is not reused. A fresh install is the only way to know the tool
+          # tree on disk came from the verified installer.
+          key: tizen-studio-5.1-web-cli-v2
+          path: |
+            ${{ github.workspace }}/${{ env.TIZEN_BIN }}
+            ${{ github.workspace }}/tizen-studio
+
+      - name: Install Tizen Studio CLI
+        run: |
+          set -euo pipefail
+          TIZEN_STUDIO="$GITHUB_WORKSPACE/tizen-studio"
+          INSTALLER="$GITHUB_WORKSPACE/$TIZEN_BIN"
+
+          if [ -x "$TIZEN_STUDIO/tools/ide/bin/tizen" ]; then
+            echo "Tizen Studio restored from cache."
+          else
+            if [ ! -s "$INSTALLER" ]; then
+              # --proto restricts redirects to HTTPS as well as the URL itself.
+              curl -fL --proto '=https' --retry 3 --retry-delay 2 \
+                -o "$INSTALLER" "$TIZEN_URL"
+            fi
+            # Verify before executing, cached installer included. `sha256sum -c`
+            # names the file on failure without printing either digest.
+            echo "$TIZEN_SHA256  $INSTALLER" | sha256sum -c -
+            chmod +x "$INSTALLER"
+            # --accept-license makes the otherwise-interactive installer silent.
+            "$INSTALLER" --accept-license "$TIZEN_STUDIO"
+          fi
+
+          "$TIZEN_STUDIO/tools/ide/bin/tizen" version
+          echo "$TIZEN_STUDIO/tools/ide/bin" >> "$GITHUB_PATH"
+
+      # Turns the certificate secrets into a profiles.xml. Signing is entirely
+      # profile-driven, so this is all that stands between a bare CLI and a
+      # signed .wgt — no Certificate Manager / GUI step is needed.
+      - name: Generate signing profile
+        env:
+          TIZEN_AUTHOR_P12: ${{ secrets.TIZEN_AUTHOR_P12 }}
+          TIZEN_AUTHOR_PASSWORD: ${{ secrets.TIZEN_AUTHOR_PASSWORD }}
+          TIZEN_DISTRIBUTOR_P12: ${{ secrets.TIZEN_DISTRIBUTOR_P12 }}
+          TIZEN_DISTRIBUTOR_PASSWORD: ${{ secrets.TIZEN_DISTRIBUTOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          TIZEN_STUDIO="$GITHUB_WORKSPACE/tizen-studio"
+          CERTS="$TIZEN_STUDIO/tools/certificate-generator/certificates"
+          WORK="$RUNNER_TEMP/signing"
+          mkdir -p "$WORK"
+
+          xml_escape() {
+            printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' \
+                                     -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
+          }
+
+          # ── Author key (required) ───────────────────────────────────────
+          if [ -z "${TIZEN_AUTHOR_P12:-}" ]; then
+            echo "::error::Secret TIZEN_AUTHOR_P12 is not set — see README → Releases."
+            exit 1
+          fi
+          printf '%s' "$TIZEN_AUTHOR_P12" | base64 -d > "$WORK/author.p12"
+
+          AUTHOR_CERT="$CERTS/developer/tizen-developer-ca.cer"
+          AUTHOR_KEY="$WORK/author.p12"
+          AUTHOR_PASSWORD="$TIZEN_AUTHOR_PASSWORD"
+
+          # ── Distributor key ─────────────────────────────────────────────
+          # Required for a real Samsung TV. The bundled fallback below is
+          # Tizen's *test* distributor (its chain roots at "Tizen Test CA"
+          # under O=Tizen Test CA) and a Samsung TV will refuse a package
+          # signed with it. Create a Samsung distributor certificate in Tizen
+          # Studio's Certificate Manager — it is issued against your Samsung
+          # account and embeds the DUID(s) of the TVs allowed to install.
+          if [ -n "${TIZEN_DISTRIBUTOR_P12:-}" ]; then
+            printf '%s' "$TIZEN_DISTRIBUTOR_P12" | base64 -d > "$WORK/distributor.p12"
+            DIST_KEY="$WORK/distributor.p12"
+            DIST_PASSWORD="$TIZEN_DISTRIBUTOR_PASSWORD"
+          else
+            echo "::warning::No distributor secrets set — falling back to Tizen's TEST distributor. The resulting .wgt will NOT install on a Samsung TV."
+            DIST_KEY="$CERTS/distributor/sdk-public/tizen-distributor-signer.p12"
+            DIST_PASSWORD="tizenpkcs12passfordsigner"
+          fi
+          DIST_CERT="$CERTS/distributor/sdk-public/tizen-distributor-ca.cer"
+
+          for f in "$AUTHOR_CERT" "$DIST_CERT" "$DIST_KEY"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing signing file: $f"
+              echo "The web-cli install may not include certificate-generator; list what is there:"
+              ls -R "$CERTS" 2>/dev/null || echo "(no $CERTS)"
+              exit 1
+            fi
+          done
+
+          # ── profiles.xml ────────────────────────────────────────────────
+          PROFILES_PATH="$(tizen cli-config -l | sed -n 's/^default\.profiles\.path=//p' | tr -d '\r')"
+          if [ -z "$PROFILES_PATH" ]; then
+            PROFILES_PATH="$HOME/tizen-studio-data/profile/profiles.xml"
+            tizen cli-config -g "default.profiles.path=$PROFILES_PATH"
+          fi
+
+          # Unconditional, and it must stay that way. Tizen's data directory is a
+          # sibling of tizen-studio/ and is NOT part of the cache, so on a cache
+          # hit the install step is skipped and the directory never gets created —
+          # even though `cli-config -l` still reports a path inside it. mkdir -p
+          # also creates the parent data directory.
+          mkdir -p "$(dirname "$PROFILES_PATH")"
+
+          echo "Writing profile '$PROFILE_NAME' to $PROFILES_PATH"
+
+          cat > "$PROFILES_PATH" <<EOF
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <profiles active="$PROFILE_NAME" version="3.1">
+              <profile name="$PROFILE_NAME">
+                  <profileitem ca="$(xml_escape "$AUTHOR_CERT")" distributor="0" key="$(xml_escape "$AUTHOR_KEY")" password="$(xml_escape "$AUTHOR_PASSWORD")" rootca=""/>
+                  <profileitem ca="$(xml_escape "$DIST_CERT")" distributor="1" key="$(xml_escape "$DIST_KEY")" password="$(xml_escape "$DIST_PASSWORD")" rootca=""/>
+                  <profileitem ca="" distributor="2" key="" password="" rootca=""/>
+              </profile>
+          </profiles>
+          EOF
+
+          tizen security-profiles list
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A separate step so a lint failure is its own red X in the run
+      # summary rather than being buried in the build log. This is also
+      # what makes the lint a real gate: a plugin upgrade that starts
+      # flagging something can't reach a release unnoticed.
+      - name: Lint
+        run: npm run lint
+
+      # The offline checks that can run without a browser: filter translation
+      # and the bundle-leak guard's own tests. The headless harness is too
+      # heavy for this job and stays a pre-release, local gate.
+      - name: Test
+        run: npm test
+
+      # Deliberately does NOT receive the signing secrets, and no .env.production
+      # exists in CI (it is gitignored), so nothing about your Stash server can
+      # end up inside the released bundle. See the guard step below.
+      - name: Build web app
+        run: |
+          set -euo pipefail
+
+          # Tag builds take their version from the tag; manual runs use
+          # package.json. Tizen compares widget versions when updating an
+          # installed app, so a release that kept 0.1.0 forever would never
+          # look like a new version to the TV.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building version $VERSION"
+
+          # Stamp before the build so vite's __APP_VERSION__ picks it up.
+          sed -i -E "s|(\"version\":[[:space:]]*\")[^\"]*(\")|\1${VERSION}\2|" package.json
+          node -p "require('./package.json').version"
+
+          npm run build
+
+          # Stage the Tizen manifest and icons alongside the built assets.
+          # `config.xml` names `icon-black.png`; the original transparent
+          # `icon.png` is staged too, because reverting the manifest line is
+          # then all it takes to switch back.
+          cp tizen/config.xml dist/
+          cp tizen/icon.png dist/
+          cp tizen/icon-black.png dist/
+          sed -i -E "s|(<widget[^>]*version=\")[^\"]*(\")|\1${VERSION}\2|" dist/config.xml
+
+      # `npm run build` already ran this as its postbuild step. It runs again
+      # here so the credential check has its own named step in the run summary,
+      # and so a future change to the build script cannot quietly drop it.
+      - name: Guard against leaked credentials
+        run: node scripts/check-bundle.mjs
+
+      # The TV floor: JS is checked from source and CSS from the bundle built
+      # above, so this has to run after "Build web app". The target engine and
+      # the reason for it live in scripts/compat-floor.mjs.
+      - name: Compatibility floor (Tizen 6.5)
+        run: npm run check:compat
+
+      - name: Package and sign .wgt
+        run: |
+          set -euo pipefail
+
+          tizen package -t wgt -s "$PROFILE_NAME" -- ./dist
+
+          WGT="$(find dist -maxdepth 1 -name '*.wgt' | head -1)"
+          [ -n "$WGT" ] || WGT="$(find . -maxdepth 1 -name '*.wgt' | head -1)"
+          if [ -z "$WGT" ]; then
+            echo "::error::tizen package produced no .wgt"
+            exit 1
+          fi
+
+          OUT="StashZen-${VERSION}.wgt"
+          mv "$WGT" "$OUT"
+          echo "WGT=$OUT" >> "$GITHUB_ENV"
+          ls -lh "$OUT"
+
+          # A .wgt is a zip; confirm the manifest and entry point really made it in.
+          unzip -l "$OUT"
+          unzip -l "$OUT" | grep -q 'config.xml' || { echo "::error::.wgt has no config.xml"; exit 1; }
+          unzip -l "$OUT" | grep -q 'index.html' || { echo "::error::.wgt has no index.html"; exit 1; }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: StashZen-${{ env.VERSION }}-wgt
+          path: ${{ env.WGT }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — replacing the asset."
+            gh release upload "$TAG" "$WGT" --clobber
+          else
+            gh release create "$TAG" "$WGT" --title "$TAG" --generate-notes
+          fi

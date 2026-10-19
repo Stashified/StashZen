@@ -1,0 +1,123 @@
+/*
+ * ResumePrompt — see ResumePrompt.jsx.
+ *
+ * A centred panel over the player, deliberately smaller than the marker modal's
+ * 980px: this is one question with two answers, and a full-width panel would
+ * read as a page rather than as an interruption.
+ *
+ * `z-index: 40` puts it above the player's own overlay (1000 in VideoPlayer's
+ * stylesheet is a different stacking context, so the two numbers are not
+ * compared directly — but 40 also clears the marker modal's 30, and nothing can
+ * be open at the same time anyway).
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 40;
+}
+
+.panel {
+  width: 620px;
+  max-width: calc(100vw - 80px);
+  padding: 28px 32px 22px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin-top: 6px;
+  font-family: var(--font-condensed);
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.detail {
+  margin-top: 14px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.at {
+  font-family: var(--font-condensed);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 22px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv),
+              color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+.btn.focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.btnPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btnPrimary.focused {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 18px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-primary);
+}

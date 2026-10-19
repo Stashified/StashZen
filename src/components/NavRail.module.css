@@ -1,0 +1,92 @@
+/**
+ * NavRail — left navigation. Width comes from --sidebar-w, which is the one
+ * place the content column's offset is decided.
+ */
+
+.rail {
+  position: relative;
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 16px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+}
+
+/* Sits at the rail's own left edge, which is the screen edge — the rail's
+   background is at x=0 anyway, so anything that clips the marker clips the
+   rail with it. Inset vertically so it reads as a marker on the row rather
+   than a full-height column rule. */
+.slidingIndicator {
+  position: absolute;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  transition:
+    top    0.28s var(--ease-tv),
+    height 0.28s var(--ease-tv),
+    opacity 0.2s ease-out;
+  pointer-events: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 12px 13px;
+  font-family: var(--font-condensed);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    color      0.15s var(--ease-tv),
+    background 0.15s var(--ease-tv);
+}
+
+.item:hover {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.item.focused {
+  color: var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: var(--focus-ring);
+}
+
+/* Where you are, which survives the focus ring landing on top of it — the
+   same relationship the app menu's rows and the player rail's `.active` use. */
+.item.active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.item.active.focused {
+  color: var(--accent);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pushes Settings to the bottom of the rail. */
+.spacer {
+  flex: 1;
+}

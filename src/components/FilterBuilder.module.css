@@ -1,0 +1,538 @@
+/* =========================================================
+   FilterBuilder — full-screen overlay, three nesting levels
+   =========================================================
+   Both FilterBuilder itself and EntityPicker/FieldPicker import this file, so
+   the `.pick*` block below is shared by every nested layer rather than
+   duplicated per component. The nesting is DOM nesting (see EntityPicker's
+   header for why it must not be a portal), so the inner layers are sized
+   against the outer panel rather than the viewport.
+   ========================================================= */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  /* Opaque scrim, not a backdrop blur — the same reasoning SettingsPanel
+     records: a blur re-composites the live grid and previews behind it every
+     frame, and over a dark UI a flat scrim is visually close for free. */
+  background: rgba(var(--scrim-rgb), 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn 0.2s var(--ease-tv);
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  /* Wider than SettingsPanel: a criterion row is a label, a modifier and an
+     operand side by side, and at 640px the operand wraps under its own
+     label on a long field name. */
+  width: min(1000px, 94vw);
+  max-height: 88vh;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: panelIn 0.25s var(--ease-tv);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.header {
+  padding: 24px 32px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ── Body ───────────────────────────────────────────────── */
+.body {
+  flex: 1;
+  padding: 20px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Rows reflow as criteria are added and removed under a held D-pad key;
+     anchoring scroll to the top keeps the panel from shifting under focus. */
+  scroll-behavior: auto;
+}
+
+.empty {
+  padding: 32px 0;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 52ch;
+  margin: 0 auto;
+}
+
+/* A criterion in the saved filter that this build's schema snapshot does not
+   know. Amber rather than red: nothing is broken, but the user is about to
+   save something the builder did not show them. */
+.warn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--amber);
+  background: rgba(217, 130, 43, 0.12);
+  color: var(--amber);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ── One criterion ──────────────────────────────────────── */
+.row {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-card);
+  padding: 12px 16px;
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.rowLabel {
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.rowRemove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rowRemove:hover {
+  color: var(--red);
+  background: rgba(255, 115, 115, 0.12);
+}
+
+.rowBody {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ── Dropdown ───────────────────────────────────────────── */
+.choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.choiceLabel {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.choiceBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 150px;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.choiceBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.choiceCaret {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.choiceMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 10;
+  min-width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+}
+
+.choiceItem {
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.choiceItem:hover {
+  background: var(--bg-card-hover);
+}
+
+.selected {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Value editors ──────────────────────────────────────── */
+.value {
+  flex: 1;
+  min-width: 180px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.valueInput {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+}
+
+.valueInput::placeholder {
+  color: var(--text-muted);
+}
+
+/* The value box is a wrapper rather than the input itself, because the D-pad
+   focuses the wrapper and Enter then raises the TV's IME — see
+   useEditableField. So focus and editing are two different states and the
+   user has to be able to tell them apart. */
+.editing {
+  border-color: var(--accent);
+  background: var(--bg-surface);
+}
+
+.multiBtn {
+  flex: 1;
+  min-width: 220px;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ── Focus ──────────────────────────────────────────────── */
+/* Applied to buttons, wrapper divs and options alike, so it sets only what is
+   common; anything element-specific is overridden above. */
+.multiBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.focused {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--accent);
+}
+
+.disabled {
+  opacity: 0.45;
+}
+
+/* ── Footer ─────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 32px 22px;
+  border-top: 1px solid var(--border);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.btn {
+  padding: 11px 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btnPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--text-primary);
+}
+
+/* ── Nested layers: field picker, entity picker, name prompt ──
+   Same three-layer look. These are DOM children of `.panel`, so they cover it
+   rather than the viewport — which is also what makes `focusScopeOf` find them
+   as the nearest dialog. */
+.pickOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(var(--scrim-rgb), 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn 0.15s var(--ease-tv);
+}
+
+.pickPanel {
+  width: min(720px, 88%);
+  max-height: 82%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pickHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pickTitle {
+  font-family: var(--font-condensed);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.pickCount {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pickSearch {
+  margin: 14px 24px 0;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pickSearchLabel {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pickInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+}
+
+.pickInput::placeholder {
+  color: var(--text-muted);
+}
+
+.pickHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pickList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 11px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.pickRow:hover {
+  background: var(--bg-card-hover);
+}
+
+.pickSelected {
+  background: var(--accent-dim);
+}
+
+.pickDisabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.55;
+}
+
+.pickDisabled:hover {
+  background: transparent;
+}
+
+.pickMark {
+  width: 16px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.pickLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The field name, shown beside the human label in the field picker, and the
+   reason why an unavailable field is unavailable. */
+.pickWhy {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickEmpty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.pickError {
+  margin: 12px 24px 0;
+  color: var(--red);
+  font-size: 14px;
+}
+
+.pickFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Field-picker tabs ──────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 24px 0;
+}
+
+.tab {
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--text-primary);
+}

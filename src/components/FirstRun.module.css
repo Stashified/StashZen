@@ -1,0 +1,244 @@
+/* FirstRun — the connection setup screen.
+   The field and button rules are the same visual language as SettingsPanel, so
+   the two screens that both ask for a URL and a key look like one app. They are
+   restated rather than shared because the layouts differ (a centred card with
+   its own spacing, not a row inside the settings body); the interaction they
+   encode lives in useEditableField and useFocusable, which *are* shared. */
+
+.cover {
+  position: fixed;
+  inset: 0;
+  z-index: 900;              /* under LockScreen's 940 — the two never coexist */
+  background: var(--bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  overflow-y: auto;
+}
+
+.card {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 42px 46px 34px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(var(--scrim-rgb), 0.55);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── The brand lockup ───────────────────────────────────────
+   The name and the tagline, on the one screen a new user sees before the app.
+   Restated in SettingsPanel.module.css rather than shared, for the same reason
+   the field and button rules are: the two panels are separate visual contexts
+   and the shared part is the token set, not the rule. */
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brandName {
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.tagline {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 56ch;
+}
+
+/* ── Fields ─────────────────────────────────────────────── */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fieldLabel {
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.input {
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--bg-base);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 17px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:hover {
+  border-color: var(--border-strong);
+}
+
+/* Focus lives on the wrapper, not the input — see useEditableField — so these
+   style the input from the field's own state. `.input:focus` stays because
+   while editing the input really is the focused element. */
+.field.focused .input,
+.field.editing .input,
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Selected but not yet editing: quieter than the real ring, so "ready to type"
+   does not read the same as "typing". */
+.field.focused .input {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
+}
+
+/* Same specificity as the rule above, so source order decides. */
+.field.editing .input,
+.input:focus {
+  box-shadow: var(--focus-ring);
+}
+
+/* Always rendered, only shown on focus: a hint that appeared and disappeared
+   would shove the buttons below it up and down on every selection. */
+.fieldHint {
+  font-size: 11px;
+  line-height: 1;
+  min-height: 11px;
+  color: var(--text-muted);
+  visibility: hidden;
+}
+
+.field.focused .fieldHint,
+.field.editing .fieldHint {
+  visibility: visible;
+}
+
+/* ── Test row ───────────────────────────────────────────── */
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.statusOk {
+  color: var(--green);
+}
+
+.statusFail {
+  color: var(--red);
+}
+
+/* ── Actions ────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.actionBtn {
+  padding: 13px 26px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-condensed);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-tv);
+}
+
+.actionBtn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.actionBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.actionBtn.actionPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.actionBtn.actionPrimary:hover {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}
+
+.actionBtn.focused {
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Footnote ───────────────────────────────────────────── */
+.hint {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.hint strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.version {
+  align-self: flex-end;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  opacity: 0.7;
+}

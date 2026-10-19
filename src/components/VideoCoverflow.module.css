@@ -1,0 +1,244 @@
+/* =========================================================
+   VideoCoverflow — 3D coverflow layout
+   ========================================================= */
+
+.wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 32px 0 48px;
+  position: relative;
+  background:
+    radial-gradient(
+      ellipse at 50% 60%,
+      rgba(var(--accent-rgb), 0.08) 0%,
+      rgba(var(--accent-rgb), 0) 60%
+    ),
+    var(--bg-base);
+  --slot-w: 460px;
+}
+
+/* ── Hero ───────────────────────────────────────────────── */
+.hero {
+  padding: 0 48px 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.heroTitle {
+  font-family: var(--font-condensed);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-column: 1;
+  margin-bottom: 8px;
+}
+
+.heroMeta {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 16px;
+  color: var(--text-secondary);
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.heroTag {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 3px 9px;
+  border-radius: 3px;
+}
+
+.heroRating {
+  color: var(--rating);
+  font-weight: 600;
+}
+
+.heroCounter {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: end;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-condensed);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.heroCounterCur {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.heroCounterSep {
+  font-size: 22px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.heroCounterTotal {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ── Stage (3D viewport) ────────────────────────────────── */
+.stage {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  /* No overflow: hidden — would clip the video. The 3D cards fade
+     out naturally as they rotate; if they don't, clip a parent. */
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  perspective: 1400px;
+  transform-style: preserve-3d; /*flat is an option for better perf, but less accurate transforms*/
+}
+
+/* Each slot is anchored at the horizontal+vertical centre of the
+   stage. The inline transform composes: translateY(-50%) for
+   vertical centring, then translate3d for X/Z, then rotateY/scale
+   for the visual effect. */
+.slot {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  margin-left: calc(-1 * var(--slot-w) / 2);
+  width: var(--slot-w);
+  transform-origin: 50% 50%;
+  transition:
+    transform 0.45s var(--ease-tv),
+    opacity   0.45s var(--ease-tv);
+  will-change: transform, opacity;
+}
+
+/* A box-shadow rather than `filter: drop-shadow()`. The two look the same
+   here — the card is an opaque rectangle, so there is no alpha shape for
+   drop-shadow to trace — but `filter` forces the element onto its own render
+   surface and runs a blur pass, and this one is re-done every frame while the
+   coverflow animates. It was the most expensive declaration in the file.
+
+   The shadow lands on the slot's own box, so it sits under the card and not
+   under `.reflection`, which is positioned outside it. */
+.slotFocused {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Reflection — mirrored thumbnail beneath the card ──── */
+.reflection {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  height: 56.25%;       /* 16:9 — matches card thumb area */
+  background-size: cover;
+  background-position: center;
+  transform: scaleY(-1);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0) 65%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0) 65%
+  );
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+/* ── Floor gradient (sells the depth) ───────────────────── */
+.floor {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.35) 70%,
+    rgba(0, 0, 0, 0.65) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Loading more ───────────────────────────────────────── */
+.loadingMore {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  z-index: 10;
+}
+
+.spinnerSm {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── State (loading / error / empty) ────────────────────── */
+.state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 300px;
+}
+
+.stateText {
+  font-size: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

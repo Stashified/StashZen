@@ -1,0 +1,8 @@
+/* LockScreen — the only thing rendered while the app is locked. */
+
+.cover {
+  position: fixed;
+  inset: 0;
+  z-index: 940;              /* under PinPad's 960, over everything else */
+  background: var(--bg-base);
+}

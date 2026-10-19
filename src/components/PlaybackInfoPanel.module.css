@@ -1,0 +1,54 @@
+/*
+ * Positioned absolutely inside the player overlay, below the top bar. Inert:
+ * `pointer-events: none`, and nothing inside is focusable — the panel is a
+ * readout, and a D-pad stop with nothing to activate would be a dead end.
+ */
+.panel {
+  position: absolute;
+  top: 100px;
+  left: 40px;
+  z-index: 20;
+  width: 440px;
+  max-height: calc(100% - 260px);
+  overflow: hidden;
+  padding: 16px 20px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.82);
+  pointer-events: none;
+}
+
+.title {
+  margin: 0 0 10px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.55);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 3px 0;
+}
+
+.label {
+  flex: 0 0 auto;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.5);
+}
+
+.value {
+  flex: 0 1 auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
