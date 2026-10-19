@@ -18,6 +18,7 @@
  */
 
 import { routePlayerKey } from '../src/components/player/keyRouting.js';
+import { isHardBackKey } from '../src/utils/input.js';
 
 let passed = 0;
 let failed = 0;
@@ -118,6 +119,14 @@ check('no rail, single: ArrowDown reveals the rail', is(ev('ArrowDown', 40), SIN
 // not act on: the global handler's fallback would otherwise move the cursor.
 check('no rail: an unhandled key is still stopped',
   is(ev('a', 65), NO_RAIL, 'none', false, true), show(route(ev('a', 65))));
+
+// ── isHardBackKey: the strict predicate for dialogs that never took Backspace ─
+// The filter builder's dialogs predate the "Backspace is Back outside a text
+// field" rule. Migrating them to the shared hook must not widen their Back
+// key set, so this predicate is pinned directly.
+check('isHardBackKey: Escape is Back', isHardBackKey(ev('Escape', 27)) === true);
+check('isHardBackKey: Tizen Back is Back', isHardBackKey(ev('', 10009)) === true);
+check('isHardBackKey: Backspace is not Back', isHardBackKey(ev('Backspace', 8)) === false);
 
 console.log(`\n${passed}/${passed + failed} checks passed`);
 process.exit(failed === 0 ? 0 : 1);

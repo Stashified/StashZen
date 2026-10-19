@@ -9,11 +9,12 @@
  * container).
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import VideoCard from './VideoCard.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoGrid.module.css';
 
 const PAGE_SIZE = 40;
@@ -36,11 +37,17 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     items: videos, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be here
-    deps: [sort, order, objectFilter, searchQuery],
+    // ← critical: sort and order MUST be in the key
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
-  const listing = { items: videos, total, page, fetchPage };
+  // Stable identity: every card takes this object, and without the memo each
+  // page append or loadingMore/error toggle handed every card a new prop and
+  // re-rendered the whole grid.
+  const listing = useMemo(
+    () => ({ items: videos, total, page, fetchPage }),
+    [videos, total, page, fetchPage],
+  );
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);

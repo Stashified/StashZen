@@ -15,6 +15,7 @@ import SceneDetailPage from '../pages/SceneDetailPage.jsx';
 import ActionMenu from '../components/ActionMenu.jsx';
 import ImageViewer from '../components/ImageViewer.jsx';
 import VideoPlayer from '../components/VideoPlayer.jsx';
+import PlayerErrorBoundary from '../components/PlayerErrorBoundary.jsx';
 import FilterBuilder from '../components/FilterBuilder.jsx';
 import SettingsPanel from '../components/SettingsPanel.jsx';
 import ExitPrompt from '../components/ExitPrompt.jsx';
@@ -75,11 +76,15 @@ export default function AppOverlays({
       )}
 
       {player.session && (
-        <VideoPlayer
-          queue={player.session}
-          onClose={player.onClose}
-          onActivityChange={player.onActivityChange}
-        />
+        // Scoped boundary: a render error here closes the player and returns
+        // to the screen underneath instead of taking the whole app down.
+        <PlayerErrorBoundary onClose={player.onClose}>
+          <VideoPlayer
+            queue={player.session}
+            onClose={player.onClose}
+            onActivityChange={player.onActivityChange}
+          />
+        </PlayerErrorBoundary>
       )}
 
       {/* The builder sits below Settings and the exit prompt in the tree so

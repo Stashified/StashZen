@@ -370,12 +370,14 @@ async function runGrid() {
     afterRaceMore.some(r => r.page === 2) && rowCount() === PAGE_SIZE * 2,
     `${rowCount()} rows; ${pagesOf(afterRaceMore)}`);
 
-  // ── G8  a failed load-more is reported, not retried ──────
+  // ── G8  a failed load-more is retried, then reported ─────
   // The failure used to be invisible while rows existed (the error line only
   // renders at zero rows), and `setLoadingMore(false)` re-armed the observer,
   // which asked again immediately — one page-2 request after another, with
-  // nothing on screen to say why. The budget is one automatic attempt per
-  // request identity; a sort change is the retry.
+  // nothing on screen to say why. The page is now retried automatically on a
+  // bounded budget — MAX_PAGE_ATTEMPTS (3) at RETRY_DELAY_MS (3000) apart —
+  // and the list stops there with the error visible. Asking again is a
+  // sort/filter change, i.e. a new request identity.
   // A sort these earlier checks have not used yet. listService caches pages
   // by request identity, and 'title' and 'rating' both have both pages in
   // that cache by now — reusing either would load page 2 without a request
@@ -385,16 +387,49 @@ async function runGrid() {
   await sleep(700);
   await setMode({ findScenes: 'fail-page-2' });
   await clearLog();
-  await toBottom();
-  await sleep(1600);
+  await toBottom();                    // page 2 goes out and is refused
+  // Three attempts, three seconds apart: the last lands about six seconds in.
+  // Do not shorten this wait — it is the budget being tested, and a shorter
+  // one would pass whether the hook retried twice or never retried at all.
+  await sleep(10500);
   const failed = await log();
   const p2s = failed.filter(r => r.page === 2);
-  check('G8 the refused page was asked for exactly once', p2s.length === 1,
+  check('G8 the refused page was retried twice, then stopped', p2s.length === 3,
     `${p2s.length} page-2 request(s): ${pagesOf(failed)}; rows=${rowCount()}; `
     + `scroll=${scrollRoot()?.scrollTop}/${scrollRoot()?.scrollHeight}`);
   check('G8 …and the error is shown beside the rows',
     document.body.textContent.includes('VERIFY page 2 refused'),
     document.body.textContent.includes('VERIFY page 2 refused') ? '' : 'no error line');
+  await setMode({ findScenes: 'ok' });
+
+  // ── B1  a page that adds no rows ends the list ───────────
+  // Stash's count and its rows can disagree — a scan in progress, a library
+  // shrinking under the user — and a page that returned none of the rows it
+  // promised used to advance the page counter anyway. The sentinel stayed on
+  // screen, so the observer asked for the next page, and the next: a listing
+  // that never fills and keeps requesting. The list must stop at the first
+  // page that adds nothing.
+  // 'updated_at' is a sort this driver has not used, so no cached page can
+  // stand in for the request.
+  scrollRoot().scrollTop = 0;
+  window.__setSort('updated_at');
+  await sleep(700);
+  await setMode({ findScenes: 'empty-page-2' });
+  await clearLog();
+  await toBottom();                    // page 2 goes out and comes back empty
+  await sleep(1200);
+  scrollRoot().scrollTop = 0;          // cross the sentinel back out...
+  await sleep(300);
+  await toBottom();                    // ...and in again, re-arming the observer
+  await sleep(1200);
+  const noProgress = await log();
+  const empty2 = noProgress.filter(r => r.page === 2);
+  const afterEmpty = noProgress.filter(r => r.page === 3);
+  check(`${t}10 a page that added no rows was asked for once`,
+    empty2.length === 1, pagesOf(noProgress).join(', '));
+  check(`${t}10 …and the list stopped there instead of walking pages`,
+    afterEmpty.length === 0 && rowCount() === PAGE_SIZE,
+    `${afterEmpty.length} page-3 request(s); ${rowCount()} rows`);
   await setMode({ findScenes: 'ok' });
 }
 
@@ -463,13 +498,16 @@ async function runFocusWalk() {
   check(`${t}4 the hero went back to the top`,
     document.body.textContent.includes('VERIFY scene 1'));
 
-  // ── C6  a refused page is reported, not retried ─────────
+  // ── C6  a refused page is retried on a budget, not per focus step ─
   // This is the strip's version of the grid's G8, and it is the one that
   // bites: the trigger here is not an observer that has to notice a change,
   // it is an effect that runs on every focus move and calls `loadMore`
   // whenever the cursor is near the end. Without a failure budget, one
   // refused page became one request per focus step, with nothing on screen
-  // to say why. A fresh sort ensures page 2 is not in listService's cache.
+  // to say why. The retry is scheduled from the hook's own timer — the focus
+  // churn in between must not re-fire it — so the request count is the
+  // budget, not the number of focus steps.
+  // A fresh sort ensures page 2 is not in listService's cache.
   await clearLog();
   window.__setSort('duration');
   await sleep(600);
@@ -481,11 +519,14 @@ async function runFocusWalk() {
     focusCard(String(i + 1));
     await sleep(40);
   }
-  await sleep(900);
+  // The first refusal lands around card 33; the two retries follow three
+  // and six seconds later. Wait past the budget — a shorter wait would not
+  // distinguish a bounded retry from none.
+  await sleep(10000);
   const failedC = await log();
   const refused = failedC.filter(r => r.page === 2);
-  check(`${t}6 the refused page was asked for once, not once per focus step`,
-    refused.length === 1, `${refused.length} page-2 request(s): ${pagesOf(failedC)}`);
+  check(`${t}6 the refused page was retried twice, not once per focus step`,
+    refused.length === 3, `${refused.length} page-2 request(s): ${pagesOf(failedC)}`);
   check(`${t}6 …and the error is shown beside the rows`,
     document.body.textContent.includes('VERIFY page 2 refused'),
     document.body.textContent.includes('VERIFY page 2 refused') ? '' : 'no error line');

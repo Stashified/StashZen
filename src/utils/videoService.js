@@ -96,7 +96,6 @@ const FIND_SCENES_QUERY = `
         title
         date
         rating100
-        details
         play_count
         files {
           duration

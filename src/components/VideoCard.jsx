@@ -34,7 +34,7 @@
  * is the `is-navigating` body class the rest of the app already uses.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useSettings, dataSourceKey } from '../utils/settings.js';
 import styles from './VideoCard.module.css';
@@ -97,7 +97,7 @@ function resolutionLabel(height) {
  * in the app on the old instant-on-keydown behaviour — see the long-press
  * note in useFocusable.
  */
-export default function VideoCard({
+function VideoCard({
   item, index, list, onSelect, onLongPress,
   // The showroom gives its scene shelf its own focus-id namespace, distinct
   // from both the numbered `video-` ids of the Scenes listing and the other
@@ -257,14 +257,14 @@ export default function VideoCard({
         )}
         {item.rating && <div className={styles.rating}>★ {item.rating}</div>}
       </div>
-        {item.resume_time > 10 && item.durationSeconds > 0 && (
-          <div className={styles.resumeBar} aria-hidden="true">
-            <div
-              className={styles.resumeFill}
-              style={{ width: `${Math.min(100, (item.resume_time / item.durationSeconds) * 100)}%` }}
-            />
-          </div>
-        )}
+      {item.resume_time > 10 && item.durationSeconds > 0 && (
+        <div className={styles.resumeBar} aria-hidden="true">
+          <div
+            className={styles.resumeFill}
+            style={{ width: `${Math.min(100, (item.resume_time / item.durationSeconds) * 100)}%` }}
+          />
+        </div>
+      )}
 
       <div className={styles.info}>
         <p className={styles.title}>{item.title}</p>
@@ -276,3 +276,11 @@ export default function VideoCard({
     </button>
   );
 }
+
+// Cards are the bulk of a listing. Without memo, every page append and every
+// `loadingMore`/error toggle re-rendered all of them, because the parent builds
+// a fresh `list` object each render. The containers now memoize that object and
+// the select/long-press callbacks; memo lets those stable props actually save
+// the work. Per-card focus and settings subscriptions still re-render a card on
+// their own, as they must.
+export default memo(VideoCard);

@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './ItemList.module.css';
 
@@ -127,8 +128,8 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
     items, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be here
-    deps: [sort, order, objectFilter, searchQuery],
+    // ← critical: sort and order MUST be in the key
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
   // `fetchPage` is included even for sections whose select ignores it: the

@@ -12,6 +12,7 @@ import MarkerCard from './MarkerCard.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchMarkers } from '../utils/markerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoGrid.module.css'; // reuse VideoGrid styles for grid layout
 
 const PAGE_SIZE = 40;
@@ -30,8 +31,8 @@ export default function MarkerGrid({ controls, onMarkerSelect, objectFilter, sea
     items: markers, total, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be here
-    deps: [sort, order, objectFilter, searchQuery],
+    // ← critical: sort and order MUST be in the key
+    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
   const scrollRef = useRef(null);

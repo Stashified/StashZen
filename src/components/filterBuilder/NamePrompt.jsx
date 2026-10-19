@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
 import { useFocusable } from '../../hooks/useFocusable.js';
 import { useEditableField } from '../../hooks/useEditableField.js';
-import { TIZEN_BACK } from '../../utils/input.js';
+import { useBackKey } from '../../hooks/useBackKey.js';
+import { isHardBackKey } from '../../utils/input.js';
 import styles from '../FilterBuilder.module.css';
 
 // ── Save prompt ───────────────────────────────────────────
@@ -15,15 +15,8 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
     autoFocus: true,
   });
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK) {
-        e.preventDefault(); e.stopPropagation(); onCancel?.();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onCancel]);
+  // Escape and the hardware Back only — Backspace stays inert, as it was.
+  useBackKey(onCancel, { isBack: isHardBackKey });
 
   const { ref: okRef, focused: okFocused } = useFocusable({
     id: 'fb-name-ok',
