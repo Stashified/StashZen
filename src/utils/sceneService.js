@@ -58,6 +58,7 @@ const FIND_SCENE_DETAIL_QUERY = `
       studio { id name }
       tags { id name }
       performers { id name }
+      galleries { id title }
       stash_ids { endpoint stash_id }
       scene_markers { id seconds end_seconds title primary_tag { name } }
       files {
@@ -150,6 +151,7 @@ function mockDetail(video) {
     studio: video.studio ? { id: null, name: video.studio } : null,
     tags: (video.tags || []).map(name => ({ id: null, name })),
     performers: (video.performers || []).map(name => ({ id: null, name })),
+    galleries: [],
     // Two fixed markers keep Test mode (and the README screenshot) on the
     // same render path a live scene uses. Their tags come from the card so
     // they read like this scene's own.
@@ -220,6 +222,12 @@ export function normalizeSceneDetail(scene) {
     studio: scene.studio ? { id: scene.studio.id, name: scene.studio.name } : null,
     tags: (scene.tags || []).map(t => ({ id: t.id, name: t.name })),
     performers: (scene.performers || []).map(p => ({ id: p.id, name: p.name })),
+    // A scene's galleries are in the same library the Galleries tab browses,
+    // so a chip here can hand off to that tab by id (see GalleryChip).
+    galleries: (scene.galleries || []).map(g => ({
+      id: g.id,
+      title: g.title || `Gallery ${g.id}`,
+    })),
     // Sorted here rather than trusting the server's order: the row reads as a
     // timeline, and Stash makes no ordering promise on `scene_markers`.
     markers: (scene.scene_markers || [])

@@ -62,6 +62,25 @@ export function formatBytes(bytes) {
 }
 
 /**
+ * A job's start time as a wall clock, "HH:MM" in the TV's own timezone.
+ *
+ * Deliberately not a date: a job in the queue started today, and the full date
+ * is noise in a one-line footer. A date does appear for a job that started
+ * before midnight — "Started 23:40" on a snapshot taken at 00:05 is still
+ * true, and guessing at a date format would cost more than the ambiguity.
+ * Returns null for anything the browser cannot parse, so a malformed value
+ * hides the line rather than rendering "Invalid Date".
+ */
+export function formatJobStart(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/**
  * Rounded hours. Rounding rather than flooring matters at the boundary: a
  * library of 1,250.5 h should read 1,251 h, not 1,250 h.
  */

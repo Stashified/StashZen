@@ -117,7 +117,14 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     // not fall into the grid, and Right is the only way out. Reported from
     // the TV, 2026-10-17: "it should stay there unless pressed right".
     if (forced?.el === currentEl) return null;
-    if (forced?.el && forced.el.offsetParent && !forced.el.disabled) return forced.el;
+    // `getClientRects()` rather than `offsetParent`: a position:fixed element
+    // has NO offsetParent, and the full-screen viewer overlay is fixed — so
+    // the Info button's declared Down edge silently fell through to geometry
+    // and dead-ended on the picture (found by the 0.29.0 harness run). The
+    // rect check still rejects display:none and detached nodes.
+    if (forced?.el && forced.el.getClientRects().length > 0 && !forced.el.disabled) {
+      return forced.el;
+    }
   }
 
   // Two opt-in flags shape the edges around the rail and the controls bar.

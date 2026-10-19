@@ -24,6 +24,7 @@ import { useSceneDetailData } from './sceneDetail/useSceneDetailData.js';
 import { useSceneEdits } from './sceneDetail/useSceneEdits.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { Chips } from './sceneDetail/Chips.jsx';
+import { GalleryChip } from './sceneDetail/GalleryChip.jsx';
 import { MarkerChip } from './sceneDetail/MarkerChip.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
 
@@ -33,9 +34,14 @@ const MAX_URLS = 3;
 // timeline without turning the page's footer into a scrolling wall; the rest
 // are counted, and every marker is still reachable from the Markers tab.
 const MAX_MARKERS = 8;
+// Galleries are a hand-off row, not a listing: four is enough to see that the
+// scene belongs to one, and the +N keeps a scene with dozens bounded.
+const MAX_GALLERIES = 4;
 
 // ── Main ────────────────────────────────────────────────────
-export default function SceneDetailPage({ scene, onClose, onPlay, onPlayAt, onActivityChange }) {
+export default function SceneDetailPage({
+  scene, onClose, onPlay, onPlayAt, onActivityChange, onGallerySelect,
+}) {
   // Transient status line, cleared on unmount — see useFlash. Called first so
   // its unmount effect keeps the position it had before the split.
   const [notice, flash] = useFlash(NOTICE_MS);
@@ -136,6 +142,27 @@ export default function SceneDetailPage({ scene, onClose, onPlay, onPlayAt, onAc
           )}
 
           {detail.tags?.length > 0 && <Chips items={detail.tags} />}
+
+          {/* A scene can be in a gallery. Enter leaves for the Galleries tab;
+              the tab change closes this page through useDetailSelection, so
+              the chip does not close it itself (see GalleryChip). */}
+          {detail.galleries?.length > 0 && (
+            <div className={styles.markers} role="group" aria-label="Galleries">
+              <span className={styles.markersLabel}>Galleries</span>
+              {detail.galleries.slice(0, MAX_GALLERIES).map(gallery => (
+                <GalleryChip
+                  key={gallery.id}
+                  gallery={gallery}
+                  onGallerySelect={onGallerySelect}
+                />
+              ))}
+              {detail.galleries.length > MAX_GALLERIES && (
+                <span className={styles.markerMore}>
+                  +{detail.galleries.length - MAX_GALLERIES}
+                </span>
+              )}
+            </div>
+          )}
 
           {detail.details && (
             <p className={styles.details}>{detail.details}</p>

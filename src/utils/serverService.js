@@ -1,7 +1,7 @@
 /**
  * serverService.js — A snapshot of the Stash server's version, health and
- * running jobs, plus the one action Settings offers against it: starting a
- * library scan.
+ * running jobs, plus the two actions Settings offers against it: starting a
+ * library scan and stopping one of the jobs already in the queue.
  *
  * The status query is one request: `version`, `systemStatus` and `jobQueue`
  * are all zero-argument roots. Deliberately no polling — on a D-pad a
@@ -48,7 +48,7 @@ const SERVER_STATUS_QUERY = `
   query ServerStatus {
     version { version }
     systemStatus { status appSchema databaseSchema }
-    jobQueue { id status description progress }
+    jobQueue { id status description progress subTasks error startTime }
   }
 `;
 
@@ -92,6 +92,15 @@ const LIBRARY_SCAN_MUTATION = `
   }
 `;
 
+// `stopJob(job_id: ID!): Boolean!` on Stash 0.31.1 (verified by
+// introspection). The Boolean is the whole answer: true means the stop was
+// requested, not that the job has already finished stopping.
+const STOP_JOB_MUTATION = `
+  mutation StopJob($jobId: ID!) {
+    stopJob(job_id: $jobId)
+  }
+`;
+
 // The queue also carries FINISHED and CANCELLED jobs, which are history, not
 // status. READY is a queued job and STOPPING is still doing work, so both
 // belong; FAILED does too, because that is exactly what a user needs to see.
@@ -114,6 +123,15 @@ export function normalizeServerStatus(raw) {
         description: job.description || job.id,
         // Stash reports progress as 0–1. `null` means "not measurable yet".
         progress: Number.isFinite(job.progress) ? job.progress : null,
+        // Task descriptions, already user-facing prose. Non-strings are
+        // dropped rather than rendered: the row joins them blindly.
+        subTasks: Array.isArray(job.subTasks)
+          ? job.subTasks.filter(task => typeof task === 'string' && task)
+          : [],
+        // The failure reason for a FAILED job. Empty on healthy jobs.
+        error: job.error || null,
+        // A Time scalar, serialised as an ISO string.
+        startTime: job.startTime || null,
       })),
   };
 }
@@ -166,18 +184,47 @@ export function normalizeScanDefaults(raw) {
   return input;
 }
 
+// Test mode has no server to stop a job on, so this stands in for the effect:
+// a stopped id disappears from the next snapshot, and starting a scan brings
+// the sample scan back. Module-level rather than component state because the
+// snapshot is rebuilt from scratch on every Refresh.
+const mockStoppedJobs = new Set();
+
 export function mockServerStatus() {
   return {
     version: '0.31.1',
     status: 'OK',
     appSchema: 31,
     databaseSchema: 31,
-    jobs: [{
-      id: 'mock-scan',
-      status: 'RUNNING',
-      description: 'Scanning metadata',
-      progress: 0.42,
-    }],
+    jobs: [
+      {
+        id: 'mock-scan',
+        status: 'RUNNING',
+        description: 'Scanning metadata',
+        progress: 0.42,
+        subTasks: ['Scanning 1,234 of 4,567 files', 'Generating previews'],
+        error: null,
+        startTime: '2024-01-01T09:30:00Z',
+      },
+      {
+        id: 'mock-generate',
+        status: 'READY',
+        description: 'Generate gallery covers',
+        progress: null,
+        subTasks: [],
+        error: null,
+        startTime: null,
+      },
+      {
+        id: 'mock-failed',
+        status: 'FAILED',
+        description: 'Scanning thumbnails',
+        progress: 0.18,
+        subTasks: [],
+        error: 'Could not read the media folder — check that it is mounted.',
+        startTime: '2024-01-01T09:05:00Z',
+      },
+    ].filter(job => !mockStoppedJobs.has(job.id)),
   };
 }
 
@@ -207,11 +254,41 @@ export async function loadServerStatus() {
  * not generated.
  */
 export async function startLibraryScan() {
-  if (getSettings().useMock) return 'mock-scan';
+  if (getSettings().useMock) {
+    // The sample scan is the job Stop removes in Test mode; starting a scan
+    // is the one action that brings it back, so the two controls stay usable
+    // in either order.
+    mockStoppedJobs.delete('mock-scan');
+    return 'mock-scan';
+  }
   const defaults = await runQuery(SCAN_DEFAULTS_QUERY);
   const data = await runQuery(LIBRARY_SCAN_MUTATION, {
     input: normalizeScanDefaults(defaults),
   });
   if (!data?.metadataScan) throw new Error('The server did not start a scan.');
   return data.metadataScan;
+}
+
+/**
+ * Ask Stash to stop one job. Resolves when the stop has been *requested* — the
+ * job may still report RUNNING or STOPPING for a moment, which is why the
+ * caller refreshes the snapshot rather than removing the row itself.
+ *
+ * `stopJob` answers Boolean!, and a `false` is a refusal, not a success: the
+ * job is still doing work and the caller must not say otherwise. Thrown
+ * rather than returned so one `catch` in the panel covers every failure.
+ *
+ * Test mode records the id so the next sample snapshot is missing it. The
+ * mock resolves after a short delay so the button's in-flight label is
+ * reachable in Test mode too.
+ */
+export async function stopJob(jobId) {
+  if (getSettings().useMock) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    mockStoppedJobs.add(String(jobId));
+    return true;
+  }
+  const data = await runQuery(STOP_JOB_MUTATION, { jobId: String(jobId) });
+  if (data?.stopJob !== true) throw new Error('the server did not stop the job');
+  return true;
 }

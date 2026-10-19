@@ -13,7 +13,7 @@ import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import SceneDetailPage from '../../src/pages/SceneDetailPage.jsx';
 import { useKeyHandler } from '../../src/hooks/useKeyHandler.js';
-import { useFocusable } from '../../src/hooks/useFocusable.js';
+import { useFocusable, registry } from '../../src/hooks/useFocusable.js';
 import { setSettings } from '../../src/utils/settings.js';
 
 const PORT = window.__PORT__;
@@ -51,6 +51,10 @@ const playedAt = [];
 // App acts on, so this is where "the page told Home to prune the card" is
 // observable from a driver that mounts the page on its own.
 const activityEvents = [];
+// Every gallery the page hands to App through the chip row. The hand-off is
+// the whole feature: the chip must pass the gallery row, not a scene or a
+// timestamp, and the tab change that follows is App's business.
+const gallerySelections = [];
 
 /**
  * Focusables living OUTSIDE the overlay. They are the control for the trap
@@ -92,6 +96,7 @@ function Harness() {
           onPlay={() => { playedCount++; }}
           onPlayAt={(seconds) => { playedAt.push(seconds); }}
           onActivityChange={(id, patch) => activityEvents.push({ id, patch })}
+          onGallerySelect={(gallery) => gallerySelections.push(gallery)}
         />
       )}
     </>
@@ -304,6 +309,37 @@ async function run() {
   check('T13 the marker selection stays narrow',
     detailQuery.includes('scene_markers { id seconds end_seconds title primary_tag { name } }'),
     'no screenshot/preview/stream in the scene_markers selection');
+
+  // ── T16: the gallery hand-off ───────────────────────────
+  // A scene's galleries arrive with the detail query (two in the fixture, with
+  // ids distinct from the Galleries tab's listing). Enter on one is a tab
+  // change in App, not a close: this driver supplies the callback and proves
+  // the row it carries, while `closedCount` proves the chip did not reach for
+  // onClose itself.
+  const galleryGroup = document.querySelector('[role="group"][aria-label="Galleries"]');
+  const galleryChips = galleryGroup ? [...galleryGroup.querySelectorAll('button')] : [];
+  check('T16 each gallery in the scene draws one focusable chip',
+    galleryChips.map(c => c.getAttribute('aria-label')).join('|')
+      === 'Browse gallery: VERIFY gallery one|Browse gallery: VERIFY gallery two',
+    galleryChips.map(c => c.getAttribute('aria-label')).join(' | ') || 'no gallery row');
+  check('T16 the scene query asks for galleries as id and title only',
+    detailQuery.includes('galleries { id title }'),
+    detailQuery.slice(detailQuery.indexOf('galleries'), detailQuery.indexOf('galleries') + 40));
+  check('T16 the chips are registered stops in the scene-detail zone',
+    [...registry.keys()].filter(id => id.startsWith('scene-gallery-')).join(',')
+      === 'scene-gallery-7001,scene-gallery-7002',
+    [...registry.keys()].filter(id => id.startsWith('scene-gallery-')).join(','));
+  const playedBeforeGallery = playedAt.length;
+  if (galleryChips[1]) press(galleryChips[1]);
+  await sleep(120);
+  check('T16 Enter hands that gallery to App — not a timestamp, and not a close',
+    gallerySelections.length === 1
+      && gallerySelections[0].id === '7002'
+      && gallerySelections[0].title === 'VERIFY gallery two'
+      && playedAt.length === playedBeforeGallery
+      && closedCount === 0,
+    `selected=${JSON.stringify(gallerySelections)} `
+    + `playAt=${playedAt.length - playedBeforeGallery} closes=${closedCount}`);
 
   // ── T2: optimistic update ───────────────────────────────
   // sceneUpdate is delayed 1200 ms server-side. Reading the new value well

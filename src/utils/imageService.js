@@ -22,7 +22,10 @@
  */
 
 import { withApiKey } from './stashUrl.js';
+import { runQuery } from './stashQuery.js';
+import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
+import { createListCache, listCacheKey } from './listCache.js';
 import { coverArt, makeRng } from './mockArt.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
@@ -102,4 +105,131 @@ const service = createEntityService({
 /** Cached page fetch — see the note on fetchVideos in videoService.js. */
 export async function fetchImages(opts = {}) {
   return service.fetch(opts);
+}
+
+// ── One image, in full, for the viewer's info panel ───────
+// The listing query carries only what a tile draws, so the metadata overlay
+// asks for one row. It is read-only: the panel has no rating or counter
+// buttons, which is also why nothing here clears a cache.
+// `visual_files` is a union on Stash 0.31.1 (ImageFile | VideoFile); there is
+// no `files` field on Image at all. The inline fragment is what keeps this
+// query valid — asking for `files` fails the whole operation, which on the TV
+// would be the info panel's error state rather than a wrong number.
+const FIND_IMAGE_INFO_QUERY = `
+  query FindImageInfo($id: ID!) {
+    findImage(id: $id) {
+      id
+      title
+      date
+      details
+      code
+      rating100
+      o_counter
+      studio {
+        id
+        name
+      }
+      photographer
+      tags {
+        id
+        name
+      }
+      performers {
+        id
+        name
+      }
+      galleries {
+        id
+        title
+      }
+      visual_files {
+        ... on ImageFile {
+          size
+          width
+          height
+        }
+      }
+      paths {
+        thumbnail
+        image
+        preview
+      }
+    }
+  }
+`;
+
+export function normalizeImageDetail(im) {
+  if (!im) return null;
+  const files = im.visual_files || [];
+  const first = files[0] || {};
+  return {
+    id: im.id,
+    title: im.title || null,
+    date: im.date || null,
+    details: im.details || null,
+    code: im.code || null,
+    rating100: im.rating100 ?? null,
+    oCounter: im.o_counter || 0,
+    studio: im.studio ? { id: im.studio.id, name: im.studio.name } : null,
+    photographer: im.photographer || null,
+    tags: (im.tags || []).map(t => ({ id: t.id, name: t.name })),
+    performers: (im.performers || []).map(p => ({ id: p.id, name: p.name })),
+    galleries: (im.galleries || []).map(g => ({ id: g.id, title: g.title })),
+    fileSize: first.size ?? null,
+    width: first.width ?? null,
+    height: first.height ?? null,
+    fileCount: files.length,
+    thumbnail: withApiKey(im?.paths?.thumbnail) || null,
+    image: withApiKey(im?.paths?.image) || null,
+    preview: withApiKey(im?.paths?.preview) || null,
+  };
+}
+
+// Test mode has no server row. The listing row already carries the file
+// facts the panel shows (file_count, filesize, resolution), so derive the
+// row from it rather than inventing a second mock generator.
+function mockImageInfo(image) {
+  const [w, h] = String(image?.resolution || '').split('x').map(Number);
+  return {
+    id: image?.id,
+    title: image?.title || null,
+    date: image?.date || null,
+    details: null,
+    code: null,
+    rating100: image?.rating ? Math.round(Number(image.rating) * 10) : null,
+    oCounter: image?.o_counter || 0,
+    studio: null,
+    photographer: null,
+    tags: [],
+    performers: [],
+    galleries: [],
+    fileSize: image?.filesize ?? null,
+    width: Number.isFinite(w) ? w : null,
+    height: Number.isFinite(h) ? h : null,
+    fileCount: image?.file_count || 1,
+    thumbnail: image?.image_path || null,
+    image: image?.full || null,
+    preview: null,
+  };
+}
+
+const imageInfoCache = createListCache();
+
+/**
+ * The metadata for one image. Takes the listing row (or just the id) so Test
+ * mode can answer without a server.
+ *
+ * Only successes are cached by `createListCache`; a failed request rejects
+ * its own promise and is not remembered, so reopening the panel retries.
+ */
+export async function fetchImageInfo(image) {
+  const id = typeof image === 'object' && image ? image.id : image;
+  if (!id) return null;
+  if (getSettings().useMock) return mockImageInfo(typeof image === 'object' ? image : null);
+  return imageInfoCache.get(listCacheKey('image-info', String(id)), async () => {
+    const data = await runQuery(FIND_IMAGE_INFO_QUERY, { id: String(id) });
+    const detail = normalizeImageDetail(data?.findImage);
+    if (!detail) throw new Error('the image was not found on the server');
+    return detail;
+  });
 }

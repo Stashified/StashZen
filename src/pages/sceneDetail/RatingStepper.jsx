@@ -1,17 +1,23 @@
 import { useFocusable } from '../../hooks/useFocusable.js';
-import styles from '../SceneDetailPage.module.css';
+import defaultStyles from '../SceneDetailPage.module.css';
 
 // ── Rating stepper ──────────────────────────────────────────
-export function RatingStepper({ rating100, disabled, onChange }) {
+// Shared by the scene detail page and the performer detail page. The id
+// prefix must be unique per page — the focus registry is global — and the
+// zone and CSS module follow the same rule as ActionButton.
+export function RatingStepper({
+  rating100, disabled, onChange,
+  idPrefix = 'scene-rating', zone = 'scene-detail', styles = defaultStyles,
+}) {
   const stars = Math.max(0, Math.min(10, Math.round((rating100 || 0) / 10)));
   const dec = useFocusable({
-    id: 'scene-rating-dec',
-    zone: 'scene-detail',
+    id: `${idPrefix}-dec`,
+    zone,
     onEnter: () => onChange(Math.max(0, stars - 1)),
   });
   const inc = useFocusable({
-    id: 'scene-rating-inc',
-    zone: 'scene-detail',
+    id: `${idPrefix}-inc`,
+    zone,
     onEnter: () => onChange(Math.min(10, stars + 1)),
   });
 

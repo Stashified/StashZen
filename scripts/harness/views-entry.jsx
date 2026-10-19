@@ -41,6 +41,14 @@
  * because none of them ever loaded the module the way a launch does. See
  * `boot-entry.jsx`, which does exactly that and nothing else.
  *
+ * 3. THE HERO'S ENRICHMENT IS PRESENT, AND STAYS BOUNDED. Tag descriptions and
+ *    studio details became the strip's third hero row, and aliases / a studio's
+ *    parent became meta entries (0.29.0). V8 walks tags 1, 2, 3 and 4 and
+ *    studios 1, 3, 4 and 5 to reach every populated/empty combination, and
+ *    measures the two-line clamp on deliberately overlong fixture text rather
+ *    than trusting the rule to be applied. Empty values must draw nothing —
+ *    an empty row on half the library reads as a layout bug.
+ *
  * What this cannot tell you: whether the portrait slots look right. V3 asserts
  * the override is applied and nothing more; 166px is arithmetic (see the note
  * on `--slot-w` in Carousel.module.css), not taste, and the strip is built for
@@ -342,6 +350,110 @@ async function run() {
       && JSON.stringify(readViewModes(['classic'])) === '{}',
     `${JSON.stringify(readViewModes(undefined))} ${JSON.stringify(readViewModes(null))} `
     + `${JSON.stringify(readViewModes('classic'))} ${JSON.stringify(readViewModes(['classic']))}`);
+
+  // ── 8. Tag and Studio heroes: blurb and meta, bounded ─────
+  // Items 8/9 of the enrichment batch. The hero grew a third row (the blurb)
+  // and two new meta entries (aliases; a studio's parent). Three things can go
+  // wrong and none of them throws:
+  //
+  //   • an empty description renders an empty row instead of nothing — the
+  //     hero then looks like a layout bug on half the library;
+  //   • the blurb is unbounded, so the strip moves whenever the focus crosses
+  //     a described entity → undescribed one;
+  //   • a list (aliases) is printed in full, so a tag with thirty aliases
+  //     pushes everything else off the screen.
+  //
+  // The fixture makes each decidable by walking a few rows: 1 has nothing,
+  // 2 has a description only, 3 aliases only, and 10 a deliberately overlong
+  // description (studio 5 likewise) whose clamp is measurable in pixels.
+  const metaText = () => document.querySelector('[class*="heroMeta"]')?.textContent || '';
+  const blurbEl = () => document.querySelector('[class*="heroBlurb"]');
+  const blurbText = () => blurbEl()?.textContent || '';
+
+  async function heroFor(tab, firstId) {
+    await switchTab(`nav-${tab}`);
+    await waitFor(() => !!registry.get('ctrl-mode'), 6000);
+    const drove = await driveMode('carousel');
+    const up = await waitFor(() => !!stripEl() && !!registry.get(firstId), 6000);
+    return drove && up;
+  }
+
+  /** The blurb's two-line budget, measured rather than read off the source:
+   *  a clamp that is declared but not applied (display changed, overflow
+   *  re-set) still computes to two lines here, and oversized text still
+   *  overflows, so `scrollHeight > clientHeight` is what proves the cut. */
+  const clampProbe = (el) => {
+    if (!el) return { clamp: '(no blurb)', line: 0, height: 0, scroll: 0 };
+    const cs = getComputedStyle(el);
+    return {
+      clamp: String(cs.webkitLineClamp || cs.lineClamp || '(none)'),
+      line: parseFloat(cs.lineHeight) || 0,
+      height: el.clientHeight,
+      scroll: el.scrollHeight,
+    };
+  };
+  const bounded = (p) =>
+    p.clamp === '2' && p.line > 0 && p.height > 0
+      && p.height <= p.line * 2 + 2 && p.scroll > p.height;
+
+  const tagsHero = await heroFor('tags', 'tag-1');
+  check('V8 Tags opens a carousel', tagsHero, `strip=${!!stripEl()} control="${modeControlText()}"`);
+  focus('tag-1');
+  await sleep(250);
+  check('V8 a tag with no description draws no blurb element at all',
+    heroTitle() === 'VERIFY tag 1' && !blurbEl() && !/Aliases:/.test(metaText()),
+    `title="${heroTitle()}" blurb=${!!blurbEl()} meta="${metaText().slice(0, 80)}"`);
+
+  focus('tag-2');
+  await sleep(250);
+  check('V8 a described tag shows the description as the blurb',
+    /VERIFY tag description 2/.test(blurbText()) && !/Aliases:/.test(metaText()),
+    `blurb="${blurbText().slice(0, 70)}" meta="${metaText().slice(0, 60)}"`);
+
+  focus('tag-3');
+  await sleep(250);
+  check('V8 a tagged-with-aliases, undescribed tag shows aliases and no blurb',
+    /Aliases: VERIFY alias 3a, VERIFY alias 3b/.test(metaText()) && !blurbEl(),
+    `meta="${metaText().slice(0, 100)}" blurb=${!!blurbEl()}`);
+
+  // Row 4, not a later one: the strip pages five rows at a time, and focusing
+  // a card that is not mounted yet silently leaves the hero where it was —
+  // which is how this check first passed the fixture and failed the run.
+  focus('tag-4');
+  await sleep(300);
+  const tagClamp = clampProbe(blurbEl());
+  check('V8 a long description is clamped to two lines, not left to grow',
+    /VERIFY long tag description/.test(blurbText()) && bounded(tagClamp),
+    `title="${heroTitle()}" ${JSON.stringify(tagClamp)}`);
+
+  const studiosHero = await heroFor('studios', 'studio-1');
+  check('V8 Studios opens a carousel', studiosHero,
+    `strip=${!!stripEl()} control="${modeControlText()}"`);
+  focus('studio-1');
+  await sleep(250);
+  check('V8 a root studio with no parent, aliases or details draws none of them',
+    heroTitle() === 'VERIFY studio 1' && !blurbEl()
+      && !/Part of/.test(metaText()) && !/Aliases:/.test(metaText()),
+    `title="${heroTitle()}" meta="${metaText().slice(0, 80)}"`);
+
+  focus('studio-3');
+  await sleep(250);
+  check('V8 studio 3 shows its alias and no parent',
+    /Aliases: VERIFY studio alias 3/.test(metaText()) && !/Part of/.test(metaText()),
+    `meta="${metaText().slice(0, 100)}"`);
+
+  focus('studio-4');
+  await sleep(250);
+  check('V8 studio 4 names its parent, and still no empty alias row',
+    /Part of VERIFY studio 3/.test(metaText()) && !/Aliases:/.test(metaText()),
+    `meta="${metaText().slice(0, 100)}"`);
+
+  focus('studio-5');
+  await sleep(300);
+  const studioClamp = clampProbe(blurbEl());
+  check('V8 a long studio details blurb is clamped the same way',
+    /VERIFY long studio details/.test(blurbText()) && bounded(studioClamp),
+    `${JSON.stringify(studioClamp)}`);
 
   check('V7 no render error was raised', errors.length === 0, errorTail());
 }

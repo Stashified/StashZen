@@ -63,6 +63,18 @@ async function enterLabel(label) {
   await sleep(180);
 }
 
+// Enter on a button by its focus-registry id. The job rows have no DOM id and
+// their labels change between presses, so the registry is the stable handle —
+// and going through it also proves the row really registered the button.
+async function enterFocusId(id) {
+  const entry = registry.get(id);
+  if (!entry) throw new Error(`no focusable "${id}" (have: ${[...registry.keys()].join(' | ')})`);
+  entry.el.focus();
+  await sleep(50);
+  press('Enter', 13);
+  await sleep(180);
+}
+
 // ── Fake-server controls ────────────────────────────────────
 const getJSON = async (path) => (await fetch(path)).json();
 const postMode = (patch) => fetch('/mode', {
@@ -275,6 +287,33 @@ async function runServer() {
       && !snapText.includes('VERIFY finished job'),
     `running=${snapText.includes('VERIFY scan running')} finished=${snapText.includes('VERIFY finished job')}`);
 
+  // ── V3b Subtasks, start time and the failure reason ─────
+  // The fixture's running job has four subtasks; the row shows three. The
+  // fourth's absence is the cap, not a coincidence of the fixture.
+  check('V3b a job row lists at most three subtasks',
+    snapText.includes('VERIFY subtask one · VERIFY subtask two · VERIFY subtask three')
+      && !snapText.includes('VERIFY subtask four'),
+    `joined=${snapText.includes('VERIFY subtask one · VERIFY subtask two · VERIFY subtask three')} `
+    + `fourth=${snapText.includes('VERIFY subtask four')}`);
+  const startDate = new Date('2024-05-01T09:30:00Z');
+  const startClock = `${String(startDate.getHours()).padStart(2, '0')}:`
+    + `${String(startDate.getMinutes()).padStart(2, '0')}`;
+  check('V3c the start time is a local wall clock, not the raw ISO string',
+    snapText.includes(`Started ${startClock}`)
+      && !snapText.includes('2024-05-01T09:30:00Z'),
+    `wanted "Started ${startClock}", has ISO=${snapText.includes('2024-05-01T09:30:00Z')}`);
+  check('V3d a failed job is shown with its reason',
+    snapText.includes('VERIFY failed job') && snapText.includes('Failed')
+      && snapText.includes('VERIFY failure reason: the media folder is not mounted'),
+    `failedRow=${snapText.includes('VERIFY failed job')} error=${snapText.includes('the media folder is not mounted')}`);
+  check('V3e only RUNNING and READY jobs carry a Stop button',
+    !!registry.get('settings-job-stop-job-1')
+      && !registry.get('settings-job-stop-job-3')
+      && snapshot.querySelectorAll('button').length === 1,
+    `stop1=${!!registry.get('settings-job-stop-job-1')} `
+    + `stop3=${!!registry.get('settings-job-stop-job-3')} `
+    + `buttons=${snapshot.querySelectorAll('button').length}`);
+
   // ── V4  One query, all three roots ──────────────────────
   // The shadowing trap lives here: the fake's anonymous connection-test arm
   // matches `version {`, so a status handler placed below it would answer
@@ -282,12 +321,14 @@ async function runServer() {
   const statusFetches = await getJSON('/statusfetches');
   const statusOps = (await getJSON('/graphqlcalls')).filter(n => n === 'ServerStatus');
   const statusQuery = statusFetches[0] || '';
-  check('V4 one ServerStatus call carrying version, health and jobs',
+  check('V4 one ServerStatus call carrying version, health and the full job rows',
     statusFetches.length === 1 && statusOps.length === 1
       && statusQuery.includes('version')
       && statusQuery.includes('systemStatus')
-      && statusQuery.includes('jobQueue'),
-    `fetches=${statusFetches.length} ops=${statusOps.length}`);
+      && statusQuery.includes('jobQueue')
+      && ['subTasks', 'error', 'startTime'].every(f => statusQuery.includes(f)),
+    `fetches=${statusFetches.length} ops=${statusOps.length} `
+    + `missing=${['subTasks', 'error', 'startTime'].filter(f => !statusQuery.includes(f))}`);
 
   // ── V5  Failure, then recovery ──────────────────────────
   await mount({ mock: false });
@@ -327,18 +368,24 @@ async function runServer() {
     !!refreshed && afterRefresh === beforeRefresh + 1,
     `fetches ${beforeRefresh} → ${afterRefresh}`);
 
-  // ── V7  Inert rows ──────────────────────────────────────
-  const rowFocusable = refreshed
+  // ── V7  The rows' only D-pad stop is Stop ───────────────
+  // The old version of this check asserted the rows were inert. They are not
+  // any more: a stoppable job carries exactly one focusable button, the
+  // FAILED job none. Anything else (a focusable status line, a second stop
+  // per row) would change what the D-pad walks through.
+  const refreshedButtons = refreshed
     ? refreshed.querySelectorAll('button, a, [tabindex], [role="button"], [role="link"]').length
     : -1;
-  const rowRegistered = refreshed
-    ? [...registry.values()].filter(entry => entry.el && refreshed.contains(entry.el)).length
-    : -1;
+  const refreshedIds = refreshed
+    ? [...registry.entries()].filter(([, e]) => e.el && refreshed.contains(e.el)).map(([id]) => id)
+    : [];
   const focusOnServerButton = document.activeElement?.tagName === 'BUTTON'
     && document.activeElement.textContent.trim() === 'Refresh';
-  check('V7 job rows are inert and focus stays on the button',
-    rowFocusable === 0 && rowRegistered === 0 && focusOnServerButton,
-    `focusable=${rowFocusable} registered=${rowRegistered} focus=${document.activeElement?.textContent?.trim()}`);
+  check('V7 each stoppable job adds one Stop stop; the failed row adds none',
+    refreshedButtons === 1 && refreshedIds.length === 1
+      && refreshedIds[0] === 'settings-job-stop-job-1' && focusOnServerButton,
+    `focusable=${refreshedButtons} registered=[${refreshedIds.join(',')}] `
+    + `focus=${document.activeElement?.textContent?.trim()}`);
 
   // ── V6  Test mode ───────────────────────────────────────
   await mount({ mock: true });
@@ -557,6 +604,144 @@ async function runScan() {
       + `defaultsFetches=${(await getJSON('/scandefaultsfetches')).length}`);
 }
 
+// ═══════════════════════════════════════════════════════════
+// #88b — Stopping a job (item 10)
+// ═══════════════════════════════════════════════════════════
+const stopFetches = async () => getJSON('/stopfetches');
+const focusIdOf = (el) => [...registry.entries()]
+  .find(([, entry]) => entry.el === el)?.[0] || null;
+
+async function openStatus() {
+  await mount({ mock: false });
+  await clearLogs();
+  await postMode({ serverStatus: 'ok', stopJob: 'ok' });
+  await enterLabel('Check server status');
+  return waitFor(() => group('Server status'), 4000);
+}
+
+async function runStop() {
+  // ── R1  First press arms, sends nothing ─────────────────
+  await openStatus();
+  await enterFocusId('settings-job-stop-job-1');
+  const stopBtn = () => registry.get('settings-job-stop-job-1')?.el;
+  check('R1 the first press only arms the button',
+    stopBtn()?.textContent.trim() === 'Press again to stop'
+      && (await stopFetches()).length === 0
+      && !!group('Server status'),
+    `label="${stopBtn()?.textContent.trim()}" fetches=${(await stopFetches()).length}`);
+
+  // ── R2  Second press commits once; the row goes; focus moves ─
+  await enterFocusId('settings-job-stop-job-1');
+  const removed = await waitFor(() => {
+    const g = group('Server status');
+    return g && !g.textContent.includes('VERIFY scan running') ? g : null;
+  }, 6000);
+  const afterStop = await stopFetches();
+  check('R2 the second press sends exactly one StopJob for the armed job',
+    afterStop.length === 1 && afterStop[0].job_id === 'job-1'
+      && /stopJob\(job_id: \$jobId\)/.test(afterStop[0].query)
+      && afterStop[0].query.includes('mutation StopJob'),
+    `fetches=${afterStop.length} id=${afterStop[0]?.job_id}`);
+  check('R3 the stopped row disappears and the note says what happened',
+    !!removed && !removed.textContent.includes('VERIFY scan running')
+      && dialogText().includes('Stopping "VERIFY scan running"'),
+    `removed=${!!removed} note=${dialogText().includes('Stopping "VERIFY scan running"')}`);
+  // The refresh unmounts the job body, so the focused Stop element is gone.
+  // Focus must already be somewhere the D-pad can move from.
+  check('R4 focus lands on the status button before the row unmounts',
+    focusIdOf(document.activeElement) === 'settings-server',
+    `focus=<${document.activeElement?.tagName?.toLowerCase()}> `
+    + `"${(document.activeElement?.textContent || '').trim()}" id=${focusIdOf(document.activeElement)}`);
+
+  // ── R5  The server refuses with `false` ─────────────────
+  // `stopJob` is Boolean!: a false answer means the job is still running. The
+  // client must treat it as a failure rather than as "stopped".
+  await openStatus();
+  await postMode({ stopJob: 'false' });
+  await enterFocusId('settings-job-stop-job-1');
+  await enterFocusId('settings-job-stop-job-1');
+  const refused = await waitFor(
+    () => dialogText().includes("Couldn't stop the job"), 4000);
+  check('R5 a false answer is reported as a failure and the row stays',
+    !!refused && dialogText().includes('the server did not stop the job')
+      && !!registry.get('settings-job-stop-job-1')
+      && group('Server status')?.textContent.includes('VERIFY scan running')
+      && (await stopFetches()).length === 1
+      && uncaught.length === 0,
+    `notice=${dialogText().includes('the server did not stop the job')} `
+    + `row=${!!registry.get('settings-job-stop-job-1')} fetches=${(await stopFetches()).length}`);
+  check('R5b ...and focus stays on Stop, one press from trying again',
+    focusIdOf(document.activeElement) === 'settings-job-stop-job-1'
+      && stopBtn()?.textContent.trim() === 'Stop',
+    `id=${focusIdOf(document.activeElement)} label="${stopBtn()?.textContent.trim()}"`);
+
+  // ── R6  In flight: Stopping…, and a third press is ignored ──
+  await openStatus();
+  await postMode({ stopJob: 'slow' });
+  await enterFocusId('settings-job-stop-job-1');       // arm
+  const slowEntry = registry.get('settings-job-stop-job-1');
+  slowEntry.el.focus();
+  press('Enter', 13);
+  await sleep(200);
+  check('R6a a stop in flight says Stopping…',
+    slowEntry.el.textContent.trim() === 'Stopping…',
+    `label="${slowEntry.el.textContent.trim()}"`);
+  // Press again while the mutation is held. The row is still on screen; this
+  // must neither re-arm nor send a second request.
+  slowEntry.el.focus();
+  press('Enter', 13);
+  await sleep(200);
+  check('R6b a press while stopping is ignored — still one request',
+    slowEntry.el.textContent.trim() === 'Stopping…'
+      && (await stopFetches()).length === 1,
+    `label="${slowEntry.el.textContent.trim()}" fetches=${(await stopFetches()).length}`);
+  const slowRemoved = await waitFor(() => {
+    const g = group('Server status');
+    return g && !g.textContent.includes('VERIFY scan running') ? g : null;
+  }, 6000);
+  check('R6c the slow stop still completes and removes the row', !!slowRemoved);
+
+  // ── R7  Transport failure ───────────────────────────────
+  await openStatus();
+  await postMode({ stopJob: 'fail' });
+  await enterFocusId('settings-job-stop-job-1');
+  await enterFocusId('settings-job-stop-job-1');
+  const failedStop = await waitFor(
+    () => dialogText().includes('simulated stop failure'), 5000);
+  check('R7 a failed stop keeps the row and reports the server\'s message',
+    !!failedStop && !!registry.get('settings-job-stop-job-1')
+      && focusIdOf(document.activeElement) === 'settings-job-stop-job-1'
+      && (await stopFetches()).length === 1
+      && uncaught.length === 0,
+    `notice=${!!failedStop} row=${!!registry.get('settings-job-stop-job-1')} `
+    + `uncaught=${uncaught.length}`);
+
+  // ── R8  Test mode ───────────────────────────────────────
+  await mount({ mock: true });
+  await clearLogs();
+  await enterLabel('Check server status');
+  const mockSnap = await waitFor(() => group('Server status'), 3000);
+  check('R8a Test mode offers Stop for the two active sample jobs only',
+    !!mockSnap && !!registry.get('settings-job-stop-mock-scan')
+      && !!registry.get('settings-job-stop-mock-generate')
+      && !registry.get('settings-job-stop-mock-failed'),
+    `scan=${!!registry.get('settings-job-stop-mock-scan')} `
+    + `generate=${!!registry.get('settings-job-stop-mock-generate')} `
+    + `failed=${!!registry.get('settings-job-stop-mock-failed')}`);
+  await enterFocusId('settings-job-stop-mock-scan');
+  await enterFocusId('settings-job-stop-mock-scan');
+  const mockRemoved = await waitFor(() => {
+    const g = group('Server status');
+    return g && !g.textContent.includes('Scanning metadata') ? g : null;
+  }, 4000);
+  check('R8b Test mode removes the sample job and contacts no server',
+    !!mockRemoved && dialogText().includes('Test mode')
+      && mockRemoved.textContent.includes('Generate gallery covers')
+      && (await stopFetches()).length === 0,
+    `removed=${!!mockRemoved} note=${dialogText().includes('Test mode')} `
+    + `fetches=${(await stopFetches()).length}`);
+}
+
 // ── Run ─────────────────────────────────────────────────────
 document.body.style.margin = '0';
 document.getElementById('root').style.cssText =
@@ -567,6 +752,7 @@ document.getElementById('root').style.cssText =
     await runStats();
     await runServer();
     await runScan();
+    await runStop();
     check('view under test', true, 'settings-status');
     await finish();
   } catch (e) {

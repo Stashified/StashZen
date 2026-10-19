@@ -56,9 +56,24 @@
  *          the filter (the tab-change effect used to clear it in the act of
  *          applying it) and that Back *returns* to the right card.
  *
+ *   S6a    a gallery card's second line: studio when there is one, folder
+ *          otherwise. Both are on the fake, on neighbouring rows, so the
+ *          fallback order is decidable rather than assumed.
+ *
  *   S9–S11 the image viewer. New overlay, new key handling, and one claim that
  *          no other overlay makes: it shows `paths.image` rather than the
  *          thumbnail the card was showing.
+ *
+ *   S10b–S11d the viewer's info panel (0.29.0). Up reaches it, one request
+ *          per image opened, reopen and stepping back are cache hits, the
+ *          stale-answer race is sampled while the live answer is still in
+ *          flight, Back peels the panel before the viewer, and a failure is
+ *          reported and not cached. The panel adds no focus stops, and the
+ *          fake names the studio after the requested id so a stale answer
+ *          cannot pass for the right one. Since 0.29.1, Left/Right also step
+ *          while the Info button holds focus (they used to require a Down
+ *          first); both checks compare the title before and after the press,
+ *          because a no-op left the expected title already on screen.
  *
  * ## The control experiments, and what they actually measured
  *
@@ -193,6 +208,13 @@ const cardCount = (prefix) =>
 // operation" and "with what filter variable".
 const getJSON = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
 const clearLogs = async () => fetch(`http://127.0.0.1:${PORT}/clear`, { method: 'POST' });
+// `/mode` merges the payload into the fake's behaviour switches; each key is
+// one arm (`imageInfo: 'slow' | 'fail'`).
+const setMode = (key, value) => fetch(`http://127.0.0.1:${PORT}/mode`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ [key]: value }),
+});
 
 // The controls bar, derived from where it is rather than from a class name:
 // ControlsPanel renders the element immediately above <main>.
@@ -632,6 +654,22 @@ async function run() {
   // right for the other two.
   await goto('galleries');
   await waitFor(() => has('gallery-2'));
+
+  // ── S6a  the gallery card's second line ─────────────────
+  // Studio when there is one, the folder otherwise (which on a real library is
+  // the field that is almost always present). The fixture makes both cases
+  // decidable in the first three rows: gallery 1 carries BOTH a studio and a
+  // folder, so "studio wins" is visible, and gallery 3 carries no studio at
+  // all, so the fallback is visible. Every value is VERIFY-prefixed, so a card
+  // printing the wrong field cannot pass on incidental text.
+  check('S6a the gallery card names the studio when there is one',
+    cardText('gallery-1').includes('4 images · VERIFY gallery studio 1'),
+    `card 1 says "${cardText('gallery-1').replace(/\s+/g, ' ').slice(0, 90)}"`);
+  check('S6a …and falls back to the folder when the studio is empty',
+    cardText('gallery-3').includes('12 images · VERIFY folder 3')
+      && !cardText('gallery-3').includes('VERIFY gallery studio 3'),
+    `card 3 says "${cardText('gallery-3').replace(/\s+/g, ' ').slice(0, 90)}"`);
+
   await clearLogs();
   focus('gallery-2');
   await sleep(120);
@@ -717,6 +755,74 @@ async function run() {
     !!img && !/\/image\/1\/thumb\.png/.test(img.getAttribute('src')),
     'thumb and full are distinct routes on the fake');
 
+  // ── S10b  the info panel is reachable, and asks once ────
+  // The surface holds focus after opening, and the panel's only D-pad route
+  // in is the header button. A `nextId` pointing at an id that never
+  // registers would leave the panel unreachable without a pointer, which this
+  // app does not have.
+  const infoPanel = () => document.querySelector('aside[aria-label="Image info"]');
+  const panelText = () => (infoPanel()?.textContent || '');
+  const imageInfoFetches = async () => getJSON('/imageinfofetches');
+
+  await press('ArrowUp');
+  check('S10b Up from the picture reaches the Info button',
+    focusedId() === 'image-viewer-info', `focus: ${focusedId()}`);
+
+  await tapEnter();
+  const panelUp = await waitFor(() => !!infoPanel(), 2000);
+  await waitFor(() => /VERIFY image studio 1/.test(panelText()), 3000);
+  const info1 = await imageInfoFetches();
+  check('S10b Enter on Info opens the panel and asks once for this image',
+    panelUp && info1.length === 1 && info1[0].id === '1',
+    `open=${panelUp}; fetches=${JSON.stringify(info1.map(f => f.id))}`);
+  // `visual_files` is the union field Image carries; `files` does not exist on
+  // Image at all, and the fake would happily answer either. The query text is
+  // the only place the difference is visible.
+  check('S10b the query asks for visual_files, not the invalid `files`',
+    info1.length === 1 && info1[0].query.includes('visual_files'),
+    info1.length ? info1[0].query.replace(/\s+/g, ' ').slice(0, 120) : '(no fetch)');
+  check('S10b the panel shows the metadata, formatted rather than raw',
+    /VERIFY image studio 1/.test(panelText())
+      && /4000×3000/.test(panelText())
+      && /5 MiB/.test(panelText()),
+    panelText().replace(/\s+/g, ' ').slice(0, 140));
+  // 8 tags / 7 performers / 6 galleries in the fixture: the caps are what
+  // keeps a metadata panel from becoming a wall of text at 1080p.
+  check('S10b long lists are capped with a +N count',
+    /\+2/.test(panelText()) && /\+1/.test(panelText()),
+    panelText().replace(/\s+/g, ' ').slice(0, 160));
+  // The panel is read-only, and the app is D-pad-only: a focusable inside it
+  // would be an invisible stop with nothing to press it for.
+  const insidePanel = [...registry.entries()]
+    .filter(([, e]) => e.el && infoPanel()?.contains(e.el))
+    .map(([id]) => id);
+  check('S10b the panel adds no focus stops of its own',
+    insidePanel.length === 0, `registered inside: ${insidePanel.join(', ') || '(none)'}`);
+
+  // ── S10c  Back peels one layer at a time ────────────────
+  // The panel is on top of the viewer, so one Back must not close both — that
+  // would make the viewer's own Back unreachable while the panel is open.
+  await pressBack();
+  const panelClosed = await waitFor(() => !infoPanel(), 2000);
+  check('S10c Back closes the panel, not the viewer',
+    panelClosed && !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+    panelClosed
+      ? (document.querySelector('[role="dialog"][aria-modal="true"]')
+        ? 'panel closed, viewer still open' : 'viewer closed too')
+      : 'panel still open');
+
+  // Reopening the same image is a cache hit. The fake's fetch log is the only
+  // place a cache can be observed — the screen looks identical either way.
+  await press('ArrowUp');
+  await tapEnter();
+  await waitFor(() => /VERIFY image studio 1/.test(panelText()), 3000);
+  const info1b = await imageInfoFetches();
+  check('S10d reopening the panel for the same image is a cache hit',
+    info1b.length === 1,
+    `${info1b.length} fetch(es): ${JSON.stringify(info1b.map(f => f.id))}`);
+  await pressBack();
+  await waitFor(() => !infoPanel(), 2000);
+
   // ── S11  Left/Right step through the listing ────────────
   const titleOf = () => viewer.querySelector('h2')?.textContent || '';
   const before = titleOf();
@@ -726,6 +832,128 @@ async function run() {
     after !== before && /image 2\b/.test(after), `"${before}" → "${after}"`);
   await press('ArrowLeft');
   check('S11 Left steps back', titleOf() === before, `"${titleOf()}" vs "${before}"`);
+
+  // ── S11b  one fetch per image the panel is opened on ────
+  // Browsing with the panel closed is free (S11 left the log at one entry);
+  // opening a second image asks exactly once more; stepping back to a seen
+  // image is a cache hit. All three are read from the fake's log, because the
+  // screen cannot tell a cached answer from a fresh one.
+  await press('ArrowRight');            // image 1 → 2
+  await press('ArrowUp');
+  await tapEnter();
+  await waitFor(() => /VERIFY image studio 2/.test(panelText()), 4000);
+  const info2 = await imageInfoFetches();
+  check('S11b opening a second image asks once for that image',
+    info2.length === 2 && info2[1].id === '2',
+    `${info2.length} fetch(es): ${JSON.stringify(info2.map(f => f.id))}`);
+
+  // The Info button holds focus here — opening the panel does not move it —
+  // and Left/Right must still browse. Before 0.29.1 the capture handler
+  // ignored the arrows unless the picture itself held focus, so a step needed
+  // a Down press first; reported from the TV as "only works after closing the
+  // panel". Both targets are cached, so this must not add a fetch.
+  await press('ArrowLeft');             // image 2 → 1, panel stays open
+  const steppedWithInfo = await waitFor(
+    () => /image 1\b/.test(titleOf()) && /VERIFY image studio 1/.test(panelText()),
+    3000,
+  );
+  check('S11b Left steps while the Info button holds focus',
+    steppedWithInfo && focusedId() === 'image-viewer-info' && !!infoPanel(),
+    `"${titleOf()}"; focus: ${focusedId()}; panel=${!!infoPanel()}`);
+  // Compare against the title *before* the press: on the old guard both
+  // presses were no-ops, so "we are on image 2 with studio 2 showing" was
+  // already true and the check passed on the broken build. The title must
+  // actually change.
+  const beforeRight = titleOf();
+  await press('ArrowRight');            // back to image 2
+  const steppedBackWithInfo = await waitFor(
+    () => /image 2\b/.test(titleOf()) && /VERIFY image studio 2/.test(panelText()),
+    3000,
+  );
+  check('S11b …and Right steps back with the panel still open',
+    steppedBackWithInfo && beforeRight !== titleOf(),
+    `"${beforeRight}" → "${titleOf()}"`);
+  await pressBack();
+  await waitFor(() => !infoPanel(), 2000);
+  await press('ArrowLeft');             // back to image 1
+  await press('ArrowUp');
+  await tapEnter();
+  await waitFor(() => /VERIFY image studio 1/.test(panelText()), 3000);
+  const info2b = await imageInfoFetches();
+  check('S11b stepping back to a seen image is a cache hit',
+    info2b.length === 2,
+    `${info2b.length} fetch(es): ${JSON.stringify(info2b.map(f => f.id))}`);
+  await pressBack();
+  await waitFor(() => !infoPanel(), 2000);
+
+  // ── S11c  a slow answer cannot land on the image stepped to ──
+  // Slow mode makes the race explicit. The panel is opened on image 3, Down
+  // returns focus to the picture with the panel still open, and Right steps to
+  // image 4 while image 3's request is still in flight. The fixture names the
+  // studio after the requested id, so "the stale answer was drawn" is
+  // visible; sampling while answer 4 is *still* in flight is what makes the
+  // check able to fail — a later sample would be correct whatever happened,
+  // because the right answer eventually overwrites the wrong one.
+  await setMode('imageInfo', 'slow');
+  await press('ArrowRight');            // image 1 → 2
+  await press('ArrowRight');            // image 2 → 3 (uncached)
+  await press('ArrowUp');
+  await tapEnter();
+  await sleep(120);
+  const slowBegun = (await imageInfoFetches()).map(f => f.id);
+  check('S11c the slow image’s request is in flight',
+    slowBegun[slowBegun.length - 1] === '3'
+      && /Loading info/.test(panelText()),
+    `fetches=${JSON.stringify(slowBegun)}; panel="${panelText().slice(0, 60)}"`);
+
+  await press('ArrowDown');             // back to the picture, panel stays open
+  check('S11c Down returns to the picture with the panel still open',
+    focusedId() === 'image-viewer' && !!infoPanel(),
+    `focus: ${focusedId()}; panel=${!!infoPanel()}`);
+  await press('ArrowRight');            // image 3 → 4, panel open
+
+  // The fake sleeps 1.2 s before answering. Answer 3 is due ~1.21 s after the
+  // panel opened and answer 4 ~0.45 s later; ~1.31 s in, exactly the stale
+  // answer has arrived and the live one has not.
+  await sleep(700);
+  const midText = panelText();
+  check('S11c the answer for the image stepped away from never lands on the new one',
+    /Loading info/.test(midText) && !/VERIFY image studio 3/.test(midText),
+    midText.replace(/\s+/g, ' ').slice(0, 120));
+  await waitFor(() => /VERIFY image studio 4/.test(panelText()), 3000);
+  check('S11c …and the live image’s own answer does',
+    /VERIFY image studio 4/.test(panelText()),
+    panelText().replace(/\s+/g, ' ').slice(0, 120));
+  await pressBack();                    // close the panel
+  await waitFor(() => !infoPanel(), 2000);
+
+  // ── S11d  a failure is reported, and not remembered ─────
+  // A cached failure would look exactly like a working panel the second time:
+  // same message, no request. The fetch count is what distinguishes them.
+  await setMode('imageInfo', 'fail');
+  await press('ArrowRight');            // image 4 → 5
+  await press('ArrowUp');
+  await tapEnter();
+  const failedShown = await waitFor(() => /Couldn't load info/.test(panelText()), 4000);
+  check('S11d a failed info request is reported, not hidden behind an empty panel',
+    failedShown && /simulated image info failure/.test(panelText()),
+    `shown=${failedShown}; panel="${panelText().replace(/\s+/g, ' ').slice(0, 100)}"`);
+  const failedOnce = (await imageInfoFetches()).length;
+  await pressBack();
+  await waitFor(() => !infoPanel(), 2000);
+  await press('ArrowUp');
+  await tapEnter();
+  await waitFor(() => /Couldn't load info/.test(panelText()), 4000);
+  const failedTwice = (await imageInfoFetches()).length;
+  check('S11d a failure is not cached — reopening retries',
+    failedTwice === failedOnce + 1, `${failedOnce} → ${failedTwice}`);
+  await setMode('imageInfo', 'ok');
+  await pressBack();
+  await waitFor(() => !infoPanel(), 2000);
+
+  // Back on image 1, which is the card S12's focus restore is about.
+  for (let i = 0; i < 4; i += 1) await press('ArrowLeft');
+  check('S11e stepped back to the opening image', titleOf() === before, `"${titleOf()}"`);
 
   // ── S12  Back closes it and returns focus to the card ───
   await pressBack();

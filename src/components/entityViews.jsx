@@ -57,6 +57,17 @@ function year(date) {
 }
 
 /**
+ * Alias lists are unbounded, and the hero is one line of meta. Three names
+ * plus a count is the cap; a longer string would turn the row into a
+ * paragraph and push the strip down.
+ */
+function aliasesText(list = [], max = 3) {
+  if (!list.length) return null;
+  const shown = list.slice(0, max).join(', ');
+  return list.length > max ? `${shown} +${list.length - max}` : shown;
+}
+
+/**
  * Bind a descriptor to the one card component, so `Carousel` can render it
  * through the same `{ item, index, list, onSelect, onLongPress }` contract every
  * other card in the tree takes. The card still reads `view.focusPrefix` for its
@@ -102,7 +113,9 @@ export const TAG_VIEW = bind({
       t.scene_count && { text: scenes(t.scene_count) },
       t.image_count && { text: `${t.image_count} images` },
       t.performer_count && { text: `${t.performer_count} performers` },
+      aliasesText(t.aliases) && { text: `Aliases: ${aliasesText(t.aliases)}` },
     ].filter(Boolean),
+    blurb: t.description || null,
   }),
 });
 
@@ -128,8 +141,11 @@ export const STUDIO_VIEW = bind({
     meta: [
       s.scene_count && { text: scenes(s.scene_count) },
       s.gallery_count && { text: `${s.gallery_count} galleries` },
+      s.parentStudio?.name && { text: `Part of ${s.parentStudio.name}` },
+      aliasesText(s.aliases) && { text: `Aliases: ${aliasesText(s.aliases)}` },
       s.rating && { text: `★ ${s.rating}`, kind: 'rating' },
     ].filter(Boolean),
+    blurb: s.details || null,
   }),
 });
 
@@ -148,7 +164,13 @@ export const GALLERY_VIEW = bind({
   aspect: 'landscape',
   getImage: (g) => g.image_path,
   getTitle: (g) => g.title,
-  getSubtitle: (g) => `${g.image_count} image${g.image_count === 1 ? '' : 's'}`,
+  // Studio is the ideal second line, but it is rare on a real library; the
+  // folder is the field that is almost always there, so it is the fallback.
+  getSubtitle: (g) => {
+    const count = `${g.image_count} image${g.image_count === 1 ? '' : 's'}`;
+    const where = g.studio?.name || g.folder;
+    return where ? `${count} · ${where}` : count;
+  },
   getBadge: (g) => (g.rating ? `★ ${g.rating}` : null),
   label: (g) => `${g.title}, ${g.image_count} images`,
   hero: (g) => ({
@@ -156,6 +178,9 @@ export const GALLERY_VIEW = bind({
     meta: [
       g.date && { text: year(g.date) },
       g.image_count && { text: `${g.image_count} images` },
+      g.studio?.name && { text: g.studio.name },
+      g.photographer && { text: `Photo: ${g.photographer}` },
+      g.folder && { text: g.folder },
       g.rating && { text: `★ ${g.rating}`, kind: 'rating' },
     ].filter(Boolean),
   }),
