@@ -28,8 +28,9 @@
  * R7 asserts each edge separately: two up, two sideways out of the bar, and
  * two sideways into it, which is more than a hand-picked path would cover.
  *
- * Rectangles are asserted rather than eyeballed because the rail's 176px has
- * to hold "PERFORMERS" in Barlow Condensed 17px with 0.05em tracking, and
+ * Rectangles are asserted rather than eyeballed because the rail's 208px has
+ * to hold "PERFORMERS" in Inter 17px/600 with 0.05em tracking (176px was
+ * enough for Barlow Condensed, not for Inter), and
  * `.label` carries `text-overflow: ellipsis`. A label that does not fit is
  * therefore not an error, a wrap or an overflow — it is three dots, silently.
  * `scrollWidth > clientWidth` is the only cheap way to see that happen.
@@ -179,7 +180,7 @@ async function run() {
   const main = document.querySelector('[role="main"]');
   const railRect = rect(rail);
   const mainRect = rect(main);
-  check('R2 the rail is --sidebar-w wide', Math.round(railRect.width) === 176,
+  check('R2 the rail is --sidebar-w wide', Math.round(railRect.width) === 208,
     `${Math.round(railRect.width)}px`);
   check('R2 the content column starts at the rail, not under it',
     mainRect.left >= railRect.right - 1,

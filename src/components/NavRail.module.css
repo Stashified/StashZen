@@ -10,7 +10,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 20px 16px;
+  /* Trimmed from 16px as the rail grew for Inter's wider letterforms — see
+     --sidebar-w. The label gets the pixels, not the margins. */
+  padding: 20px 12px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
 }
@@ -35,9 +37,9 @@
 .item {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  padding: 12px 13px;
+  padding: 12px 11px;
   font-family: var(--font-condensed);
   font-size: 17px;
   font-weight: 600;
