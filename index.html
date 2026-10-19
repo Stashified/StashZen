@@ -110,27 +110,39 @@
       </div>
       <div class="shot-grid">
         <figure>
-          <img src="screenshots/home.png" alt="Home shelves with Continue Watching" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/home.png">
+            <img src="screenshots/home.png" alt="Home shelves with Continue Watching" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Home — shelves and Continue Watching</figcaption>
         </figure>
         <figure>
-          <img src="screenshots/scene-detail.png" alt="Scene detail with markers and play actions" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/scene-detail.png">
+            <img src="screenshots/scene-detail.png" alt="Scene detail with markers and play actions" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Scene detail — markers, resume, play actions</figcaption>
         </figure>
         <figure>
-          <img src="screenshots/performers.png" alt="Performers listing in grid view" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/performers.png">
+            <img src="screenshots/performers.png" alt="Performers listing in grid view" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Performers — grid, carousel, coverflow or list</figcaption>
         </figure>
         <figure>
-          <img src="screenshots/performer-detail.png" alt="Performer page with profile fields and scenes" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/performer-detail.png">
+            <img src="screenshots/performer-detail.png" alt="Performer page with profile fields and scenes" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Performer page — profile fields and scenes</figcaption>
         </figure>
         <figure>
-          <img src="screenshots/settings-stats.png" alt="Settings showing library statistics" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/settings-stats.png">
+            <img src="screenshots/settings-stats.png" alt="Settings showing library statistics" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Settings — library stats</figcaption>
         </figure>
         <figure>
-          <img src="screenshots/settings-server.png" alt="Settings showing Stash server status" width="1920" height="1080" loading="lazy">
+          <a class="shot" href="screenshots/settings-server.png">
+            <img src="screenshots/settings-server.png" alt="Settings showing Stash server status" width="1920" height="1080" loading="lazy">
+          </a>
           <figcaption>Settings — server status and scan progress</figcaption>
         </figure>
       </div>
@@ -222,5 +234,18 @@
       largely rewritten. Screenshots show sample data.
     </p>
   </footer>
+
+  <!-- Screenshot viewer. The grid links work without JS; this overlay only
+       takes over when the script loads. -->
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot viewer" hidden>
+    <button class="lightbox-close" type="button" aria-label="Close">×</button>
+    <button class="lightbox-nav lightbox-prev" type="button" aria-label="Previous screenshot">‹</button>
+    <figure class="lightbox-figure">
+      <img id="lightbox-img" alt="">
+      <figcaption id="lightbox-caption"></figcaption>
+    </figure>
+    <button class="lightbox-nav lightbox-next" type="button" aria-label="Next screenshot">›</button>
+  </div>
+  <script src="lightbox.js" defer></script>
 </body>
 </html>
