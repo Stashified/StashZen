@@ -341,7 +341,26 @@ async function runMenu() {
     playingScene() === 41, `playing scene ${playingScene()}`);
 
   await sleep(500);
-  await closePlayer();
+
+  // ── M3b: Back returns to the scene last viewed ───────────
+  // The walk left the player on scene 41 — three pages into the listing,
+  // while the grid behind it still shows page 1. One assertion therefore
+  // covers both halves of the report from the TV: the restored card is the
+  // scene the user was *on* (not scene 5, where Play from here started), and
+  // the restore paged the grid forward to a card it had never loaded.
+  press('Backspace', 10009);
+  await sleep(350);
+  press('Backspace', 10009);
+  const onLastCard = () => {
+    const el = cardEl('41');
+    return !!el && document.contains(el) && document.activeElement === el;
+  };
+  const restored = await waitFor(onLastCard, 8000, 50);
+  check('M3 Back returns to the scene last viewed, not the one playback started on',
+    restored, `focus ${focusLabel()}, card 41 present: ${!!cardEl('41')}`);
+  check('M3 ...paging the grid forward to reach it',
+    !!cardEl('41') && !!cardEl('40'),
+    `card 40 ${!!cardEl('40')}, card 41 ${!!cardEl('41')}`);
 
   // ── M4: Back returns focus where the press came from ─────
   //

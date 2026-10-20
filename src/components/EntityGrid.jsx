@@ -20,7 +20,9 @@ import styles from './EntityGrid.module.css';
 
 const PAGE_SIZE = 40;
 
-export default function EntityGrid({ controls, view, objectFilter, searchQuery, onSelect }) {
+export default function EntityGrid({
+  controls, view, objectFilter, searchQuery, onSelect, onLongPress,
+}) {
   const { sort, order, cols } = controls;
   const { Card, service, itemsKey, noun, gridLabel } = view;
 
@@ -37,6 +39,9 @@ export default function EntityGrid({ controls, view, objectFilter, searchQuery, 
     fetchPage,
     // ← critical: sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    // Back out of a filtered listing lands here again with only page 1; the
+    // restore in utils/focus.js pages forward to the card it wants.
+    focusPrefix: view.focusPrefix,
   });
 
   // Handed to each card, because the Images section's selection opens a viewer
@@ -93,7 +98,15 @@ export default function EntityGrid({ controls, view, objectFilter, searchQuery, 
           aria-label={gridLabel}
         >
           {items.map((item, i) => (
-            <Card key={item.id} item={item} index={i} list={listing} onSelect={onSelect} view={view} />
+            <Card
+              key={item.id}
+              item={item}
+              index={i}
+              list={listing}
+              onSelect={onSelect}
+              onLongPress={onLongPress}
+              view={view}
+            />
           ))}
         </div>
 

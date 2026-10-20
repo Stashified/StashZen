@@ -10,15 +10,16 @@ import ItemList from '../components/ItemList.jsx';
 import { MARKER_VIEW } from '../components/carouselViews.js';
 
 export default function MarkersPage({
-  mode, controls, objectFilter, searchQuery, onMarkerSelect,
+  mode, controls, objectFilter, searchQuery, onMarkerSelect, onMarkerLongPress,
 }) {
   const shared = { controls, objectFilter, searchQuery };
+  const press = { onSelect: onMarkerSelect, onLongPress: onMarkerLongPress };
 
   if (mode === 'carousel') {
-    return <Carousel {...shared} view={MARKER_VIEW} onSelect={onMarkerSelect} />;
+    return <Carousel {...shared} view={MARKER_VIEW} {...press} />;
   }
   if (mode === 'list') {
-    return <ItemList {...shared} view={MARKER_VIEW} onSelect={onMarkerSelect} />;
+    return <ItemList {...shared} view={MARKER_VIEW} {...press} />;
   }
-  return <MarkerGrid {...shared} onMarkerSelect={onMarkerSelect} />;
+  return <MarkerGrid {...shared} onMarkerSelect={onMarkerSelect} onMarkerLongPress={onMarkerLongPress} />;
 }

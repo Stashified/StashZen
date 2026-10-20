@@ -34,10 +34,12 @@ export default function TabContent({
   onGallerySelect,
   onSeeAll,
   onMarkerSelect,
+  onMarkerLongPress,
   onPerformerBack,
   previewMuted,
   onMuteToggle,
   onEntitySelect,
+  onEntityLongPress,
 }) {
   return (
     /* Keying main forces a clean remount of the active page in two
@@ -64,7 +66,7 @@ export default function TabContent({
             />
           : <PerformersPage mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onPerformerSelect={onPerformerSelect} />
       )}
-      {activeTab === 'markers'    && <MarkersPage    mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onMarkerSelect={onMarkerSelect} />}
+      {activeTab === 'markers'    && <MarkersPage    mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onMarkerSelect={onMarkerSelect} onMarkerLongPress={onMarkerLongPress} />}
       {/* The four browse-only sections share one page, so this is a lookup
           rather than four more lines: a tab with no descriptor in the map
           simply does not render here, which is the right answer for the
@@ -93,6 +95,7 @@ export default function TabContent({
           objectFilter={objectFilter}
           searchQuery={searchQuery}
           onSelect={onEntitySelect}
+          onLongPress={onEntityLongPress}
         />
       )}
     </main>

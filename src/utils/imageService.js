@@ -27,6 +27,7 @@ import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { coverArt, makeRng } from './mockArt.js';
+import { filenameStem } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 const MOCK_IMAGE_COUNT = 120;
@@ -73,15 +74,31 @@ const FIND_IMAGES_QUERY = `
           thumbnail
           image
         }
+        visual_files {
+          ... on ImageFile {
+            basename
+          }
+        }
       }
     }
   }
 `;
 
-function normalizeImage(im) {
+/**
+ * A tile's caption. Stash titles are empty far more often for images than for
+ * scenes — photographs commonly have no title at all — and an empty caption
+ * left the grid looking like a bare wall of pictures. The file's own name is
+ * the fallback, with only the extension dropped; see `filenameStem`.
+ *
+ * The first visual file is the one the tile draws, so its name is the honest
+ * one. A row with neither a title nor a file name stays null and the viewers
+ * fall back to "Image" themselves.
+ */
+export function normalizeImage(im) {
+  const basename = im?.visual_files?.[0]?.basename ?? null;
   return {
     id: im.id,
-    title: im.title,
+    title: im.title || filenameStem(basename),
     image_path: withApiKey(im?.paths?.thumbnail) || null,
     full: withApiKey(im?.paths?.image) || null,
     date: im.date || null,
@@ -144,6 +161,7 @@ const FIND_IMAGE_INFO_QUERY = `
       }
       visual_files {
         ... on ImageFile {
+          basename
           size
           width
           height
@@ -164,7 +182,8 @@ export function normalizeImageDetail(im) {
   const first = files[0] || {};
   return {
     id: im.id,
-    title: im.title || null,
+    // Same fallback as the tile, so the viewer's header and the grid agree.
+    title: im.title || filenameStem(first.basename),
     date: im.date || null,
     details: im.details || null,
     code: im.code || null,

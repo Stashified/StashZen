@@ -52,6 +52,11 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    // The scene id a Back or a player-close restores (`video-<id>`) lives in
+    // this view too. Without the registration the restore could only find a
+    // card on the first page; with it, the listing pages forward — see
+    // utils/focus.js.
+    focusPrefix: 'video',
   });
 
   // Same memoized identity as the grid: focus moves restyle the slot wrappers,

@@ -19,7 +19,7 @@ import PlayerErrorBoundary from '../components/PlayerErrorBoundary.jsx';
 import FilterBuilder from '../components/FilterBuilder.jsx';
 import SettingsPanel from '../components/SettingsPanel.jsx';
 import ExitPrompt from '../components/ExitPrompt.jsx';
-import { buildSceneMenuItems } from '../utils/sceneMenu.js';
+import { buildActionMenu } from '../utils/actionMenus.js';
 
 export default function AppOverlays({
   sceneDetail,
@@ -30,6 +30,19 @@ export default function AppOverlays({
   settings,
   exitPrompt,
 }) {
+  // Every long-press menu goes through one builder: scenes, markers, images
+  // and galleries differ in their rows but not in how they are drawn. See
+  // actionMenus.js for which rows each kind has.
+  const action = actionMenu.menu
+    ? buildActionMenu(actionMenu.menu, {
+      openPlayer: actionMenu.openPlayer,
+      onDetails: actionMenu.onDetails,
+      openImageViewer: actionMenu.openImageViewer,
+      openGallery: actionMenu.openGallery,
+      openGallerySlideshow: actionMenu.openGallerySlideshow,
+    })
+    : null;
+
   return (
     <>
       {/* Keyed on the scene id so opening a different scene remounts the
@@ -49,16 +62,11 @@ export default function AppOverlays({
 
       {/* The menu, then the player — and the player on top, since Play
           closes the menu and opens it in the same press. */}
-      {actionMenu.menu && (
+      {action && (
         <ActionMenu
-          title={actionMenu.menu.video.title}
-          subtitle={actionMenu.menu.list?.total
-            ? `${actionMenu.menu.index + 1} of ${actionMenu.menu.list.total} in this listing`
-            : null}
-          items={buildSceneMenuItems(actionMenu.menu, {
-            openPlayer: actionMenu.openPlayer,
-            onDetails: actionMenu.onDetails,
-          })}
+          title={action.title}
+          subtitle={action.subtitle}
+          items={action.items}
           onClose={actionMenu.onClose}
         />
       )}
@@ -71,6 +79,10 @@ export default function AppOverlays({
         <ImageViewer
           items={imageViewer.viewer.items}
           index={imageViewer.viewer.index}
+          gallery={imageViewer.viewer.gallery}
+          shuffle={imageViewer.viewer.shuffle}
+          autoPlay={imageViewer.viewer.autoPlay}
+          initialInfoOpen={imageViewer.viewer.infoOpen}
           onIndexChange={imageViewer.onIndexChange}
           onClose={imageViewer.onClose}
         />
@@ -84,6 +96,7 @@ export default function AppOverlays({
             queue={player.session}
             onClose={player.onClose}
             onActivityChange={player.onActivityChange}
+            onSceneChange={player.onSceneChange}
           />
         </PlayerErrorBoundary>
       )}

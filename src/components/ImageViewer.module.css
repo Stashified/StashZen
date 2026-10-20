@@ -90,9 +90,17 @@
   font-weight: 600;
 }
 
-.infoBtn {
+/* The two header buttons travel together on the right. `margin-left: auto`
+   lives on the group, not on each button, so Play and Info stay adjacent
+   rather than splitting the free space between them. */
+.actions {
   margin-left: auto;
   align-self: center;
+  display: flex;
+  gap: 12px;
+}
+
+.infoBtn {
   padding: 8px 18px;
   border: 1.5px solid var(--border-strong);
   border-radius: 8px;
@@ -111,6 +119,12 @@
   box-shadow: var(--focus-ring);
   background: var(--accent-fill);
   color: #fff;
+}
+
+/* Play/Pause share the Info button's look. The width is pinned so the button
+   does not jump when the label changes during a slideshow. */
+.playBtn {
+  min-width: 92px;
 }
 
 /* Read-only panel over the picture. It is inside `.stage`, whose

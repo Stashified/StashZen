@@ -102,6 +102,7 @@ export default function App() {
     handleShowroomPerformerSelect,
     handlePerformerBack,
     handleImageSelect,
+    openImageViewer,
     closeImageViewer,
   } = useDetailSelection({ activeTab, dataKey, changeTab });
 
@@ -111,13 +112,18 @@ export default function App() {
     actionMenu,
     openPlayer,
     handlePlayerClose,
+    handlePlayerSceneChange,
     handleVideoLongPress,
+    handleMarkerLongPress,
+    handleEntityLongPress,
     closeActionMenu,
+    dismissActionMenu,
     handleMenuDetails,
     playSceneAt,
     handleScenePlay,
     handleMarkerSelect,
   } = usePlayback({
+    activeTab,
     selectedScene,
     setSelectedScene,
     mainFocus,
@@ -170,6 +176,38 @@ export default function App() {
       case 'images':    return handleImageSelect(item, index, items);
       default:          return undefined;
     }
+  };
+
+  // ── The long-press menu's viewer entries ─────────────────
+  // actionMenus.js decides the rows; these wrappers supply what it cannot
+  // know — where the viewer state lives, and which card focus returns to.
+  //
+  // The menu is cleared *without* its restore, unlike every other close: the
+  // viewer takes focus on mount and owns the return trip itself, so restoring
+  // to the card first would put focus on the grid for a frame and then yank
+  // it back. The card is handed to the viewer as its restore target instead.
+  const menuReturnEl = () => menuCardFocus.targetRef.current;
+
+  const openImageViewerFromMenu = (descriptor) => {
+    dismissActionMenu();
+    openImageViewer({ ...descriptor, restoreEl: menuReturnEl() });
+  };
+
+  const openGalleryFromMenu = (gallery) => {
+    dismissActionMenu();
+    // The same destination as Enter on the card: the Images tab, filtered to
+    // this gallery. The tab change is what closes the menu's page context.
+    handleGallerySelect(gallery);
+  };
+
+  const openGallerySlideshow = (gallery, { shuffle = false } = {}) => {
+    dismissActionMenu();
+    openImageViewer({
+      gallery,
+      shuffle,
+      autoPlay: true,
+      restoreEl: menuReturnEl(),
+    });
   };
 
   return (
@@ -232,10 +270,12 @@ export default function App() {
           onGallerySelect={handleGallerySelect}
           onSeeAll={openShowroomListing}
           onMarkerSelect={handleMarkerSelect}
+          onMarkerLongPress={handleMarkerLongPress}
           onPerformerBack={handlePerformerBack}
           previewMuted={previewMuted}
           onMuteToggle={togglePreviewMuted}
           onEntitySelect={handleEntitySelect}
+          onEntityLongPress={handleEntityLongPress}
         />
       </div>
 
@@ -255,6 +295,9 @@ export default function App() {
           menu: actionMenu,
           openPlayer,
           onDetails: handleMenuDetails,
+          openImageViewer: openImageViewerFromMenu,
+          openGallery: openGalleryFromMenu,
+          openGallerySlideshow,
           onClose: closeActionMenu,
         }}
         imageViewer={{
@@ -266,6 +309,7 @@ export default function App() {
           session: playSession,
           onClose: handlePlayerClose,
           onActivityChange: handleSceneActivityChange,
+          onSceneChange: handlePlayerSceneChange,
         }}
         builder={{
           open: builderOpen,

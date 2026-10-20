@@ -181,6 +181,11 @@ run datalayer      datalayer-entry.jsx
 run errorboundary  errorboundary-entry.jsx
 run pinlock        pinlock-entry.jsx
 run views          views-entry.jsx
+# The long-press menus added in 0.32.0 for Markers, Images and Galleries, and
+# the slideshow entries they open. A gallery's pictures are served only when
+# this driver asks for them (`/mode galleryImages=populate`) — the default
+# empty answer is what Sections S6 depends on.
+run longpress      longpress-entry.jsx
 echo "── $LABEL done ──"
 if [ "$MISSING" -gt 0 ]; then
   echo "!! $MISSING driver(s) produced no results — the sweep did not cover them."

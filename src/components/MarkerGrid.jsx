@@ -17,7 +17,9 @@ import styles from './VideoGrid.module.css'; // reuse VideoGrid styles for grid 
 
 const PAGE_SIZE = 40;
 
-export default function MarkerGrid({ controls, onMarkerSelect, objectFilter, searchQuery }) {
+export default function MarkerGrid({
+  controls, onMarkerSelect, onMarkerLongPress, objectFilter, searchQuery,
+}) {
   const { sort, order, cols } = controls;
 
   const fetchPage = useCallback(
@@ -28,12 +30,21 @@ export default function MarkerGrid({ controls, onMarkerSelect, objectFilter, sea
   );
 
   const {
-    items: markers, total, loading, loadingMore, error, exhausted, loadMore,
+    items: markers, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // ← critical: sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    // Closing the player returns to the marker card of the scene last viewed,
+    // and a queue keeps playing through markers this grid has not loaded. The
+    // restore asks the listing for the missing pages — see utils/focus.js.
+    focusPrefix: 'marker',
   });
+
+  // The listing travels to every card so the long-press menu can offer "Play
+  // all" and "Play from here"; the queue reads `fetchPage` from here to
+  // continue past the loaded markers. Same shape Carousel hands down.
+  const listing = { items: markers, total, page, fetchPage };
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -82,7 +93,14 @@ export default function MarkerGrid({ controls, onMarkerSelect, objectFilter, sea
         aria-label="Marker grid"
       >
         {markers.map((m, i) => (
-          <MarkerCard key={m.id} item={m} index={i} onSelect={onMarkerSelect} />
+          <MarkerCard
+            key={m.id}
+            item={m}
+            index={i}
+            list={listing}
+            onSelect={onMarkerSelect}
+            onLongPress={onMarkerLongPress}
+          />
         ))}
       </div>
 

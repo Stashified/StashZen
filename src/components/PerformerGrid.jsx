@@ -34,6 +34,9 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
     fetchPage,
     // ← critical: sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    // The grid is swapped out for the detail page, so Back mounts it again
+    // with page 1; the restore pages forward to the performer that was opened.
+    focusPrefix: 'performer',
   });
 
   const scrollRef = useRef(null);

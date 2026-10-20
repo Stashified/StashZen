@@ -40,8 +40,10 @@
  * monogram fallback is therefore reached by `onError`, never by an absent
  * field, which is why the fallback is in EntityCard rather than in a getter.
  *
- * None of the four has a long-press action. The menu is Play / Play all /
- * Details and none of those mean anything for a tag.
+ * `longPress` opts a section into the card's long-press menu. Images and
+ * Galleries set it — their menu opens the viewer, with slideshow entries —
+ * while Tags and Studios leave it off: their press stays a plain tap, which
+ * is also what keeps Enter firing on keydown for them.
  */
 
 import EntityCard from './EntityCard.jsx';
@@ -88,6 +90,11 @@ function bind(view) {
     // the press happened. A list row has to hand up the same three, or the
     // viewer would open on the wrong image.
     rowSelect: (item, index, list, onSelect) => onSelect?.(item, index, list?.items),
+    // And the menu takes the listing itself when the section opted in — it
+    // reports the position from the listing's total.
+    rowLongPress: view.longPress
+      ? (item, index, list, onLongPress) => onLongPress?.(item, index, list)
+      : undefined,
   };
 }
 
@@ -166,6 +173,7 @@ export const GALLERY_VIEW = bind({
   gridLabel: 'Gallery grid',
   ariaLabel: 'Gallery carousel',
   aspect: 'landscape',
+  longPress: true,
   getImage: (g) => g.image_path,
   getTitle: (g) => g.title,
   // Studio is the ideal second line, but it is rare on a real library; the
@@ -204,6 +212,7 @@ export const IMAGE_VIEW = bind({
   gridLabel: 'Image grid',
   ariaLabel: 'Image carousel',
   aspect: 'landscape',
+  longPress: true,
   getImage: (im) => im.image_path,
   getTitle: (im) => im.title,
   getSubtitle: (im) => year(im.date),

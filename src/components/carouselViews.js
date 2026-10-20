@@ -100,6 +100,9 @@ export const MARKER_VIEW = {
   rowImage: (marker) => marker.screenshot,
   // MarkerCard takes only the item.
   rowSelect: (item, index, list, onSelect) => onSelect?.(item),
+  // And the same arguments for its menu, which is built from the markers in
+  // the listing. See actionMenus.js.
+  rowLongPress: (item, index, list, onLongPress) => onLongPress?.(item, list, index),
   // Marker thumbnails are scene screenshots, so this one is landscape and
   // takes the default slot width.
   hero: (marker) => ({

@@ -12,6 +12,26 @@
  * rather than two implementations that happened to disagree.
  */
 
+/**
+ * A file name without its extension: "DSC_0001.JPG" → "DSC_0001".
+ *
+ * For an image with no Stash title — common enough that the Images grid looked
+ * bare — this is the file's own name, which is what the tile would otherwise
+ * say if the title had been populated. Only the last extension is dropped, so
+ * "holiday.2024.raw" → "holiday.2024"; a leading dot is not an extension
+ * (".hidden" is a stem, not a file with no name).
+ *
+ * Returns null for anything that is not a non-empty string, so a caller can
+ * keep its own fallback rather than print "null" or "undefined".
+ */
+export function filenameStem(basename) {
+  if (typeof basename !== 'string') return null;
+  const name = basename.trim();
+  if (!name) return null;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
 export function formatTime(seconds, { padMinutes = false } = {}) {
   if (!isFinite(seconds) || seconds < 0) return padMinutes ? '00:00' : '0:00';
 

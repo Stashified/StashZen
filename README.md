@@ -93,46 +93,28 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 
 ## Features
 
-- **Home shelves** — Stash's order, five cards each, with **Continue Watching** directly below
-  Recently Added Scenes. The **See all** tile opens that listing with the shelf's sort and
-  filter already applied.
-- **Browse everything** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images,
-  each with sort, search, filters, and grid, carousel, coverflow or list view. Every tab
-  remembers its own view mode and column count; arriving at a tab resets its sort, filter
-  and search, so a term or filter from one section does not quietly narrow the next.
-  Opening a marker plays its scene at that timestamp. Gallery cards show the image count alongside the studio, or the folder when the
-  studio is not set; tag and studio carousels carry Stash's description, aliases and a studio's
-  parent. Switching tabs re-reads the listing, so scenes added or removed on the server appear
-  without relaunching the app.
-- **Filter builder** — build a filter on screen, or load a saved one; saved filters round-trip
-  to Stash.
-- **Scene detail** — metadata, rating, organised flag and o-count; **resume** or start from a
-  **marker**; **clear progress** (leaves Continue Watching without erasing watch time) and
-  **mark played** (appends one play now). When the scene belongs to a gallery, a **Galleries**
-  row hands off to that gallery's listing.
-- **Performer pages** — the profile in one query: aliases, career, ethnicity, hair, eyes, weight,
-  measurements, piercings, tattoos, death date, links and tags, plus scene, image and gallery
-  counts. **Rating** and **Favourite** are editable from the page and written back to Stash.
-- **Image viewer** — open any image full-size and step through the listing with ←/→. **Info**
-  shows what Stash holds for it: studio, photographer, code, resolution, file size, rating,
-  o-count, tags, performers and galleries. The panel is read-only and hides empty fields.
-- **Player** — resume where you left off, queue the whole listing, seek with ←/→, and write play
-  count, resume point and o-count back to Stash. HLS is preferred, so the timeline stays
-  seekable. The controls say whether the scene is playing **direct** or **transcoded**, and
-  **Playback info** on the rail shows the live stream details — format, resolution, buffer,
-  seekable range, frame counts and the stream path (never the API key).
-- **Preview on focus** — hovered videos play silently; turn it off in Settings.
-- **Library stats** — counts, storage and watch time for the whole library, from Stash's own
-  aggregates (Settings → *Show library stats*).
-- **Server status** — installed Stash version, schema health (`OK`, needs migration, setup) and
-  every queued or running job with its progress, subtasks, start time and any error. **Stop** asks
-  for a second press before cancelling a job. **Scan library** starts a scan from the TV using the
-  options saved on Stash's own **Settings → Tasks → Scan** page (covers, previews, sprites and so
-  on); **Refresh** takes a new snapshot (Settings → *Check server status*).
-- **Theme** — **Standard** or **OLED**; OLED turns the page true black for OLED panels while
-  text, focus ring and artwork stay the same.
-- **PIN lock** — optional four-digit code, asked for on launch.
-- **Test mode** — try every screen on built-in sample data, no server required.
+- **Home** — Stash's shelves, five cards each, with **Continue Watching** under Recently Added
+  Scenes. **See all** opens a listing with that shelf's sort and filter.
+- **Seven sections** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
+  search, sort, filters and four view modes. View mode and columns are remembered per tab; sort,
+  filter and search reset on arrival. Gallery cards show the studio, or the folder; tag and studio
+  carousels carry Stash's description and aliases. A marker plays its scene at that timestamp.
+- **Filter builder** — build a filter on the TV or load a saved one; saved filters round-trip to
+  Stash.
+- **Scene detail** — metadata and rating; resume, play from a marker, clear progress or mark
+  played; a **Galleries** row when the scene belongs to one.
+- **Performer pages** — the full profile plus scene, image and gallery counts, with **Rating** and
+  **Favourite** editable and written back to Stash.
+- **Image viewer** — full size, stepped with ←/→; **Info** shows what Stash holds for the image.
+- **Player** — resumes where you stopped, queues the whole listing, seeks 15 s at a time, and
+  writes progress back to Stash. HLS keeps the timeline seekable; the controls say **direct** or
+  **transcoded**, and **Playback info** shows the live stream details.
+- **Preview on focus** — hovered videos play silently; toggle in Settings.
+- **Library stats and server jobs** — counts, storage and watch time; running jobs with progress
+  and a two-press **Stop**; start a library scan from the TV.
+- **Theme** — Standard or OLED (true black on OLED panels).
+- **PIN lock** — optional four-digit code at launch.
+- **Test mode** — every screen on sample data, no server required.
 
 ## Troubleshooting
 

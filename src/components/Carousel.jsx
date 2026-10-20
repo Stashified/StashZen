@@ -79,6 +79,7 @@ export default function Carousel({
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    focusPrefix,
   });
 
   // Stable identity with current values — see useStableListing. The carousel

@@ -23,10 +23,10 @@ import { normalizeGallery } from '../src/utils/galleryService.js';
 import { normalizeTag } from '../src/utils/tagService.js';
 import { normalizeStudio } from '../src/utils/studioService.js';
 import { normalizeSceneDetail } from '../src/utils/sceneService.js';
-import { normalizeImageDetail } from '../src/utils/imageService.js';
+import { normalizeImage, normalizeImageDetail } from '../src/utils/imageService.js';
 import { normalizeServerStatus } from '../src/utils/serverService.js';
 import { buildImageInfoRows } from '../src/utils/imageInfo.js';
-import { formatJobStart } from '../src/utils/format.js';
+import { filenameStem, formatJobStart } from '../src/utils/format.js';
 import {
   ageFromBirthdate, webLinks, formatCareer, formatHeight, formatGender, ratingFromCard,
 } from '../src/pages/performerDetail/format.js';
@@ -295,7 +295,7 @@ const IM = normalizeImageDetail({
   galleries: [{ id: 'g1', title: 'Gallery one' }],
   // The union field, with the inline fragment's answer. `files` does not
   // exist on Image at all — a normaliser reading it would report 0 B here.
-  visual_files: [{ size: 2048, width: 1920, height: 1080 }],
+  visual_files: [{ basename: 'IMG_0055.JPG', size: 2048, width: 1920, height: 1080 }],
   paths: { thumbnail: '/image/55/thumb.png', image: '/image/55/full.png', preview: null },
 });
 check('image: file facts come from visual_files',
@@ -308,6 +308,41 @@ check('image: relational fields map',
 check('image: paths map and a missing preview is null',
   typeof IM.thumbnail === 'string' && typeof IM.image === 'string' && IM.preview === null,
   `${IM.thumbnail} ${IM.image} ${IM.preview}`);
+
+// ── Title fallback: the file's stem ─────────────────────────
+// Stash titles are empty on many images (photographs often have none), and an
+// empty caption leaves the grid bare. The file's own name is the fallback.
+check('image: a title is kept over the file name',
+  IM.title === 'Image 55', IM.title);
+check('image: an empty title falls back to the file stem',
+  normalizeImage({
+    id: '56', title: '',
+    visual_files: [{ basename: 'holiday.2024.raw' }],
+    paths: { thumbnail: '/a.png', image: '/b.png' },
+  }).title === 'holiday.2024');
+check('image: the first visual file supplies the name',
+  normalizeImage({
+    id: '57', title: null,
+    visual_files: [{ basename: 'first.JPG' }, { basename: 'second.JPG' }],
+  }).title === 'first');
+check('image: no title and no file name stays null (the viewer says "Image")',
+  normalizeImage({ id: '58', title: null, visual_files: [] }).title === null
+    && normalizeImage({ id: '59', title: '' }).title === null);
+check('image detail: the same fallback keeps header and tile in agreement',
+  normalizeImageDetail({
+    id: '60', title: '', visual_files: [{ basename: 'DSC_0060.JPG' }],
+  }).title === 'DSC_0060');
+
+check('stem: only the last extension is dropped',
+  filenameStem('a.b.c.jpg') === 'a.b.c' && filenameStem('plain') === 'plain');
+check('stem: a leading dot is part of the name, not an extension',
+  filenameStem('.hidden') === '.hidden' && filenameStem('.hidden.jpg') === '.hidden');
+check('stem: empty, blank and non-strings give null',
+  filenameStem('') === null && filenameStem('   ') === null
+    && filenameStem(null) === null && filenameStem(undefined) === null
+    && filenameStem(42) === null);
+check('stem: surrounding whitespace is not part of the caption',
+  filenameStem('  DSC_0001.JPG  ') === 'DSC_0001');
 
 // ── Info rows ───────────────────────────────────────────────
 const rows = buildImageInfoRows(IM);
