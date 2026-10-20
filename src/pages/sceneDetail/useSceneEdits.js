@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   updateSceneRating,
   setSceneOrganized,
@@ -19,7 +19,7 @@ import {
  * They are kept separate rather than folded into one helper: they look alike
  * but differ in what they adopt, which token guards them and what they say.
  */
-export function useSceneEdits({ detail, setDetail, flash, onActivityChange }) {
+export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canEdit }) {
   // Writes that can be in flight together. Each press is its own request, and
   // the responses are adopted in arrival order unless something says which
   // press owns the screen. Two quick presses at a slow server can settle out of
@@ -31,18 +31,45 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange }) {
   const oAttemptRef = useRef(0);
   const playedAttemptRef = useRef(0);
 
-  const setRating = async (stars) => {
-    const prev = detail.rating100;
+  // Rating has its own token and confirmed value. The revert baseline must be
+  // what the server last acknowledged, not `detail.rating100`: that holds the
+  // previous press's optimistic value, so two failed presses used to settle on
+  // a number Stash never stored.
+  const ratingAttemptRef = useRef(0);
+  const ratingConfirmedRef = useRef(0);
+  // Serialised so requests cannot reach the server out of order and leave the
+  // stored value one press behind the screen.
+  const ratingQueueRef = useRef(Promise.resolve());
+
+  // The card's rating is a rounded display value; `canEdit` turns true exactly
+  // when the detail query has replaced it with the authoritative one.
+  useEffect(() => {
+    if (canEdit) ratingConfirmedRef.current = detail?.rating100 ?? 0;
+    // `detail` is read only at that transition; adding it to the deps would
+    // reseed the confirmed value on every optimistic paint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit]);
+
+  const setRating = (stars) => {
     const next = stars * 10;
-    if (prev === next) return;
+    if (detail.rating100 === next) return;
+    const sceneId = detail.id;
+    const attempt = ++ratingAttemptRef.current;
     setDetail(d => ({ ...d, rating100: next }));
-    try {
-      const server = await updateSceneRating(detail.id, next);
-      setDetail(d => ({ ...d, rating100: server }));
-    } catch (e) {
-      setDetail(d => ({ ...d, rating100: prev }));
-      flash(`Rating not saved — ${e.message}`);
-    }
+    ratingQueueRef.current = ratingQueueRef.current.then(async () => {
+      try {
+        const server = await updateSceneRating(sceneId, next);
+        ratingConfirmedRef.current = server;
+        if (attempt === ratingAttemptRef.current) {
+          setDetail(d => ({ ...d, rating100: server }));
+        }
+      } catch (e) {
+        // A stale failure belongs to a press the user has already replaced.
+        if (attempt !== ratingAttemptRef.current) return;
+        setDetail(d => ({ ...d, rating100: ratingConfirmedRef.current }));
+        flash(`Rating not saved — ${e.message}`);
+      }
+    });
   };
 
   const toggleOrganized = async () => {

@@ -123,10 +123,17 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
     changeTab(row.toTab);
   };
 
-  const handleGallerySelect = (gallery) => activateFiltered(
+  // The focus id recorded as the origin has to name something that will exist
+  // in the origin tab when Back returns there. A gallery opened from the
+  // Galleries tab does (`gallery-<id>`), but the scene-detail hand-off leaves
+  // that tab entirely: on Back, Scenes (or the performer's grid) has no
+  // `gallery-` card, so the old id made focus fall to the default and the
+  // user lost the scene they were reading. `sceneId` therefore names the
+  // scene's own card (`video-<id>`, the prefix both listings use) instead.
+  const handleGallerySelect = (gallery, sceneId = null) => activateFiltered(
     { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
     gallery.title,
-    `gallery-${gallery.id}`,
+    sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`,
     'images',
   );
 

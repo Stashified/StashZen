@@ -66,6 +66,11 @@ export function usePagedList({ fetchPage, requestKey }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+  // The no-progress stop is a *successful* end, not a failure: the server
+  // answered, it just had nothing new. A separate flag keeps it off the error
+  // path and lets the grids draw their end marker instead of leaving the
+  // sentinel mounted forever with a stale "n of total" above it.
+  const [ended, setEnded] = useState(false);
 
   const requestIdRef = useRef(0);
 
@@ -120,6 +125,7 @@ export function usePagedList({ fetchPage, requestKey }) {
     setItems([]);
     setPage(1);
     setTotal(0);
+    setEnded(false);
     // Both of these belong to the request identity being replaced. Without
     // the first, a page that was in flight when the reset happened reached
     // `finally` with a stale id, skipped its `setLoadingMore(false)`, and
@@ -127,19 +133,41 @@ export function usePagedList({ fetchPage, requestKey }) {
     // remounted. The second gives the new identity a fresh error budget.
     setLoadingMore(false);
 
-    fetchPageRef.current(1)
-      .then(data => {
-        if (cancelled || reqId !== requestIdRef.current) return;
-        seenIdsRef.current = new Set(data.items.map(it => it.id));
-        setItems(data.items);
-        setTotal(data.total);
-        setLoading(false);
-      })
-      .catch(e => {
-        if (cancelled || reqId !== requestIdRef.current) return;
-        setError(e.message);
-        setLoading(false);
-      });
+    // Page 1 gets the same bounded retry as page N. Its failure used to be a
+    // dead end: the error said there was nothing to press, and only leaving
+    // and re-entering the tab (a remount) tried again. The error is not shown
+    // until the budget is spent, because a retry that is already on its way
+    // is not a failure the user should have to read about — the loading
+    // state stays up instead.
+    const attemptFirstPage = () => {
+      fetchPageRef.current(1)
+        .then(data => {
+          if (cancelled || reqId !== requestIdRef.current) return;
+          attemptsRef.current = 0;
+          seenIdsRef.current = new Set(data.items.map(it => it.id));
+          setItems(data.items);
+          setTotal(data.total);
+          setLoading(false);
+        })
+        .catch(e => {
+          if (cancelled || reqId !== requestIdRef.current) return;
+          attemptsRef.current += 1;
+          if (attemptsRef.current >= MAX_PAGE_ATTEMPTS) {
+            // Block further pages too: page 2 of a list whose page 1 never
+            // arrived would be a partial list with a hole at the top.
+            blockedRef.current = true;
+            setError(e.message);
+            setLoading(false);
+            return;
+          }
+          retryTimerRef.current = setTimeout(() => {
+            retryTimerRef.current = null;
+            if (cancelled || reqId !== requestIdRef.current) return;
+            attemptFirstPage();
+          }, RETRY_DELAY_MS);
+        });
+    };
+    attemptFirstPage();
 
     return () => {
       cancelled = true;
@@ -176,10 +204,13 @@ export function usePagedList({ fetchPage, requestKey }) {
 
       if (fresh.length === 0) {
         // No progress: this page added nothing. Treat it as the end for this
-        // request identity — see the header. A truthy count is still worth
-        // taking, so the UI's "n of total" does not stay stale forever.
-        if (data.total) setTotal(data.total);
+        // request identity — see the header. `total` becomes what we actually
+        // hold: keeping the server's higher count would leave "n of total"
+        // promising rows the list has stopped fetching, and `ended` is what
+        // lets the grid unmount the sentinel and draw its end marker.
         blockedRef.current = true;
+        setTotal(items.length);
+        setEnded(true);
         return;
       }
 
@@ -215,7 +246,9 @@ export function usePagedList({ fetchPage, requestKey }) {
   useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
 
   // The grid renders an end-of-list marker off this and unmounts its sentinel.
-  const exhausted = total > 0 && items.length >= total;
+  // `ended` covers the no-progress stop, where the held rows are the whole
+  // list even though the server's count said otherwise.
+  const exhausted = ended || (total > 0 && items.length >= total);
 
   return { items, total, page, loading, loadingMore, error, exhausted, loadMore };
 }

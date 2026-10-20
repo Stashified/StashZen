@@ -5,16 +5,46 @@
  * composition of state and markup.
  */
 
-// Compute an age string from an ISO birthdate
-export function ageFromBirthdate(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age;
+/**
+ * Calendar parts of a Stash date string, or null.
+ *
+ * Deliberately not `new Date(iso)`: a plain `YYYY-MM-DD` is parsed as UTC
+ * midnight, and reading it back with the local getters shifts the day west of
+ * Greenwich. That is the same defect videoService.yearOf avoids by matching
+ * the string instead of constructing a Date.
+ */
+function dateParts(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { year, month, day };
+}
+
+/**
+ * Age in whole years, measured to the death date when there is one.
+ *
+ * The hero already prints a "Died …" fact, so measuring a deceased performer
+ * to today would leave "Age 81" next to "Died 2009" and keep growing it. The
+ * reference date is injected so the day-boundary rule can be tested without
+ * moving the machine's clock or timezone.
+ */
+export function ageFromBirthdate(iso, deathDate = null, now = new Date()) {
+  const birth = dateParts(iso);
+  if (!birth) return null;
+  const end = dateParts(deathDate);
+  const ref = end || {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+  let age = ref.year - birth.year;
+  if (ref.month < birth.month || (ref.month === birth.month && ref.day < birth.day)) {
+    age--;
+  }
+  return age >= 0 ? age : null;
 }
 
 export function formatHeight(cm) {

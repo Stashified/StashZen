@@ -142,7 +142,19 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       // would be carried onto Scenes — exactly the bug the per-section store
       // exists to prevent. Written unconditionally: arriving at a tab always
       // adopts that tab's count, stored or default.
-      const patch = { cols: gridColsFor(activeTab), sortForTab: null };
+      //
+      // The search text goes too, for the same reason it is one object: a
+      // term is a query against the listing you are leaving, and carried onto
+      // another section it silently narrows a listing the user never searched.
+      // Sort and filter already reset here; search was the one survivor until
+      // it was reported from the TV (2026-10-20: "search term 'kitty' ...
+      // was saved/kept as active search when moving between tabs"). The
+      // See-all hand-off clears it explicitly for exactly this reason — this
+      // is the general rule that makes that clear redundant but keeps the
+      // hand-off correct even if it is ever staged differently. Pressing the
+      // current rail row does not come through here (`tabEpoch` reload), so
+      // an in-place reload keeps the query.
+      const patch = { cols: gridColsFor(activeTab), sortForTab: null, search: '' };
       if (flat.length) {
         const validValues = flat.map(o => o.value);
         const handoff = prev.sortForTab === activeTab && validValues.includes(prev.sort);

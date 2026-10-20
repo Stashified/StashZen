@@ -20,8 +20,11 @@
  *               onSelect, onLongPress }` — the contract every card in the tree
  *               now shares, which is what makes this possible at all.
  *   service     the paged fetch, called as
- *               `service({ sort, order, filter, q, page, limit })`, returning
- *               `{ <itemsKey>, total }`.
+ *               `service({ sort, order, filter, q, page, limit, hero })`,
+ *               returning `{ <itemsKey>, total }`. `hero: true` asks for the
+ *               heavier query that carries the free-text blurb; grids and
+ *               lists fetch the lean one. Services without a hero variant
+ *               ignore the flag.
  *   itemsKey    where the rows live in that response ('videos', 'performers'…).
  *   focusPrefix the cards' registry-id prefix ('video', 'performer'…). This is
  *               how the strip learns which slot the D-pad is on, so it has to
@@ -39,7 +42,8 @@
  *               16:9. See the note on `--slot-w` in Carousel.module.css.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useStableListing } from '../hooks/useStableListing.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { pageRequestKey } from '../utils/requestKey.js';
@@ -60,7 +64,11 @@ export default function Carousel({
   // queue started here pages the listing the carousel is showing.
   const fetchPage = useCallback(
     (page) =>
-      service({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+      service({
+        sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE,
+        // The hero is the only consumer of the blurb — see the doc above.
+        hero: true,
+      })
         .then(d => ({ items: d[itemsKey], total: d.total })),
     [service, itemsKey, sort, order, objectFilter, searchQuery],
   );
@@ -73,10 +81,10 @@ export default function Carousel({
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
-  const listing = useMemo(
-    () => ({ items, total, page, fetchPage }),
-    [items, total, page, fetchPage],
-  );
+  // Stable identity with current values — see useStableListing. The carousel
+  // hands the same object to every card, so a page append must not replace
+  // it; only the slot that gained a card should render.
+  const listing = useStableListing({ items, total, page, fetchPage });
 
   // Reset the focused slot when the list underneath is replaced — otherwise
   // the strip would try to centre an index that no longer exists.

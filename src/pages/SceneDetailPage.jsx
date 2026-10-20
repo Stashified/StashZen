@@ -56,7 +56,7 @@ export default function SceneDetailPage({
   // The six writes — see useSceneEdits for the optimistic rules and the
   // in-flight tokens.
   const { setRating, toggleOrganized, incrementLike, clearLike, clearProgress, markPlayed } =
-    useSceneEdits({ detail, setDetail, flash, onActivityChange });
+    useSceneEdits({ detail, setDetail, flash, onActivityChange, canEdit });
 
   if (!detail) return null;
 
@@ -153,7 +153,9 @@ export default function SceneDetailPage({
                 <GalleryChip
                   key={gallery.id}
                   gallery={gallery}
-                  onGallerySelect={onGallerySelect}
+                  // The scene id is what Back can focus on the origin tab —
+                  // there is no gallery card there. See handleGallerySelect.
+                  onGallerySelect={g => onGallerySelect?.(g, detail.id)}
                 />
               ))}
               {detail.galleries.length > MAX_GALLERIES && (
