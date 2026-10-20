@@ -127,16 +127,25 @@ async function run() {
         <PlayerBomb />
       </PlayerErrorBoundary>,
     );
-    // Well past the microtask that closes the player.
-    await sleep(300);
+    // The boundary defers the close by CLOSE_DELAY_MS (1600 ms) so the
+    // message is readable before the player goes. This wait has to outlast
+    // that timer, not just the commit that raises it: waiting 300 ms asserted
+    // "closed exactly once" while the close was still pending, which is how
+    // these two checks sat red without the fix being wrong.
+    await sleep(1900);
   } finally {
     console.error = realError;
   }
 
+  // The app's boundary is told apart by its own sentence, not by "Something
+  // went wrong": the player's fallback says that too ("Something went wrong.
+  // See the log for details."), so the broader phrase made a correct player
+  // boundary fail this check.
   check('P1 a player render error is closed, not turned into the app recovery screen',
     !document.querySelector('[role="alertdialog"]')
-      && !document.body.textContent.includes('Something went wrong'),
-    `recovery screen: ${!!document.querySelector('[role="alertdialog"]')}`);
+      && !document.body.textContent.includes('StashZen hit an unexpected error'),
+    `recovery screen: ${!!document.querySelector('[role="alertdialog"]')}, `
+      + `player fallback: ${document.body.textContent.includes('Playback stopped')}`);
   check('P1 the player is closed exactly once',
     closeCalls === 1, `${closeCalls} call(s)`);
   check('P1 the failure is logged — the console a TV does not show',

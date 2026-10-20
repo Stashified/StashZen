@@ -59,6 +59,29 @@ export function focusScopeOf(el) {
 }
 
 /**
+ * True when any modal layer is open, wherever focus is.
+ *
+ * `focusScopeOf` answers "what confines focus"; this asks a different
+ * question — "is a modal layer up at all". The two differ exactly where a
+ * layer deliberately leaves focus outside itself. The player is that case:
+ * when its rail closes it blurs to <body> on purpose, because focusing its
+ * own container would confine the arrows to the overlay and kill skimming
+ * (see useControlsVisibility's leaveRail). A page-level Back guard that only
+ * asked where focus is therefore saw nothing while the player was up, closed
+ * the page underneath on the press the player handled, and left the user on
+ * the listing when the player's own Back then closed it.
+ *
+ * Presence is the right test for a page: anything carrying `role="dialog"`
+ * is above the page by construction. `data-focus-trap` dropdowns are
+ * deliberately excluded — they are not modals over the page but a layer
+ * inside it, and they take focus, which the caller still checks with
+ * `focusScopeOf`.
+ */
+export function dialogOpen() {
+  return document.querySelector('[role="dialog"]') !== null;
+}
+
+/**
  * True when focus is in something that consumes text input.
  *
  * Use this only to decide whether a *character* key (Backspace, arrows for

@@ -55,6 +55,10 @@ export default function TabContent({
               performer={selectedPerformer}
               onBack={onPerformerBack}
               onVideoSelect={onVideoSelect}
+              // The performer's grid is a scene listing like any other: the
+              // action menu (play from here, details) and the queue it builds
+              // are scoped to this listing, which is what the card hands up.
+              onVideoLongPress={onVideoLongPress}
               previewMuted={previewMuted}
               onMuteToggle={onMuteToggle}
             />

@@ -56,8 +56,35 @@ function generateMockTags() {
   });
 }
 
+// `description` is deliberately absent: it is a paragraph per tag and the only
+// consumer is the Carousel hero's blurb. The grid and list use this document;
+// the Carousel asks for the hero variant below. `aliases` stays here because
+// list rows render the hero meta model, which includes them.
 const FIND_TAGS_QUERY = `
   query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
+    findTags(filter: $filter, tag_filter: $tag_filter) {
+      count
+      tags {
+        id
+        name
+        image_path
+        favorite
+        scene_count
+        scene_marker_count
+        image_count
+        gallery_count
+        performer_count
+        studio_count
+        aliases
+      }
+    }
+  }
+`;
+
+// Same rows, with the hero's free-text field. A distinct operation name so
+// the two documents are distinguishable in a server log.
+const FIND_TAGS_HERO_QUERY = `
+  query FindTagsHero($filter: FindFilterType, $tag_filter: TagFilterType) {
     findTags(filter: $filter, tag_filter: $tag_filter) {
       count
       tags {
@@ -108,6 +135,7 @@ const service = createEntityService({
   filterArg: 'tag_filter',
   filterType: 'TagFilterType',
   query: FIND_TAGS_QUERY,
+  heroQuery: FIND_TAGS_HERO_QUERY,
   normalize: normalizeTag,
   mock: generateMockTags,
   searchFields: ['name'],

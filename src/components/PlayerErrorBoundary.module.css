@@ -1,0 +1,30 @@
+/* Shown for a moment after a player render error, before the player closes.
+   Fixed rather than absolute: the subtree that threw has just unmounted, and
+   this must cover whatever the player was drawn over. */
+.fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #000;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  text-align: center;
+  padding: 40px;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.detail {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-secondary);
+}

@@ -279,8 +279,10 @@ function VideoCard({
 
 // Cards are the bulk of a listing. Without memo, every page append and every
 // `loadingMore`/error toggle re-rendered all of them, because the parent builds
-// a fresh `list` object each render. The containers now memoize that object and
-// the select/long-press callbacks; memo lets those stable props actually save
-// the work. Per-card focus and settings subscriptions still re-render a card on
-// their own, as they must.
+// a fresh `list` object each render. The grid and carousel now pass a stable
+// listing (`useStableListing`) whose getters read the latest rows, plus stable
+// select/long-press callbacks — so an append renders the new cards only. A
+// `useMemo` keyed on `items` would not have done it: the append is what
+// replaces `items`. Per-card focus and settings subscriptions still re-render a
+// card on their own, as they must.
 export default memo(VideoCard);

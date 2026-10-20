@@ -45,6 +45,22 @@ function getCachedRect(el) {
 }
 
 /**
+ * Is this element actually on screen?
+ *
+ * `getClientRects().length > 0` rather than `offsetParent`: a position:fixed
+ * element has NO offsetParent, and the full-screen viewer overlay is fixed —
+ * so an `offsetParent` test makes a registered fixed focusable invisible to
+ * geometry. Both checks reject `display:none` and detached nodes; only this
+ * one also accepts fixed positioning. Used everywhere the handler decides
+ * whether a registry entry is reachable, so the forced-edge path and the
+ * geometric search cannot disagree about it (the 0.29.0 harness run found
+ * exactly that disagreement).
+ */
+function isRendered(el) {
+  return el.getClientRects().length > 0;
+}
+
+/**
  * The nearest ancestor the element actually scrolls inside, or null.
  *
  * Geometry alone treats a scrolled-out row and the fixed footer below it as
@@ -117,12 +133,12 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     // not fall into the grid, and Right is the only way out. Reported from
     // the TV, 2026-10-17: "it should stay there unless pressed right".
     if (forced?.el === currentEl) return null;
-    // `getClientRects()` rather than `offsetParent`: a position:fixed element
-    // has NO offsetParent, and the full-screen viewer overlay is fixed — so
-    // the Info button's declared Down edge silently fell through to geometry
-    // and dead-ended on the picture (found by the 0.29.0 harness run). The
-    // rect check still rejects display:none and detached nodes.
-    if (forced?.el && forced.el.getClientRects().length > 0 && !forced.el.disabled) {
+    // `isRendered` rather than `offsetParent`: a position:fixed element has
+    // NO offsetParent, and the full-screen viewer overlay is fixed — so the
+    // Info button's declared Down edge silently fell through to geometry and
+    // dead-ended on the picture (found by the 0.29.0 harness run). The rect
+    // check still rejects display:none and detached nodes.
+    if (forced?.el && isRendered(forced.el) && !forced.el.disabled) {
       return forced.el;
     }
   }
@@ -185,7 +201,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   const skipRailRows = direction === 'down' && currentEntry?.railRow !== true;
 
   registry.forEach(({ el, zone, verticalOnly, crossZone, railRow }) => {
-    if (el === currentEl || !el.offsetParent) return;
+    if (el === currentEl || !isRendered(el)) return;
     // A DOM-disabled element cannot take focus — `.focus()` on one is a
     // silent no-op — so leaving it in the candidate set makes it an
     // absorbing wall: every press finds it, the browser refuses it, and
@@ -269,7 +285,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     const goingRight = direction === 'right';
     let bestKey = Infinity;
     registry.forEach(({ el, zone, verticalOnly }) => {
-      if (el === currentEl || !el.offsetParent || el.disabled) return;
+      if (el === currentEl || !isRendered(el) || el.disabled) return;
       if (verticalOnly) return;
       if (zone !== currentZone && !currentCrossesZones) return;
       if (scope && !scope.contains(el)) return;
@@ -362,7 +378,7 @@ export function useKeyHandler({ onBack } = {}) {
             // zone while it is disabled — see useFocusable's cleanup), but
             // `.focus()` on one is a silent no-op, which would leave the user
             // on <body>. Skip them here exactly as the candidate search does.
-            if (el.offsetParent && !el.disabled) { el.focus(); break; }
+            if (isRendered(el) && !el.disabled) { el.focus(); break; }
           }
         }
         return;

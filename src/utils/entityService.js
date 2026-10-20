@@ -48,6 +48,14 @@ import { mockComparator } from './mockSort.js';
  *
  * `searchFields` are the fields the Test-mode `q` is matched against. A real
  * search is the server's; this is only so the box does something.
+ *
+ * `heroQuery` is an optional heavier variant of `query`, used only when the
+ * caller asks for it (`fetch({ hero: true })`). The tag description and the
+ * studio details are free text that can run to paragraphs, and only the
+ * Carousel hero renders them; grids and list rows would pay for every row on
+ * every page. A service without a `heroQuery` ignores the flag. Anything that
+ * *is* shown elsewhere — a tag's aliases, a studio's parent — stays in the
+ * base query, because the list rows render the hero meta model too.
  */
 export function createEntityService({
   kind,
@@ -56,6 +64,7 @@ export function createEntityService({
   filterArg,
   filterType,
   query,
+  heroQuery = null,
   normalize,
   mock,
   searchFields = [],
@@ -63,7 +72,7 @@ export function createEntityService({
 }) {
   const cache = createListCache();
 
-  async function load({ sort, order, filter, q, page, limit }) {
+  async function load({ sort, order, filter, q, page, limit, query: selectedQuery }) {
     if (getSettings().useMock) {
       await new Promise(r => setTimeout(r, 400));
 
@@ -94,7 +103,7 @@ export function createEntityService({
       [filterArg]: translateFilter(filter, filterType),
     };
 
-    const data = await runQuery(query, variables);
+    const data = await runQuery(selectedQuery, variables);
     const rows = data?.[root]?.[itemsKey] || [];
 
     return {
@@ -108,12 +117,24 @@ export function createEntityService({
     fetch(opts = {}) {
       const {
         sort = 'created_at', order = 'desc', filter = null,
-        q = '', page = 1, limit = 40,
+        q = '', page = 1, limit = 40, hero = false,
       } = opts;
 
+      // The two variants answer different documents, so they must not share a
+      // cache entry — a base page served to the carousel would leave its blurb
+      // empty, and a hero page served to a grid would carry the weight the
+      // base query exists to avoid.
+      const useHeroQuery = hero && !!heroQuery;
+
       return cache.get(
-        listCacheKey(kind, sort, order, filter, q, page, limit),
-        () => load({ sort, order, filter, q, page, limit }),
+        listCacheKey(
+          useHeroQuery ? `${kind}:hero` : kind,
+          sort, order, filter, q, page, limit,
+        ),
+        () => load({
+          sort, order, filter, q, page, limit,
+          query: useHeroQuery ? heroQuery : query,
+        }),
       );
     },
   };

@@ -98,8 +98,9 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
   filter already applied.
 - **Browse everything** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images,
   each with sort, search, filters, and grid, carousel, coverflow or list view. Every tab
-  remembers its own view mode and column count; opening a marker plays its scene at that
-  timestamp. Gallery cards show the image count alongside the studio, or the folder when the
+  remembers its own view mode and column count; arriving at a tab resets its sort, filter
+  and search, so a term or filter from one section does not quietly narrow the next.
+  Opening a marker plays its scene at that timestamp. Gallery cards show the image count alongside the studio, or the folder when the
   studio is not set; tag and studio carousels carry Stash's description, aliases and a studio's
   parent. Switching tabs re-reads the listing, so scenes added or removed on the server appear
   without relaunching the app.
@@ -267,8 +268,8 @@ git tag v0.30.0
 git push origin v0.30.0
 ```
 
-Add these four secrets to the GitHub **environment** the workflow declares in its `environment:`
-line (a job only sees environment secrets when it names one):
+Add these four secrets to the GitHub **environment named `StashZen`** — the one the workflow
+declares in its `environment:` line (a job only sees environment secrets when it names one):
 
 | Secret | Value |
 |---|---|

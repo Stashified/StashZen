@@ -25,8 +25,12 @@
  *   getSubtitle / getBadge /       returns a URL already passed through
  *   isFavorite / label             `withApiKey()` by the service — the card
  *                                  never touches it.
- *   hero                           Carousel only: `(item) => ({title, meta})`,
- *                                  fields not markup.
+ *   hero                           `(item) => ({title, meta, blurb})`, fields
+ *                                  not markup. The Carousel hero and the list
+ *                                  rows render title/meta; only the Carousel
+ *                                  renders the blurb, which is why the
+ *                                  services' description/details live in a
+ *                                  heavier query the Carousel asks for.
  *
  * ## Two things that are true of all four and worth stating once
  *

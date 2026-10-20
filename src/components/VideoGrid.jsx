@@ -9,7 +9,8 @@
  * container).
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useStableListing } from '../hooks/useStableListing.js';
 import VideoCard from './VideoCard.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchVideos } from '../utils/videoService.js';
@@ -41,13 +42,10 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
   });
 
-  // Stable identity: every card takes this object, and without the memo each
-  // page append or loadingMore/error toggle handed every card a new prop and
-  // re-rendered the whole grid.
-  const listing = useMemo(
-    () => ({ items: videos, total, page, fetchPage }),
-    [videos, total, page, fetchPage],
-  );
+  // Stable identity *and* current values: the getters read the latest rows
+  // from the card's handler, so a page append can render only the new cards
+  // instead of re-rendering every existing one. See useStableListing.
+  const listing = useStableListing({ items: videos, total, page, fetchPage });
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);

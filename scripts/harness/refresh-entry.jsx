@@ -94,6 +94,23 @@ async function switchTab(id) {
   await tapEnter();
 }
 
+// Type into the controls bar's search field the way the IME does: set the
+// input's own value through the native setter (a plain `input.value =` is
+// swallowed by React's controlled-input tracker) and let the 300 ms debounce
+// commit it. The on-screen keyboard itself cannot be raised here — see the
+// harness notes — but the commit path below it is the shipped one.
+async function typeSearch(text) {
+  const input = document.querySelector('input[placeholder="Search…"]');
+  if (!input) return false;
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype, 'value',
+  ).set;
+  setter.call(input, text);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(500);   // the field's debounce is 300 ms
+  return true;
+}
+
 async function run() {
   // Home's shelves arrive over the wire; wait for the rendered card, not just
   // for the request, so the next tab press does not race the mount.
@@ -179,6 +196,36 @@ async function run() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ findStudios: 'ok' }),
   });
+
+  // ── F7–F9  a search term does not travel between tabs ────
+  // `controls` is one shared object, and the arrival rule resets sort, order,
+  // filter and columns on a tab change. Search used to be the lone survivor,
+  // so a term typed on one section silently narrowed every other one.
+  // Reported from the TV, 2026-10-20: "search term 'kitty' ... was saved/kept
+  // as active search when moving between tabs".
+  await switchTab('nav-scenes');
+  await waitFor(() => registry.has('video-1'));
+  await clearLogs();
+  const typed = await typeSearch('kitty');
+  const searched = await waitFor(async () => (await getJSON('/requests'))
+    .some(r => 'scene_filter' in r && r.q === 'kitty'));
+  check('F7 the search box reaches the Scenes listing',
+    typed && searched,
+    `input ${typed}, request with q=kitty ${searched}`);
+
+  await clearLogs();
+  await switchTab('nav-performers');
+  const arrived = await waitFor(async () => (await getJSON('/requests'))
+    .some(r => 'performer_filter' in r));
+  const qs = (await getJSON('/requests'))
+    .filter(r => 'performer_filter' in r).map(r => r.q);
+  check('F8 arriving at another tab drops the search',
+    arrived && qs.length > 0 && qs.every(q => !q),
+    `q=${JSON.stringify(qs)}`);
+  const field = document.querySelector('input[placeholder="Search…"]');
+  check('F9 ...and the search box on the new tab is empty',
+    (field?.value ?? null) === '',
+    `value=${JSON.stringify(field?.value ?? null)}`);
 }
 
 async function finish() {

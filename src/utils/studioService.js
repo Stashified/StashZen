@@ -56,8 +56,37 @@ function generateMockStudios() {
   });
 }
 
+// `details` is deliberately absent: it is a paragraph per studio and the only
+// consumer is the Carousel hero's blurb. `parent_studio` and `aliases` stay
+// because list rows render the hero meta model, which includes both.
 const FIND_STUDIOS_QUERY = `
   query FindStudios($filter: FindFilterType, $studio_filter: StudioFilterType) {
+    findStudios(filter: $filter, studio_filter: $studio_filter) {
+      count
+      studios {
+        id
+        name
+        image_path
+        favorite
+        rating100
+        scene_count
+        image_count
+        gallery_count
+        performer_count
+        group_count
+        parent_studio {
+          id
+          name
+        }
+        aliases
+      }
+    }
+  }
+`;
+
+// Same rows, with the hero's free-text field.
+const FIND_STUDIOS_HERO_QUERY = `
+  query FindStudiosHero($filter: FindFilterType, $studio_filter: StudioFilterType) {
     findStudios(filter: $filter, studio_filter: $studio_filter) {
       count
       studios {
@@ -111,6 +140,7 @@ const service = createEntityService({
   filterArg: 'studio_filter',
   filterType: 'StudioFilterType',
   query: FIND_STUDIOS_QUERY,
+  heroQuery: FIND_STUDIOS_HERO_QUERY,
   normalize: normalizeStudio,
   mock: generateMockStudios,
   searchFields: ['name'],

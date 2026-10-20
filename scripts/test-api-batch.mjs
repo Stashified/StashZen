@@ -28,8 +28,9 @@ import { normalizeServerStatus } from '../src/utils/serverService.js';
 import { buildImageInfoRows } from '../src/utils/imageInfo.js';
 import { formatJobStart } from '../src/utils/format.js';
 import {
-  webLinks, formatCareer, formatHeight, formatGender, ratingFromCard,
+  ageFromBirthdate, webLinks, formatCareer, formatHeight, formatGender, ratingFromCard,
 } from '../src/pages/performerDetail/format.js';
+import { execFileSync } from 'node:child_process';
 
 let passed = 0;
 let failed = 0;
@@ -165,6 +166,38 @@ check('ratingFromCard: the display string scales back to 0–100',
     && ratingFromCard({ rating: '10.0' }) === 100
     && ratingFromCard({}) === 0,
   `${ratingFromCard({ rating: '7.5' })}`);
+
+// ── Age ─────────────────────────────────────────────────────
+// The reference date is injected so the boundary is testable without moving
+// the clock. `new Date(y, m, d)` builds a *local* date, which is what the
+// hero compares against.
+check('age: ticks over on the birthday, not a day early',
+  ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 3)) === 25
+    && ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 4)) === 26,
+  `${ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 3))}/`
+  + `${ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 4))}`);
+check('age: a death date stops the clock',
+  ageFromBirthdate('1940-01-10', '2009-03-20') === 69,
+  String(ageFromBirthdate('1940-01-10', '2009-03-20')));
+check('age: a death before that year\'s birthday rounds down',
+  ageFromBirthdate('1940-12-31', '2009-12-30') === 68,
+  String(ageFromBirthdate('1940-12-31', '2009-12-30')));
+check('age: missing or malformed dates produce no age',
+  ageFromBirthdate(null) === null && ageFromBirthdate('') === null
+    && ageFromBirthdate('not a date') === null
+    && ageFromBirthdate('2000-13-01') === null);
+
+// The UTC-parse defect is invisible in a UTC+ timezone, so prove the fix in
+// one that is west of Greenwich: `new Date('2000-05-04')` is May 3 there, and
+// the old local-getter comparison therefore aged the performer a day early.
+const FORMAT_URL = new URL('../src/pages/performerDetail/format.js', import.meta.url).href;
+const tzAge = execFileSync(process.execPath, ['--input-type=module', '-e', `
+  import { ageFromBirthdate } from ${JSON.stringify(FORMAT_URL)};
+  const before = ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 3));
+  const on = ageFromBirthdate('2000-05-04', null, new Date(2026, 4, 4));
+  process.stdout.write(\`\${before},\${on}\`);
+`], { env: { ...process.env, TZ: 'America/New_York' }, encoding: 'utf8' }).trim();
+check('age: the day boundary holds west of Greenwich', tzAge === '25,26', tzAge);
 
 // ═══════════════════════════════════════════════════════════
 // Gallery / tag / studio listings — items 8/9

@@ -38,6 +38,13 @@ import { fetchImageInfo } from '../utils/imageService.js';
 import { buildImageInfoRows } from '../utils/imageInfo.js';
 import styles from './ImageViewer.module.css';
 
+// Long enough to collapse a held arrow's key repeat into one request, short
+// enough that opening the panel still feels immediate. Stepping changes
+// `item` at repeat rate, and the cache only helps on the way *back* — without
+// this, every image passed on the way out was queried for a panel that had
+// already moved on.
+const INFO_FETCH_DELAY_MS = 180;
+
 export default function ImageViewer({ items = [], index = 0, onClose, onIndexChange }) {
   const [imgError, setImgError] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -82,32 +89,36 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
   useEffect(() => { currentIdRef.current = item?.id ?? null; }, [item?.id]);
 
   // Fetch only while the panel is open — stepping through a listing with the
-  // panel closed must not issue one request per image.
+  // panel closed must not issue one request per image. The short delay
+  // collapses a held arrow's key repeat: only the image the user settles on
+  // is queried, rather than every image passed on the way there.
   useEffect(() => {
     if (!infoOpen || !item?.id) return undefined;
     let cancelled = false;
     const requestedId = item.id;
     setInfoStatus('loading');
     setInfoMessage('');
-    fetchImageInfo(item)
-      .then(d => {
-        if (cancelled || currentIdRef.current !== requestedId) return;
-        if (!d) {
+    const timer = setTimeout(() => {
+      fetchImageInfo(item)
+        .then(d => {
+          if (cancelled || currentIdRef.current !== requestedId) return;
+          if (!d) {
+            setInfoData(null);
+            setInfoStatus('error');
+            setInfoMessage('No metadata was found.');
+            return;
+          }
+          setInfoData(d);
+          setInfoStatus('ready');
+        })
+        .catch(e => {
+          if (cancelled || currentIdRef.current !== requestedId) return;
           setInfoData(null);
           setInfoStatus('error');
-          setInfoMessage('No metadata was found.');
-          return;
-        }
-        setInfoData(d);
-        setInfoStatus('ready');
-      })
-      .catch(e => {
-        if (cancelled || currentIdRef.current !== requestedId) return;
-        setInfoData(null);
-        setInfoStatus('error');
-        setInfoMessage(e.message);
-      });
-    return () => { cancelled = true; };
+          setInfoMessage(e.message);
+        });
+    }, INFO_FETCH_DELAY_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [infoOpen, item]);
 
   const closeInfo = useCallback(() => {

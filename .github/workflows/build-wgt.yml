@@ -41,7 +41,8 @@ jobs:
     # Load-bearing: the signing secrets live in a GitHub *environment*, and a
     # job only sees environment secrets if it names the environment here.
     # Without this line they all resolve to empty strings and signing fails.
-    # (The environment happens to share its name with one of its secrets.)
+    # The environment is named StashZen — the same name the public repo uses.
+    # The old TIZEN_AUTHOR_P12 environment is retired; do not point back at it.
     environment: StashZen
 
     steps:

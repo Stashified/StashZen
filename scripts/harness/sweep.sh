@@ -154,6 +154,11 @@ run detail         entry.jsx
 # server values, the empty-field hiding and the failure path, all against a
 # fixture designed to disagree with the card. Added in 0.19.0.
 run performer      performer-entry.jsx
+# Back while the player is open over the performer page. The page's Back
+# handler and the player's are sibling window-capture listeners; the page's
+# focus-only guard could not see a player that leaves focus on <body>, so one
+# press closed both. Added in 0.31.1 with a red control (4/7 before the fix).
+run performerback  performerback-entry.jsx
 run filter         filter-entry.jsx
 run firstrun       firstrun-entry.jsx
 # The appearance theme: module-init application (a relaunch) and the Settings

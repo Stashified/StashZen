@@ -15,7 +15,7 @@ import ControlsPanel from '../components/ControlsPanel.jsx';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useBackKey } from '../hooks/useBackKey.js';
 import { useFlash } from '../hooks/useFlash.js';
-import { isBackKey, focusScopeOf } from '../utils/input.js';
+import { isBackKey, focusScopeOf, dialogOpen } from '../utils/input.js';
 import { loadPerformerDetail, updatePerformer } from '../utils/performerService.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
@@ -98,7 +98,9 @@ function BackButton({ onClick }) {
 }
 
 // ── Main component ──────────────────────────────────────
-export default function PerformerDetailPage({ performer, onBack, onVideoSelect, previewMuted, onMuteToggle }) {
+export default function PerformerDetailPage({
+  performer, onBack, onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
+}) {
   const [controls, setControls] = useState(DEFAULT_DETAIL_CONTROLS);
   // The card the page was opened from already carries everything the hero's
   // first paint needs. The profile fields arrive from one small query and are
@@ -155,14 +157,28 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
   const [notice, flash] = useFlash();
   const ratingAttempt = useRef(0);
   const favoriteAttempt = useRef(0);
+  // The last value the *server* acknowledged. Reverting a failed write to the
+  // optimistic value instead would leave the hero showing a number that was
+  // never stored — press + twice, have both fail, and the page settled on the
+  // middle value.
+  const ratingConfirmed = useRef(ratingFromCard(performer));
+  const favoriteConfirmed = useRef(!!performer.favorite);
+  // Writes are serialised through these chains. Overlapping requests could
+  // otherwise reach the server out of order and leave the stored value one
+  // press behind the screen, whatever the client does about stale answers.
+  const ratingQueue = useRef(Promise.resolve());
+  const favoriteQueue = useRef(Promise.resolve());
 
   const cardRating = performer.rating;
   const cardFavorite = performer.favorite;
   useEffect(() => {
+    const rating = ratingFromCard({ rating: cardRating });
     setEdits({
-      rating100: ratingFromCard({ rating: cardRating }),
+      rating100: rating,
       favorite: !!cardFavorite,
     });
+    ratingConfirmed.current = rating;
+    favoriteConfirmed.current = !!cardFavorite;
     // A response aimed at the previous performer must not be adopted here.
     ratingAttempt.current += 1;
     favoriteAttempt.current += 1;
@@ -177,6 +193,8 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
       rating100: profile.rating100 ?? prev.rating100,
       favorite: profile.favorite ?? prev.favorite,
     }));
+    if (profile.rating100 != null) ratingConfirmed.current = profile.rating100;
+    if (profile.favorite != null) favoriteConfirmed.current = !!profile.favorite;
     ratingAttempt.current += 1;
     favoriteAttempt.current += 1;
   }, [profile]);
@@ -185,42 +203,51 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
   // where the ids belong to generated data with no row behind them.
   const canEdit = profileStatus === 'ready' && profile?.writable !== false;
 
-  const setRating = async (stars) => {
+  const setRating = (stars) => {
     if (!canEdit) return;
     const next = Math.max(0, Math.min(100, stars * 10));
-    const prev = edits.rating100;
     const attempt = ++ratingAttempt.current;
     setEdits(e => ({ ...e, rating100: next }));
-    try {
-      const server = await updatePerformer(performer.id, { rating100: next });
-      if (attempt !== ratingAttempt.current) return;
-      if (server.rating100 != null) {
-        setEdits(e => ({ ...e, rating100: server.rating100 }));
+    ratingQueue.current = ratingQueue.current.then(async () => {
+      try {
+        const server = await updatePerformer(performer.id, { rating100: next });
+        if (server.rating100 != null) {
+          ratingConfirmed.current = server.rating100;
+          if (attempt === ratingAttempt.current) {
+            setEdits(e => ({ ...e, rating100: server.rating100 }));
+          }
+        }
+      } catch (e) {
+        // Only the newest press owns the screen. An older failure is already
+        // superseded by a later optimistic value, and reverting it would undo
+        // a press the user made afterwards.
+        if (attempt !== ratingAttempt.current) return;
+        setEdits(prev => ({ ...prev, rating100: ratingConfirmed.current }));
+        flash(`Rating not saved — ${e.message}`);
       }
-    } catch (e) {
-      if (attempt !== ratingAttempt.current) return;
-      setEdits(prevEdits => ({ ...prevEdits, rating100: prev }));
-      flash(`Rating not saved — ${e.message}`);
-    }
+    });
   };
 
-  const toggleFavorite = async () => {
+  const toggleFavorite = () => {
     if (!canEdit) return;
     const next = !edits.favorite;
-    const prev = edits.favorite;
     const attempt = ++favoriteAttempt.current;
     setEdits(e => ({ ...e, favorite: next }));
-    try {
-      const server = await updatePerformer(performer.id, { favorite: next });
-      if (attempt !== favoriteAttempt.current) return;
-      if (server.favorite != null) {
-        setEdits(e => ({ ...e, favorite: !!server.favorite }));
+    favoriteQueue.current = favoriteQueue.current.then(async () => {
+      try {
+        const server = await updatePerformer(performer.id, { favorite: next });
+        if (server.favorite != null) {
+          favoriteConfirmed.current = !!server.favorite;
+          if (attempt === favoriteAttempt.current) {
+            setEdits(e => ({ ...e, favorite: !!server.favorite }));
+          }
+        }
+      } catch (e) {
+        if (attempt !== favoriteAttempt.current) return;
+        setEdits(prev => ({ ...prev, favorite: favoriteConfirmed.current }));
+        flash(`Favourite not saved — ${e.message}`);
       }
-    } catch (e) {
-      if (attempt !== favoriteAttempt.current) return;
-      setEdits(prevEdits => ({ ...prevEdits, favorite: prev }));
-      flash(`Favourite not saved — ${e.message}`);
-    }
+    });
   };
 
   // Page-level Back handler — capture phase so the global Back doesn't fire
@@ -236,13 +263,24 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
   // window capture target. Doing the scope test in the predicate rather than
   // in the handler also means this listener does not preventDefault a key the
   // nested layer handles.
+  //
+  // `dialogOpen` is the yield `focusScopeOf` alone cannot make. The player is
+  // a dialog over this page that deliberately leaves focus on <body> when its
+  // rail is closed, so a focus-only guard saw nothing and closed the page on
+  // the same press the player used to put its controls bar away — reported
+  // from the TV on 2026-10-20 as backing out of a played scene landing on the
+  // Performers grid. Dialogs win by presence, not by where the cursor is;
+  // dropdowns are the one layer that still needs the focus test, and they
+  // take focus.
   const pageIsBack = useCallback(
-    (e) => isBackKey(e) && !focusScopeOf(document.activeElement),
+    (e) => isBackKey(e) && !dialogOpen() && !focusScopeOf(document.activeElement),
     [],
   );
   useBackKey(() => onBack?.(), { isBack: pageIsBack });
 
-  const age = ageFromBirthdate(performer.birthdate);
+  // Measured to the death date once the profile supplies one; the card alone
+  // has no death date, so the first paint still uses today.
+  const age = ageFromBirthdate(performer.birthdate, profile?.deathDate);
   const height = formatHeight(performer.height_cm);
 
   // The card's gender is available on the first paint; the detail answer is
@@ -312,7 +350,9 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
             {rating && <span className={styles.rating}>★ {rating}</span>}
             {gender && <span aria-label={`Gender: ${gender}`}>{gender}</span>}
             {performer.country && <span>{performer.country}</span>}
-            {age != null && <span>Age {age}</span>}
+            {age != null && (
+              <span>{profile?.deathDate ? `Age at death ${age}` : `Age ${age}`}</span>
+            )}
             {height && <span>{height}</span>}
           </div>
 
@@ -427,6 +467,7 @@ export default function PerformerDetailPage({ performer, onBack, onVideoSelect, 
         objectFilter={objectFilter}
         searchQuery={controls.search || ''}
         onVideoSelect={onVideoSelect}
+        onVideoLongPress={onVideoLongPress}
       />
     </div>
   );
