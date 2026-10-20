@@ -41,6 +41,14 @@ MODE = {
     # findImage (the viewer's info panel): "slow" keeps the loading state on
     # screen; "fail" is the panel's error state.
     "imageInfo": "ok",
+    # findImages filtered by a gallery (the gallery slideshow): "empty" is the
+    # long-standing behaviour every Images check depends on — a filtered
+    # listing has no rows, so "still filtered" is visible. "populate" serves a
+    # small set of images belonging to the requested gallery, which is the only
+    # way a slideshow opened from a gallery card has anything to advance
+    # through. Opt-in rather than default, because Sections S6 is exactly the
+    # assertion the empty answer exists to make.
+    "galleryImages": "empty",
     # stopJob: "slow" holds the button in flight; "fail" is a transport error;
     # "false" is the server refusing (StopJob returns Boolean!), which the app
     # must treat as a failure rather than a stop.
@@ -450,11 +458,16 @@ def listing_marker(n):
     The parent scene is carried in full because a marker plays *its scene*,
     seeking to `seconds` — a fixture whose markers had no scene would leave the
     one thing a marker card does unreachable.
+
+    `seconds` stays inside the 60 s tone every scene streams: a marker at 61 s
+    seeks past the end, where the element clamps to its duration and "started
+    at the marker" becomes indistinguishable from "started at zero". The value
+    still varies per row so a queue built from the wrong marker is visible.
     """
     return {
         "id": str(n),
         "title": f"VERIFY marker {n}",
-        "seconds": 60 + n,
+        "seconds": 5 + (n % 50),
         "end_seconds": None,
         "screenshot": f"/marker/{n}/thumb.png",
         "scene": {
@@ -871,6 +884,41 @@ def listing_gallery(n):
     }
 
 
+# How many pictures the populated-gallery fixture holds. Small on purpose: the
+# slideshow advances on a 6 s timer, and the checks want to watch it move and
+# then run out, which a 40-row page would make a 4-minute test.
+GALLERY_IMAGE_COUNT = 5
+
+
+def listing_gallery_image(gallery_id, n):
+    """One picture *of a gallery*, for the slideshow opened from a card.
+
+    Served only under `/mode galleryImages=populate`. The default answer for a
+    gallery-filtered image listing is empty, because that is what makes
+    Sections S6's "still filtered" observable; this fixture exists for the
+    opposite assertion, that the gallery menu's slideshow fetches the gallery's
+    own pictures and steps through them.
+
+    The id and the image URLs are keyed on the gallery as well as the row, so
+    a viewer that fetched some *other* gallery's pictures (or the unfiltered
+    listing) shows up as the wrong title rather than as a plausible one.
+    """
+    base = 6000 + (int(gallery_id) % 1000) * 10 + n
+    return {
+        "id": str(base),
+        "title": f"VERIFY gallery {gallery_id} image {n}",
+        "paths": {
+            "thumbnail": f"/image/{base}/thumb.png",
+            "image": f"/image/{base}/full.png",
+        },
+        "rating100": (base * 13) % 101,
+        "o_counter": n % 5,
+        "organized": n % 2 == 0,
+        "date": "2024-03-09",
+        "file_count": 1,
+    }
+
+
 def listing_image(n):
     """One row of the image listing.
 
@@ -878,14 +926,22 @@ def listing_image(n):
     the viewer opens the second, and a fixture where they agreed would let a
     viewer that had been wired to the thumbnail pass. Both are real routes on
     this server, so the viewer's own image really loads.
+
+    Every row carries a `visual_files` basename, a union member the real server
+    answers with the file's name. Every tenth row has no title, because that is
+    the common case on the live library and the app's fallback is what makes
+    the grid readable: the caption (and the viewer's header) must show
+    `VERIFY_stem_10`, not an empty line. Rows 1 and 2 keep their titles —
+    several checks name them.
     """
     return {
         "id": str(n),
-        "title": f"VERIFY image {n}",
+        "title": "" if n % 10 == 0 else f"VERIFY image {n}",
         "paths": {
             "thumbnail": f"/image/{n}/thumb.png",
             "image": f"/image/{n}/full.png",
         },
+        "visual_files": [{"basename": f"VERIFY_stem_{n}.JPG"}],
         "rating100": (n * 13) % 101,
         "o_counter": n % 5,
         "organized": n % 2 == 0,
@@ -1704,9 +1760,12 @@ class Handler(SimpleHTTPRequestHandler):
             # reason the scene listing honours `tags`: "Images is still filtered
             # to the gallery it arrived with" is invisible in the request log,
             # because the refetch a *dropped* filter triggers is a page 1 the
-            # cache already holds. No image in the fixture is in a gallery, so
-            # "filtered" is an empty listing and "unfiltered" is forty rows —
-            # two states a broken build cannot swap by accident.
+            # cache already holds. By default no image in the fixture is in a
+            # gallery, so "filtered" is an empty listing and "unfiltered" is
+            # forty rows — two states a broken build cannot swap by accident.
+            # `/mode galleryImages=populate` serves the gallery's own short set
+            # instead, for the slideshow; that mode is off unless a driver asks
+            # for it, so S6 still sees the empty answer it is written against.
             #
             # The set of criteria this fake honours is therefore exactly "the
             # ones some check has to see take effect" — `title` on scenes,
@@ -1720,8 +1779,25 @@ class Handler(SimpleHTTPRequestHandler):
             # answering never appeared in `/requests`. The check went red on a
             # server that was doing the right thing — the append-before-dispatch
             # rule at the top of this method exists for exactly this.
-            if section == "Images" and (variables.get(var) or {}).get("galleries"):
-                return self._json({"data": {"findImages": {"count": 0, "images": []}}})
+            gallery_criteria = (variables.get(var) or {}).get("galleries") or {}
+            if section == "Images" and gallery_criteria:
+                with LOCK:
+                    populate = MODE.get("galleryImages") == "populate"
+                if not populate:
+                    return self._json({"data": {"findImages": {"count": 0, "images": []}}})
+                # The gallery slideshow's fixture. One short page, so the
+                # viewer's background paging stops after the first fetch and
+                # the check can wait for the slides to run out.
+                gid = str((gallery_criteria.get("value") or ["0"])[0])
+                rows = [
+                    listing_gallery_image(gid, k)
+                    for k in range(1, GALLERY_IMAGE_COUNT + 1)
+                ]
+                start = (entry["page"] - 1) * entry["per_page"]
+                return self._json({"data": {"findImages": {
+                    "count": len(rows),
+                    "images": rows[start:start + entry["per_page"]],
+                }}})
 
             start = (entry["page"] - 1) * entry["per_page"]
             rows = [

@@ -130,6 +130,7 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
     fetchPage,
     // ← critical: sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    focusPrefix,
   });
 
   // `fetchPage` is included even for sections whose select ignores it: the

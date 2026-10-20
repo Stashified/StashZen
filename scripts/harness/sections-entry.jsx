@@ -692,6 +692,26 @@ async function run() {
   check('S6 and Images is still filtered to that gallery',
     imgCards === 0, `${imgCards} image card(s) on screen`);
 
+  // ── S6b  Back returns to the gallery card that was opened ──
+  // Not the first card in the Galleries grid: that is where the grid's own
+  // autofocus lands when the restore fails (reported from the TV, 2026-10-20:
+  // "I open sophia gallery, close it/back out → it returns to first item in
+  // the list"). Asserted against document.activeElement and a connected
+  // element, because `getCurrentFocusId` can name a card that unmounted.
+  await pressBack();
+  const galleryCardFocused = () => {
+    const el = registry.get('gallery-2')?.el;
+    return !!el && document.contains(el) && document.activeElement === el;
+  };
+  const tGallery = Date.now();
+  const backToGallery = await waitFor(
+    () => railActive() === 'Galleries' && galleryCardFocused(), 8000);
+  check('S6b Back returns to the gallery that was opened, not the first card',
+    backToGallery,
+    `rail ${railActive()}, focus ${focusedId() ?? '<none>'}, active `
+      + `${document.activeElement?.className || document.activeElement?.tagName}, `
+      + `${Date.now() - tGallery} ms`);
+
   // ── S7  Back out of a filtered Scenes returns to Tags ───
   // Not to Scenes-with-no-filter and not to the exit prompt. The prompt is the
   // specific wrong answer: it is what the app does when nothing claims Back,
@@ -713,6 +733,54 @@ async function run() {
   // focusByIdWhenReady — so this waits rather than sleeping a guessed interval.
   const restored = await waitFor(() => focusedId() === 'tag-3', 3000);
   check('S7 focus is back on the tag that was pressed', restored, `focus: ${focusedId()}`);
+
+  // ── S7b  a card from a later page comes back too ─────────
+  // The arriving grid fetches page 1 only, so waiting for the card is not
+  // enough when the user had scrolled: the restore has to ask the listing for
+  // the missing pages (utils/focus.js). The TV report was the same shape as
+  // S6b — "backing out from selected tag returns to first in the list".
+  const tagGrid = () => [...document.querySelectorAll('[role="grid"]')]
+    .find(g => g.getAttribute('aria-label') === 'Tag grid');
+  const tagScroller = () => tagGrid()?.parentElement;
+  const firstPage = liveCards('tag');
+  if (tagScroller()) tagScroller().scrollTop = tagScroller().scrollHeight;
+  const secondPage = await waitFor(() => liveCards('tag') > firstPage, 6000);
+  check('S7b scrolling the Tags grid loads a second page',
+    secondPage, `${firstPage} → ${liveCards('tag')} mounted tag card(s)`);
+
+  const pageTwoLive = () => {
+    const el = registry.get('tag-45')?.el;
+    return !!el && document.contains(el);
+  };
+  const pageTwoReady = await waitFor(pageTwoLive, 4000);
+  check('S7b tag-45 is one of the newly loaded rows', pageTwoReady);
+  if (pageTwoReady) {
+    focus('tag-45');
+    await sleep(120);
+    await tapEnter();
+    await sleep(600);
+    check('S7b activating it switches to Scenes',
+      railActive() === 'Scenes', `rail says ${railActive()}`);
+
+    // The restore's own requests are what distinguish "paged forward to the
+    // card" from "the card happened to be in page 1": the arriving grid asks
+    // for page 1, and page 2 only exists if focusByIdWhenReady asked for it.
+    await clearLogs();
+    const tTag = Date.now();
+    await pressBack();
+    const pageTwoFocused = await waitFor(() => {
+      const el = registry.get('tag-45')?.el;
+      return railActive() === 'Tags'
+        && !!el && document.contains(el) && document.activeElement === el;
+    }, 9000);
+    check('S7b Back returns to the card from the second page, not the first',
+      pageTwoFocused,
+      `rail ${railActive()}, focus ${focusedId() ?? '<none>'}, ${Date.now() - tTag} ms`);
+    const tagReqs = (await getJSON('/requests')).filter(r => 'tag_filter' in r);
+    check('S7b …which the remounted listing reached by paging forward',
+      tagReqs.some(r => Number(r.page) >= 2),
+      `pages ${tagReqs.map(r => r.page).join(',') || '(none)'}`);
+  }
 
   // ── S8  the filter is dropped on the way out ────────────
   // Returning to Tags with the scene filter still set would be worse than not
@@ -962,6 +1030,48 @@ async function run() {
     document.querySelector('[role="dialog"]') ? 'still open' : 'closed');
   const backFocus = await waitFor(() => focusedId() === 'image-1', 2000);
   check('S12 focus returns to the card', backFocus, `focus: ${focusedId()}`);
+
+  // ── S12a  an untitled image shows its file's stem ───────
+  // The live library has plenty of images with no Stash title, and an empty
+  // caption left the grid looking bare. The fixture's every tenth row has an
+  // empty title and a `visual_files` basename, so the caption must read
+  // `VERIFY_stem_10` — the field has to survive the query, the normaliser and
+  // the card in order for this to pass.
+  const card10 = registry.get('image-10')?.el;
+  check('S12a an untitled image card shows its file stem',
+    !!card10 && /VERIFY_stem_10/.test(card10.textContent || ''),
+    card10 ? card10.textContent.replace(/\s+/g, ' ').slice(0, 80) : 'card not mounted');
+
+  await tapEnter();                     // reopen from the focused image-1 card
+  await waitFor(() => !!document.querySelector('[role="dialog"][aria-modal="true"]'), 2000);
+  for (let i = 0; i < 9; i += 1) await press('ArrowRight');   // 1 → 10
+  const stemTitle = document.querySelector('[role="dialog"][aria-modal="true"] h2')?.textContent || '';
+  check('S12a …and the viewer header agrees',
+    stemTitle === 'VERIFY_stem_10', `"${stemTitle}"`);
+  for (let i = 0; i < 9; i += 1) await press('ArrowLeft');    // back to image 1
+  await pressBack();
+  await waitFor(() => focusedId() === 'image-1', 2000);
+
+  // ── S12b  Back returns to the picture the viewer is on ──
+  // Stepping from image 1 to image 3 and backing out used to land on image 1,
+  // the card the viewer was opened from — "returns to image that you started
+  // the scroll from" (TV, 2026-10-20). The card that should take focus is the
+  // last one viewed.
+  const liveTitle = () =>
+    document.querySelector('[role="dialog"][aria-modal="true"] h2')?.textContent || '';
+  await tapEnter();                     // reopen from the focused image-1 card
+  await waitFor(() => !!document.querySelector('[role="dialog"][aria-modal="true"]'), 2000);
+  await press('ArrowRight');            // 1 → 2
+  await press('ArrowRight');            // 2 → 3
+  const steppedTo = liveTitle();
+  await pressBack();
+  const lastViewed = await waitFor(() => {
+    const el = registry.get('image-3')?.el;
+    return !!el && document.contains(el) && document.activeElement === el;
+  }, 3000);
+  check('S12b Back returns to the last image viewed, not the one it opened on',
+    lastViewed && /image 3\b/.test(steppedTo),
+    `viewer showed "${steppedTo}"; focus ${focusedId() ?? '<none>'}`);
 
   // ── S15  columns are per section, and remembered ─────────
   //

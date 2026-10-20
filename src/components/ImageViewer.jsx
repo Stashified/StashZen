@@ -21,20 +21,43 @@
  * press's auto-repeats at its first row; this is opened by a plain Enter, and
  * Enter means nothing here, so the repeats are inert either way.
  *
- * ## What it cannot do
+ * The slideshow's Play/Pause is a header button for the same reason the info
+ * panel is: the viewer opens on Enter, and a surface binding would let that
+ * press's auto-repeat toggle it thirty times. Its focus path is
+ * surface → Up → Info → Left → Play, so the D-pad never needs to know a
+ * letter key. The media keys (play/pause, play, pause) work anywhere in the
+ * overlay, like the player's.
  *
- * It steps through the listing it was handed — the array the grid had loaded at
- * the moment the image was opened — and stops at either end rather than paging
- * in more. The grid keeps loading behind it, but the snapshot does not grow.
- * Paging from inside the viewer is a real feature and not a small one: it needs
- * the grid's own `fetchPage`, which lives in `usePagedList` two components
- * down. Worth doing when the viewer has shown it needs to.
+ * ## Slideshow
+ *
+ * `autoPlay` advances once every SLIDE_MS, preloading the next picture while
+ * the current one is on screen. It stops at the last image rather than
+ * looping, pauses while the info panel is open (and resumes when it closes),
+ * and any manual Left/Right stops it — a browse gesture is a decision about
+ * what to look at next, not a nudge to the timer. Back does not need to stop
+ * it; the viewer unmounts.
+ *
+ * ## Two sources
+ *
+ * Opened from an image card, it steps through the listing snapshot it was
+ * handed — the array the grid had loaded at that moment — and stops at either
+ * end rather than paging in more. That stays true: paging from inside the
+ * viewer is a real feature and not a small one, because the grid's own
+ * `fetchPage` lives in `usePagedList` two components down.
+ *
+ * Opened from a *gallery's* menu (`gallery` prop), there is no listing to
+ * snapshot — the pictures are the gallery's, and the card is a container. So
+ * this fetches them itself: fill the first page, open, then page the rest in
+ * behind the curtain while the viewer is already usable. "Shuffle" shuffles
+ * each page as it arrives. A gallery can be arbitrarily large, so the loop is
+ * capped at GALLERY_MAX_PAGES; the footer's "of N loaded" stays honest about
+ * how many are in hand.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { TIZEN_BACK } from '../utils/input.js';
-import { fetchImageInfo } from '../utils/imageService.js';
+import { fetchImageInfo, fetchImages } from '../utils/imageService.js';
 import { buildImageInfoRows } from '../utils/imageInfo.js';
 import styles from './ImageViewer.module.css';
 
@@ -45,18 +68,59 @@ import styles from './ImageViewer.module.css';
 // already moved on.
 const INFO_FETCH_DELAY_MS = 180;
 
-export default function ImageViewer({ items = [], index = 0, onClose, onIndexChange }) {
+// Six seconds: long enough to read a photograph, short enough that a
+// slideshow does not feel stalled. Not configurable — a TV setting for it
+// would be one more thing in Settings for a feature with one sensible pace.
+const SLIDE_MS = 6000;
+
+const GALLERY_PAGE_SIZE = 40;
+// 100 pages is 4,000 images. A cap rather than "until the server says stop"
+// so one pathological gallery cannot hold the loop open indefinitely; when it
+// is reached the footer already says "loaded", and Back out to View images
+// (which lists every one) is the escape hatch.
+const GALLERY_MAX_PAGES = 100;
+
+/** Fisher–Yates. Called per arriving page, so pages join in random order. */
+function shuffled(rows) {
+  const out = rows.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+export default function ImageViewer({
+  items = [],
+  index = 0,
+  gallery = null,
+  shuffle = false,
+  autoPlay = false,
+  initialInfoOpen = false,
+  onClose,
+  onIndexChange,
+}) {
   const [imgError, setImgError] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [playing, setPlaying] = useState(!!autoPlay);
 
   // The info panel is read-only. It is a header button rather than a key on
   // the surface because the viewer is opened by Enter, and binding Enter to
   // the surface would let that press's auto-repeats toggle the panel.
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(!!initialInfoOpen);
   const [infoStatus, setInfoStatus] = useState('idle'); // idle | loading | ready | error
   const [infoData, setInfoData] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
   const currentIdRef = useRef(null);
+
+  // Gallery mode only: null while the first page is in flight, then the
+  // pictures. `galleryIndex` is local because there is no App-held listing
+  // behind it to index into.
+  const [galleryItems, setGalleryItems] = useState(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryStatus, setGalleryStatus] = useState('idle'); // idle | loading | ready | error
+  const [galleryMessage, setGalleryMessage] = useState('');
+  const preloadRef = useRef(null);
 
   const { ref } = useFocusable({
     id: 'image-viewer',
@@ -64,10 +128,16 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
     autoFocus: true,
     nextId: { up: 'image-viewer-info' },
   });
+  const playBtn = useFocusable({
+    id: 'image-viewer-play',
+    zone: 'image-viewer',
+    nextId: { right: 'image-viewer-info', down: 'image-viewer' },
+    onEnter: () => setPlaying(p => !p),
+  });
   const infoBtn = useFocusable({
     id: 'image-viewer-info',
     zone: 'image-viewer',
-    nextId: { down: 'image-viewer' },
+    nextId: { left: 'image-viewer-play', down: 'image-viewer' },
     // `onEnter`, not just `onClick`: useFocusable prevents the native button
     // activation on Enter (see its longPress branch), so a button that only
     // carries `onClick` never fires from the remote. Same convention as
@@ -76,9 +146,22 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
     onEnter: () => (infoOpen ? closeInfo() : setInfoOpen(true)),
   });
 
-  const item = items[index] || null;
-  const canPrev = index > 0;
-  const canNext = index < items.length - 1;
+  // Memoized because the effect that preloads the next picture keys on it,
+  // and the default `items = []` is a fresh array every render.
+  const sourceItems = useMemo(
+    () => (gallery ? (galleryItems || []) : items),
+    [gallery, galleryItems, items],
+  );
+  const currentIndex = gallery ? galleryIndex : index;
+  const item = sourceItems[currentIndex] || null;
+  const itemId = item?.id ?? null;
+  const canPrev = currentIndex > 0;
+  const canNext = currentIndex < sourceItems.length - 1;
+
+  const goTo = useCallback((next) => {
+    if (gallery) setGalleryIndex(next);
+    else onIndexChange?.(next);
+  }, [gallery, onIndexChange]);
 
   // Reset the per-image state whenever the picture changes, or the second
   // image inherits the first one's failure and shows the fallback.
@@ -121,6 +204,84 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
     return () => { cancelled = true; clearTimeout(timer); };
   }, [infoOpen, item]);
 
+  // ── Gallery mode: fetch the gallery's pictures ─────────────
+  // First page opens the viewer; the rest are appended in the background so a
+  // large gallery does not make the user wait before the first picture.
+  useEffect(() => {
+    if (!gallery?.id) return undefined;
+    let cancelled = false;
+    setGalleryItems(null);
+    setGalleryIndex(0);
+    setGalleryStatus('loading');
+    setGalleryMessage('');
+
+    (async () => {
+      const seen = new Set();
+      let all = [];
+      try {
+        for (let page = 1; page <= GALLERY_MAX_PAGES; page++) {
+          const d = await fetchImages({
+            filter: { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
+            // Newest first, matching the Images tab's default. A shuffle
+            // ignores the order anyway.
+            sort: 'created_at',
+            order: 'desc',
+            page,
+            limit: GALLERY_PAGE_SIZE,
+          });
+          if (cancelled) return;
+          const rows = (d.images || []).filter(x => x?.id && !seen.has(String(x.id)));
+          rows.forEach(x => seen.add(String(x.id)));
+          all = [...all, ...(shuffle ? shuffled(rows) : rows)];
+          setGalleryItems(all);
+          setGalleryStatus('ready');
+          // A short page means the server has nothing more; `all.length >=
+          // total` covers the same ground when the server's total is exact.
+          if ((d.images || []).length < GALLERY_PAGE_SIZE) break;
+          if (Number(d.total) && all.length >= Number(d.total)) break;
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // A later page failing must not blank a slideshow that is already
+        // showing: keep what arrived and stop extending.
+        if (all.length) return;
+        setGalleryStatus('error');
+        setGalleryMessage(e.message || 'Unknown error');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [gallery?.id, shuffle]);
+
+  // ── The slideshow ─────────────────────────────────────────
+  // Not while the info panel is open: the panel is the user asking to read
+  // about this picture, and stepping away underneath it would answer a
+  // question they did not ask. Closing the panel resumes (playing is still
+  // true) — pausing a *slideshow* by opening Info is a browse action, not a
+  // stop.
+  useEffect(() => {
+    if (!playing || infoOpen || !itemId) return undefined;
+    const timer = setTimeout(() => {
+      if (canNext) goTo(currentIndex + 1);
+      else setPlaying(false);
+    }, SLIDE_MS);
+    return () => clearTimeout(timer);
+  }, [playing, infoOpen, itemId, canNext, currentIndex, goTo]);
+
+  // Warm the next picture while the current one is up. Only while running:
+  // browsing by hand should not pull a full-resolution file per step. The
+  // Image object is held in a ref so the browser does not discard the load
+  // with it.
+  useEffect(() => {
+    if (!playing || infoOpen) return;
+    const next = sourceItems[currentIndex + 1];
+    const src = next?.full || next?.image_path;
+    if (!src) return;
+    const img = new Image();
+    img.src = src;
+    preloadRef.current = img;
+  }, [playing, infoOpen, sourceItems, currentIndex]);
+
   const closeInfo = useCallback(() => {
     setInfoOpen(false);
     ref.current?.focus();
@@ -128,6 +289,26 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
 
   useEffect(() => {
     const handler = (e) => {
+      // The media keys mean play/pause anywhere in the overlay, as they do in
+      // the player (see usePlayerTransport for why 415 and 19 are split).
+      if (e.keyCode === 10252) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPlaying(p => !p);
+        return;
+      }
+      if (e.keyCode === 19) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPlaying(false);
+        return;
+      }
+      if (e.keyCode === 415) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPlaying(true);
+        return;
+      }
       if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK) {
         e.preventDefault();
         e.stopPropagation();
@@ -149,27 +330,33 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
       if (e.key === 'ArrowLeft' && canPrev) {
         e.preventDefault();
         e.stopPropagation();
-        onIndexChange?.(index - 1);
+        setPlaying(false);
+        goTo(currentIndex - 1);
       } else if (e.key === 'ArrowRight' && canNext) {
         e.preventDefault();
         e.stopPropagation();
-        onIndexChange?.(index + 1);
+        setPlaying(false);
+        goTo(currentIndex + 1);
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [index, canPrev, canNext, onClose, onIndexChange, infoOpen, closeInfo, ref]);
+  }, [currentIndex, canPrev, canNext, onClose, infoOpen, closeInfo, ref, goTo]);
 
-  if (!item) return null;
+  if (!gallery && !item) return null;
 
   // `full` is the full-resolution file and `image_path` the thumbnail; the
   // service puts both through withApiKey. Falling back to the thumbnail is for
   // a row whose `paths.image` came back empty, which does happen — a file Stash
   // knows about but cannot serve still has a thumbnail route.
-  const src = item.full || item.image_path;
+  const src = item ? (item.full || item.image_path) : null;
   // Never draw the previous image's metadata under the new one while the
   // next request is in flight.
-  const infoRows = infoData && infoData.id === item.id ? buildImageInfoRows(infoData) : [];
+  const infoRows = item && infoData && infoData.id === item.id
+    ? buildImageInfoRows(infoData)
+    : [];
+  const title = gallery ? (gallery.title || 'Gallery') : (item?.title || 'Image');
+  const empty = gallery && galleryStatus === 'ready' && !item;
 
   return (
     <div
@@ -177,11 +364,28 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
-      aria-label={item.title || 'Image'}
+      aria-label={title}
       tabIndex={-1}
     >
       <div className={styles.stage}>
-        {src && !imgError ? (
+        {gallery && !item && !empty && (
+          galleryStatus === 'error' ? (
+            <p className={styles.unavailable}>
+              Couldn't load this gallery's images{galleryMessage ? ` — ${galleryMessage}` : ''}.
+            </p>
+          ) : (
+            <>
+              <div className={styles.spinner} />
+              <p className={styles.unavailable}>Loading images…</p>
+            </>
+          )
+        )}
+
+        {empty && (
+          <p className={styles.unavailable}>This gallery has no images.</p>
+        )}
+
+        {item && (src && !imgError ? (
           <>
             {!loaded && <div className={styles.spinner} />}
             <img
@@ -196,7 +400,7 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
           </>
         ) : (
           <p className={styles.unavailable}>This image could not be loaded.</p>
-        )}
+        ))}
 
         {infoOpen && (
           <aside className={styles.infoPanel} aria-label="Image info">
@@ -223,29 +427,42 @@ export default function ImageViewer({ items = [], index = 0, onClose, onIndexCha
       </div>
 
       <header className={styles.bar}>
-        <h2 className={styles.title}>{item.title}</h2>
+        <h2 className={styles.title}>{title}</h2>
         <div className={styles.meta}>
-          {item.date && <span>{item.date}</span>}
-          {item.rating && <span className={styles.rating}>★ {item.rating}</span>}
+          {item?.date && <span>{item.date}</span>}
+          {item?.rating && <span className={styles.rating}>★ {item.rating}</span>}
         </div>
-        <button
-          ref={infoBtn.ref}
-          className={`${styles.infoBtn} ${infoBtn.focused ? styles.infoBtnFocused : ''}`}
-          onClick={() => (infoOpen ? closeInfo() : setInfoOpen(true))}
-          aria-pressed={infoOpen}
-        >
-          Info
-        </button>
+        <div className={styles.actions}>
+          <button
+            ref={playBtn.ref}
+            className={`${styles.infoBtn} ${styles.playBtn} ${playBtn.focused ? styles.infoBtnFocused : ''}`}
+            onClick={() => setPlaying(p => !p)}
+            aria-pressed={playing}
+          >
+            {playing ? 'Pause' : 'Play'}
+          </button>
+          <button
+            ref={infoBtn.ref}
+            className={`${styles.infoBtn} ${infoBtn.focused ? styles.infoBtnFocused : ''}`}
+            onClick={() => (infoOpen ? closeInfo() : setInfoOpen(true))}
+            aria-pressed={infoOpen}
+          >
+            Info
+          </button>
+        </div>
       </header>
 
       <footer className={styles.footer}>
-        {/* The position is against what this viewer was handed, which can be
-            fewer than the listing's total — the grid had loaded 40 of 31,251
-            when the card was pressed. Saying "12 / 40" here would read as a
-            claim about the library, so it says "of 40 loaded" instead. */}
-        <span className={styles.counter}>
-          {index + 1} <span className={styles.counterSep}>of</span> {items.length} loaded
-        </span>
+        {/* The position is against what this viewer has in hand. Opened from
+            an image card that is the grid's snapshot, which can be fewer than
+            the listing's total — the grid had loaded 40 of 31,251 when the
+            card was pressed. In gallery mode it is the pages fetched so far.
+            Either way "of N loaded" is the honest claim. */}
+        {sourceItems.length > 0 && (
+          <span className={styles.counter}>
+            {currentIndex + 1} <span className={styles.counterSep}>of</span> {sourceItems.length} loaded
+          </span>
+        )}
         <span className={styles.hint}>
           <kbd>▲</kbd> Info
           {canPrev || canNext ? <><kbd>◀</kbd> <kbd>▶</kbd> Browse</> : null}

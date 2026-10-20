@@ -14,14 +14,17 @@ import EntityGrid from '../components/EntityGrid.jsx';
 import Carousel from '../components/Carousel.jsx';
 import ItemList from '../components/ItemList.jsx';
 
-export default function EntityPage({ view, mode, controls, objectFilter, searchQuery, onSelect }) {
+export default function EntityPage({
+  view, mode, controls, objectFilter, searchQuery, onSelect, onLongPress,
+}) {
   const shared = { controls, objectFilter, searchQuery, view };
+  const press = { onSelect, onLongPress };
 
   if (mode === 'carousel') {
-    return <Carousel {...shared} onSelect={onSelect} />;
+    return <Carousel {...shared} {...press} />;
   }
   if (mode === 'list') {
-    return <ItemList {...shared} onSelect={onSelect} />;
+    return <ItemList {...shared} {...press} />;
   }
-  return <EntityGrid {...shared} onSelect={onSelect} />;
+  return <EntityGrid {...shared} {...press} />;
 }

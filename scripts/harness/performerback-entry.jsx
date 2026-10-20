@@ -93,13 +93,108 @@ const playerDialog = () => [...document.querySelectorAll('[role="dialog"]')]
 const performerPageOpen = () => !!document.querySelector('button[aria-label="Back to performers"]');
 
 async function run() {
-  // ── Arrive on the performer page ──────────────────────────
+  // ── Arrive on the Performers grid ─────────────────────────
   await waitFor(() => registry.has('nav-performers'));
   await sleep(400);   // Home's autoFocus timer runs after mount
   focus('nav-performers');
   await sleep(120);
   await tapEnter();
+  // The grid itself, not merely a card with the same id: Home's showroom
+  // carries a performer shelf whose cards use the same `performer-<id>`
+  // registry ids, so "performer-3 exists" is true on Home too — and taking
+  // that card opens the page through the *showroom* origin, which returns to
+  // Home by id. That is a different path from the one this driver is about.
+  const onGrid = await waitFor(
+    () => !!document.querySelector('[aria-label="Performer grid"]'), 4000);
+  check('P-1 the Performers grid is the surface under test', onGrid,
+    onGrid ? 'performer grid present' : 'still on Home (grid missing)');
 
+  // ── Back from a performer page must return to *that* card ──
+  // The Performers grid is swapped out for the detail page (TabContent), so
+  // the card's element is detached while the page is up; the restored focus
+  // has to be by id, after the grid has remounted and fetched again. The TV
+  // report was "backing out ... returns to full performer listing (not the
+  // performer we were at)".
+  //
+  // Not performer-1: the first card is where the *fallback* lands — a card
+  // autofocuses when nothing else has the cursor — so asserting it would pass
+  // on the broken build. performer-3 is mounted in the same first page, which
+  // makes the two answers distinguishable.
+  await waitFor(() => registry.has('performer-3'));
+  focus('performer-3');
+  await sleep(120);
+  await tapEnter();
+  await waitFor(() => performerPageOpen());
+  press('Escape', 27);
+  // The assertion is against the *document's* focus, not `getCurrentFocusId`:
+  // that module variable is only cleared when the unmount effect runs, so a
+  // detached card can leave it naming the right performer while the browser
+  // is actually focused on <body>. The element must be live and it must be
+  // the active one.
+  const onCard = () => {
+    const el = registry.get('performer-3')?.el;
+    return !!el && document.contains(el) && document.activeElement === el;
+  };
+  const t0 = Date.now();
+  const backOnCard = await waitFor(() => !performerPageOpen() && onCard(), 8000);
+  check('P0 Back returns to the performer that was opened, not the first card',
+    backOnCard,
+    `page ${performerPageOpen()}, focus ${getCurrentFocusId() ?? '<none>'}, `
+      + `${Date.now() - t0} ms`);
+
+  // ── P0b  a card from the third page comes back too ────────
+  // TV report, 2026-10-20: after scrolling to a performer past 200 and backing
+  // out, "it won't go the one we were on. Performers count also stays at 40
+  // and cannot be browsed past first 40." The count moving from "40 of 1,892"
+  // to "40 performers" is the listing's no-progress stop having fired, and the
+  // cause was two next-page triggers in one tick (the sentinel plus this
+  // restore) both fetching the same page — see pagedlist-entry.jsx, which
+  // reproduces that directly.
+  //
+  // The fake listing has 100 rows, 40 per page, so page 3 is the deep case.
+  const performerGrid = () => document.querySelector('[aria-label="Performer grid"]');
+  const gridScroller = () => performerGrid()?.parentElement;
+  const statsText = () => document.querySelector('[data-list-stats]')?.textContent || '';
+
+  if (gridScroller()) gridScroller().scrollTop = gridScroller().scrollHeight;
+  const pageTwo = await waitFor(() => registry.has('performer-60'));
+  if (gridScroller()) gridScroller().scrollTop = gridScroller().scrollHeight;
+  const pageThree = await waitFor(() => registry.has('performer-90'), 6000);
+  check('P0b scrolling the grid reaches the third page',
+    pageTwo && pageThree,
+    `page 2 card ${pageTwo}, page 3 card ${pageThree}, `
+      + `stats "${statsText()}"`);
+
+  const deepCardLive = () => {
+    const el = registry.get('performer-85')?.el;
+    return !!el && document.contains(el);
+  };
+  if (await waitFor(deepCardLive, 4000)) {
+    focus('performer-85');
+    await sleep(120);
+    await tapEnter();
+    await waitFor(() => performerPageOpen());
+    press('Escape', 27);
+    const tDeep = Date.now();
+    const deepBack = await waitFor(() => {
+      const el = registry.get('performer-85')?.el;
+      return !performerPageOpen()
+        && !!el && document.contains(el) && document.activeElement === el;
+    }, 9000);
+    check('P0b Back returns to a performer from the third page',
+      deepBack,
+      `focus ${getCurrentFocusId() ?? '<none>'}, ${Date.now() - tDeep} ms`);
+    // The listing, not just the focus: the bug left the grid stuck at the rows
+    // it had when the duplicate page arrived, with the server's total lost.
+    check('P0b …and the count line still reports the whole library',
+      statsText() === '100 performers',
+      `stats "${statsText()}"`);
+  } else {
+    check('P0b Back returns to a performer from the third page', false,
+      'performer-85 never mounted');
+  }
+
+  // ── Open performer-1's page for the player layering checks ──
   await waitFor(() => registry.has('performer-1'));
   await sleep(300);
   focus('performer-1');
@@ -107,7 +202,7 @@ async function run() {
   await tapEnter();
 
   const detailReady = await waitFor(() => performerPageOpen() && registry.has('video-1'));
-  check('P0 the performer page opens with its scene grid',
+  check('P0a the performer page opens with its scene grid',
     detailReady,
     `back button ${performerPageOpen()}, video-1 ${registry.has('video-1')}`);
 

@@ -40,6 +40,10 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     fetchPage,
     // ← critical: sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    // Closing the player returns focus to the scene last viewed, which a
+    // "Play all" queue can have walked past this grid's loaded page. The
+    // restore pages the grid forward to find that card — see utils/focus.js.
+    focusPrefix: 'video',
   });
 
   // Stable identity *and* current values: the getters read the latest rows

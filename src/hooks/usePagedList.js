@@ -53,13 +53,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { registerFocusListing } from '../utils/focus.js';
 
 // One initial request plus two retries: enough to ride out a TV's flaky Wi-Fi
 // without turning a persistent failure into a request loop.
 const MAX_PAGE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 
-export function usePagedList({ fetchPage, requestKey }) {
+export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -91,6 +92,33 @@ export function usePagedList({ fetchPage, requestKey }) {
   const retryPendingRef = useRef(false);
   const retryTimerRef = useRef(null);
 
+  // Re-entrancy guard held in a ref, not in `loadingMore` state. Two triggers
+  // can ask for the next page in the same tick — the grid's sentinel observer
+  // and a focus restore paging the listing forward (utils/focus.js) — and a
+  // state update is invisible to the second call, so both used to fetch the
+  // same page. Both callers then receive the same rows (the list cache shares
+  // the in-flight request), the first appends them, and the second hits the
+  // no-progress stop below: it rewrote the total to the rows held at that
+  // moment and marked the list exhausted, so a 1,892-row library printed
+  // "40 performers" and could never page again. Reported from the TV on
+  // 2026-10-20, right after Back restored a card from deep in the listing.
+  const inFlightRef = useRef(false);
+
+  // What `loadMore` is allowed to act on, read from refs rather than from the
+  // render closure. The guard above stops two triggers *at the same time*;
+  // it does not stop a trigger that was queued by an older render — the
+  // sentinel observer is rebuilt after every page, and a callback queued just
+  // before the rebuild still holds the previous render's `page`. That stale
+  // call passed a false `loadingMore`, asked for the page that had just
+  // arrived, and hit the same no-progress stop from the other side (the
+  // performer harness caught it as "80 performers" after a third-page
+  // restore). Reading the current page/count means a late trigger asks for
+  // the *next* page or, once every row is held, for nothing at all.
+  const pageRef = useRef(1);
+  const itemsLenRef = useRef(0);
+  const totalRef = useRef(0);
+  const loadingRef = useRef(true);
+
   // Callers write `fetchPage` inline, so it is a new function on every render.
   // Holding it in a ref lets the reset effect key on `requestKey` alone —
   // otherwise the list would be refetched every render. The ref is written by
@@ -119,6 +147,12 @@ export function usePagedList({ fetchPage, requestKey }) {
     attemptsRef.current = 0;
     seenIdsRef.current = new Set();
     blockedRef.current = false;
+    // Synchronously, before any stale trigger can read them — see the block
+    // comment where these refs are declared.
+    pageRef.current = 1;
+    itemsLenRef.current = 0;
+    totalRef.current = 0;
+    loadingRef.current = true;
 
     setLoading(true);
     setError(null);
@@ -145,6 +179,9 @@ export function usePagedList({ fetchPage, requestKey }) {
           if (cancelled || reqId !== requestIdRef.current) return;
           attemptsRef.current = 0;
           seenIdsRef.current = new Set(data.items.map(it => it.id));
+          itemsLenRef.current = data.items.length;
+          totalRef.current = data.total;
+          loadingRef.current = false;
           setItems(data.items);
           setTotal(data.total);
           setLoading(false);
@@ -156,6 +193,7 @@ export function usePagedList({ fetchPage, requestKey }) {
             // Block further pages too: page 2 of a list whose page 1 never
             // arrived would be a partial list with a hole at the top.
             blockedRef.current = true;
+            loadingRef.current = false;
             setError(e.message);
             setLoading(false);
             return;
@@ -179,14 +217,21 @@ export function usePagedList({ fetchPage, requestKey }) {
 
   // ── Load the next page ────────────────────────────────────
   const loadMore = useCallback(async () => {
-    if (loadingMore || loading || blockedRef.current || retryPendingRef.current) return;
-    if (items.length >= total && total > 0) return;
+    // `loading` and `loadingMore` are the *committed* state; the refs are what
+    // close both windows — two triggers in one tick (`inFlightRef`) and a
+    // trigger queued by an older render (the refs below). The committed pair
+    // stays as a conservative extra: a stale-true `loading` only defers one
+    // trigger, and a stale-false one is covered by the ref.
+    if (inFlightRef.current || loadingMore || loading || loadingRef.current
+        || blockedRef.current || retryPendingRef.current) return;
+    if (itemsLenRef.current >= totalRef.current && totalRef.current > 0) return;
 
     // Reads the id, never bumps it. Only the reset effect above bumps, which
     // is what makes an in-flight page harmless once the list has moved on.
     const reqId = requestIdRef.current;
-    const nextPage = page + 1;
+    const nextPage = pageRef.current + 1;
 
+    inFlightRef.current = true;
     setLoadingMore(true);
     try {
       const data = await fetchPageRef.current(nextPage);
@@ -209,17 +254,23 @@ export function usePagedList({ fetchPage, requestKey }) {
         // promising rows the list has stopped fetching, and `ended` is what
         // lets the grid unmount the sentinel and draw its end marker.
         blockedRef.current = true;
-        setTotal(items.length);
+        totalRef.current = itemsLenRef.current;
+        setTotal(itemsLenRef.current);
         setEnded(true);
         return;
       }
 
       attemptsRef.current = 0;
       setError(null);
+      itemsLenRef.current += fresh.length;
+      pageRef.current = nextPage;
       setItems(prev => [...prev, ...fresh]);
       setPage(nextPage);
       // Only when truthy: a page that reports 0 must not wipe a known count.
-      if (data.total) setTotal(data.total);
+      if (data.total) {
+        totalRef.current = data.total;
+        setTotal(data.total);
+      }
     } catch (e) {
       if (reqId !== requestIdRef.current) return;
       setError(e.message);
@@ -239,9 +290,18 @@ export function usePagedList({ fetchPage, requestKey }) {
         blockedRef.current = true;
       }
     } finally {
+      // Cleared even when the identity moved on underneath the request: no
+      // later loadMore started while it was held, so this is the only owner.
+      inFlightRef.current = false;
       if (reqId === requestIdRef.current) setLoadingMore(false);
     }
-  }, [loadingMore, loading, items.length, total, page]);
+    // `loading` is not read in the body — it is a dependency because the grids
+    // wire their sentinel observer to this callback's identity. On the first
+    // render the component is still the spinner and has no sentinel to
+    // observe; the observer is attached when this identity changes as page 1
+    // lands. Its other transition points (a reset, and every page's
+    // loadingMore flip) keep the sentinel re-armed.
+  }, [loadingMore, loading]);
 
   useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
 
@@ -249,6 +309,34 @@ export function usePagedList({ fetchPage, requestKey }) {
   // `ended` covers the no-progress stop, where the held rows are the whole
   // list even though the server's count said otherwise.
   const exhausted = ended || (total > 0 && items.length >= total);
+
+  // ── A focus restore can ask this listing for more rows ────
+  // Back out of a filtered listing remounts the origin grid, which fetches
+  // page 1 only; a card from a later page would otherwise never come back and
+  // focus would fall to the first card. `focusByIdWhenReady` pages the
+  // registered listing forward one page at a time until the card exists — see
+  // utils/focus.js. The section's own prefixes are the lookup keys.
+  //
+  // Reading the paging state through a ref, not capturing it: `loadMore` is
+  // replaced on every render (its guards close over the current page), and
+  // the registered object has to stay stable or the restore would hold a
+  // stale listing. The state snapshot is refreshed after each render, before
+  // any restore's next attempt (see RETRY_MS in utils/focus.js).
+  const driverStateRef = useRef(null);
+  useEffect(() => {
+    driverStateRef.current = {
+      canLoad: !loading && !loadingMore && !exhausted && !error,
+      loadMore,
+    };
+  });
+  useEffect(() => {
+    if (!focusPrefix) return undefined;
+    return registerFocusListing(focusPrefix, {
+      loadMore: () => driverStateRef.current?.loadMore(),
+      canLoad: () => !!driverStateRef.current?.canLoad,
+      pending: false,
+    });
+  }, [focusPrefix]);
 
   return { items, total, page, loading, loadingMore, error, exhausted, loadMore };
 }

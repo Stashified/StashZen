@@ -29,6 +29,7 @@
  */
 
 import { useRef, useState, useEffect, useCallback, useId } from 'react';
+import { isRestorePending } from '../utils/restorePending.js';
 
 const registry = new Map();
 let currentFocusId = null;
@@ -310,9 +311,14 @@ export function useFocusable({
     // away from.
     let autoFocusTimer = null;
     let autoFocusFired = false;
+    // A restore is on its way to a card in this listing: hold the first-card
+    // focus so the cursor does not land on the wrong one and then jump. The
+    // cap means a restore that finds nothing still leaves the D-pad somewhere
+    // to move from rather than on <body> for the whole 8 s budget.
+    const autoFocusDeferUntil = Date.now() + 1500;
     if (!disabled && autoFocus && !autoFocusedRef.current) {
       autoFocusedRef.current = true;
-      autoFocusTimer = setTimeout(() => {
+      const runAutoFocus = () => {
         autoFocusFired = true;
         if (autoFocusFallback) {
           if (document.activeElement && document.activeElement !== document.body) return;
@@ -326,11 +332,16 @@ export function useFocusable({
             const replaceable = currentEntry?.el === ae && currentEntry.focusOrigin === 'fallback';
             if (!replaceable) return;
           }
+          if (isRestorePending() && Date.now() < autoFocusDeferUntil) {
+            autoFocusTimer = setTimeout(runAutoFocus, 200);
+            return;
+          }
         }
         focusingFallback = autoFocusFallback;
         el.focus();
         focusingFallback = false;
-      }, 50);
+      };
+      autoFocusTimer = setTimeout(runAutoFocus, 50);
     }
 
     return () => {

@@ -19,8 +19,8 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   // `filterOrigin` because that one means "a filtered listing and its Back
   // destination"; reusing it would make Back from a detail opened *inside* a
   // See-all Performers listing skip the Performers grid and jump Home.
-  // Null means the ordinary case — opened from the Performers grid, where
-  // `performerCardFocus` already knows the card.
+  // Null means the ordinary case — opened from the Performers grid, where the
+  // card is named by id (`performer-<id>`) on the way back.
   const [performerOrigin, setPerformerOrigin] = useState(null);
   const [selectedScene, setSelectedScene] = useState(null);
   // Scenes whose resume point was cleared from the detail overlay while Home
@@ -37,7 +37,12 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   // Focus restore targets this hook's overlays use. `mainFocus` (in App) is
   // the shared one (builder, player, settings, exit); these remember the card
   // the overlay was opened from.
-  const performerCardFocus = useRestoreFocus();
+  //
+  // The performer page has none: its grid is *unmounted* while the page is up
+  // (TabContent swaps one for the other), so a remembered element is detached
+  // by the time Back runs and focusing it silently leaves the cursor on
+  // <body> — where the remounted grid's first card then autofocuses. The page
+  // restores by id instead; see handlePerformerBack.
   const sceneCardFocus = useRestoreFocus();
   const imageCardFocus = useRestoreFocus();
 
@@ -132,15 +137,13 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   const handlePerformerSelect = (performer) => {
     // A press in the Performers grid always wins over a stale Home origin.
     setPerformerOrigin(null);
-    performerCardFocus.remember(document.activeElement);
     setSelectedPerformer(performer);
   };
 
   // A performer opened from the Home shelf. The detail page only renders
-  // under `activeTab === 'performers'`, so this switches tab — and
-  // `performerCardFocus` is deliberately not used: the card that was
-  // pressed is on Home and unmounts with the switch, so the element could
-  // never be focused on the way back. The origin names it by id instead.
+  // under `activeTab === 'performers'`, so this switches tab — and the card
+  // that was pressed is on Home and unmounts with the switch, so the origin
+  // names it by id instead.
   const handleShowroomPerformerSelect = (performer) => {
     setPerformerOrigin({ focusId: `performer-${performer.id}` });
     setSelectedPerformer(performer);
@@ -148,6 +151,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   };
 
   const handlePerformerBack = () => {
+    const performer = selectedPerformer;
     setSelectedPerformer(null);
     if (performerOrigin) {
       const { focusId } = performerOrigin;
@@ -159,29 +163,56 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
       focusByIdWhenReady(focusId);
       return;
     }
-    // Restore focus to the originating card after the grid remounts.
-    performerCardFocus.restore();
+    // The Performers grid remounts in this same commit and fetches page 1, so
+    // the card is gone now and may not be back for a moment — or, if the user
+    // had scrolled, is not in that first page at all. The restore waits for it
+    // and pages the grid forward; see utils/focus.js.
+    if (performer) focusByIdWhenReady(`performer-${performer.id}`);
   };
 
   // An image has no listing behind it to route to, so it opens the one screen
   // that shows it at size. The viewer is handed the listing the grid had
   // loaded rather than the item alone, because a viewer you cannot step
   // through is just a bigger card.
+  //
+  // `openImageViewer` is the general form, for the long-press menu: it takes
+  // the viewer's descriptor as-is (`items`/`index`, or `gallery`/`shuffle`)
+  // plus `restoreEl`, the card focus must come back to when the viewer
+  // closes. The menu passes the card it was opened on; the plain selection
+  // passes whatever was focused when Enter was pressed.
+  const openImageViewer = (descriptor) => {
+    if (descriptor?.restoreEl) imageCardFocus.remember(descriptor.restoreEl);
+    setImageViewer(descriptor);
+  };
+
   const handleImageSelect = (image, index, items) => {
-    imageCardFocus.remember(document.activeElement);
-    setImageViewer({
+    openImageViewer({
       items: items?.length ? items : [image],
       // A Carousel passes the index too; the `??` is for the click path, where
       // it is absent. Landing on image 1 of the wrong listing would be worse
       // than landing on the first, so the fallback is deliberate.
       index: typeof index === 'number' ? index : 0,
+      restoreEl: document.activeElement,
     });
   };
 
   const closeImageViewer = () => {
+    const viewer = imageViewer;
     setImageViewer(null);
-    // Same deferred restore as every other overlay close: the viewer's DOM has
-    // to be gone before focus can land on the card again.
+    // A listing viewer steps through the listing's own cards, and App is told
+    // the index on every step. The card to return to is the one the viewer is
+    // showing, not the one it was opened on: stepping from image 1 to image 5
+    // and pressing Back should leave the user on image 5. A gallery slideshow
+    // has no cards for its pictures (they are fetched for the viewer), so it
+    // keeps the gallery card it was opened from.
+    const item = viewer && !viewer.gallery ? viewer.items?.[viewer.index] : null;
+    if (item?.id != null) {
+      // Deferred like every other overlay close: the viewer's DOM has to be
+      // gone before focus lands, or the browser settles it back to <body>.
+      setTimeout(() => focusByIdWhenReady(`image-${item.id}`), 50);
+      return;
+    }
+    // Same deferred restore as every other overlay close.
     imageCardFocus.restore();
   };
 
@@ -194,7 +225,6 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     imageViewer,
     setImageViewer,
     sceneCardFocus,
-    performerCardFocus,
     handleVideoSelect,
     handleSceneClose,
     handleSceneActivityChange,
@@ -202,6 +232,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     handleShowroomPerformerSelect,
     handlePerformerBack,
     handleImageSelect,
+    openImageViewer,
     closeImageViewer,
   };
 }

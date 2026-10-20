@@ -11,10 +11,11 @@
  * which section it is in — `aspect` is the one thing that changes the *shape*
  * of the card, and it is a property of the art rather than of the section.
  *
- * `onLongPress` is part of the shared card contract (Carousel passes it) and is
- * deliberately ignored: the long-press menu is a scene action — Play, Play all,
- * Details — and none of those mean anything for a tag. It is not accepted as a
- * prop here rather than accepted-and-dropped, so the omission is visible.
+ * `onLongPress` is part of the shared card contract (Carousel passes it). It is
+ * only wired when the descriptor asks for it (`view.longPress`): Images and
+ * Galleries have a menu — the viewer, slideshows — while a Tag or a Studio has
+ * nothing to offer, and leaving their presses as plain taps keeps their Enter
+ * firing on keydown as it always has.
  *
  * ## What `onSelect` is called with
  *
@@ -45,7 +46,7 @@ function initialsOf(text) {
 }
 
 export default function EntityCard({
-  item, index, list, onSelect, view,
+  item, index, list, onSelect, onLongPress, view,
   autoFocus = index === 0,
   // The same explicit edge VideoCard takes. Only the Home shelf passes one:
   // it lets the top visible shelf send Up to the rail. Every existing caller
@@ -60,6 +61,10 @@ export default function EntityCard({
   // One closure for both the Enter key and the click, so the two cannot drift
   // apart — see the note on the argument list above.
   const select = () => onSelect?.(item, index, list?.items);
+  // The listing itself, not just its items: the menu's subtitle reports the
+  // position in the listing ("12 of 40"), which needs its total. The viewer
+  // opener takes `list.items` from the record it is handed.
+  const longPress = () => onLongPress?.(item, index, list);
 
   const { ref, focused } = useFocusable({
     // The prefix comes from the descriptor, not from the component: it is also
@@ -68,6 +73,7 @@ export default function EntityCard({
     id: `${view.focusPrefix}-${item.id}`,
     zone: 'grid',
     onEnter: select,
+    onLongPress: view.longPress && onLongPress ? longPress : undefined,
     autoFocus,
     autoFocusWhenIdle: true,
     nextId,

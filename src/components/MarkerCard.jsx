@@ -15,6 +15,10 @@
  * Takes its record as `item`, like every other card in the tree — the shared
  * name is what lets one container render any of them (`Carousel` does; see its
  * header). The marker-specific field names are unchanged.
+ *
+ * The long press takes the same three arguments VideoCard's does —
+ * `(item, list, index)` — because the menu it opens is built from the listing
+ * the marker was found in ("Play all", "Play from here"). See actionMenus.js.
  */
 
 import { useState } from 'react';
@@ -22,13 +26,16 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './MarkerCard.module.css';
 import { formatTime } from '../utils/format.js';
 
-export default function MarkerCard({ item, index, onSelect }) {
+export default function MarkerCard({ item, index, list, onSelect, onLongPress }) {
   const [imgError, setImgError] = useState(false);
 
   const { ref, focused } = useFocusable({
     id: `marker-${item.id}`,
     zone: 'grid',
     onEnter: () => onSelect?.(item),
+    // Opt-in, like VideoCard's: without a handler the press stays a plain
+    // tap and its short action runs on keydown as it always has.
+    onLongPress: onLongPress ? () => onLongPress(item, list, index) : undefined,
     autoFocus: index === 0,
     autoFocusWhenIdle: true,
   });

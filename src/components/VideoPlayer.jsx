@@ -75,7 +75,7 @@
  * session opened on (a marker's timestamp) and to nothing after it.
  */
 
-import { useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import styles from './VideoPlayer.module.css';
 import PlayerControlsRail from './PlayerControlsRail.jsx';
 import MarkerModal from './MarkerModal.jsx';
@@ -103,10 +103,24 @@ import { PlayerProgress } from './player/PlayerProgress.jsx';
 import { PlayerTimeRow } from './player/PlayerTimeRow.jsx';
 import { PlayerStatus } from './player/PlayerStatus.jsx';
 
-export default function VideoPlayer({ queue, onClose, onActivityChange }) {
+export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneChange }) {
   const {
     items, total, index, current: video, goNext, goPrev, hasPrev, hasNext,
   } = usePlayQueue(queue);
+
+  // Report the scene on screen, so the screen underneath can put the cursor
+  // back on *that* scene's card when the player closes — a queue started in
+  // the middle of a listing and then skipped must not return to the scene it
+  // started on. The callback is read through a ref because App rebuilds it
+  // every render, and the report belongs to a scene change, not to each of
+  // the player's own re-renders (the transport writes state every timeupdate).
+  const onSceneChangeRef = useRef(onSceneChange);
+  onSceneChangeRef.current = onSceneChange;
+  const currentVideoRef = useRef(video);
+  currentVideoRef.current = video;
+  useEffect(() => {
+    onSceneChangeRef.current?.(currentVideoRef.current ?? null);
+  }, [video?.id]);
 
   // One scene and no neighbours: ↑/↓ have no scene to step to, so they open
   // the rail instead. Derived from the queue rather than from `items.length`
