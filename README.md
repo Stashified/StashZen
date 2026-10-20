@@ -81,6 +81,7 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 |---|---|
 | D-pad | Move focus. |
 | OK / Enter | Open the focused item or activate the control. On a card this opens its detail page. |
+| Long press OK | Opens that card's menu — play at a marker, a slideshow from an image or gallery, the scene actions (Play all, Play from here, markers). |
 | Back / Esc | Close the topmost thing — dropdown, page, player. With the player's controls on screen, the first press hides them and the second closes the player. In the image viewer, an open info panel closes first. On the main screen it asks to exit. |
 | ← from a card | Returns to the left rail's current tab. |
 | ↑ from the top card row | On a listing tab, jumps to the controls bar (filter, sort, view mode, search). On Home, goes back to the rail. |
@@ -98,14 +99,17 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Seven sections** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
   search, sort, filters and four view modes. View mode and columns are remembered per tab; sort,
   filter and search reset on arrival. Gallery cards show the studio, or the folder; tag and studio
-  carousels carry Stash's description and aliases. A marker plays its scene at that timestamp.
+  carousels carry Stash's description and aliases. A marker plays its scene at that timestamp. A
+  long press opens the card's menu: play at a marker, a slideshow from an image or gallery, the
+  scene actions.
 - **Filter builder** — build a filter on the TV or load a saved one; saved filters round-trip to
   Stash.
 - **Scene detail** — metadata and rating; resume, play from a marker, clear progress or mark
   played; a **Galleries** row when the scene belongs to one.
 - **Performer pages** — the full profile plus scene, image and gallery counts, with **Rating** and
   **Favourite** editable and written back to Stash.
-- **Image viewer** — full size, stepped with ←/→; **Info** shows what Stash holds for the image.
+- **Image viewer** — full size, stepped with ←/→, with a six-second slideshow; **Info** shows
+  what Stash holds for the image. An image with no title shows its file name.
 - **Player** — resumes where you stopped, queues the whole listing, seeks 15 s at a time, and
   writes progress back to Stash. HLS keeps the timeline seekable; the controls say **direct** or
   **transcoded**, and **Playback info** shows the live stream details.
