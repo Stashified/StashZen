@@ -227,11 +227,13 @@ A `.wgt` is a signed zip of `dist/` plus `tizen/config.xml`.
    tizen install -n dist/StashZen.wgt -t <tv-sdb-name>
    ```
 
-The result is `dist/StashZen.wgt` (CI adds the version to the artifact name). A package signed with
-your distributor certificate installs with `tizen install` **only on the TVs whose DUIDs you
-listed**. Apps2Samsung manages certificates per TV and may add the target TV itself, so a shared
-build will often work there too — that route is not verified by this project. For sharing with
-people you cannot sign for, use TizenBrew or the Samsung Seller Office.
+The result is `dist/StashZen.wgt` (CI adds the version to the artifact name). The package is signed
+with your distributor certificate, and Tizen's own installer expects the target TV's device ID to be
+listed in that certificate. **Apps2Samsung is not limited by that**: a release signed with a
+certificate whose device ID belongs to no real TV installed and ran on a TV the certificate does
+not name — verified 2026-10-18. Apps2Samsung also manages certificates per TV and may add the
+target TV itself. So a shared build works there too; for sharing more widely, TizenBrew or the
+Samsung Seller Office are the routes to use.
 
 `npm run build` now ends with `scripts/check-bundle.mjs`. If `.env.production` supplied an API key,
 the build **fails** rather than producing a package that contains it. A local build that deliberately
