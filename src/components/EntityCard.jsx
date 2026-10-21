@@ -100,6 +100,7 @@ export default function EntityCard({
             className={styles.img}
             onError={() => setImgError(true)}
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className={styles.imgFallback}>
