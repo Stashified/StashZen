@@ -64,7 +64,9 @@
  * can still show.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { TIZEN_BACK } from '../utils/input.js';
 import { fetchImageInfo, fetchImages } from '../utils/imageService.js';
@@ -323,7 +325,15 @@ export default function ImageViewer({
     ref.current?.focus();
   }, [ref]);
 
-  useEffect(() => {
+  // A *layout* effect, deliberately. The closure below reads the index it was
+  // registered with, and the slideshow changes that index on a timer. With a
+  // passive effect the new listener lands one task after the advance's
+  // commit, so a keydown in between runs the old closure — index 0 on the
+  // advance *away* from index 0, whose `canPrev` is false — and the arrow is
+  // silently dropped. Layout effects run inside the commit, synchronously
+  // with the DOM the user is already looking at, which closes that window.
+  // (Found as a flaky long-press harness check: same tree, 36/40 and 40/40.)
+  useLayoutEffect(() => {
     const handler = (e) => {
       // The media keys mean play/pause anywhere in the overlay, as they do in
       // the player (see usePlayerTransport for why 415 and 19 are split).
