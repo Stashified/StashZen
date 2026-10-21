@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { useStableListing } from '../hooks/useStableListing.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './ItemList.module.css';
@@ -135,8 +136,10 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
 
   // `fetchPage` is included even for sections whose select ignores it: the
   // scene queue reads it, and handing every row the same listing shape keeps
-  // `rowSelect` from having to know which section it is in.
-  const listing = { items, total, page, fetchPage };
+  // `rowSelect` from having to know which section it is in. The object's
+  // identity is fixed (`useStableListing`) so a page append does not re-render
+  // every row through a new prop (the review's R6).
+  const listing = useStableListing({ items, total, page, fetchPage });
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);

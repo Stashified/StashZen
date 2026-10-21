@@ -23,12 +23,19 @@
  * effect, which is exactly what the observer plus the restore do to this
  * hook. Red control: without the ref guard this reports three failures.
  *
+ * The second probe covers the guard's *ownership* (the review's R1): page 2 of
+ * one listing is held in flight while the request identity changes (a sort or
+ * filter change), then the new listing asks for its page 2. A boolean guard —
+ * the first version — refuses, and the new list never pages again until the
+ * user scrolls the sentinel out and back. Red control: restore the boolean
+ * (`inFlightRef.current === true`) and L7 fails with B stuck at 40 rows.
+ *
  * Not covered here: which trigger wins in the real app. That is timing, and
  * the guard makes the answer not matter.
  */
 
 import { createRoot } from 'react-dom/client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePagedList } from '../../src/hooks/usePagedList.js';
 import { fetchPerformers } from '../../src/utils/performerService.js';
 import { setSettings } from '../../src/utils/settings.js';
@@ -77,6 +84,45 @@ function Probe() {
   return <div data-probe>{`${list.items.length} of ${list.total}`}</div>;
 }
 
+// ── Probe 2: identity change with a page in flight (R1) ────
+// A controlled `fetchPage`, not the fake server: the case needs one request
+// held open across the identity change, and a timeout delay would be a race.
+const keyProbe = { setKey: null, list: null };
+const keyRequests = [];
+const heldResolvers = new Map();
+const KEY_TOTAL = 60;
+
+function rowsFor(key, page) {
+  const start = (page - 1) * 40;
+  const n = Math.max(0, Math.min(40, KEY_TOTAL - start));
+  return Array.from({ length: n }, (_, i) => ({ id: `${key}-${start + i + 1}` }));
+}
+
+function controlledFetch(key) {
+  return (page) => {
+    keyRequests.push(`${key}:${page}`);
+    if (key === 'A' && page === 2) {
+      return new Promise(resolve => heldResolvers.set('A:2', resolve));
+    }
+    return new Promise(resolve => setTimeout(
+      () => resolve({ items: rowsFor(key, page), total: KEY_TOTAL }), 10,
+    ));
+  };
+}
+
+function KeyProbe() {
+  const [key, setKey] = useState('A');
+  keyProbe.setKey = setKey;
+
+  const list = usePagedList({
+    fetchPage: controlledFetch(key),
+    requestKey: `key-probe-${key}`,
+  });
+  keyProbe.list = list;
+
+  return <div data-probe-key>{`${key}: ${list.items.length} of ${list.total}`}</div>;
+}
+
 async function run() {
   // The listing has 100 rows at 40 per page: page 2 is full, page 3 is short.
   const settled = await waitFor(() => latest && !latest.loading && latest.items.length > 40, 8000);
@@ -102,6 +148,55 @@ async function run() {
   check('L5 …and the short last page ends the listing',
     latest?.exhausted === true && latest?.total === 100,
     `exhausted ${latest?.exhausted}, total ${latest?.total}`);
+
+  // ── R1: an identity change while a page is in flight ──
+  const aReady = await waitFor(
+    () => keyProbe.list?.items.length === 40 && !keyProbe.list.loading,
+  );
+  check('L6 page 1 of listing A settles', aReady,
+    keyProbe.list ? `${keyProbe.list.items.length} rows` : 'no listing');
+
+  // A:2 is held open by the controlled fetch. Do not await this: the promise
+  // is the *response*, and it is deliberately still in flight below.
+  const aPending = keyProbe.list.loadMore();
+  check('L7 A asks for its second page', keyRequests.includes('A:2'), keyRequests.join(' '));
+
+  keyProbe.setKey('B');
+  const bReady = await waitFor(
+    () => keyProbe.list?.items.length === 40 && keyProbe.list.items[0]?.id?.startsWith('B-'),
+  );
+  check('L8 the new identity fetches its own page 1', bReady,
+    keyProbe.list ? `${keyProbe.list.items.length} rows` : 'no listing');
+
+  // The heart of R1: A still holds an in-flight request, but it belongs to a
+  // listing that no longer exists. B must be able to page.
+  const bStarted = keyProbe.list.loadMore();
+  check('L9 B starts its own second page while A is still in flight',
+    keyRequests.filter(r => r === 'B:2').length === 1, keyRequests.join(' '));
+
+  // Settle A *while B's page is in flight*. A's `finally` must clear only its
+  // own slot — an unconditional clear would free B's, letting a second
+  // trigger fetch B:2 again.
+  heldResolvers.get('A:2')?.({ items: rowsFor('A', 2), total: KEY_TOTAL });
+  await aPending;
+  const secondTrigger = keyProbe.list.loadMore();
+
+  // 60 rows is B's whole listing: page 1 (40) plus page 2 (20).
+  const bPaged = await waitFor(() => keyProbe.list?.items.length === 60);
+  check('L10 a stale in-flight request does not block the new identity', bPaged,
+    `${keyProbe.list?.items.length} rows (red control: stuck at 40)`);
+  check('L11 a started page resolves true — the restore\'s page budget',
+    (await bStarted) === true);
+  const second = await secondTrigger;
+  check('L12 the stale settle frees nothing of B\'s — one request, second trigger false',
+    second === false && keyRequests.filter(r => r === 'B:2').length === 1,
+    `second trigger returned ${second}; requests ${keyRequests.join(' ')}`);
+
+  await sleep(50);
+  check('L13 the late page from the old identity never reaches the new list',
+    keyProbe.list?.items.length === 60
+      && keyProbe.list.items.every(i => String(i.id).startsWith('B-')),
+    `${keyProbe.list?.items.length} rows, first ${keyProbe.list?.items[0]?.id}`);
 }
 
 async function finish() {
@@ -119,7 +214,7 @@ document.body.style.margin = '0';
 // Before the render, so the first fetch already sees the fake endpoint.
 setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
 
-createRoot(root).render(<Probe />);
+createRoot(root).render(<><Probe /><KeyProbe /></>);
 
 run()
   .then(finish)

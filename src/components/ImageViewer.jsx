@@ -35,7 +35,10 @@
  * looping, pauses while the info panel is open (and resumes when it closes),
  * and any manual Left/Right stops it — a browse gesture is a decision about
  * what to look at next, not a nudge to the timer. Back does not need to stop
- * it; the viewer unmounts.
+ * it; the viewer unmounts. In gallery mode it *holds* on the last picture in
+ * hand while the background loop is still fetching, and stops only at the
+ * real end — otherwise a slideshow that outran a slow server would stop
+ * halfway through the gallery.
  *
  * ## Two sources
  *
@@ -48,10 +51,17 @@
  * Opened from a *gallery's* menu (`gallery` prop), there is no listing to
  * snapshot — the pictures are the gallery's, and the card is a container. So
  * this fetches them itself: fill the first page, open, then page the rest in
- * behind the curtain while the viewer is already usable. "Shuffle" shuffles
- * each page as it arrives. A gallery can be arbitrarily large, so the loop is
- * capped at GALLERY_MAX_PAGES; the footer's "of N loaded" stays honest about
- * how many are in hand.
+ * behind the curtain while the viewer is already usable. A gallery can be
+ * arbitrarily large, so the loop is capped at GALLERY_MAX_PAGES; the footer's
+ * "of N loaded" stays honest about how many are in hand.
+ *
+ * "Shuffle" asks the server for a seeded random order rather than shuffling
+ * each page as it arrives. Per-page shuffling meant a shuffled slideshow
+ * always began inside the newest 40 pictures, and — now that the pages join
+ * one order — the draw is fresh on every open but consistent across the
+ * pages of one open (see randomSort.js). Those background pages bypass the
+ * list cache: up to 100 of them would evict every page the rest of the app
+ * can still show.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -59,6 +69,7 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import { TIZEN_BACK } from '../utils/input.js';
 import { fetchImageInfo, fetchImages } from '../utils/imageService.js';
 import { buildImageInfoRows } from '../utils/imageInfo.js';
+import { stableSort } from '../utils/randomSort.js';
 import styles from './ImageViewer.module.css';
 
 // Long enough to collapse a held arrow's key repeat into one request, short
@@ -79,16 +90,6 @@ const GALLERY_PAGE_SIZE = 40;
 // is reached the footer already says "loaded", and Back out to View images
 // (which lists every one) is the escape hatch.
 const GALLERY_MAX_PAGES = 100;
-
-/** Fisher–Yates. Called per arriving page, so pages join in random order. */
-function shuffled(rows) {
-  const out = rows.slice();
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
 
 export default function ImageViewer({
   items = [],
@@ -120,6 +121,10 @@ export default function ImageViewer({
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryStatus, setGalleryStatus] = useState('idle'); // idle | loading | ready | error
   const [galleryMessage, setGalleryMessage] = useState('');
+  // False while the background loop is still paging the gallery in. The
+  // slideshow uses it to tell "this is the last picture" apart from "the last
+  // picture I have so far" — see the slide timer below.
+  const [galleryDone, setGalleryDone] = useState(false);
   const preloadRef = useRef(null);
 
   const { ref } = useFocusable({
@@ -158,10 +163,18 @@ export default function ImageViewer({
   const canPrev = currentIndex > 0;
   const canNext = currentIndex < sourceItems.length - 1;
 
+  // App builds `onIndexChange` inline, so it is a new function on every App
+  // render. It is only ever called from an event or a timer, so a ref keeps
+  // `goTo` stable — and `goTo` is in the slide timer's dependencies, where an
+  // unstable identity would restart the six-second countdown on any unrelated
+  // re-render and tear down the key listener with it (the review's R4).
+  const onIndexChangeRef = useRef(onIndexChange);
+  useEffect(() => { onIndexChangeRef.current = onIndexChange; });
+
   const goTo = useCallback((next) => {
     if (gallery) setGalleryIndex(next);
-    else onIndexChange?.(next);
-  }, [gallery, onIndexChange]);
+    else onIndexChangeRef.current?.(next);
+  }, [gallery]);
 
   // Reset the per-image state whenever the picture changes, or the second
   // image inherits the first one's failure and shows the fallback.
@@ -214,6 +227,16 @@ export default function ImageViewer({
     setGalleryIndex(0);
     setGalleryStatus('loading');
     setGalleryMessage('');
+    setGalleryDone(false);
+
+    // One permutation for the whole gallery, drawn fresh on each open:
+    // `stableSort` hashes the identity it is given, and the extra
+    // `Math.random()` part is what varies between opens. Without a seed the
+    // server re-shuffles per request, so page 2 would overlap page 1 and the
+    // slideshow below could see a "last" picture that is not one.
+    const sort = shuffle
+      ? stableSort('random', 'gallery', gallery.id, Math.random())
+      : 'created_at';
 
     (async () => {
       const seen = new Set();
@@ -222,17 +245,20 @@ export default function ImageViewer({
         for (let page = 1; page <= GALLERY_MAX_PAGES; page++) {
           const d = await fetchImages({
             filter: { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
-            // Newest first, matching the Images tab's default. A shuffle
-            // ignores the order anyway.
-            sort: 'created_at',
+            // Newest first, matching the Images tab's default. A seeded
+            // random sort ignores the direction, as the server does.
+            sort,
             order: 'desc',
             page,
             limit: GALLERY_PAGE_SIZE,
+            // A background loop must not evict the 50-entry list cache the
+            // rest of the app is browsing from.
+            cache: false,
           });
           if (cancelled) return;
           const rows = (d.images || []).filter(x => x?.id && !seen.has(String(x.id)));
           rows.forEach(x => seen.add(String(x.id)));
-          all = [...all, ...(shuffle ? shuffled(rows) : rows)];
+          all = [...all, ...rows];
           setGalleryItems(all);
           setGalleryStatus('ready');
           // A short page means the server has nothing more; `all.length >=
@@ -240,10 +266,13 @@ export default function ImageViewer({
           if ((d.images || []).length < GALLERY_PAGE_SIZE) break;
           if (Number(d.total) && all.length >= Number(d.total)) break;
         }
+        if (!cancelled) setGalleryDone(true);
       } catch (e) {
         if (cancelled) return;
         // A later page failing must not blank a slideshow that is already
-        // showing: keep what arrived and stop extending.
+        // showing: keep what arrived and stop extending. Either way the loop
+        // is over, and the slideshow may stop at the end again.
+        setGalleryDone(true);
         if (all.length) return;
         setGalleryStatus('error');
         setGalleryMessage(e.message || 'Unknown error');
@@ -261,12 +290,19 @@ export default function ImageViewer({
   // stop.
   useEffect(() => {
     if (!playing || infoOpen || !itemId) return undefined;
-    const timer = setTimeout(() => {
-      if (canNext) goTo(currentIndex + 1);
-      else setPlaying(false);
-    }, SLIDE_MS);
+    if (!canNext) {
+      // Gallery mode: the loop may still be bringing pictures in. This is the
+      // last one *in hand*, not necessarily the last one, so hold — the effect
+      // re-runs and starts a fresh countdown when the next page lands
+      // (`canNext` flips), and falls through to the stop below when the loop
+      // reports its end (`galleryDone`). See the header.
+      if (gallery && !galleryDone) return undefined;
+      setPlaying(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => goTo(currentIndex + 1), SLIDE_MS);
     return () => clearTimeout(timer);
-  }, [playing, infoOpen, itemId, canNext, currentIndex, goTo]);
+  }, [playing, infoOpen, itemId, canNext, currentIndex, gallery, galleryDone, goTo]);
 
   // Warm the next picture while the current one is up. Only while running:
   // browsing by hand should not pull a full-resolution file per step. The

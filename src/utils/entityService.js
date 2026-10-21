@@ -31,6 +31,7 @@ import { runQuery } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
+import { baseSort, stableSort } from './randomSort.js';
 
 // The mock comparator now lives in mockSort.js, shared with the three older
 // services: its `alias` argument is the same rule described there, and it
@@ -83,7 +84,10 @@ export function createEntityService({
           f => String(item[f] ?? '').toLowerCase().includes(needle),
         ));
       }
-      all.sort(mockComparator(sort, order, mockSortKey));
+      // `sort` may be the seeded spelling (`random_<n>`), which the comparator
+      // does not know; `baseSort` maps it back so Test mode keeps its stable
+      // id-rank shuffle.
+      all.sort(mockComparator(baseSort(sort), order, mockSortKey));
 
       const total = all.length;
       const start = (page - 1) * limit;
@@ -118,6 +122,10 @@ export function createEntityService({
       const {
         sort = 'created_at', order = 'desc', filter = null,
         q = '', page = 1, limit = 40, hero = false,
+        // `cache: false` is for a background loop that would otherwise evict
+        // the pages the user can actually see (the gallery slideshow fetches
+        // up to 100 pages). The request is identical; only the memo is skipped.
+        cache: useCache = true,
       } = opts;
 
       // The two variants answer different documents, so they must not share a
@@ -126,15 +134,26 @@ export function createEntityService({
       // base query exists to avoid.
       const useHeroQuery = hero && !!heroQuery;
 
+      // `random` is re-shuffled by the server on every request, so a listing
+      // would overlap its own pages and the no-progress stop could end a short
+      // list early (the review's R8). Seeding it from the request identity
+      // makes one listing one permutation across all its pages; see
+      // randomSort.js. The `:hero` suffix is deliberately not part of the
+      // identity — the two variants are the same listing.
+      const requestSort = stableSort(sort, kind, filter, q);
+
+      const loader = () => load({
+        sort: requestSort, order, filter, q, page, limit,
+        query: useHeroQuery ? heroQuery : query,
+      });
+
+      if (!useCache) return loader();
       return cache.get(
         listCacheKey(
           useHeroQuery ? `${kind}:hero` : kind,
-          sort, order, filter, q, page, limit,
+          requestSort, order, filter, q, page, limit,
         ),
-        () => load({
-          sort, order, filter, q, page, limit,
-          query: useHeroQuery ? heroQuery : query,
-        }),
+        loader,
       );
     },
   };

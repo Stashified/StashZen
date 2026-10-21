@@ -12,6 +12,7 @@ import MarkerCard from './MarkerCard.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchMarkers } from '../utils/markerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { useStableListing } from '../hooks/useStableListing.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoGrid.module.css'; // reuse VideoGrid styles for grid layout
 
@@ -43,8 +44,10 @@ export default function MarkerGrid({
 
   // The listing travels to every card so the long-press menu can offer "Play
   // all" and "Play from here"; the queue reads `fetchPage` from here to
-  // continue past the loaded markers. Same shape Carousel hands down.
-  const listing = { items: markers, total, page, fetchPage };
+  // continue past the loaded markers. Same shape Carousel hands down —
+  // `useStableListing`, so the prop's identity survives a page append (the
+  // review's R6).
+  const listing = useStableListing({ items: markers, total, page, fetchPage });
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);

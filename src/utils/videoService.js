@@ -17,6 +17,7 @@ import { translateFilter } from './filterTranslate.js';
 import { SCENE_TITLES, STUDIOS } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
+import { baseSort, stableSort } from './randomSort.js';
 
 // The two scene sort values whose mock field has another name. `duration` is
 // the formatter's output on a card, not a number — the seconds live in
@@ -229,9 +230,14 @@ export async function fetchVideos({
   page = 1,
   limit = 40,
 } = {}) {
+  // `random` re-shuffles on every request server-side, so page 2 would overlap
+  // page 1 and the no-progress stop could end a short list early (the review's
+  // R8). Seed it from the listing's identity — never the page number — so one
+  // listing is one permutation across every page. See randomSort.js.
+  const requestSort = stableSort(sort, 'scenes', mode, filter, q);
   return sceneCache.get(
-    listCacheKey('scenes', mode, sort, order, filter, q, page, limit),
-    () => loadVideos({ mode, sort, order, filter, q, page, limit }),
+    listCacheKey('scenes', mode, requestSort, order, filter, q, page, limit),
+    () => loadVideos({ mode, sort: requestSort, order, filter, q, page, limit }),
   );
 }
 
@@ -256,7 +262,8 @@ async function loadVideos({
       videos = videos.filter(v => v.category.toLowerCase() === mode.toLowerCase());
     }
 
-    videos.sort(mockComparator(sort, order, MOCK_SORT_ALIAS));
+    // `sort` may be `random_<n>`; the comparator knows only `random`.
+    videos.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
 
     return { videos, total: videos.length, page };
   }

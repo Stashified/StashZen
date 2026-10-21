@@ -23,6 +23,7 @@ import { translateFilter } from './filterTranslate.js';
 import { MARKER_PREFIXES, MARKER_SUFFIXES, MARKER_TAGS, mockSceneRef } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
+import { baseSort, stableSort } from './randomSort.js';
 
 // ── Mock generator ────────────────────────────────────────
 // Seeded on the marker's id, like the scene generator in videoService.js, so
@@ -145,9 +146,12 @@ export async function fetchMarkers({
   limit = 40,
   filter = null,
 } = {}) {
+  // Seeded per request identity, not per page — see the note in
+  // videoService.fetchVideos and randomSort.js (the review's R8).
+  const requestSort = stableSort(sort, 'markers', filter, q);
   return markerCache.get(
-    listCacheKey('markers', sort, order, q, page, limit, filter),
-    () => loadMarkers({ sort, order, q, page, limit, filter }),
+    listCacheKey('markers', requestSort, order, q, page, limit, filter),
+    () => loadMarkers({ sort: requestSort, order, q, page, limit, filter }),
   );
 }
 
@@ -174,7 +178,8 @@ async function loadMarkers({
     await new Promise(r => setTimeout(r, 400));
     let markers = generateMockMarkers(60);
 
-    markers.sort(mockComparator(sort, order));
+    // `sort` may be `random_<n>`; the comparator knows only `random`.
+    markers.sort(mockComparator(baseSort(sort), order));
 
     const start = (page - 1) * limit;
     const slice = markers.slice(start, start + limit).map(normalizeMarker);

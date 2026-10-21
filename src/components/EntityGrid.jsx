@@ -15,6 +15,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { useStableListing } from '../hooks/useStableListing.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './EntityGrid.module.css';
 
@@ -48,8 +49,10 @@ export default function EntityGrid({
   // that steps through the listing it was opened from. Same shape the Carousel
   // passes, minus `fetchPage`: the viewer takes a snapshot and does not page, so
   // offering it a way to extend the list would be offering something it cannot
-  // honour. See ImageViewer's header.
-  const listing = { items, total, page };
+  // honour. See ImageViewer's header. `useStableListing` so a page append does
+  // not hand every card a new prop (the review's R6); its `fetchPage` getter is
+  // simply undefined here.
+  const listing = useStableListing({ items, total, page });
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);

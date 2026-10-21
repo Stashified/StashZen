@@ -102,7 +102,16 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   // moment and marked the list exhausted, so a 1,892-row library printed
   // "40 performers" and could never page again. Reported from the TV on
   // 2026-10-20, right after Back restored a card from deep in the listing.
-  const inFlightRef = useRef(false);
+  //
+  // Holds the *request id that owns the fetch*, not a boolean. A boolean
+  // outlived the identity it belonged to: page 3 of one sort could still be
+  // running when the user changed the sort, and the new identity's first
+  // trigger then refused to fetch because the old request "held" the flag.
+  // When the old request settled it cleared the flag without a state change
+  // (its id was stale), so nothing re-armed the sentinel and paging stalled
+  // until the next scroll. The guard below blocks only an owner that is also
+  // the current identity.
+  const inFlightRef = useRef(null);
 
   // What `loadMore` is allowed to act on, read from refs rather than from the
   // render closure. The guard above stops two triggers *at the same time*;
@@ -217,25 +226,30 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
 
   // ── Load the next page ────────────────────────────────────
   const loadMore = useCallback(async () => {
-    // `loading` and `loadingMore` are the *committed* state; the refs are what
-    // close both windows — two triggers in one tick (`inFlightRef`) and a
-    // trigger queued by an older render (the refs below). The committed pair
-    // stays as a conservative extra: a stale-true `loading` only defers one
-    // trigger, and a stale-false one is covered by the ref.
-    if (inFlightRef.current || loadingMore || loading || loadingRef.current
-        || blockedRef.current || retryPendingRef.current) return;
-    if (itemsLenRef.current >= totalRef.current && totalRef.current > 0) return;
-
     // Reads the id, never bumps it. Only the reset effect above bumps, which
     // is what makes an in-flight page harmless once the list has moved on.
     const reqId = requestIdRef.current;
+
+    // `loading` and `loadingMore` are the *committed* state; the refs are what
+    // close both windows — two triggers in one tick (the owner check) and a
+    // trigger queued by an older render (the refs below). The committed pair
+    // stays as a conservative extra: a stale-true `loading` only defers one
+    // trigger, and a stale-false one is covered by the ref.
+    //
+    // The owner check is deliberately `===`: a fetch belonging to a *replaced*
+    // identity must not block the new one. Its `finally` below only clears the
+    // flag when it still owns it, so it cannot swallow the new request's slot.
+    if (inFlightRef.current === reqId || loadingMore || loading || loadingRef.current
+        || blockedRef.current || retryPendingRef.current) return false;
+    if (itemsLenRef.current >= totalRef.current && totalRef.current > 0) return false;
+
     const nextPage = pageRef.current + 1;
 
-    inFlightRef.current = true;
+    inFlightRef.current = reqId;
     setLoadingMore(true);
     try {
       const data = await fetchPageRef.current(nextPage);
-      if (reqId !== requestIdRef.current) return;
+      if (reqId !== requestIdRef.current) return true;
 
       // Collect before touching state: the seen-set is a ref, and refs must
       // not be mutated inside a state updater (StrictMode runs updaters
@@ -257,7 +271,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
         totalRef.current = itemsLenRef.current;
         setTotal(itemsLenRef.current);
         setEnded(true);
-        return;
+        return true;
       }
 
       attemptsRef.current = 0;
@@ -272,7 +286,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
         setTotal(data.total);
       }
     } catch (e) {
-      if (reqId !== requestIdRef.current) return;
+      if (reqId !== requestIdRef.current) return true;
       setError(e.message);
       attemptsRef.current += 1;
       if (attemptsRef.current < MAX_PAGE_ATTEMPTS) {
@@ -290,11 +304,17 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
         blockedRef.current = true;
       }
     } finally {
-      // Cleared even when the identity moved on underneath the request: no
-      // later loadMore started while it was held, so this is the only owner.
-      inFlightRef.current = false;
+      // Only when this request still owns the slot. A reset may have let the
+      // new identity start its own fetch while this one was running; an
+      // unconditional clear here would drop *that* guard and let a second
+      // trigger duplicate it.
+      if (inFlightRef.current === reqId) inFlightRef.current = null;
       if (reqId === requestIdRef.current) setLoadingMore(false);
     }
+    // `true` means a fetch was started. `focus.js` counts its page budget off
+    // this: an early return (blocked, retrying, already loading) is not a page
+    // it may spend, or a restore can burn all twelve on no-ops.
+    return true;
     // `loading` is not read in the body — it is a dependency because the grids
     // wire their sentinel observer to this callback's identity. On the first
     // render the component is still the spinner and has no sentinel to

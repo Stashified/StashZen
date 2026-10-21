@@ -114,12 +114,21 @@ check('Play from here counts what is left', items[2].hint, '1 left');
 items[0].onSelect();
 check('Play opens a queue of one at the start',
   calls.at(-1), { items: [card], total: 1, page: 1, startIndex: 0, startSeconds: 0, fetchPage: null });
+// `restoreBy` is what makes Back return to the card last *viewed* rather than
+// the one the queue started on (usePlayback.handlePlayerClose). A queue that
+// walks cards must set it; the single-scene Play must not, because its card
+// never changes and the element restore is the correct answer there.
+check('the single-scene Play leaves restoreBy unset', 'restoreBy' in calls.at(-1), false);
 items[1].onSelect();
 check('Play all keeps the listing and starts at its first item',
   [calls.at(-1).startIndex, calls.at(-1).startSeconds, calls.at(-1).items.length], [0, 0, 2]);
+check('Play all asks Back to restore the last-viewed scene card',
+  calls.at(-1).restoreBy, 'video');
 items[2].onSelect();
 check('Play from here starts at the pressed card',
   [calls.at(-1).startIndex, calls.at(-1).startSeconds], [1, 0]);
+check('Play from here asks Back to restore the last-viewed scene card',
+  calls.at(-1).restoreBy, 'video');
 items[3].onSelect();
 check('Details hands the card back', calls.at(-1), { details: card });
 
@@ -182,12 +191,19 @@ check('Play from here counts distinct scenes from the pressed marker',
 markerMenu[0].onSelect();
 check('Play opens one scene at its marker time',
   [mCalls.at(-1).startSeconds, mCalls.at(-1).items[0].id], [640, '42']);
+check('the marker Play leaves restoreBy unset', 'restoreBy' in mCalls.at(-1), false);
 markerMenu[1].onSelect();
 check('Play all starts at the first loaded marker and walks scenes',
   [mCalls.at(-1).startSeconds, mCalls.at(-1).items.map(i => i.id)], [125, ['42', '43']]);
+// 'marker', not 'video': the queue rows are scenes, but the tab is markers —
+// a scene id names no card here, so the restore must look for a marker id.
+check('Play all asks Back to restore the last-viewed marker card',
+  mCalls.at(-1).restoreBy, 'marker');
 markerMenu[2].onSelect();
 check('Play from here starts at the pressed marker',
   [mCalls.at(-1).startSeconds, mCalls.at(-1).items.map(i => i.id)], [640, ['42', '43']]);
+check('Play from here asks Back to restore the last-viewed marker card',
+  mCalls.at(-1).restoreBy, 'marker');
 markerMenu[3].onSelect();
 check('Details opens the parent scene page', mCalls.at(-1), { details: card });
 
@@ -265,6 +281,49 @@ check('Slideshow asks for an ordered run',
 galleryMenu[2].onSelect();
 check('Shuffle slideshow asks for a shuffled one',
   galleryCalls.at(-1), { slideshow: gallery, opts: { shuffle: true } });
+
+// ── buildActionMenu dispatch, per kind ─────────────────────
+// The marker kind is checked above. These are the other three: each answers
+// with its own title/subtitle and its own row set, and the scene fallback is
+// the branch every unrecognised kind lands in.
+const sceneAction = buildActionMenu(
+  { kind: 'scene', item: card, list: listing, index: 1 },
+  { openPlayer, onDetails },
+);
+check('the scene menu is titled and counted from its listing',
+  [sceneAction.title, sceneAction.subtitle], ['A Scene', '2 of 2 in this listing']);
+check('the scene menu rows are the scene rows', sceneAction.items.map(i => i.id),
+  ['menu-play', 'menu-play-all', 'menu-play-here', 'menu-details']);
+
+const imageAction = buildActionMenu(
+  { kind: 'image', item: imgB, list: imgListing, index: 1 },
+  { openImageViewer: (d) => imageCalls.push(d) },
+);
+check('the image menu is titled and counted from its listing',
+  [imageAction.title, imageAction.subtitle], ['B', '2 of 2 in this listing']);
+check('the image menu rows are the image rows', imageAction.items.map(i => i.id),
+  ['menu-image-view', 'menu-image-slideshow-here', 'menu-image-slideshow-start', 'menu-image-info']);
+imageAction.items[1].onSelect();
+check('the image menu rows are wired to the viewer',
+  [imageCalls.at(-1).index, imageCalls.at(-1).autoPlay], [1, true]);
+
+const galleryAction = buildActionMenu(
+  { kind: 'gallery', item: gallery },
+  {
+    openGallery: (g) => galleryCalls.push({ view: g }),
+    openGallerySlideshow: (g, opts) => galleryCalls.push({ slideshow: g, opts }),
+  },
+);
+check('the gallery menu counts its images instead of a listing',
+  [galleryAction.title, galleryAction.subtitle], ['A Gallery', '5 images']);
+check('a one-image gallery is singular', buildActionMenu(
+  { kind: 'gallery', item: { id: 'g2', title: 'One', image_count: 1 } },
+  {},
+).subtitle, '1 image');
+check('the gallery menu rows are the gallery rows', galleryAction.items.map(i => i.id),
+  ['menu-gallery-view', 'menu-gallery-slideshow', 'menu-gallery-shuffle']);
+
+check('a menu for no item is null', buildActionMenu({ kind: 'scene' }, {}), null);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

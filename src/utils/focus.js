@@ -69,16 +69,39 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
   const deadline = Date.now() + MAX_RESTORE_MS;
   let pages = 0;
   let settled = false;
+  let timer = null;
 
   // Tell the listings to hold their first-card auto-focus until this lands.
   beginRestore();
+
+  const clearTimer = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
   const settle = () => {
     if (settled) return;
     settled = true;
+    clearTimer();
+    window.removeEventListener('keydown', onUserKey, true);
     endRestore();
   };
+  // The user outranks a restore. A card that only exists on page 4 can take
+  // several seconds; without this, a D-pad press during the wait would move
+  // the cursor and then be yanked back when the page landed (the review's
+  // R2). The listener is added after Back's own keydown has finished
+  // dispatching, so it never cancels the restore it was caused by.
+  const onUserKey = () => settle();
+  window.addEventListener('keydown', onUserKey, true);
 
-  const attempt = () => {
+  // One timer at a time. The old code ran a 50 ms poll chain *and* scheduled
+  // an extra `attempt` after every settled page, so up to thirteen chains
+  // overlapped near the deadline.
+  const schedule = (ms) => {
+    clearTimer();
+    timer = setTimeout(attempt, ms);
+  };
+
+  function attempt() {
     if (settled) return;
     const el = registry.get(id)?.el;
     if (el && document.contains(el)) {
@@ -93,23 +116,33 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
     }
 
     const driver = prefix ? listings.get(prefix) : null;
-    if (driver && !driver.pending && pages < MAX_EXTRA_PAGES && driver.canLoad?.()) {
-      pages += 1;
-      // The flag lives on the shared driver, not in this closure: two restores
-      // can be in flight (a Back pressed twice), and they must not fetch the
-      // same page twice.
-      driver.pending = true;
-      Promise.resolve(driver.loadMore?.())
-        .finally(() => {
-          driver.pending = false;
-          // Look again as soon as the page has settled instead of waiting out
-          // a timer tick — each page is a round trip already, and a restore
-          // several pages deep would otherwise pay the poll interval per page.
-          // Deferred by a task so React has committed the new rows.
-          if (!settled) setTimeout(attempt, 0);
-        });
+    if (!driver || driver.pending || pages >= MAX_EXTRA_PAGES || !driver.canLoad?.()) {
+      schedule(RETRY_MS);
+      return;
     }
-    setTimeout(attempt, RETRY_MS);
-  };
+
+    // The flag lives on the shared driver, not in this closure: two restores
+    // can be in flight (a Back pressed twice), and they must not fetch the
+    // same page twice.
+    driver.pending = true;
+    Promise.resolve(driver.loadMore?.())
+      .then((started) => {
+        driver.pending = false;
+        if (settled) return;
+        // Only a fetch that actually started spends the budget (the review's
+        // R3). `loadMore` resolves `false` when its guards turn it into a
+        // no-op; counting those consumed all twelve pages in milliseconds and
+        // then waited out the deadline.
+        if (started) pages += 1;
+        // A started page gets looked at immediately after React commits it;
+        // a no-op waits for the ordinary poll.
+        schedule(started ? 0 : RETRY_MS);
+      })
+      .catch(() => {
+        driver.pending = false;
+        if (!settled) schedule(RETRY_MS);
+      });
+  }
+
   attempt();
 }
