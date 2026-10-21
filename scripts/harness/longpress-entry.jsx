@@ -330,12 +330,36 @@ async function runImages() {
     viewerTitle() === 'VERIFY image 1' && !!viewerButton('Pause'),
     `viewer "${viewerTitle()}", buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
 
-  const advanced = await waitFor(() => viewerTitle() === 'VERIFY image 2', 8000);
+  // Press Left in the same microtask as the advance's DOM commit, not a task
+  // later. The key listener is re-registered for the new index on every step;
+  // with a passive effect that re-registration lands a task after the commit,
+  // so a press in between runs the previous closure — index 0, whose
+  // `canPrev` is false — and is silently ignored. This driver used to wait
+  // for the title and then press, which sampled that window unreliably: the
+  // same check read 36/40 and 40/40 on identical trees. A MutationObserver
+  // callback runs at the microtask checkpoint, *after* the commit and after
+  // layout effects but *before* a passive effect's task, so the press below is
+  // deterministic and the red control is real.
+  let focusWasSurface = false;
+  const advanced = await new Promise((resolve) => {
+    const viewer = viewerEl();
+    const obs = new MutationObserver(() => {
+      if (viewerTitle() !== 'VERIFY image 2') return;
+      obs.disconnect();
+      // The arrows are the viewer's to take only while the surface holds
+      // focus; record that at press time rather than after the fact.
+      focusWasSurface = active() === viewerEl();
+      press('ArrowLeft', 37);
+      resolve(true);
+    });
+    obs.observe(viewer, { subtree: true, childList: true, characterData: true });
+    setTimeout(() => { obs.disconnect(); resolve(false); }, 9000);
+  });
   check('I3 the slideshow advances by itself after the 6 s beat', advanced,
     `viewer "${viewerTitle()}"`);
+  check('I3 ...and the surface still holds focus',
+    focusWasSurface, `focus ${active()?.tagName} ${active()?.getAttribute?.('aria-label') || active()?.textContent?.trim().slice(0, 30)}`);
 
-  // The surface holds focus, so the arrows are the viewer's to take.
-  press('ArrowLeft', 37);
   await sleep(350);
   check('I3 a manual step goes back one', viewerTitle() === 'VERIFY image 1',
     `viewer "${viewerTitle()}"`);
