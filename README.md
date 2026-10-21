@@ -81,7 +81,7 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 |---|---|
 | D-pad | Move focus. |
 | OK / Enter | Open the focused item or activate the control. On a card this opens its detail page. |
-| Long press OK | Opens that card's menu — play at a marker, a slideshow from an image or gallery, the scene actions (Play all, Play from here, markers). |
+| Long press OK | Opens that card's menu: **Play**, **Play all** and **Play from here** for a scene (a marker's Play starts at its timestamp), slideshows for an image or gallery, and **Info** / **Details** where there is a page to open. |
 | Back / Esc | Close the topmost thing — dropdown, page, player. With the player's controls on screen, the first press hides them and the second closes the player. In the image viewer, an open info panel closes first. On the main screen it asks to exit. |
 | ← from a card | Returns to the left rail's current tab. |
 | ↑ from the top card row | On a listing tab, jumps to the controls bar (filter, sort, view mode, search). On Home, goes back to the rail. |
@@ -97,11 +97,11 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Home** — Stash's shelves, five cards each, with **Continue Watching** under Recently Added
   Scenes. **See all** opens a listing with that shelf's sort and filter.
 - **Seven sections** — Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
-  search, sort, filters and four view modes. View mode and columns are remembered per tab; sort,
-  filter and search reset on arrival. Gallery cards show the studio, or the folder; tag and studio
-  carousels carry Stash's description and aliases. A marker plays its scene at that timestamp. A
-  long press opens the card's menu: play at a marker, a slideshow from an image or gallery, the
-  scene actions.
+  search, sort and filters in a Classic grid, Carousel or List (Scenes also offer Coverflow). View
+  mode and columns are remembered per tab; sort, filter and search reset on arrival. Gallery cards
+  show the studio, or the folder; tag and studio carousels carry Stash's description and aliases. A
+  marker plays its scene at that timestamp. A long press opens the card's menu — the scene actions,
+  a slideshow from an image or gallery, an image's **Info**.
 - **Filter builder** — build a filter on the TV or load a saved one; saved filters round-trip to
   Stash.
 - **Scene detail** — metadata and rating; resume, play from a marker, clear progress or mark
@@ -111,9 +111,10 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Image viewer** — full size, stepped with ←/→, with a six-second slideshow; **Info** shows
   what Stash holds for the image. An image with no title shows its file name.
 - **Player** — resumes where you stopped, queues the whole listing, seeks 15 s at a time, and
-  writes progress back to Stash. HLS keeps the timeline seekable; the controls say **direct** or
-  **transcoded**, and **Playback info** shows the live stream details.
-- **Preview on focus** — hovered videos play silently; toggle in Settings.
+  writes progress back to Stash. HLS keeps the timeline seekable; a chip on the player says
+  **Direct play** or **Transcoded**, and **Playback info** shows the live stream details.
+- **Focus previews** — the focused scene card plays its Stash preview, muted by default; settings
+  has an On/Off switch, and the listing tabs' controls bar has a mute toggle.
 - **Library stats and server jobs** — counts, storage and watch time; running jobs with progress
   and a two-press **Stop**; start a library scan from the TV.
 - **Theme** — Standard or OLED (true black on OLED panels).
@@ -252,8 +253,8 @@ Never share a `.wgt` built that way — it hands the key to whoever installs it.
 package attached:
 
 ```bash
-git tag v0.30.0
-git push origin v0.30.0
+git tag v0.35.0
+git push origin v0.35.0
 ```
 
 Add these four secrets to the GitHub **environment named `StashZen`** — the one the workflow
@@ -274,9 +275,12 @@ was inlined, so a fresh install always starts on the Setup screen.
 ### Where things are
 
 ```
+src/App.jsx             the shell: rail, controls bar, overlays, player composition
+src/app/                tab config, listing and detail hooks, Back handling
 src/components/         cards, grids, carousel, image viewer, rail, settings, filter builder
 src/components/player/  the player's transport, keys, overlays, media and progress hooks
-src/pages/              Showroom (Home), Scenes, Performers, performer and scene detail
+src/pages/              Showroom (Home), Scenes, Performers, Markers, entity pages, and the
+                        performer and scene detail pages with their subdirectories
 src/hooks/              D-pad focus and keys, paging, playback source, play queue, editable fields
 src/utils/              Stash services, settings store, filters, playback rules, mock art
 tizen/                  manifest and icons
