@@ -97,6 +97,12 @@ _BLANK_PNG = base64.b64decode(
 # "fetched page 2" from "fetched page 2 twice".
 REQUESTS = []
 
+# When each `/hang/` source was first asked for, in epoch milliseconds — read
+# back at /hanghits. The stall watchdog's 4 s is measured from the request, so
+# a driver that timed from its own remount (fetch, mount, src assignment) was
+# asserting a band it could not distinguish from a 2 s or a 6 s watchdog.
+HANG_HITS = []
+
 # Every GraphQL operation this run, in order, by name — `/graphqlcalls`.
 #
 # Separate from REQUESTS above, which is only findScenes and carries its filter
@@ -1011,6 +1017,7 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/clear":
             with LOCK:
                 REQUESTS.clear()
+                HANG_HITS.clear()
                 GRAPHQL_CALLS.clear()
                 SAVES.clear()
                 MARKER_CREATES.clear()
@@ -1053,6 +1060,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(_BLANK_PNG)
             return
+        if self.path.startswith("/hanghits"):
+            with LOCK:
+                return self._json(list(HANG_HITS))
         if self.path.startswith("/requests"):
             with LOCK:
                 return self._json(list(REQUESTS))
@@ -1179,6 +1189,8 @@ class Handler(SimpleHTTPRequestHandler):
         # watchdog is the only thing that can notice, so there has to be a URL
         # that hangs to notice it on.
         if HANG_RE.fullmatch(self.path):
+            with LOCK:
+                HANG_HITS.append(int(time.time() * 1000))
             time.sleep(120)
             self.send_response(404)
             self.end_headers()

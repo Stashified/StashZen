@@ -20,6 +20,11 @@ export function usePlayerTransport({
   showControls,
   goNext,
   goPrev,
+  // Null until the user expresses a preference. The player reads it when it
+  // opens a source, so a scene advance or an engine switch asks the new
+  // backend for the same state; the ref is owned here because this hook is
+  // where the button lives.
+  muteIntentRef = null,
 }) {
   // Mute belongs to this playback session, not to the app: it starts off on
   // every open and is never persisted, because a silent player that the user
@@ -39,6 +44,29 @@ export function usePlayerTransport({
     setMuteCapability(mediaRef.current?.getMuteCapability?.() ?? 'property');
   }, [engine, mediaRef]);
   const muteAvailable = muteCapability !== 'none';
+
+  /**
+   * Keep the button honest about who is muted.
+   *
+   * Two sources of truth meet here. AVPlay captures the TV's mute state when
+   * it opens — a mute made with the remote is already in effect and the
+   * button has to say so — and it announces every change it applies. On an
+   * engine switch the new backend starts in its own state, so an expressed
+   * preference is carried onto the browser element; AVPlay receives the same
+   * preference through `open()` and re-applies it after prepare.
+   */
+  useEffect(() => {
+    const v = mediaRef.current;
+    if (!v) return;
+    const sync = () => setMuted(!!v.muted);
+    if (v.kind === 'html5' && muteIntentRef && muteIntentRef.current != null
+        && v.muted !== muteIntentRef.current) {
+      v.muted = muteIntentRef.current;
+    }
+    sync();
+    v.addEventListener('volumechange', sync);
+    return () => v.removeEventListener('volumechange', sync);
+  }, [engine, mediaRef, muteIntentRef]);
 
   /**
    * Start playback without turning a routine rejection into an error overlay.
@@ -141,10 +169,15 @@ export function usePlayerTransport({
   const toggleMute = useCallback(() => {
     const v = mediaRef.current;
     if (!v || !muteAvailable) return;
-    v.muted = !v.muted;
+    const next = !v.muted;
+    // Recorded before the write: a backend can refuse (the AVPlay setVolume
+    // rung needs a prepared session), and the preference should still travel
+    // to the session that is about to become ready.
+    if (muteIntentRef) muteIntentRef.current = next;
+    v.muted = next;
     setMuted(v.muted);
     showControls();
-  }, [mediaRef, muteAvailable, showControls]);
+  }, [mediaRef, muteAvailable, showControls, muteIntentRef]);
 
   return {
     muted,

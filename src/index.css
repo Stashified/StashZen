@@ -197,6 +197,21 @@ html[data-lock-cover] #root {
   visibility: hidden;
 }
 
+/*
+ * The cover over the AVPlay plane.
+ *
+ * Hiding `#root` is enough for the web UI, but the TV's renderer draws behind
+ * the page: with plane mode on, the transparent page is exactly what lets the
+ * picture through, so a hidden shell would leave the scene playing under the
+ * keypad. Repainting the page base masks the plane and nothing else — the
+ * attributes make this rule more specific than the transparency above, and
+ * `--bg-base` keeps the OLED theme's true black.
+ */
+html[data-lock-cover][data-avplay-plane],
+html[data-lock-cover][data-avplay-plane] body {
+  background: var(--bg-base);
+}
+
 /* ── Focus Styles ───────────────────────────────────────── */
 /* All focusable elements get a strong ring on TV. The ring itself comes from
    each component's own `.focused` class — this only suppresses the browser's

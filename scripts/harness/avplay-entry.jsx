@@ -127,6 +127,9 @@ async function closeStats() {
 
 // ── Scenes ──────────────────────────────────────────────────
 const at = (path) => `http://127.0.0.1:${PORT}${path}`;
+/** Server-side request timestamps for `/hang/` sources, epoch ms (see H3). */
+const getHangHits = () =>
+  fetch(at('/hanghits')).then(r => r.json()).catch(() => []);
 const scene = (over) => ({
   id: '9200',
   title: 'VERIFY avplay',
@@ -667,7 +670,10 @@ async function groupH() {
   // hangs: the element accepts the connection and never produces metadata, so
   // only the watchdog can notice. Four seconds, not the transcode's ten,
   // because AVPlay is a real second opinion under Auto.
-  const started = Date.now();
+  // The watchdog is measured from the *request*, which the server timestamps;
+  // a driver-side timer would start before the fetch and the mount and would
+  // accept anything from a 2 s to a 6 s watchdog.
+  const hangHitsBefore = await getHangHits();
   await remount([scene({
     id: '9412', stream: at('/hang/9412'),
     container: 'mp4', videoCodec: 'vp9', audioCodec: 'aac',
@@ -676,11 +682,14 @@ async function groupH() {
     container: 'mp4', videoCodec: 'vp9', audioCodec: 'aac',
   })]);
   const openedH3 = await waitFor(() => AVPLAY_OPENS().length >= 1, 9000);
-  const handoffMs = Date.now() - started;
+  const handedAt = Date.now();
+  const hangHit = (await getHangHits())[hangHitsBefore.length];
+  const handoffMs = hangHit ? handedAt - hangHit : NaN;
   check('H3 a browser source that never decodes is handed to AVPlay at 4 s',
     openedH3 && AVPLAY_OPENS()[0].includes('/hang/9412')
-      && handoffMs >= 3500 && handoffMs < 8500,
-    `opened=${openedH3} after=${handoffMs}ms url=${AVPLAY_OPENS()[0] || '(none)'}`);
+      && handoffMs >= 3500 && handoffMs < 6000,
+    `opened=${openedH3} after=${Number.isFinite(handoffMs) ? `${handoffMs}ms` : 'no request'} `
+      + `url=${AVPLAY_OPENS()[0] || '(none)'}`);
 
   const opensBefore = AVPLAY_OPENS().length;
   press('ArrowDown', 40);

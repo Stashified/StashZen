@@ -325,8 +325,18 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
    * between two scenes the user is watching muted. The unmount effect below
    * is the one that closes.
    */
+  // The user's mute choice for this sitting, shared with the transport (which
+  // owns the button) and read below when a source is opened. AVPlay captures
+  // the TV's mute state at open, so a queue advance would otherwise un-mute a
+  // muted sitting between two scenes.
+  const muteIntentRef = useRef(null);
+
   const openOptionsRef = useRef({ startSeconds: 0, autoplay: true });
-  openOptionsRef.current = { startSeconds: effectiveStart, autoplay: !askingToResume };
+  openOptionsRef.current = {
+    startSeconds: effectiveStart,
+    autoplay: !askingToResume,
+    muted: muteIntentRef.current,
+  };
   useEffect(() => {
     if (engine !== 'avplay' || !playbackSrc) return;
     media.open(playbackSrc, openOptionsRef.current);
@@ -414,6 +424,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     showControls,
     goNext,
     goPrev,
+    muteIntentRef,
   });
 
   const {
