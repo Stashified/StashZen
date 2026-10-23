@@ -111,6 +111,10 @@ class MediaFacade extends EventTarget {
 
   // ── MediaElement-shaped surface ──────────────────────────
   get paused() { return !!this._engine.paused; }
+  // A seek in flight is not a pause: the transport's play/pause button and
+  // the overlays read `paused` for the user's intent, while the progress
+  // reporter uses `paused || seeking` so a skip never becomes watch time.
+  get seeking() { return !!this._engine.seeking; }
   get duration() { return this._engine.duration; }
   get currentTime() { return this._engine.currentTime; }
   set currentTime(seconds) { this._engine.currentTime = seconds; }

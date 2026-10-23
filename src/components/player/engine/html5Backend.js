@@ -57,6 +57,7 @@ export function createHtml5Backend({ emit }) {
     },
 
     get paused() { return el ? el.paused : true; },
+    get seeking() { return el ? el.seeking : false; },
     // NaN, not 0: the player and the timeline both read `Number.isFinite`.
     get duration() { return el ? el.duration : NaN; },
     get currentTime() { return el ? el.currentTime : 0; },

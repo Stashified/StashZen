@@ -9,7 +9,7 @@
 export const MEDIA_EVENTS = [
   'play', 'pause', 'waiting', 'playing', 'timeupdate',
   'loadedmetadata', 'durationchange', 'canplay', 'error', 'ended',
-  'seeking', 'seeked',
+  'seeking', 'seeked', 'volumechange',
 ];
 
 // What a backend returns when it has no media pipeline to ask. Shapes match

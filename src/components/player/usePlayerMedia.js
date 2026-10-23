@@ -90,8 +90,9 @@ export function usePlayerMedia({
       // position to save is the reporter's, from before the switch. See
       // `sourceFreshRef`.
       if (sourceFreshRef.current) return;
-      // The credit rule (playback vs seek) lives in the reporter's `tick`.
-      progress.tick(t, v.paused);
+      // The credit rule (playback vs seek) lives in the reporter's `tick`, and
+      // a seek in flight must not be credited even though it is not a pause.
+      progress.tick(t, v.paused || v.seeking);
       setCurrentTime(t);
     };
     const onLoadedMd  = () => {

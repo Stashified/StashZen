@@ -123,6 +123,13 @@ export function createAvplayBackend({
   let initialMuted = false;
   let initialLevel = 100;
   let muted = false;
+  // What the player asked the sitting to be, as opposed to what the TV was
+  // found doing. Null until something expresses a preference; a remote-made
+  // TV mute must not be overridden by the button's default.
+  let desiredMuted = null;
+  // Whether the app's current state differs from the state it found, which is
+  // what close() restores. Not "the app muted": unmuting a TV that was muted
+  // with the remote is also a change the app has to undo.
   let appMuted = false;
   const muteCapability = detectMuteCapability({ tvaudiocontrol, avplay });
 
@@ -159,14 +166,24 @@ export function createAvplayBackend({
     }
     // A TV muted with the remote stays muted, and the button must say so.
     muted = initialMuted;
+    emit('volumechange');
   }
 
   function applyMuted(next) {
     const plan = mapMute({ capability: muteCapability, muted: next, level: initialLevel });
     if (!plan.effective) return false;
+    // Remembered before the native call: the setVolume rung needs a prepared
+    // session, so a mute pressed while `prepareAsync` is in flight fails here
+    // and is retried by onPrepared rather than silently dropped.
+    desiredMuted = plan.muted;
     if (!runCalls(plan.calls)) return false;
     muted = plan.muted;
-    appMuted = plan.muted;
+    // Restore only what the app changed: unmuting a remote-made mute is a
+    // change too, and close() has to put it back.
+    appMuted = plan.muted !== initialMuted;
+    // The button is owned by the player's transport, which listens for this
+    // rather than assuming its own state is what the panel is doing.
+    emit('volumechange');
     return true;
   }
 
@@ -182,6 +199,7 @@ export function createAvplayBackend({
     runCalls(plan.calls);
     appMuted = false;
     muted = initialMuted;
+    emit('volumechange');
   }
 
   // ── Native helpers ───────────────────────────────────────
@@ -206,6 +224,8 @@ export function createAvplayBackend({
       return NaN;
     }
   };
+
+  const pageHidden = () => !!doc && doc.visibilityState === 'hidden';
 
   /** stop() then close(), tolerating every state the probe saw. */
   function closeNative() {
@@ -279,13 +299,18 @@ export function createAvplayBackend({
 
   function schedulePoll(myGen) {
     stopPoll();
-    if (gen !== myGen || closed || suspended) return;
-    const delay = wantPlaying && !completed ? POLL_MS : POLL_PAUSED_MS;
+    // `error` and `completed` are states the poll itself can enter mid-tick:
+    // a degraded seek calls fail() from inside coalescer.tick(), and the
+    // near-end fallback calls finishEnded(). Re-arming after either would
+    // poll a closed native player — and its first read would overwrite the
+    // position the fallback was told to resume at with 0.
+    if (gen !== myGen || closed || suspended || error || completed) return;
+    const delay = wantPlaying ? POLL_MS : POLL_PAUSED_MS;
     pollTimer = setTimeout(() => tick(myGen), delay);
   }
 
   function finishEnded(myGen) {
-    if (gen !== myGen || completed) return;
+    if (gen !== myGen || closed || error || completed) return;
     completed = true;
     wantPlaying = false;
     playingLatch = false;
@@ -340,6 +365,13 @@ export function createAvplayBackend({
 
     if (prepared) {
       coalescer.tick();
+      // A seek that hit its deadline fails the session synchronously from
+      // inside tick(): the native player is already stopped, so nothing in
+      // this poll's remaining work — a duration read, a near-end verdict, the
+      // next timer — belongs to a live session. `handleSeekDegraded` has just
+      // published the requested position; a later tick would read 0 from the
+      // closed player and erase it before the fallback captured it.
+      if (error || closed) return;
       if (now() - lastDurationRead >= DURATION_POLL_MS) {
         lastDurationRead = now();
         const d = readDuration();
@@ -408,13 +440,32 @@ export function createAvplayBackend({
     lastTimeEmitted = -1;
     lastDurationRead = now();
     durationSec = readDuration();
-    emit('loadedmetadata');
-    emit('durationchange');
-    emit('canplay');
+    // The session's own start position is queued *before* metadata is
+    // announced, not after. The player's loadedmetadata handler may seek (a
+    // mid-scene engine fallback resumes at the live playhead, which is not
+    // `startAt`), and the coalescer is latest-wins: announcing first let this
+    // stale start position overwrite the player's newer one and threw a
+    // fallback back to the resume point.
     if (startAt > 0) {
       seekAwaitingPlay = true;
       lastPlayReassert = 0;
       coalescer.request(startAt);
+    }
+    emit('loadedmetadata');
+    emit('durationchange');
+    emit('canplay');
+    // The TV owns a mute the app asked for; a setVolume rung can only be
+    // applied once the native session exists, so this is its second chance.
+    if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
+    if (pageHidden()) {
+      // prepareAsync finished while the app was hidden (or the scene was
+      // opened while hidden). Do not start a session behind the page: enter
+      // the same suspended state the visibility hook would have entered, so
+      // showing the app restores it at this position.
+      suspended = true;
+      cachedPosition = coalescer.pendingTarget() ?? startAt;
+      try { avplay.suspend(); } catch (e) { /* restore/reopen is the recovery */ }
+      return;
     }
     if (wantPlaying) startNativePlay();
     schedulePoll(myGen);
@@ -455,7 +506,14 @@ export function createAvplayBackend({
         const t = Number(ms);
         if (Number.isFinite(t)) lastTime = t / 1000;
       },
-      onstreamcompleted: () => finishEnded(myGen),
+      onstreamcompleted: () => {
+        if (gen !== myGen || closed || error) return;
+        // A completion that arrives while the user's seek is in flight is
+        // about the position they just left, not the one on screen. The
+        // near-end fallback makes the same distinction.
+        if (coalescer.isSeeking()) return;
+        finishEnded(myGen);
+      },
       onerror: (raw) => {
         if (gen !== myGen || closed) return;
         const phase = !prepared ? 'prepare'
@@ -535,7 +593,12 @@ export function createAvplayBackend({
   }
 
   function waitForRestore(myGen, saved, stepsLeft) {
-    if (gen !== myGen || closed) return;
+    if (gen !== myGen || closed || error) return;
+    // Hidden again while the chain was in flight: the session is suspended,
+    // not failed, and stepping on would decide "restore did not come back"
+    // and reopen the stream behind the hidden page. The next show starts a
+    // fresh restore.
+    if (suspended) return;
     const state = readState();
     if (state === ST_PLAYING || state === 'PAUSED' || state === 'READY') {
       // The probe saw the position drift +3.0–5.4 s across a hide even with
@@ -558,11 +621,13 @@ export function createAvplayBackend({
   /** Restore did not come back: reopen the same source at the saved position. */
   function reopenAtSaved(myGen, saved) {
     if (gen !== myGen || closed) return;
-    open(activeUrl, { startSeconds: saved, autoplay: wantPlaying });
+    // `muted` travels with the reopen: this is a new native session, and the
+    // sitting's mute choice is not something a restore failure should undo.
+    open(activeUrl, { startSeconds: saved, autoplay: wantPlaying, muted: desiredMuted });
   }
 
   // ── Public surface ───────────────────────────────────────
-  function open(url, { startSeconds = 0, autoplay = true } = {}) {
+  function open(url, { startSeconds = 0, autoplay = true, muted: requestedMuted = null } = {}) {
     if (!avplay) {
       error = {
         code: 3,
@@ -602,7 +667,13 @@ export function createAvplayBackend({
     lastPlayReassert = 0;
     cachedPosition = startAt;
 
+    desiredMuted = requestedMuted == null ? null : !!requestedMuted;
     captureMuteState();
+    // Apply the sitting's mute now when the rung allows it (tvaudio works
+    // before open). A setVolume rung needs the live session, so it is retried
+    // in onPrepared — and a scene advance recreates the session, which is
+    // exactly when the old code lost the mute.
+    if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
     bindLifecycle();
 
     try {
@@ -649,6 +720,7 @@ export function createAvplayBackend({
     durationSec = NaN;
     lastTime = 0;
     cachedPosition = 0;
+    desiredMuted = null;
   }
 
   function play() {
@@ -659,6 +731,16 @@ export function createAvplayBackend({
     }
     wantPlaying = true;
     if (prepared) {
+      if (completed) {
+        // Replaying a finished scene is a new sitting. finishEnded() stopped
+        // the poll and left the completion latch set; without clearing both,
+        // play would emit `play` and nothing would ever follow it — no
+        // `playing`, no `timeupdate`, no second `ended`.
+        completed = false;
+        nearEndSince = 0;
+        playingLatch = false;
+        schedulePoll(gen);
+      }
       if (!playingLatch) startNativePlay();
     }
     // Before prepare the request is remembered and applied in onPrepared.
@@ -688,6 +770,14 @@ export function createAvplayBackend({
       startAt = t;
       lastTime = t;
       return;
+    }
+    if (completed) {
+      // Seeking back into a finished scene is the other way to replay it. The
+      // latch kept the poll stopped, and the coalescer has to be ticked again
+      // or this seek never settles.
+      completed = false;
+      playingLatch = false;
+      schedulePoll(gen);
     }
     nearEndSince = 0;
     // A new burst is a new verdict: the previous one's "degraded" was about a
@@ -728,8 +818,11 @@ export function createAvplayBackend({
     // Same meaning as HTMLMediaElement's: "someone has asked for playback and
     // it has not been paused", not "a frame is currently moving". A buffering
     // element is not paused, and treating it as such would make the play/pause
-    // button start playback it is already waiting on.
-    get paused() { return suspended || coalescer.isSeeking() || !wantPlaying; },
+    // button start playback it is already waiting on. A seek is not a pause
+    // either — it has its own flag, which the progress reporter uses to refuse
+    // crediting the jump.
+    get paused() { return suspended || !wantPlaying; },
+    get seeking() { return coalescer.isSeeking(); },
     get duration() { return prepared && Number.isFinite(durationSec) ? durationSec : NaN; },
     get currentTime() { return coalescer.pendingTarget() ?? lastTime; },
     set currentTime(seconds) { requestSeek(seconds); },
