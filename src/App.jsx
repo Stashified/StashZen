@@ -211,7 +211,7 @@ export default function App() {
   };
 
   return (
-    <div className={styles.app}>
+    <div className={styles.app} data-app-shell="">
       <h1 className="sr-only">StashZen</h1>
 
       <NavRail

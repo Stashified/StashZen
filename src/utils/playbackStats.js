@@ -137,12 +137,14 @@ export function frameCounts(el) {
  */
 export function playbackStats(el, {
   sceneId, sourceKind, src, sceneDuration, codecs = {},
+  engine = 'html5', engineNote = '',
 } = {}) {
   if (!el) return [];
 
   const rows = [];
   const add = (label, value) => rows.push([label, value]);
   const time = (s) => formatTime(s, { padMinutes: true });
+  const reduced = engine === 'avplay';
 
   const kind = sourceKind === 'transcode' ? 'Transcoded'
     : sourceKind === 'direct' ? 'Direct play'
@@ -150,9 +152,18 @@ export function playbackStats(el, {
   add('Source', `${kind} · ${sourceFormat(src)}`);
   if (sceneId != null) add('Scene', String(sceneId));
 
-  const w = finite(el.videoWidth) || 0;
-  const h = finite(el.videoHeight) || 0;
-  add('Resolution', w > 0 && h > 0 ? `${w}×${h}` : '—');
+  // Which engine is actually playing, and — under Auto — why it is not the
+  // one the setting asks for (AVPlay unavailable, content refused, or the
+  // session kill switch). The caller derives the note; this row reports it.
+  add('Player', `${reduced ? 'AVPlay' : 'Browser'}${engineNote ? ` · ${engineNote}` : ''}`);
+
+  // The AVPlay backend has no answer for these, and a placeholder would read
+  // as a measurement. They are left out rather than printed as `—`.
+  if (!reduced) {
+    const w = finite(el.videoWidth) || 0;
+    const h = finite(el.videoHeight) || 0;
+    add('Resolution', w > 0 && h > 0 ? `${w}×${h}` : '—');
+  }
 
   const streamSeconds = finite(el.duration);
   add('Stream duration',
@@ -162,23 +173,41 @@ export function playbackStats(el, {
 
   add('Position', time(finite(el.currentTime) ?? 0));
 
-  const ahead = bufferedAhead(el);
-  add('Buffer ahead', ahead == null ? '—' : `${ahead.toFixed(1)} s`);
+  // A seek that keeps throwing is survivable — the coalescer degrades rather
+  // than failing the scene — but "skims do nothing" is otherwise unreadable
+  // from the sofa. Only shown while it is actually happening.
+  if (el.seekDegraded) add('Seek', 'degraded — seeks are failing');
 
-  const seek = seekableRange(el);
-  add('Seekable', seek ? `${time(seek.start)} – ${time(seek.end)}` : '—');
+  if (!reduced) {
+    const ahead = bufferedAhead(el);
+    add('Buffer ahead', ahead == null ? '—' : `${ahead.toFixed(1)} s`);
 
-  const ready = READY_LABEL[el.readyState] ?? `#${el.readyState}`;
-  const network = NETWORK_LABEL[el.networkState] ?? `#${el.networkState}`;
-  add('Engine', `${ready} · ${network}`);
+    const seek = seekableRange(el);
+    add('Seekable', seek ? `${time(seek.start)} – ${time(seek.end)}` : '—');
 
-  const frames = frameCounts(el);
-  add('Frames', frames ? `${frames.total} · dropped ${frames.dropped}` : '—');
+    const ready = READY_LABEL[el.readyState] ?? `#${el.readyState}`;
+    const network = NETWORK_LABEL[el.networkState] ?? `#${el.networkState}`;
+    add('Engine', `${ready} · ${network}`);
+
+    const frames = frameCounts(el);
+    add('Frames', frames ? `${frames.total} · dropped ${frames.dropped}` : '—');
+  }
 
   const volume = Math.round((finite(el.volume) ?? 0) * 100);
   const rate = finite(el.playbackRate);
-  add('Volume', `${volume}%${el.muted ? ' · muted' : ''}`
-    + (rate != null && rate !== 1 ? ` · ${rate}×` : ''));
+  // TV-level mute is system-wide and may not be readable as a level; the
+  // facade reports the requested state and `—` for a level it cannot know.
+  // A panel with neither `tvaudiocontrol` nor `setVolume` has no mute at all,
+  // and the button is disabled — say so here rather than claiming "not muted".
+  // An object that does not advertise a capability predates this panel's
+  // rule; report what it does rather than inventing a disability.
+  const muteCapability = el.getMuteCapability?.() ?? 'property';
+  add('Volume', muteCapability === 'none'
+    ? 'unavailable'
+    : reduced
+      ? (el.muted ? 'muted (TV)' : 'not muted')
+      : `${volume}%${el.muted ? ' · muted' : ''}`
+        + (rate != null && rate !== 1 ? ` · ${rate}×` : ''));
 
   const codecLine = [codecs.videoCodec, codecs.audioCodec, codecs.container]
     .filter(Boolean).join(' / ');

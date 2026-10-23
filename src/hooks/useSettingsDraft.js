@@ -23,6 +23,9 @@ export function useSettingsDraft(initial) {
   const [previewsEnabled, setPreviewsEnabled] = useState(initial.previewsEnabled);
   // Appearance is a draft like everything else — see above.
   const [theme, setTheme] = useState(initial.theme);
+  // Playback engine is a draft too: choosing Browser and cancelling must not
+  // change the next scene the user opens.
+  const [playbackEngine, setPlaybackEngine] = useState(initial.playbackEngine);
 
   const save = () => {
     setSettings({
@@ -31,6 +34,7 @@ export function useSettingsDraft(initial) {
       stashKey: stashKey.trim(),
       previewsEnabled,
       theme,
+      playbackEngine,
     });
   };
 
@@ -42,6 +46,7 @@ export function useSettingsDraft(initial) {
     setStashKey(fresh.stashKey);
     setPreviewsEnabled(fresh.previewsEnabled);
     setTheme(fresh.theme);
+    setPlaybackEngine(fresh.playbackEngine);
   };
 
   return {
@@ -50,6 +55,7 @@ export function useSettingsDraft(initial) {
     stashKey, setStashKey,
     previewsEnabled, setPreviewsEnabled,
     theme, setTheme,
+    playbackEngine, setPlaybackEngine,
     save, clear,
   };
 }

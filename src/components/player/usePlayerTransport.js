@@ -9,10 +9,11 @@
  * the app half-heard.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export function usePlayerTransport({
-  videoRef,
+  mediaRef,
+  engine,
   markers,
   setCurrentTime,
   setError,
@@ -24,6 +25,20 @@ export function usePlayerTransport({
   // every open and is never persisted, because a silent player that the user
   // cannot hear and did not ask for is indistinguishable from a broken one.
   const [muted, setMuted] = useState(false);
+
+  // Whether the live backend can mute at all. The facade's capability is set
+  // by `setEngine` in the player's layout effect — after this render — so it
+  // is read again when the engine changes rather than during render, and the
+  // button is disabled while the answer is still the previous engine's.
+  // (Hierarchy: tizen.tvaudiocontrol → avplay.setVolume → none; the browser is
+  // always 'property'.)
+  const [muteCapability, setMuteCapability] = useState(
+    () => mediaRef.current?.getMuteCapability?.() ?? 'property',
+  );
+  useEffect(() => {
+    setMuteCapability(mediaRef.current?.getMuteCapability?.() ?? 'property');
+  }, [engine, mediaRef]);
+  const muteAvailable = muteCapability !== 'none';
 
   /**
    * Start playback without turning a routine rejection into an error overlay.
@@ -43,12 +58,12 @@ export function usePlayerTransport({
   }, [setError]);
 
   const togglePlay = useCallback(() => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     if (v.paused) playQuietly(v);
     else v.pause();
     showControls();
-  }, [videoRef, playQuietly, showControls]);
+  }, [mediaRef, playQuietly, showControls]);
 
   /**
    * The remote's play/pause keys, resolved to animations.
@@ -65,7 +80,7 @@ export function usePlayerTransport({
    * harness can only prove the mapping, not that this remote sends them.
    */
   const mediaTransport = useCallback((code) => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     if (code === 19) {
       if (!v.paused) v.pause();
@@ -76,7 +91,7 @@ export function usePlayerTransport({
       return;
     }
     showControls();
-  }, [videoRef, playQuietly, togglePlay, showControls]);
+  }, [mediaRef, playQuietly, togglePlay, showControls]);
 
   /**
    * Step to the neighbouring scene. The single path behind ↑/↓ and the rail's
@@ -105,7 +120,7 @@ export function usePlayerTransport({
   // No wrapping. Running off either end does nothing, the same as scene
   // prev/next at the ends of the queue.
   const jumpToMarker = useCallback((dir) => () => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     const t = v.currentTime;
     let target = null;
@@ -121,18 +136,19 @@ export function usePlayerTransport({
     // Move the clock and the dot now rather than at the next `timeupdate`,
     // which is up to 250ms away — the same reason skim() sets it directly.
     setCurrentTime(target.seconds);
-  }, [videoRef, markers, setCurrentTime]);
+  }, [mediaRef, markers, setCurrentTime]);
 
   const toggleMute = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
+    const v = mediaRef.current;
+    if (!v || !muteAvailable) return;
     v.muted = !v.muted;
     setMuted(v.muted);
     showControls();
-  }, [videoRef, showControls]);
+  }, [mediaRef, muteAvailable, showControls]);
 
   return {
     muted,
+    muteAvailable,
     playQuietly,
     togglePlay,
     mediaTransport,

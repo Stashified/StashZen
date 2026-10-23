@@ -17,12 +17,12 @@
  *     stale — widening it would tear the listeners down mid-playback.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { playbackFailureMessage } from './playerMessages.js';
 
 export function usePlayerMedia({
   video,
-  videoRef,
+  mediaRef,
   progress,
   showControls,
   effectiveStart,
@@ -43,9 +43,21 @@ export function usePlayerMedia({
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
 
-  // Wire up <video> events
-  useEffect(() => {
-    const v = videoRef.current;
+  // Wire up the media events.
+  //
+  // A **layout** effect, and not for layout reasons: the player opens the
+  // AVPlay session from a passive effect declared above this hook, and
+  // `open()` can fail synchronously (the engine's `open`/`setListener`/
+  // `prepareAsync` throwing is exactly the engine-level case). That failure
+  // emits `error` immediately, into whatever listeners exist at that instant.
+  // As a passive effect this listener was attached afterwards, so the event
+  // was dispatched to nobody: the resolver never learned the session had
+  // failed and the user sat on the poster with no fallback. Layout effects all
+  // run before any passive one, whichever order they were declared in, so the
+  // listener is in place for the first thing the open can do. The autoplay
+  // effect below stays passive, because playing must still follow opening.
+  useLayoutEffect(() => {
+    const v = mediaRef.current;
     const sceneId = video?.id;
     if (!v) return;
 
@@ -175,7 +187,7 @@ export function usePlayerMedia({
     };
   }, [
     showControls, effectiveStart, video?.id, goNext, progress, reportSourceFailure,
-    codecs, askingToResume, videoRef, startSeekedRef,
+    codecs, askingToResume, mediaRef, startSeekedRef,
     pendingLiveResumeRef, fallbackSeekRef, sourceFreshRef, setCurrentTime,
     setElementDuration, setError,
   ]);
@@ -191,7 +203,7 @@ export function usePlayerMedia({
    * user had paused on the next render that settled the state.
    */
   useEffect(() => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v || !video?.id) return;
     if (askingToResume) return;
     v.play().catch(() => {});
@@ -199,7 +211,7 @@ export function usePlayerMedia({
     // the element's `src` runs the media load algorithm, which stops playback.
     // A scene that had to be re-sourced would otherwise sit loaded and paused
     // with nothing but the big ▶ to explain itself.
-  }, [video?.id, askingToResume, playbackSrc, videoRef]);
+  }, [video?.id, askingToResume, playbackSrc, mediaRef]);
 
   /**
    * Re-arm the start seek when the source changes under a scene.

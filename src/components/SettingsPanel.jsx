@@ -28,6 +28,7 @@ import { ActionButton } from './tvActions.jsx';
 import { useSettings, setSettings, testStashConnection } from '../utils/settings.js';
 import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
+import { EngineToggle } from './settings/EngineToggle.jsx';
 import { TextField } from './settings/TextField.jsx';
 import { AppLockSection } from './settings/AppLockSection.jsx';
 import { LibraryStatsSection } from './settings/LibraryStatsSection.jsx';
@@ -35,6 +36,7 @@ import { ServerStatusSection } from './settings/ServerStatusSection.jsx';
 import { useArmedConfirm } from '../hooks/useArmedConfirm.js';
 import { useSettingsDraft } from '../hooks/useSettingsDraft.js';
 import { useSettingsBack } from '../hooks/useSettingsBack.js';
+import { readForcedBrowser } from './player/usePlayerEngine.js';
 
 // Short enough to read as "saved, closing" rather than the 5.6s of dead
 // air this used to sit through with no feedback at all.
@@ -43,6 +45,10 @@ const SAVE_CLOSE_DELAY_MS = 1200;
 // ── Main component ───────────────────────────────────────
 export default function SettingsPanel({ onClose }) {
   const settings = useSettings();
+  // The build-level rollback makes the setting inert, so the row shows the
+  // engine in use rather than a lever that cannot move. A compile-time
+  // constant, so it is not state.
+  const forcedBrowser = readForcedBrowser();
 
   // Local draft state — only commits to the store on Save. See the hook for
   // why every field, appearance included, is a draft.
@@ -52,6 +58,7 @@ export default function SettingsPanel({ onClose }) {
     stashKey, setStashKey,
     previewsEnabled, setPreviewsEnabled,
     theme, setTheme,
+    playbackEngine, setPlaybackEngine,
     save, clear,
   } = useSettingsDraft(settings);
 
@@ -287,6 +294,33 @@ export default function SettingsPanel({ onClose }) {
               Previews are generated in Stash, not here —{' '}
               <strong>Generate → Previews</strong>. Scenes without one keep
               their cover; nothing is left blank.
+            </p>
+          </div>
+
+          {/* Playback engine. Auto is the browser first with the TV's own
+              pipeline for what the browser cannot take; TV player is the A/B
+              lever; Browser is exactly the previous player and the rollback
+              lever. The hint deliberately does not promise better picture
+              quality: the Phase 0 probe measured hardware decode on par with
+              the browser for 4K, not better. */}
+          <div className={styles.section}>
+            <EngineToggle
+              value={playbackEngine}
+              onChange={setPlaybackEngine}
+              forcedBrowser={forcedBrowser}
+            />
+            <p className={styles.hint}>
+              {forcedBrowser
+                ? 'This build always uses the browser player.'
+                : (
+                  <>
+                    <strong>Auto</strong> plays through the browser first and
+                    switches to the TV&apos;s own player for files the browser
+                    cannot take. <strong>TV player</strong> puts the TV engine
+                    first. <strong>Browser</strong> is the compatibility mode.
+                    The change applies the next time a scene is opened.
+                  </>
+                )}
             </p>
           </div>
 

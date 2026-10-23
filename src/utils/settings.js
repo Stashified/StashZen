@@ -25,6 +25,7 @@
 import { useEffect, useState } from 'react';
 import { graphqlRequest } from './stashClient.js';
 import { sha256Hex } from './sha256.js';
+import { readPlaybackEngine } from './enginePolicy.js';
 
 const LS_KEY = 'tvapp.settings.v1';
 
@@ -184,6 +185,11 @@ function loadFromStorage() {
     // The appearance theme. Standard on every device that has never chosen —
     // an upgrade must not restyle a working TV unasked.
     theme: readTheme(saved.theme),
+    // Which playback engine `Auto` means: the TV's native AVPlay pipeline
+    // first, with the browser as fallback. `browser` is the rollback lever and
+    // reproduces the pre-0.36 player exactly. An unrecognised value falls back
+    // to `auto` at this boundary, like every other validated setting.
+    playbackEngine: readPlaybackEngine(saved.playbackEngine),
     // Which view each section is in, keyed by tab: { home: 'coverflow' }.
     //
     // A tab that is absent means 'classic', which is deliberate and is why
@@ -234,6 +240,7 @@ function persistToStorage() {
       previewsEnabled: state.previewsEnabled,
       useMock: state.useMock,
       theme: state.theme,
+      playbackEngine: state.playbackEngine,
       viewModes: state.viewModes,
       gridCols: state.gridCols,
       onboarded: state.onboarded,
@@ -306,6 +313,7 @@ export function setSettings(patch) {
   // to `useMock` for as long as it was in-memory by design.
   if ('stashUrl' in patch || 'stashKey' in patch || 'previewMuted' in patch
       || 'previewsEnabled' in patch || 'useMock' in patch || 'theme' in patch
+      || 'playbackEngine' in patch
       || 'viewModes' in patch || 'gridCols' in patch || 'onboarded' in patch
       || 'setupRequested' in patch) {
     persistToStorage();
@@ -393,6 +401,10 @@ export function clearSettings() {
     // too — and the document has to be re-themed here because clearSettings
     // does not go through setSettings.
     theme: 'standard',
+    // A cleared device is an unknown device, and `auto` is the safe default:
+    // it degrades to the browser on any panel without AVPlay. `browser` would
+    // silently turn off the native engine on a device that was just reset.
+    playbackEngine: 'auto',
     // Back to "every section is classic", which is what an absent key means.
     viewModes: {},
     // …and every section back to its own default column count. This has to be

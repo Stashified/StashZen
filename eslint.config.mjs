@@ -49,6 +49,7 @@ export default [
         ...globals.browser,
         // Injected by Vite's `define` (see vite.config.js).
         __APP_VERSION__: 'readonly',
+        __FORCE_BROWSER_ENGINE__: 'readonly',
       },
     },
     plugins: {

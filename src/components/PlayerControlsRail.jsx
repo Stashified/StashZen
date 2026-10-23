@@ -162,6 +162,7 @@ function RailButton({ id, label, disabled = false, active = false, onEnter, chil
 const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   playing,
   muted,
+  muteAvailable = true,
   hasMarkers,
   onPlayPause,
   onSkim,
@@ -256,11 +257,16 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
 
       <span className={styles.sep} aria-hidden="true" />
 
+      {/* Disabled on a panel with no mute path at all: `tvaudiocontrol` and
+          `avplay.setVolume` are both missing (the measured case on this TV's
+          peer generation). A button that silently does nothing is worse than
+          one that says it cannot. The stats panel reports the same reason. */}
       <RailButton
         id="player-rail-mute"
         label={muted ? 'Unmute' : 'Mute'}
+        disabled={!muteAvailable}
         active={muted}
-        onEnter={onToggleMute}
+        onEnter={muteAvailable ? onToggleMute : null}
       >
         {muted ? <MutedIcon /> : <SoundIcon />}
       </RailButton>

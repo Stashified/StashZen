@@ -15,7 +15,7 @@ import { saveSceneActivity, addScenePlay } from '../../utils/videoService.js';
 import { RESUME_SAVE_INTERVAL_MS } from './constants.js';
 import { createProgressReporter } from './progressReporter.js';
 
-export function usePlaybackProgress({ video, videoRef, onActivityChange }) {
+export function usePlaybackProgress({ video, mediaRef, onActivityChange }) {
   // `idle | saving | saved | failed`. Surfaced as the chip in the time row; the
   // failure state is the only way a user of this app can find out that nothing
   // is reaching the server. The reporter calls this through `onSync`.
@@ -95,7 +95,7 @@ export function usePlaybackProgress({ video, videoRef, onActivityChange }) {
   // and on teardown — which covers both Back-to-close and an advance to the
   // next scene, since the queue re-keys this effect on the scene's id.
   useEffect(() => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     const id = video?.id;
     if (!v || !id) return;
 
@@ -119,7 +119,7 @@ export function usePlaybackProgress({ video, videoRef, onActivityChange }) {
       // Final save on teardown (covers Back-to-close)
       progress.save(id);
     };
-  }, [video?.id, videoRef, progress]);
+  }, [video?.id, mediaRef, progress]);
 
   return { progress, syncState };
 }

@@ -113,6 +113,12 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 - **Player** — resumes where you stopped, queues the whole listing, seeks 15 s at a time, and
   writes progress back to Stash. HLS keeps the timeline seekable; a chip on the player says
   **Direct play** or **Transcoded**, and **Playback info** shows the live stream details.
+- **Browser first, TV player when needed** — scenes play in the browser player, which seeks more
+  reliably; a file the browser cannot take is handed to Tizen's own hardware player (AVPlay),
+  which decodes formats the browser lacks, including HEVC, AV1 and VP9. Settings → **Playback
+  engine** offers **Auto** (that behaviour), **TV player** (AVPlay first, for comparing on the
+  same file), and **Browser** (compatibility mode, the previous player exactly). **Playback info**
+  names the engine in use and the reason when it is not the browser's first choice.
 - **Focus previews** — the focused scene card plays its Stash preview, muted by default; settings
   has an On/Off switch, and the listing tabs' controls bar has a mute toggle.
 - **Library stats and server jobs** — counts, storage and watch time; running jobs with progress
@@ -127,9 +133,11 @@ Text fields select first and edit on OK: moving onto a field does not raise the 
 includes `http://` and the port, that the TV can reach the server, and that the API key is current.
 
 **A scene won't play.** The file's codec may need transcoding; enable **transcoding on the Stash
-server**. If the spinner never resolves, check Stash's logs first. Playback uses the TV browser's
-HTML5 `<video>` rather than Tizen's AVPlay, so the set of containers and codecs it accepts is
-narrower than a desktop player's; transcoding is the way around that.
+server**. If the spinner never resolves, check Stash's logs first. The player starts in the browser
+and hands a file to the TV's own pipeline when the browser refuses it or fails to start it; the TV
+engine decodes far more containers than the browser. Open **Playback info** to see which engine is
+playing and why; Settings → **Playback engine → TV player** puts the TV pipeline first, and
+**Browser** reproduces the previous player if the TV's pipeline is the problem.
 
 **A transcoded scene won't seek.** That is Stash's MP4 transcode, which is a linear stream. StashZen
 uses HLS instead; if you see it, HLS output is disabled or unavailable on your server.
@@ -184,6 +192,7 @@ Settings, or set these in `.env` (`.env.production` is separate, and is what `np
 | `VITE_STASH_URL` | Address the app starts with. |
 | `VITE_STASH_API_KEY` | API key it starts with. |
 | `VITE_USE_MOCK` | `true` starts in Test mode with sample art. |
+| `VITE_FORCE_BROWSER` | `true` builds with the browser player only — the rollback lever if a TV's AVPlay misbehaves. Settings then shows the engine in use instead of a switch. |
 
 Other scripts: `npm run lint`, `npm run build`, `npm run preview`, `npm test` (the unit suites),
 and `npm run check:compat` — the Tizen 6.5 API and CSS checks, which CI also runs. The offline
@@ -278,7 +287,8 @@ was inlined, so a fresh install always starts on the Setup screen.
 src/App.jsx             the shell: rail, controls bar, overlays, player composition
 src/app/                tab config, listing and detail hooks, Back handling
 src/components/         cards, grids, carousel, image viewer, rail, settings, filter builder
-src/components/player/  the player's transport, keys, overlays, media and progress hooks
+src/components/player/  the player's transport, keys, overlays, media and progress hooks, and
+                        engine/ — the media facade, the browser and AVPlay backends
 src/pages/              Showroom (Home), Scenes, Performers, Markers, entity pages, and the
                         performer and scene detail pages with their subdirectories
 src/hooks/              D-pad focus and keys, paging, playback source, play queue, editable fields

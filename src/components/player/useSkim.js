@@ -10,14 +10,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SKIM_PREVIEW_HIDE_DELAY } from './constants.js';
 
-export function useSkim({ videoRef, duration, showControls, setCurrentTime }) {
+export function useSkim({ mediaRef, duration, showControls, setCurrentTime }) {
   const [skimFlash, setSkimFlash] = useState(null);
   const [skimPreviewVisible, setSkimPreviewVisible] = useState(false);
   const skimFlashTimerRef = useRef(null);
   const skimPreviewTimerRef = useRef(null);
 
   const skim = useCallback((delta) => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     // The element's duration is not always usable: a Stash MP4 transcode
     // reports none (or a short placeholder), and `(NaN || 0)` made every
@@ -45,7 +45,7 @@ export function useSkim({ videoRef, duration, showControls, setCurrentTime }) {
     );
 
     showControls();
-  }, [videoRef, duration, showControls, setCurrentTime]);
+  }, [mediaRef, duration, showControls, setCurrentTime]);
 
   useEffect(() => () => {
     clearTimeout(skimFlashTimerRef.current);

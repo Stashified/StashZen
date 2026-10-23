@@ -152,6 +152,51 @@ html, body {
   overflow: hidden;
 }
 
+/*
+ * ── AVPlay plane mode ───────────────────────────────────────
+ *
+ * The TV's native player draws behind the web page, not inside it, so the page
+ * has to be see-through above it for the picture to be visible at all. The
+ * attribute is set by VideoPlayer's layout effect and removed by that effect's
+ * cleanup — on close, on engine fallback and on unmount — and nowhere else.
+ *
+ * Backgrounds, not `opacity`: the theme paints `html`, `body`, `#root` and the
+ * app shell, and an ancestor's background is not overridden by a child's. Each
+ * one is restated because the selectors that set them are one class deep and a
+ * bare `html` rule would lose to `#root`'s.
+ *
+ * `visibility: hidden` rather than `display: none` for the rest of the shell:
+ * it keeps layout (the player's geometry, and the focus rectangles restored
+ * when it closes) exactly as it was, and a hidden element is not focusable, so
+ * the D-pad cannot wander into a listing nobody can see. The player host is
+ * the only thing left visible, and it stays a direct child of the shell.
+ */
+html[data-avplay-plane],
+html[data-avplay-plane] body,
+html[data-avplay-plane] #root,
+html[data-avplay-plane] [data-app-shell] {
+  background: transparent;
+}
+
+html[data-avplay-plane] [data-app-shell] > :not([data-player-host]) {
+  visibility: hidden;
+}
+
+/*
+ * ── Lock cover ──────────────────────────────────────────────
+ *
+ * AppLock sets this on <html> the moment the app is hidden with a PIN set,
+ * and removes it in the same task that commits either the keypad or the app.
+ * A resumed Tizen app otherwise restores its last frame — the library — for
+ * about half a second before the lock screen can mount; this makes that
+ * frame the themed background instead. `visibility` for the same reasons as
+ * the AVPlay rule above: layout and focus geometry are untouched, and an
+ * element under the cover is not focusable.
+ */
+html[data-lock-cover] #root {
+  visibility: hidden;
+}
+
 /* ── Focus Styles ───────────────────────────────────────── */
 /* All focusable elements get a strong ring on TV. The ring itself comes from
    each component's own `.focused` class — this only suppresses the browser's

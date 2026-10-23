@@ -14,6 +14,11 @@
     <name>StashZen</name>
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <!-- TV-level audio control (tizen.tvaudiocontrol). This panel's AVPlay has
+         no setVolume, and the Phase 0 probe measured setMute as audible,
+         isMute() as agreeing, and the mute as surviving a player close/reopen;
+         it is the AVPlay engine's mute path. Public level. -->
+    <tizen:privilege name="http://tizen.org/privilege/tv.audio"/>
     <tizen:profile name="tv-samsung"/>
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

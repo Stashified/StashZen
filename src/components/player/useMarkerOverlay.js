@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useMarkerOverlay({ videoRef, addMarkers, showControls }) {
+export function useMarkerOverlay({ mediaRef, addMarkers, showControls }) {
   // `{ seconds, wasPlaying }` while the add-marker form is up, null otherwise.
   // The whole object is per-open data, so it lives in state rather than being
   // spread across refs — and holding it here is also what keeps the resume
@@ -19,7 +19,7 @@ export function useMarkerOverlay({ videoRef, addMarkers, showControls }) {
   const markerRestoreTimerRef = useRef(null);
 
   const openMarkerModal = useCallback(() => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     // Captured, not assumed to be the rail. Restoring whatever had focus is the
     // same convention the app's other overlays use, and here it means Back out
@@ -32,7 +32,7 @@ export function useMarkerOverlay({ videoRef, addMarkers, showControls }) {
     // was looking when they pressed the button, and it is hostile besides.
     if (wasPlaying) v.pause();
     setMarkerModal({ seconds: v.currentTime || 0, wasPlaying });
-  }, [videoRef]);
+  }, [mediaRef]);
 
   const closeMarkerModal = useCallback(() => {
     // Resume only if the form interrupted playback. A scene that was already
@@ -40,7 +40,7 @@ export function useMarkerOverlay({ videoRef, addMarkers, showControls }) {
     // button, and quietly starting a scene the user had stopped is worse than
     // leaving them to press play.
     if (markerModal?.wasPlaying) {
-      const v = videoRef.current;
+      const v = mediaRef.current;
       if (v?.paused) v.play().catch(() => {});
     }
     setMarkerModal(null);
@@ -55,7 +55,7 @@ export function useMarkerOverlay({ videoRef, addMarkers, showControls }) {
     // The controls have been counting down behind the form, so re-arm them
     // rather than leaving the user with a bare video and no rail.
     showControls();
-  }, [videoRef, markerModal?.wasPlaying, showControls]);
+  }, [mediaRef, markerModal?.wasPlaying, showControls]);
 
   // Closing the form is the only path that both writes and reports, so the
   // confirmation is attached to the create rather than to the close.
