@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import LockScreen from './LockScreen.jsx';
 import { isLockSet } from '../utils/appLock.js';
 
@@ -28,6 +29,23 @@ import { isLockSet } from '../utils/appLock.js';
 // event bouncing the user straight back to the keypad — the window covers
 // it, because a hide has to outlast the grace before anything locks.
 const RESUME_GRACE_MS = 1500;
+
+// The raw-DOM cover applied while the app is hidden. See index.css.
+//
+// Why not React state: a resumed Tizen app can put its last frame back on
+// screen before a state update from the visibilitychange handler can commit,
+// which is the half-second of library the PIN exists to hide. A DOM
+// attribute set inside the hide handler is in place before the app is
+// frozen, so the frame the compositor restores is a blank theme background.
+// It is removed in the same task that commits either the keypad or the app,
+// so the first frame after a resume is already the right one.
+const COVER_ATTR = 'data-lock-cover';
+
+function setCover(on) {
+  if (typeof document === 'undefined' || !document.documentElement) return;
+  if (on) document.documentElement.setAttribute(COVER_ATTR, '');
+  else document.documentElement.removeAttribute(COVER_ATTR);
+}
 
 export default function AppLock({ children }) {
   const [locked, setLocked] = useState(() => isLockSet());
@@ -40,7 +58,12 @@ export default function AppLock({ children }) {
     const markHidden = () => {
       // Only the first hide in a run counts — pagehide and visibilitychange
       // can both fire, and re-stamping would shrink the measured absence.
-      if (hiddenAtRef.current === null) hiddenAtRef.current = performance.now();
+      if (hiddenAtRef.current === null) {
+        hiddenAtRef.current = performance.now();
+        // Cover now rather than on return: by the time the show handler
+        // runs, the frame that matters may already have been painted.
+        if (isLockSet()) setCover(true);
+      }
     };
 
     const handleShow = () => {
@@ -48,13 +71,28 @@ export default function AppLock({ children }) {
 
       const since = hiddenAtRef.current;
       hiddenAtRef.current = null;
-      if (since === null) return;
+      if (since === null) {
+        setCover(false);
+        return;
+      }
 
-      if (performance.now() - since < RESUME_GRACE_MS) return;
+      if (performance.now() - since < RESUME_GRACE_MS) {
+        setCover(false);
+        return;
+      }
 
       // Read the store rather than this component's state: a PIN may have
       // been set since mount.
-      if (isLockSet()) setLocked(true);
+      try {
+        // flushSync, not a plain setState: the cover is removed below in
+        // this same task, and a deferred render would paint the app first —
+        // the exact flash this path exists to prevent.
+        if (isLockSet()) flushSync(() => setLocked(true));
+      } finally {
+        // Always uncover, even if the commit throws: a cover left behind
+        // would be a black screen the user cannot dismiss.
+        setCover(false);
+      }
     };
 
     const onVisibilityChange = () => {
@@ -78,6 +116,7 @@ export default function AppLock({ children }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', markHidden);
       window.removeEventListener('pageshow', handleShow);
+      setCover(false);
     };
   }, []);
 

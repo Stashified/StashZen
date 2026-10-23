@@ -66,8 +66,13 @@ export default class PlayerErrorBoundary extends Component {
 
   render() {
     if (!this.state.error) return this.props.children;
+    // `data-player-host` keeps this message visible while the page is in AVPlay
+    // plane mode: the player that owned the attribute has just been replaced by
+    // this fallback, and a shell-hidden screen would show the user nothing at
+    // all. It does not turn the plane off — this is an overlay above whatever
+    // the TV is still drawing, on a solid background of its own.
     return (
-      <div className={styles.fallback} role="alert">
+      <div className={styles.fallback} role="alert" data-player-host="">
         <p className={styles.title}>Playback stopped</p>
         <p className={styles.detail}>Something went wrong. See the log for details.</p>
       </div>

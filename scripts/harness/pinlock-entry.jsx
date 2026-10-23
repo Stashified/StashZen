@@ -18,6 +18,7 @@
 
 import '../../src/index.css';
 import { createRoot } from 'react-dom/client';
+import AppLock from '../../src/components/AppLock.jsx';
 import LockScreen from '../../src/components/LockScreen.jsx';
 import {
   setPin, clearPin, attemptPin, pinRetryDelayMs,
@@ -132,6 +133,90 @@ async function run() {
   check('P9 a fifth consecutive miss costs 5 s',
     fourth.retryAfterMs === 1000 && fifth.retryAfterMs === 5000,
     `fourth=${fourth.retryAfterMs} fifth=${fifth.retryAfterMs}`);
+
+  // ── 4. A resume must not paint the app before the keypad ─
+  // The reported defect: restarting the app showed the library for about
+  // half a second before the PIN was asked. A resumed Tizen app repaints
+  // its last frame before a state update from the visibility handler can
+  // commit, so the fix is two halves — a raw-DOM cover applied while hidden
+  // (so the restored frame is the themed background), and a synchronous
+  // commit of the keypad on return (so the uncovered frame is already it).
+  //
+  // Mounted into #root, not a host div: the cover rule targets the app's
+  // real container, which is the thing that must not be painted.
+  {
+    setPin('1234');   // also resets the failure counter from section 3
+    const host = document.getElementById('root');
+    const root = createRoot(host);
+    root.render(
+      <AppLock>
+        <div id="app-lock-child">library</div>
+      </AppLock>,
+    );
+
+    await waitFor(() => !!document.querySelector('[role="dialog"]'));
+    check('P10 a cold start with a PIN set mounts the keypad, no app content',
+      !!document.querySelector('[role="dialog"]')
+        && !document.getElementById('app-lock-child'),
+      `pad=${!!document.querySelector('[role="dialog"]')}`
+      + ` child=${!!document.getElementById('app-lock-child')}`);
+
+    await typePin('1234');
+    await waitFor(() => !!document.getElementById('app-lock-child'));
+    check('P11 the correct PIN reveals the app',
+      !!document.getElementById('app-lock-child'),
+      `child=${!!document.getElementById('app-lock-child')}`
+      + ` err=${JSON.stringify(errorText())}`);
+
+    // Simulate the Tizen lifecycle. visibilityState is read-only, so it is
+    // overridden for this section and restored afterwards.
+    let visibility = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true, get: () => visibility,
+    });
+    const hide = () => {
+      visibility = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const show = () => {
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const covered = () => document.documentElement.hasAttribute('data-lock-cover')
+      && getComputedStyle(document.getElementById('app-lock-child')).visibility === 'hidden';
+
+    hide();
+    // Synchronously, before any frame: this is what the compositor restores.
+    check('P12 hiding with a PIN set covers the app immediately', covered(),
+      `attr=${document.documentElement.hasAttribute('data-lock-cover')}`);
+
+    await sleep(300);
+    show();
+    check('P13 a short hide (the TV menu) returns to the app uncovered',
+      !!document.getElementById('app-lock-child')
+        && !document.querySelector('[role="dialog"]')
+        && !document.documentElement.hasAttribute('data-lock-cover'),
+      `child=${!!document.getElementById('app-lock-child')}`
+      + ` pad=${!!document.querySelector('[role="dialog"]')}`
+      + ` attr=${document.documentElement.hasAttribute('data-lock-cover')}`);
+
+    hide();
+    await sleep(1700);
+    show();
+    check('P14 a long hide returns to the keypad, not the app',
+      !!document.querySelector('[role="dialog"]')
+        && !document.getElementById('app-lock-child'),
+      `pad=${!!document.querySelector('[role="dialog"]')}`
+      + ` child=${!!document.getElementById('app-lock-child')}`);
+    // If this lagged the commit by even one frame, the uncovered paint
+    // would be the library — the defect itself.
+    check('P15 the cover is gone in the same task that commits the keypad',
+      !document.documentElement.hasAttribute('data-lock-cover'),
+      `attr=${document.documentElement.getAttribute('data-lock-cover')}`);
+
+    try { delete document.visibilityState; } catch (e) { /* keep the override */ }
+    root.unmount();
+  }
 
   clearPin();
 }

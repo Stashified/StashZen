@@ -75,7 +75,9 @@
  * session opened on (a marker's timestamp) and to nothing after it.
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import {
+  useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo,
+} from 'react';
 import styles from './VideoPlayer.module.css';
 import PlayerControlsRail from './PlayerControlsRail.jsx';
 import MarkerModal from './MarkerModal.jsx';
@@ -85,7 +87,11 @@ import SceneDetailPage from '../pages/SceneDetailPage.jsx';
 import { useSpriteVtt } from '../hooks/useSpriteVtt.js';
 import { usePlayQueue } from '../hooks/usePlayQueue.js';
 import { usePlaybackSource } from '../hooks/usePlaybackSource.js';
+import { usePlayerEngine } from './player/usePlayerEngine.js';
 import { timelineDuration } from '../utils/playbackSource.js';
+import { sourceKey } from '../utils/enginePolicy.js';
+import { withApiKey } from '../utils/stashUrl.js';
+import { createMediaEngine } from './player/engine/mediaEngine.js';
 import { SKIP_SECONDS } from './player/constants.js';
 import { deriveDefaultTag } from './player/markerUtils.js';
 import { usePlaybackProgress } from './player/usePlaybackProgress.js';
@@ -146,7 +152,26 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     container: video?.container,
   }), [video?.videoCodec, video?.audioCodec, video?.container]);
 
-  const videoRef = useRef(null);
+  /**
+   * The media facade — the object every playback hook now talks to.
+   *
+   * It is stable for the life of the player and quacks like the slice of
+   * HTMLMediaElement the hooks use. The backend behind it is the browser's
+   * `<video>` today. Created lazily in a ref rather than in state because the
+   * hooks take a ref-shaped object and must not re-run when it appears.
+   */
+  const mediaRef = useRef(null);
+  if (!mediaRef.current) mediaRef.current = createMediaEngine();
+  const media = mediaRef.current;
+
+  // Stable callback ref: an inline arrow would detach and re-attach the
+  // facade's element listeners on every render, and the progress clock makes
+  // this component render several times a second.
+  const attachVideo = useCallback((el) => {
+    if (el) media.attachVideoElement(el);
+    else media.detachVideoElement();
+  }, [media]);
+
   const containerRef = useRef(null);
   const railRef = useRef(null);
   const startSeekedRef = useRef(false); // ensure we only auto-seek once
@@ -159,7 +184,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // has its own tests; this hook owns the page lifecycle around it — the sync
   // chip, the unmount latch, visibility/pagehide and the periodic save. The
   // media event handlers below feed it, and `useSceneState` names the scene.
-  const { progress, syncState } = usePlaybackProgress({ video, videoRef, onActivityChange });
+  const { progress, syncState } = usePlaybackProgress({ video, mediaRef, onActivityChange });
 
   // The player's own render state. The timeline the UI draws and the error
   // overlay are shared by several hooks — the media wiring writes them, the
@@ -169,17 +194,59 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const [elementDuration, setElementDuration] = useState(0);
   const [error, setError] = useState(null);
 
-  // What the <video> is actually pointed at — the scene's own file, or one of
-  // Stash's transcodes when that file is a codec the TV cannot decode, and the
-  // other of the two if the first one fails. See the hook: the decision and
-  // the fallback both live there, and this component only supplies the queue
-  // item and the element.
+  // Which engine may be used this session. Read when the player opens rather
+  // than subscribed to: Settings is not reachable from the player, and
+  // "applies on the next open" is what the setting says.
+  const {
+    setting: engineSetting, forcedBrowser, avplay, tvaudiocontrol, ready: engineReady,
+  } = usePlayerEngine();
+
+  // What the media object is actually pointed at — the scene's own file, or
+  // one of Stash's transcodes when that file is a codec the engine cannot
+  // decode, and the other of the two if the first one fails. See the hook: the
+  // decision and the fallback both live there, and this component only supplies
+  // the queue item and the element.
   const {
     src: playbackSrc,
     sourceKind,
+    engine,
+    engineStatus,
     exhausted: sourceExhausted,
     reportFailure: reportSourceFailure,
-  } = usePlaybackSource(video, videoRef);
+  } = usePlaybackSource(video, mediaRef, {
+    setting: engineSetting,
+    forcedBrowser,
+    avplayAvailable: !!avplay,
+    ready: engineReady,
+  });
+
+  // The identity used to re-arm media wiring. It includes the engine, because
+  // an engine fallback can re-open the *same* URL under the other backend and
+  // a URL-only key would leave the hooks listening to the dead engine.
+  const mediaKey = sourceKey(engine, playbackSrc);
+
+  /**
+   * Point the facade at the engine the resolver chose, and put the page into —
+   * or out of — AVPlay plane mode in the same commit.
+   *
+   * A layout effect, because both halves have to be true before the browser
+   * paints: a transparent page with the shell still drawn flashes the listing
+   * through the video, and the reverse hides the picture behind an opaque
+   * page. React has also already attached or detached the `<video>` by the
+   * time this runs, which is the ordering the "no <video> while AVPlay is
+   * open" invariant needs.
+   *
+   * The attribute has exactly one owner: this effect. Its cleanup removes it
+   * on every engine change and on unmount, so closing the player from AVPlay
+   * cannot leave the shell hidden.
+   */
+  useLayoutEffect(() => {
+    media.setEngine(engine === 'avplay' ? 'avplay' : 'html5', { avplay, tvaudiocontrol });
+    const root = document.documentElement;
+    if (engine === 'avplay') root.setAttribute('data-avplay-plane', '');
+    else root.removeAttribute('data-avplay-plane');
+    return () => { root.removeAttribute('data-avplay-plane'); };
+  }, [media, engine, avplay, tvaudiocontrol]);
 
   // Where this scene actually got to, the watch time owed, the completion
   // latch, the play-count latch and the save queue all live behind
@@ -227,7 +294,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     resumeTime, askingToResume, effectiveStart, chooseResume,
   } = useResumeSeek({
     video,
-    videoRef,
+    mediaRef,
     liveResumeTime,
     resumeChoice,
     setResumeChoice,
@@ -237,12 +304,44 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     setCurrentTime,
   });
 
+  /**
+   * Open the native session, for AVPlay only.
+   *
+   * The browser's load path is the `<video>`'s `src`, which React sets in the
+   * same commit. AVPlay has no element, so this is its load: the URL, the
+   * resume position, and whether playback may start yet (the resume prompt
+   * owns that answer, and the transport's play effect starts it once the
+   * prompt is gone).
+   *
+   * Keyed on the source identity, not on `effectiveStart`/`askingToResume`:
+   * re-opening the session to change a start position would restart the
+   * stream, and a seek is what those two actually need. The options are read
+   * through a ref so the effect need not depend on them.
+   *
+   * Deliberately no cleanup on a source change: `open()` already tears the
+   * previous native session down (and `setEngine` closes it on an engine
+   * switch). `close()` restores a TV mute this app applied, and a queue
+   * advance is not the end of the sitting — closing per scene would unmute
+   * between two scenes the user is watching muted. The unmount effect below
+   * is the one that closes.
+   */
+  const openOptionsRef = useRef({ startSeconds: 0, autoplay: true });
+  openOptionsRef.current = { startSeconds: effectiveStart, autoplay: !askingToResume };
+  useEffect(() => {
+    if (engine !== 'avplay' || !playbackSrc) return;
+    media.open(playbackSrc, openOptionsRef.current);
+  }, [media, engine, playbackSrc, mediaKey]);
+
+  // The sitting's end: stop the native session and restore the panel. Runs
+  // after the plane attribute's own cleanup, so the shell is never left hidden.
+  useEffect(() => () => media.close(), [media]);
+
   // The element's listeners, its autoplay decision and its source-change
   // re-arm. Consumes the resume decision above; nothing consumes it except
   // the render.
   const { playing, buffering } = usePlayerMedia({
     video,
-    videoRef,
+    mediaRef,
     progress,
     showControls,
     effectiveStart,
@@ -251,7 +350,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     pendingLiveResumeRef,
     fallbackSeekRef,
     sourceFreshRef,
-    playbackSrc,
+    playbackSrc: mediaKey,
     sourceExhausted,
     reportSourceFailure,
     codecs,
@@ -260,6 +359,27 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     setElementDuration,
     setError,
   });
+
+  /**
+   * The poster above the AVPlay plane, until the engine has a picture.
+   *
+   * AVPlay draws behind the page, so between `open()` and the first decoded
+   * frame the page is transparent over black — and a scene's thumbnail reads
+   * far better there than nothing. An `<img>`, never a `<video>`: a second
+   * decoder would compete with the engine this is covering for.
+   *
+   * Set by the `playing` event itself rather than derived from `playing`
+   * state: on the render where a new scene is chosen, the previous scene's
+   * `playing` may still be true, and the poster would vanish before the new
+   * one had a frame. Keyed per source so an engine fallback shows it again.
+   */
+  const [posterKey, setPosterKey] = useState(null);
+  useEffect(() => {
+    const onPlaying = () => setPosterKey(mediaKey);
+    media.addEventListener('playing', onPlaying);
+    return () => media.removeEventListener('playing', onPlaying);
+  }, [media, mediaKey]);
+  const showPoster = engine === 'avplay' && posterKey !== mediaKey && !!video?.thumbnail;
 
   /**
    * The timeline the UI draws — which is *not* always the element's duration.
@@ -277,16 +397,17 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const duration = timelineDuration(elementDuration, video?.durationSeconds || 0);
 
   const { skim, skimFlash, skimPreviewVisible } = useSkim({
-    videoRef,
+    mediaRef,
     duration,
     showControls,
     setCurrentTime,
   });
 
   const {
-    muted, togglePlay, mediaTransport, stepScene, jumpToMarker, toggleMute,
+    muted, muteAvailable, togglePlay, mediaTransport, stepScene, jumpToMarker, toggleMute,
   } = usePlayerTransport({
-    videoRef,
+    mediaRef,
+    engine,
     markers,
     setCurrentTime,
     setError,
@@ -297,12 +418,12 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
 
   const {
     markerModal, markerNotice, openMarkerModal, closeMarkerModal, handleMarkerCreated,
-  } = useMarkerOverlay({ videoRef, addMarkers, showControls });
+  } = useMarkerOverlay({ mediaRef, addMarkers, showControls });
 
   const {
     detailsOpen, statsOpen, openDetails, closeDetails, toggleStats,
     playFromDetails, playAtFromDetails,
-  } = useDetailsOverlay({ videoRef, progress, showControls, setCurrentTime });
+  } = useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime });
 
   // Last, because it only dispatches into the callbacks above: the key map is
   // pure and lives in keyRouting.js, and this hook installs the listener.
@@ -338,7 +459,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   return (
     <div
       ref={containerRef}
-      className={styles.overlay}
+      data-player-host=""
+      className={`${styles.overlay} ${engine === 'avplay' ? styles.avplay : ''}`}
       role="dialog"
       aria-label={`Now playing: ${video.title}`}
       onMouseMove={showControls}
@@ -349,13 +471,22 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
           unless the TV cannot decode it, in which case it is Stash's
           transcode — and it changes mid-scene if the first choice fails.
           See usePlaybackSource. */}
-      <video
-        ref={videoRef}
-        className={styles.video}
-        src={playbackSrc}
-        poster={video.thumbnail}
-        playsInline
-      />
+      {engine !== 'avplay' && (
+        <video
+          ref={attachVideo}
+          className={styles.video}
+          src={playbackSrc}
+          poster={video.thumbnail}
+          playsInline
+        />
+      )}
+
+      {/* Under the controls and over the transparent plane. The black underlay
+          is the class's background, so a slow thumbnail cannot expose the page
+          underneath it. */}
+      {showPoster && (
+        <img className={styles.poster} src={withApiKey(video.thumbnail)} alt="" />
+      )}
 
       <PlayerStatus
         skimFlash={skimFlash}
@@ -399,6 +530,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             playing={playing}
             muted={muted}
             hasMarkers={markers.length > 0}
+            muteAvailable={muteAvailable}
             onPlayPause={togglePlay}
             onSkim={skim}
             // Null at the ends of the queue, which the rail renders as a
@@ -426,10 +558,12 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
           component. */}
       {statsOpen && (
         <PlaybackInfoPanel
-          videoRef={videoRef}
+          media={media}
           video={video}
           sourceKind={sourceKind}
           src={playbackSrc}
+          engine={engine}
+          engineStatus={engineStatus}
         />
       )}
 

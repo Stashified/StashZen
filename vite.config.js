@@ -19,6 +19,12 @@ export default defineConfig({
     assetsInlineLimit: 0,         // don't inline assets
     cssCodeSplit: true,
 
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+      },
+    },
+
     // CSS is minified by Lightning CSS (the Vite 8 default; Vite 4 used
     // esbuild). Two behaviours are worth knowing before editing any
     // *.module.css here, because both are silent — no warning, no error,
@@ -53,5 +59,11 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // The release-level rollback for AVPlay: a build made with
+    // `VITE_FORCE_BROWSER=true` uses today's <video> player everywhere,
+    // whatever Settings says, and hides the Auto option. CI sets no VITE_
+    // variables, so a released widget is false unless someone asks for it.
+    // See usePlayerEngine.js for how it is read.
+    __FORCE_BROWSER_ENGINE__: JSON.stringify(process.env.VITE_FORCE_BROWSER === 'true'),
   },
 })

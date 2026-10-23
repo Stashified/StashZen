@@ -39,6 +39,9 @@ export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.HARNESS_NODE_ENV || 'production'),
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // The build-level rollback, so a driver can prove Browser is today's
+    // player. Off unless a driver asks.
+    __FORCE_BROWSER_ENGINE__: JSON.stringify(process.env.HARNESS_FORCE_BROWSER === '1'),
   },
 
   build: {

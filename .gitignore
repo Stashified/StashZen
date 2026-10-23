@@ -52,3 +52,12 @@ dist-ssr
 # permanently — the same class of mistake as the .wgt above, and the same class
 # as the key that survived its own history rewrite.
 stash_ui.png
+
+# Photographs of the TV taken during the 2026-10-23 AVPlay spike. Same reason
+# as above: they are the user's screen, and they are evidence to read, not
+# repo content. The spike itself is gone; these stay local.
+avspike/
+
+# Python bytecode from the harness server.
+__pycache__/
+*.pyc

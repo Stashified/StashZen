@@ -18,21 +18,28 @@
 import { useEffect, useState } from 'react';
 import styles from './PlaybackInfoPanel.module.css';
 import { playbackStats } from '../utils/playbackStats.js';
+import { engineNoteFor } from '../utils/engineController.js';
 
 const POLL_MS = 500;
 
-export default function PlaybackInfoPanel({ videoRef, video, sourceKind, src }) {
+export default function PlaybackInfoPanel({ media, video, sourceKind, src, engine, engineStatus }) {
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
     const read = () => {
-      const el = videoRef.current;
-      if (!el) return;
-      setRows(playbackStats(el, {
+      if (!media) return;
+      setRows(playbackStats(media, {
         sceneId: video?.id,
         sourceKind,
         src,
         sceneDuration: video?.durationSeconds,
+        engine,
+        // Why Auto is not on AVPlay, appended to the Player row. Without it a
+        // fallback is indistinguishable from a bug on the TV. Only a browser
+        // row may carry it: when AVPlay refused a file it goes on to play the
+        // transcode itself, and "AVPlay · AVPlay refused this format" reads
+        // like a contradiction on the panel.
+        engineNote: engine === 'avplay' ? '' : engineNoteFor(engineStatus),
         codecs: {
           videoCodec: video?.videoCodec,
           audioCodec: video?.audioCodec,
@@ -47,9 +54,9 @@ export default function PlaybackInfoPanel({ videoRef, video, sourceKind, src }) 
     // thing being described actually changes — not on every queue object
     // identity the player happens to hand over.
   }, [
-    videoRef, video?.id, video?.durationSeconds,
+    media, video?.id, video?.durationSeconds,
     video?.videoCodec, video?.audioCodec, video?.container,
-    sourceKind, src,
+    sourceKind, src, engine, engineStatus,
   ]);
 
   return (

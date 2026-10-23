@@ -14,7 +14,7 @@ import { RESUME_SKIP_THRESHOLD_S, RESUME_END_THRESHOLD_S } from './constants.js'
 
 export function useResumeSeek({
   video,
-  videoRef,
+  mediaRef,
   liveResumeTime,
   resumeChoice,
   setResumeChoice,
@@ -73,7 +73,7 @@ export function useResumeSeek({
   const chooseResume = useCallback((choice) => {
     setResumeChoice(choice);
     if (choice !== 'resume') return;
-    const v = videoRef.current;
+    const v = mediaRef.current;
     // The prompt was decided from the prop, so the live value it would seek to
     // can be one the policy rejects (finished, or barely started). Honour the
     // policy on the answer as well as on the question.
@@ -85,7 +85,7 @@ export function useResumeSeek({
     } catch (e) {
       // Not seekable yet — `onLoadedMd` will do it from `effectiveStart`.
     }
-  }, [videoRef, setResumeChoice, usableResume, resumeTime, setCurrentTime, startSeekedRef]);
+  }, [mediaRef, setResumeChoice, usableResume, resumeTime, setCurrentTime, startSeekedRef]);
 
   /**
    * Withdraw the resume question when the server's fresher answer says it
@@ -109,7 +109,7 @@ export function useResumeSeek({
   // at a different (cached) value, seek again to the correct position.
   useEffect(() => {
     if (liveResumeTime == null) return;
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     // Don't override an explicit marker activation
     if (startSeconds > 0) return;
@@ -134,7 +134,7 @@ export function useResumeSeek({
     }
   }, [
     liveResumeTime, startSeconds, askingToResume, resumeChoice, usableResume,
-    videoRef, startSeekedRef, pendingLiveResumeRef,
+    mediaRef, startSeekedRef, pendingLiveResumeRef,
   ]);
 
   return { resumeTime, isUsefulResume, askingToResume, effectiveStart, chooseResume };

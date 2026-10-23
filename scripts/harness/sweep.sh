@@ -148,6 +148,12 @@ run menu-saves     menu-entry.jsx      '?view=saves'
 run menu-buttons   menu-entry.jsx      '?view=buttons'
 run preview        preview-entry.jsx
 run codec          codec-entry.jsx
+# The TV engine, with a fake AVPlay that records calls and has no picture. It
+# asserts the decisions around the engine — which URL opens, that no <video>
+# exists while the plane is up, the page's compositing, skims, hide/restore,
+# content fallback, the format cache, HLS-before-MP4 and the session kill
+# switch. It cannot assert that AVPlay decodes anything; that is the TV pass.
+run avplay         avplay-entry.jsx
 run controls       controls-entry.jsx
 run detail         entry.jsx
 # The performer detail page's one profile query: card-first paint, the adopted

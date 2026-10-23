@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useDetailsOverlay({ videoRef, progress, showControls, setCurrentTime }) {
+export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime }) {
   // A boolean rather than an object because there is nothing per-open to
   // remember: it always describes the scene currently loaded, which is the
   // video element's own state.
@@ -34,7 +34,7 @@ export function useDetailsOverlay({ videoRef, progress, showControls, setCurrent
    * that press.
    */
   const openDetails = useCallback(() => {
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     detailsOpenerRef.current = document.activeElement;
     if (!v.paused) v.pause();
@@ -42,7 +42,7 @@ export function useDetailsOverlay({ videoRef, progress, showControls, setCurrent
     // The rail is counting down behind the page, so re-arm it now rather than
     // leaving the user to come back to a bare video.
     showControls();
-  }, [videoRef, showControls]);
+  }, [mediaRef, showControls]);
 
   const closeDetails = useCallback(() => {
     setDetailsOpen(false);
@@ -79,9 +79,9 @@ export function useDetailsOverlay({ videoRef, progress, showControls, setCurrent
    */
   const playFromDetails = useCallback(() => {
     closeDetails();
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (v?.paused) v.play().catch(() => {});
-  }, [videoRef, closeDetails]);
+  }, [mediaRef, closeDetails]);
 
   /**
    * A marker chip, while the page is over the player.
@@ -99,7 +99,7 @@ export function useDetailsOverlay({ videoRef, progress, showControls, setCurrent
    */
   const playAtFromDetails = useCallback((seconds) => {
     closeDetails();
-    const v = videoRef.current;
+    const v = mediaRef.current;
     if (!v) return;
     // The clock records where the *element* actually is, so it moves only
     // when the seek took. A non-seekable stream must not have a position
@@ -112,7 +112,7 @@ export function useDetailsOverlay({ videoRef, progress, showControls, setCurrent
       setCurrentTime(seconds);
     }
     v.play().catch(() => {});
-  }, [videoRef, closeDetails, progress, setCurrentTime]);
+  }, [mediaRef, closeDetails, progress, setCurrentTime]);
 
   useEffect(() => () => clearTimeout(detailsRestoreTimerRef.current), []);
 
