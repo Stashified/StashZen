@@ -31,41 +31,36 @@ entirely with the remote. It is a web app packaged as a Tizen widget (`.wgt`).
 | **Server** | A reachable **Stash** server on the same network. Built and tested against Stash **0.31.1**. |
 | **Package** | The latest `.wgt` from [Releases](https://github.com/Stashified/StashZen/releases). |
 
-*Tested on Tizen 9 (S95H) only.* Earlier Tizen releases ship browser engines that cannot render this
-layout (flex `gap` needs Chromium 84, `aspect-ratio` needs 88), so the package declares Tizen 6.5,
-the first release on Chromium 94. Other 6.5+ models are untested: if StashZen misbehaves on yours,
-please open an issue with the model and Tizen version.
+*Tested on Tizen 9 (S95H). The package declares 6.5 — the first Tizen on Chromium 94, which is
+what this layout needs (flex `gap` needs 84, `aspect-ratio` 88). Other 6.5+ models are untested;
+if StashZen misbehaves on yours, open an issue with the model and Tizen version.*
 
 ## Install on the TV
 
-Sideloading is the intended route. Download the `.wgt` from **Releases**, not the zip from an
-Actions run: a workflow artifact is a zip *containing* the `.wgt`, and installers fail on it without
-saying why.
+Sideloading is the intended route. Download the `.wgt` from **Releases**, not an Actions artifact:
+an artifact is a zip *containing* the `.wgt`, and installers fail on it without saying why.
 
-1. **Enable Developer Mode.** Open **Apps**, press **1 2 3 4 5** on the remote, turn on
-   *Developer mode*, enter the IP of the computer you will install from, and restart the TV.
+1. **Developer mode.** Open **Apps**, press **1 2 3 4 5** on the remote, turn on *Developer mode*,
+   enter the IP of the computer you will install from, and restart the TV.
 2. **Install the file** with [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung) or a
-   similar tool: select the `.wgt` and let it do the rest. Tizen Studio's `tizen install` also
-   works, but needs a package signed with a Samsung distributor certificate that lists your TV (see
-   [Building your own package](#building-your-own-package)).
+   similar tool. Tizen Studio's `tizen install` also works, but needs a distributor certificate
+   that lists your TV (see [Building your own package](#building-your-own-package)).
 3. StashZen appears in the TV's Apps grid.
 
 ## First run
 
-A fresh install has no server saved, so it opens on **Connect to Stash**:
+A fresh install opens on **Connect to Stash**:
 
-- **Server address**: include `http://` and the port, e.g. `http://192.168.1.20:9999` (`9999` is
-  Stash's default).
-- **API key**: in Stash, under **Settings → Security → API Key**.
-- **Test connection** checks the address and key without saving. **Connect** runs the same check and
-  saves only if it passes. **Skip — use sample data** saves nothing, not even what you typed, and
-  runs in Test mode so you can look around first.
+- **Server address**: include `http://` and the port, e.g. `http://192.168.1.20:9999`.
+- **API key**: in Stash under **Settings → Security → API Key**.
+- **Test connection** checks the address and key without saving. **Connect** saves only if the
+  check passes. **Skip — use sample data** saves nothing and runs in Test mode.
 
-The app then offers an optional **4-digit PIN**, asked for on the *next* launch. To change any of
-this later, use **Settings → Connection setup → Run setup again**.
+The app then offers an optional **4-digit PIN**, asked on the *next* launch. Change any of this
+under **Settings → Connection setup → Run setup again**.
 
-> **Typing:** text fields select first and edit on OK. Moving onto a field does not raise the
-> keyboard. Press **OK** to start typing, and **OK** again (or the keyboard's Done) to finish.
+> **Typing:** fields select first and edit on OK; moving onto one does not raise the keyboard.
+> Press **OK** to type, and **OK** again (or Done) to finish.
 
 ## Remote controls
 
@@ -75,17 +70,17 @@ this later, use **Settings → Connection setup → Run setup again**.
 |---|---|
 | D-pad | Move focus. |
 | OK / Enter | Open the focused item or activate the control. On a card, opens its detail page. |
-| Long press OK | Open the card's menu: **Play**, **Play all**, **Play from here** for a scene (a marker's Play starts at its timestamp); slideshows for an image or gallery; **Info** / **Details** where there is a page to open. |
-| Back / Esc | Close the topmost thing: dropdown, page, player. On the main screen and on the PIN screen it asks to exit. |
+| Long press OK | The card's menu: **Play**, **Play all**, **Play from here** (a marker's Play starts at its timestamp), slideshows for an image or gallery, **Info** / **Details**. |
+| Back / Esc | Close the topmost thing: dropdown, page, player. On the home screen and on the PIN screen it asks to exit. |
 
 **Navigating**
 
 | Key | Action |
 |---|---|
 | ← from a card | Return to the left rail's current tab. |
-| ↑ from the top card row | On a listing tab, jump to the controls bar (filter, sort, view mode, search). On Home, go back to the rail. |
+| ↑ from the top card row | On a listing, the controls bar (filter, sort, view mode, search); on Home, the rail. |
 | ↑ / ↓ on the rail | Walk the rail, including Settings at the bottom. |
-| OK on the rail's current row | Reload that tab in place, so scenes added or removed on the server appear without relaunching. |
+| OK on the rail's current row | Reload that tab in place, so server changes appear without relaunching. |
 | OK on a gallery chip | In a scene detail's **Galleries** row, open that gallery in the Galleries tab. |
 
 **Player**
@@ -109,46 +104,40 @@ this later, use **Settings → Connection setup → Run setup again**.
 
 **Browse**
 - **Home**: Stash's shelves, five cards each, with **Continue Watching** under Recently Added
-  Scenes. **See all** opens a listing with that shelf's sort and filter.
+  Scenes. **See all** opens that shelf's listing.
 - **Seven sections**: Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
-  search, sort and filters in a Classic grid, Carousel or List (Scenes also offer Coverflow). View
-  mode and columns are remembered per tab; sort, filter and search reset on arrival.
-  Gallery cards show the studio or the folder; tag and studio carousels carry Stash's description
-  and aliases. A marker plays its scene at that timestamp.
-- **Filter builder**: build a filter on the TV or load a saved one; saved filters round-trip to
-  Stash.
-- **Focus previews**: the focused scene card plays its Stash preview, muted by default. Settings
-  has an On/Off switch, and the listing tabs' controls bar has a mute toggle.
+  search, sort, filters and a view mode (grid, carousel or list; Scenes also coverflow) that is
+  remembered per tab. Sort, filter and search reset on arrival. Gallery cards show the studio or
+  folder; tag and studio carousels carry descriptions and aliases.
+- **Filter builder**: build one on the TV or load a saved one; saved filters round-trip to Stash.
+- **Focus previews**: the focused scene card plays its Stash preview, muted by default. Toggle it
+  in Settings or on the listing's controls bar.
 
 **Details**
 - **Scene detail**: metadata and rating; resume, play from a marker, clear progress or mark played;
   a **Galleries** row when the scene belongs to one.
-- **Performer pages**: the full profile plus scene, image and gallery counts, with **Rating** and
-  **Favourite** editable and written back to Stash.
+- **Performer pages**: the full profile, scene/image/gallery counts, and **Rating** / **Favourite**
+  editable and written back to Stash.
 - **Image viewer**: full size, stepped with ←/→, with a six-second slideshow. **Info** shows what
-  Stash holds for the image; an image with no title shows its file name.
+  Stash holds for the image; an untitled image shows its file name.
 
 **Playback**
 - **Player**: resumes where you stopped, queues the whole listing, seeks 15 s at a time, and writes
   progress back to Stash. HLS keeps the timeline seekable. A chip says **Direct play** or
-  **Transcoded**, and **Playback info** shows the live stream details.
+  **Transcoded**; **Playback info** shows the live stream details.
 - **Browser first, TV player when needed**: scenes play in the browser player, which seeks more
-  reliably. A file the browser cannot take is handed to Tizen's own hardware player (AVPlay), which
-  decodes formats the browser lacks, including HEVC, AV1 and VP9. **Settings → Playback engine**:
-  - **Auto**: the behaviour above.
-  - **TV player**: AVPlay first, for comparing on the same file.
-  - **Browser**: compatibility mode, the previous player exactly.
-
-  **Playback info** names the engine in use and, when it is not the browser's first choice, why.
-- **Mute in the player**: uses the TV's audio control or AVPlay's volume, whichever the panel
-  offers. If it has neither, the Mute button is disabled and Playback info says why.
+  reliably; a file it cannot take goes to Tizen's hardware player (AVPlay), which adds HEVC, AV1
+  and VP9. **Settings → Playback engine** offers **Auto**, **TV player** and **Browser**, and
+  **Playback info** names the engine and the fallback reason.
+- **Mute** uses the TV's audio control or AVPlay's volume, whichever the panel offers; if it has
+  neither the button is disabled and **Playback info** says why.
 
 **System**
 - **Library stats and server jobs**: counts, storage and watch time; running jobs with progress and
   a two-press **Stop**; start a library scan from the TV.
 - **Theme**: Standard or OLED (true black on OLED panels).
 - **Unsaved-changes guard**: leaving Settings without pressing **Save** asks whether to save,
-  discard, or keep editing, instead of silently throwing the edits away.
+  discard, or keep editing.
 - **PIN lock**: optional four-digit code at launch.
 - **Test mode**: every screen on sample data, no server required.
 
@@ -175,48 +164,39 @@ this later, use **Settings → Connection setup → Run setup again**.
 
 ## Troubleshooting
 
-**It won't connect, or the screen is black.** Open Settings → Test connection. Check that the
-address includes `http://` and the port, that the TV can reach the server, and that the API key is
-current.
+**It won't connect, or the screen is black.** Check **Settings → Test connection**: the address
+needs `http://` and the port, the TV must reach the server, and the API key must be current.
 
-**A scene won't play.** Open **Playback info** first: it shows which engine is playing and why.
-- The file's codec may need transcoding. Enable **transcoding on the Stash server**.
-- The player starts in the browser and hands the file to the TV's own pipeline (AVPlay) when the
-  browser refuses it or fails to start it. AVPlay decodes more containers than the browser.
-- If the TV pipeline is the problem, set **Settings → Playback engine → Browser** to reproduce the
-  previous player. **TV player** puts AVPlay first, which helps when comparing the two.
+**A scene won't play.** Open **Playback info** first; it shows the engine and why.
+- The codec may need transcoding — enable **transcoding on the Stash server**.
+- The browser hands files it refuses to AVPlay, which decodes more containers. If AVPlay is the
+  problem, set **Settings → Playback engine → Browser** to reproduce the previous player.
 - If the spinner never resolves, check Stash's logs.
 
 **A transcoded scene won't seek.** Stash's MP4 transcode is a linear stream, so StashZen uses HLS
-instead. If you see this, HLS output is disabled or unavailable on your server.
+instead. If you see this, HLS output is disabled on your server.
 
-**Progress doesn't sync.** The player shows an indicator when a save fails. Usually it is the API
-key: saving activity is a mutation and needs it, unlike plain playback. Rating and favourite writes
-on the performer page use the same key and report a failure in place.
+**Progress doesn't sync.** The player shows an indicator when a save fails; usually it is the API
+key, since saving activity is a mutation. Rating and favourite writes report failures in place.
 
-**An image's Info panel is sparse.** It shows only what Stash holds for that image and hides empty
-fields, so a picture with no studio, tags or performers is short. That is the data, not a failed
-fetch.
+**An image's Info panel is sparse.** It shows only what Stash holds and hides empty fields, so an
+image with no studio, tags or performers is short. That is the data, not a failed fetch.
 
-**"Something went wrong".** This is the last-resort error boundary. **Try again** re-renders;
-**Restart** relaunches the widget. If it recurs, note what you were doing and open an issue. The
-message on the screen helps.
+**"Something went wrong".** The last-resort error boundary. **Try again** re-renders; **Restart**
+relaunches the widget. Note what you were doing and open an issue if it recurs.
 
 ## Security notes
 
-- **The API key is stored unencrypted on the TV**, in the app's local storage. The optional PIN
-  deters someone holding the remote; it is not encryption. Anyone who can read the installed app's
-  storage can read the key regardless of the PIN. Create a dedicated Stash API key for the TV, and
-  revoke it if the set leaves your control.
-- **Media URLs carry the key in their query string.** `<img>`, `<video>`, sprite sheets and VTT
-  files cannot send the `ApiKey` header, so StashZen appends `?apikey=…` to those requests. The key
-  therefore appears in Stash's and any reverse proxy's access logs, and over plain HTTP it is
-  readable on the network. Beyond a trusted LAN, put Stash behind HTTPS: the URL still carries the
-  key, but the connection does not expose it in transit.
-- **Release packages carry no credentials.** CI sets no `VITE_*` variables, and the credential
-  guard fails the build when a JWT-shaped key is found in the bundle, so a fresh install starts on
-  the Setup screen. A locally built package
-  can contain your key; see [Building your own package](#building-your-own-package).
+- **The API key is stored unencrypted on the TV**, in the app's local storage. The optional PIN is
+  a deterrent, not encryption: anyone who can read the app's storage can read the key regardless.
+  Use a dedicated Stash API key for the TV and revoke it if the set leaves your control.
+- **Media URLs carry the key in their query string.** Images, video, sprites and VTT files cannot
+  send the `ApiKey` header, so StashZen appends `?apikey=…`. The key therefore appears in Stash's
+  and any reverse proxy's logs, and over plain HTTP it is readable on the network. Beyond a
+  trusted LAN, put Stash behind HTTPS.
+- **Release packages carry no credentials.** CI sets no `VITE_*` variables and refuses to package
+  a bundle containing a key, so a fresh install starts on the Setup screen. A locally built
+  package can contain your key; see [Building your own package](#building-your-own-package).
 
 ---
 
@@ -224,8 +204,7 @@ message on the screen helps.
 
 ### Run it locally
 
-Requires Node.js 20.19+ or 22.12+ (CI uses 22). Those are Vite 8's declared floors; an older Node
-fails inside Vite rather than with a message that names the version problem.
+Requires Node.js 20+ (CI uses 22).
 
 ```bash
 git clone https://github.com/Stashified/StashZen
@@ -253,11 +232,11 @@ Settings, or set these in `.env` (`.env.production` is separate and is what `npm
 | `npm run check:compat` | The Tizen 6.5 API and CSS checks (CI runs these too). |
 | `npm run test:filters` · `verify:criteria` · `verify:art` | Offline checks for the data layer. |
 
-`scripts/harness/` runs the real components in headless Firefox against a fake GraphQL endpoint. It
-catches navigation and layout regressions before a package is built, and `shoot.sh` captures the
-README screenshots from the same Test-mode app. The harness says nothing about the TV's media
-pipeline or on-screen keyboard; only the TV can. The UI has no fixed stage and lays out at whatever
-viewport it is given, so resizing the harness window invalidates its geometry-based expectations.
+`scripts/harness/` runs the real components in headless Firefox against a fake GraphQL endpoint,
+catching navigation and layout regressions before a package is built. `shoot.sh` captures the
+README screenshots from the same Test-mode app. It says nothing about the TV's media pipeline or
+on-screen keyboard — only the TV can. The UI has no fixed stage and lays out at whatever viewport
+it is given, so resizing the harness window invalidates its geometry-based expectations.
 
 ### Where things are
 
@@ -284,10 +263,10 @@ Read these first: `src/hooks/useKeyHandler.js` (spatial navigation), `src/utils/
 A `.wgt` is a signed zip of `dist/` plus `tizen/config.xml`.
 
 1. Install [Tizen Studio](https://download.tizen.org/sdk/Installer/) (the CLI tools are enough).
-2. In **Tools → Certificate Manager**, create a **Samsung** profile: an author certificate (you) and
-   a distributor certificate (Samsung-issued). Add your TV's DUID, shown in the TV's Developer Mode
-   dialog.
-3. Confirm the profile is active (`O` in the Active column):
+2. In **Tools → Certificate Manager**, create a **Samsung** profile: an author certificate (you)
+   and a distributor certificate (Samsung-issued) that lists your TV's DUID, shown in the TV's
+   Developer Mode dialog.
+3. Confirm it is active (`O` in the Active column):
 
    ```bash
    tizen security-profiles list
@@ -302,43 +281,31 @@ A `.wgt` is a signed zip of `dist/` plus `tizen/config.xml`.
    tizen package -t wgt -s <profile-name> -- ./dist
    ```
 
-   If you have a `.env.production` with your Stash address and API key, `npm run build` stops at
-   the credential guard (see **Credential guard** below). That is deliberate: a local package only
-   for your own TV is the one case where `ALLOW_BAKED_KEY=1 npm run build` is the right call.
-
-   The stamp step writes `package.json`'s version into the staged manifest, so a local package
-   claims the version it actually is. To install over sdb as well:
+   The stamp step writes `package.json`'s version into the manifest, so the package claims the
+   version it actually is. To install over sdb as well:
 
    ```bash
    sdb connect <tv-ip>:26101
    tizen install -n dist/StashZen.wgt -t <tv-sdb-name>
    ```
 
-The result is `dist/StashZen.wgt` (CI adds the version to the artifact name), signed with your
-distributor certificate. Tizen's own installer expects the target TV's device ID to be listed in
-that certificate.
+The result is `dist/StashZen.wgt` (CI adds the version), signed with your distributor certificate.
+`tizen install` expects your TV's device ID in that certificate; **Apps2Samsung does not** — it
+installs packages whose certificate names no real TV, including one carrying only Tizen's bundled
+test certificate, so a shared build works there. For wider sharing, use TizenBrew or the Samsung
+Seller Office.
 
-**Apps2Samsung is not limited by that.** A release signed with a certificate whose device ID belongs
-to no real TV installed and ran on a TV the certificate does not name (verified 2026-10-18). A
-package carrying no Samsung distributor certificate at all — signed with Tizen's bundled *test*
-distributor — installed the same way (verified 2026-10-24, using a separate ten-character package
-id so it could sit alongside the real app). Apps2Samsung also manages certificates per TV and may
-add the target TV itself. So a shared build works there too; for wider sharing, TizenBrew or the
-Samsung Seller Office are the routes to use.
-
-**Credential guard.** `npm run build` ends with `scripts/check-bundle.mjs`. It text-searches the
-built bundle for a JWT-shaped key (Stash keys always start with `eyJhbGciOi`) and for the exact
-`VITE_STASH_API_KEY` from `.env.production`, and **fails the build** when either is found. A
-private-network address is only a warning, because the documented example address is in every
-bundle. This is a guard against the mistake that actually happens — inlining `.env.production` —
-not a proof: a key that was encoded or compressed into the bundle would pass it. To bake the key
-in deliberately for your own TV:
+**Credential guard.** `npm run build` ends with `scripts/check-bundle.mjs`, which **fails** the
+build if the bundle contains a JWT-shaped key or the exact `VITE_STASH_API_KEY` from
+`.env.production`. A private-network address only warns. It catches the mistake that actually
+happens — inlining `.env.production` — not an encoded key. To bake the key in deliberately for
+your own TV:
 
 ```bash
 ALLOW_BAKED_KEY=1 npm run build
 ```
 
-Never share a `.wgt` built that way: it hands the key to whoever installs it.
+Never share a `.wgt` built that way.
 
 ### Releases (GitHub Actions)
 
@@ -351,31 +318,25 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Add these four secrets to the GitHub **environment named `StashZen`**, the one the workflow declares
-in its `environment:` line (a job only sees environment secrets when it names one):
+Add four secrets to the GitHub **environment named `StashZen`** (the workflow's `environment:`
+line — without it the secrets resolve empty):
 
 | Secret | Value |
 |---|---|
 | `TIZEN_AUTHOR_P12` / `TIZEN_AUTHOR_PASSWORD` | base64 of your author `.p12`, and its password |
 | `TIZEN_DISTRIBUTOR_P12` / `TIZEN_DISTRIBUTOR_PASSWORD` | base64 of your Samsung distributor `.p12`, and its password |
 
-On a **tag** build all four are required. With no distributor pair the workflow stops instead of
-falling back to Tizen's test distributor: `tizen install` refuses a test-signed package, so a
-release that carried one would be installable only through tools that accept it.
-
-A **manual run** can choose `signing: test`, which ignores the distributor secrets and signs with
-Tizen's bundled test distributor. That exercises the pipeline without certificates; it also showed
-Apps2Samsung installs such a package (2026-10-24). Treat the result as an experiment, never as
-something to publish. The author pair is still required either way — Tizen will not package without
-an author certificate.
+A **tag** build needs all four and never falls back to Tizen's test distributor. A **manual run**
+may set `signing: test` — Tizen's bundled test distributor, no distributor secrets — to exercise
+the pipeline; treat the result as an experiment, never as something to publish. The author pair
+is required either way.
 
 ```bash
 openssl base64 -in author.p12 | tr -d '\n'
 ```
 
-Release packages carry **no credentials**: the workflow sets no `VITE_*` variables and its
-credential guard aborts the build if a JWT-shaped key appears in the bundle, so a fresh install
-always starts on the Setup screen.
+Release packages carry **no credentials**: the workflow sets no `VITE_*` variables and aborts if
+one was inlined, so a fresh install always starts on the Setup screen.
 
 ## License & credits
 
