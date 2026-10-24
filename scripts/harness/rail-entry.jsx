@@ -731,6 +731,47 @@ async function run() {
         ? `${scrollInfo}; margins ${margins.join(' | ')}; walk ${panelWalk.join(' > ')}`
         : `never reached the footer; ${scrollInfo}; walk ${panelWalk.join(' > ') || '<none>'}`);
 
+  // ── R8c  reaching the footer reveals the end of the body ──
+  //
+  // The last focusable in the body is the PIN button; the "A forgotten PIN"
+  // hint below it has no D-pad stop of its own, and the footer is a sibling of
+  // the scroll container rather than inside it. Moving Down to Save therefore
+  // left that hint clipped at the fold — the TV report of 2026-10-24 saw only
+  // its first pixels. The panel now scrolls the body to its end when the
+  // footer takes focus; this check fails if that stops happening.
+  let reveal = null;
+  if (dialog && reachedFooter) {
+    const firstEl = registry.get('settings-mode-test')?.el;
+    let n = firstEl?.parentElement;
+    let body = null;
+    while (n && n !== document.body && n !== document.documentElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === 'auto' || oy === 'scroll') { body = n; break; }
+      n = n.parentElement;
+    }
+    const hint = [...document.querySelectorAll('[role="dialog"] p')]
+      .find(p => (p.textContent || '').startsWith('A forgotten PIN cannot'));
+    if (body && hint) {
+      const br = body.getBoundingClientRect();
+      const hr = hint.getBoundingClientRect();
+      reveal = {
+        scrollTop: Math.round(body.scrollTop),
+        max: Math.round(body.scrollHeight - body.clientHeight),
+        hintTop: Math.round(hr.top - br.top),
+        hintBottom: Math.round(hr.bottom - br.top),
+        view: Math.round(br.height),
+      };
+    }
+  }
+  check('R8c reaching the footer reveals the end of the settings body',
+    !!reveal
+      && reveal.scrollTop >= reveal.max - 2
+      && reveal.hintBottom <= reveal.view + 1
+      && reveal.hintTop >= -1,
+    reveal
+      ? `scrollTop=${reveal.scrollTop}/${reveal.max} hint=${reveal.hintTop}-${reveal.hintBottom} view=${reveal.view}`
+      : 'scroll container or PIN hint missing');
+
   clearPin();
   await sleep(60);
 

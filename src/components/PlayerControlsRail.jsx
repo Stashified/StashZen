@@ -8,10 +8,11 @@
  *
  * ## Focus
  *
- * The rail is a single horizontal row in one zone, so ←/→ walk it and Back
- * leaves it. ↑/↓ are not the rail's at all — they step scenes in every state,
- * which is why they appear nowhere in this file; the player consumes them
- * before they reach a focused button. Leaving is the player's job too, not this
+ * The rail is a single horizontal row in one zone, so ←/→ walk it. ↑ leaves
+ * it, dropping the cursor back on the bare player where ←/→ skim the timeline;
+ * Back leaves it as well. ↓ steps to the next scene. None of the vertical keys
+ * are the rail's — they appear nowhere in this file, because the player
+ * consumes them before they reach a focused button. Leaving is the player's job too, not this
  * component's: it blurs to `document.body` rather than focusing anything,
  * because focusing the player's own container would resolve `focusScopeOf` to
  * the player's dialog and the player would go on yielding the arrows, which

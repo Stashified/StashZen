@@ -33,8 +33,9 @@
  *   G — a paused skim, and the seek deadlines that must not fire on it.
  *   H — the shipped `Auto` policy: browser first. An ordinary scene never opens
  *       AVPlay; a format the browser cannot demux goes to AVPlay directly; a
- *       browser that accepts and stalls is handed over at 4 s, and that format
- *       skips the browser for the rest of the session.
+ *       browser that accepts and stalls is handed over at 4 s, but the stall is
+ *       not a format verdict, so the next scene of that format is tried in the
+ *       browser again.
  *
  * Groups A–G run under `TV player`, so they keep testing the AVPlay path they
  * were written for. Group H switches to `Auto` and is the only one that
@@ -115,6 +116,27 @@ const bg = (el) => getComputedStyle(el).backgroundColor;
 const press = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown', {
   key, keyCode, which: keyCode, bubbles: true, cancelable: true,
 }));
+
+// The player's ↓ is a two-stop ladder: with the seek bar up and no cursor on
+// it, the first press returns to the buttons and only the second steps; with
+// the bar hidden, one press steps. The player opens with the bar up, so a
+// queue step needs the extra press. The reveal is visible as the cursor
+// landing on the rail's ⏯; blurring afterwards leaves the next call in the
+// state this one started from (the seek bar, with no cursor).
+const railFocused = () =>
+  ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
+
+async function stepNext() {
+  if (railFocused()) {
+    press('ArrowDown', 40);
+  } else {
+    press('ArrowDown', 40);
+    await sleep(150);
+    if (railFocused()) press('ArrowDown', 40);
+  }
+  await sleep(150);
+  document.activeElement?.blur?.();
+}
 
 async function openStats() {
   statsButton()?.click();
@@ -347,7 +369,7 @@ async function groupB() {
     chipText() === 'Direct play', `chip="${chipText()}"`);
 
   const opensBefore = AVPLAY_OPENS().length;
-  press('ArrowDown', 40);
+  await stepNext();
   const playedSame = await waitFor(
     () => hasData() && (videoEl()?.currentSrc || '').includes('/tone9203.wav'), 9000);
   check('B3 the next scene of that format skips AVPlay entirely',
@@ -436,7 +458,7 @@ async function groupD() {
   // row — a cached refusal explains a browser fallback, not an AVPlay stream.
   fake.mode.delete('failPrepare');
   fake.mode.add('failDirect');
-  press('ArrowDown', 40);
+  await stepNext();
   const hlsOpened = await waitFor(
     () => fake.calls.open.some(u => u.includes('/scene/9206/stream.m3u8')), 9000);
   const avplayPlaying = await waitFor(
@@ -478,7 +500,7 @@ async function groupE() {
     `attempts=${afterFirst} played=${playedA} `
     + `src=${videoEl()?.currentSrc || '(none)'}`);
 
-  press('ArrowDown', 40);
+  await stepNext();
   await waitFor(() => sceneCounter() === '2', 5000);
   const triedB = await waitFor(() => fake.calls.openAttempts.length >= 2, 5000);
   const playedB = await waitFor(playingNow, 9000);
@@ -488,7 +510,7 @@ async function groupE() {
     `scene=${sceneCounter()} attempts=${afterSecond} (was ${afterFirst}) `
     + `played=${playedB}`);
 
-  press('ArrowDown', 40);
+  await stepNext();
   await waitFor(() => sceneCounter() === '3', 5000);
   const playedC = await waitFor(playingNow, 9000);
   check('E3 once the kill switch trips, AVPlay is not tried again',
@@ -614,9 +636,9 @@ async function groupG() {
   const pausedAtG4 = fake.positionMs;
   press('ArrowRight', 39);
   const seekIssuedG4 = await waitFor(() => fake.calls.seek.length > seeksG4, 3000);
-  // Longer than the 4 s direct deadline: a settled seek never reaches it,
-  // and a player that read the pause as a stall would have switched by now.
-  await sleep(4800);
+  // Longer than the 8 s seek deadline: a settled seek never reaches it, and a
+  // player that read the pause as a stall would have switched by now.
+  await sleep(8800);
   check('G4 a skim while paused is not mistaken for a stuck seek',
     playingG4 && pausedG4 && seekIssuedG4 && planeOn() && !videoEl(),
     `state=${fake.state} plane=${planeOn()} video=${!!videoEl()}`
@@ -637,7 +659,8 @@ async function groupG() {
 //   H1 an ordinary file plays in the browser and never opens AVPlay;
 //   H2 a file the browser cannot demux goes to AVPlay with no browser attempt;
 //   H3/H4 a browser that accepts a source and never decodes it is handed over
-//         at 4 s, and the *format* then skips the browser this session.
+//         at 4 s, and the stall is *not* recorded as a format verdict — the
+//         next scene of that format gets the browser again.
 async function groupH() {
   setSettings({ playbackEngine: 'auto' });
 
@@ -691,16 +714,20 @@ async function groupH() {
     `opened=${openedH3} after=${Number.isFinite(handoffMs) ? `${handoffMs}ms` : 'no request'} `
       + `url=${AVPLAY_OPENS()[0] || '(none)'}`);
 
+  // The stall is a hand-off, not a diagnosis: no metadata in four seconds can
+  // be a slow NAS or a busy Stash just as easily as a refused codec, and the
+  // only trustworthy verdict arrives through the element's own error (3/4).
+  // So the next scene of the same format is still tried in the browser — and
+  // this one is playable, so that is where it must play.
   const opensBefore = AVPLAY_OPENS().length;
-  press('ArrowDown', 40);
-  const openedH4 = await waitFor(() => AVPLAY_OPENS().length > opensBefore, 2500);
+  await stepNext();
+  const playedH4 = await waitFor(() => playingNow() && !!videoEl(), 6000);
   await sleep(300);
-  const opens = AVPLAY_OPENS();
-  const lastOpen = opens[opens.length - 1];
-  check('H4 the next scene of that format skips the browser entirely',
-    openedH4 && lastOpen.endsWith('/tone9413.wav') && !videoEl(),
-    `opens=${opens.length} (was ${opensBefore}) `
-      + `url=${lastOpen || '(none)'} video=${!!videoEl()}`);
+  const opensH4 = AVPLAY_OPENS();
+  check('H4 a stalled browser attempt does not exile the format',
+    playedH4 && opensH4.length === opensBefore,
+    `playing=${playedH4} opens=${opensH4.length} (was ${opensBefore}) `
+      + `video=${!!videoEl()} lastOpen=${opensH4[opensH4.length - 1] || '(none)'}`);
 }
 
 setSettings({

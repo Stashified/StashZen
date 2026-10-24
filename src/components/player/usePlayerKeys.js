@@ -19,6 +19,7 @@ export function usePlayerKeys({
   skim,
   revealRail,
   leaveRail,
+  leaveRailToSeek,
   hideControls,
   controlsVisible,
   stepScene,
@@ -48,6 +49,7 @@ export function usePlayerKeys({
         case 'step-prev': stepScene(-1); break;
         case 'step-next': stepScene(1); break;
         case 'leave-rail': leaveRail(); break;
+        case 'leave-rail-seek': leaveRailToSeek(); break;
         case 'hide-controls': hideControls(); break;
         case 'close': onClose?.(); break;
         case 'reveal-rail': revealRail(); break;
@@ -60,7 +62,7 @@ export function usePlayerKeys({
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [
-    onClose, mediaTransport, skim, revealRail, leaveRail, hideControls,
-    controlsVisible, stepScene, singleScene, containerRef, railRef,
+    onClose, mediaTransport, skim, revealRail, leaveRail, leaveRailToSeek,
+    hideControls, controlsVisible, stepScene, singleScene, containerRef, railRef,
   ]);
 }

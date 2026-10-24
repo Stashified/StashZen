@@ -6,11 +6,14 @@
  * unlimited guesses. A 4-digit PIN is 10⁴ combinations, which is minutes of
  * D-pad work if each press is free.
  *
- * Two layers are asserted:
+ * Three layers are asserted:
  *   1. `attemptPin` — the counter, the escalating delay, and the fact that a
  *      correct PIN submitted during the delay is not even checked.
  *   2. LockScreen — the message a user actually sees for a wrong PIN, for a
  *      blocked attempt, and that unlock happens once the delay expires.
+ *   3. LockScreen's Back — it opens the exit confirmation instead of
+ *      dismissing the lock (or doing nothing), and cancelling it returns the
+ *      keypad with focus restored.
  *
  * The 30 s step is not exercised (three 5 s waits to reach it would dominate
  * the sweep); the 1 s and 5 s steps prove the ladder is wired.
@@ -121,7 +124,57 @@ async function run() {
   root.unmount();
   host.remove();
 
-  // ── 3. The ladder reaches 5 s ────────────────────────────
+  // ── 3. Back on the lock screen ───────────────────────────
+  // Back must not dismiss the lock — a PIN you can Back out of is not a
+  // lock — but it must answer: a dead key reads as a broken remote. It opens
+  // the same exit confirmation the main screen uses, and the keypad is
+  // unmounted underneath it (so digits cannot reach it and focus lands back
+  // on "1" when it closes).
+  setPin('1234');   // resets the failure counter from section 2
+  let backUnlockCount = 0;
+  const backHost = document.createElement('div');
+  document.body.appendChild(backHost);
+  const backRoot = createRoot(backHost);
+  backRoot.render(<LockScreen onUnlock={() => { backUnlockCount += 1; }} />);
+
+  const exitDialog = () => document.querySelector('[role="dialog"][aria-label="Exit confirmation"]');
+  const padDialog = () => document.querySelector('[role="dialog"][aria-label="Enter PIN"]');
+  const pressBack = async (key = 'Escape', keyCode = 27) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key, keyCode, bubbles: true, cancelable: true,
+    }));
+    await sleep(100);
+  };
+
+  await waitFor(() => !!padDialog());
+  await pressBack();
+  check('B1 Back on the lock screen asks before closing the app',
+    !!exitDialog() && !padDialog() && backUnlockCount === 0,
+    `exit=${!!exitDialog()} pad=${!!padDialog()}`);
+
+  // If the pad were still mounted this would unlock (the PIN is 1234) as
+  // well as being consumed by the dialog's own layer.
+  await typePin('1234');
+  check('B2 digits do not reach the keypad behind the prompt',
+    backUnlockCount === 0 && !!exitDialog(),
+    `unlocks=${backUnlockCount} exit=${!!exitDialog()}`);
+
+  await pressBack();
+  check('B3 Back again cancels and returns to the keypad',
+    !exitDialog() && !!padDialog() && backUnlockCount === 0,
+    `exit=${!!exitDialog()} pad=${!!padDialog()}`);
+  check('B4 the keypad takes focus back on "1"',
+    document.activeElement?.getAttribute('aria-label') === '1',
+    `focus=${document.activeElement?.getAttribute('aria-label')}`);
+
+  // Tizen's hardware Back is the key that matters on the TV; Escape is the
+  // desktop spelling of it.
+  await pressBack('', 10009);
+  check('B5 Tizen Back also reaches the exit prompt', !!exitDialog());
+  backRoot.unmount();
+  backHost.remove();
+
+  // ── 4. The ladder reaches 5 s ────────────────────────────
   setPin('1234');
   attemptPin('0000');
   attemptPin('0001');
@@ -134,7 +187,7 @@ async function run() {
     fourth.retryAfterMs === 1000 && fifth.retryAfterMs === 5000,
     `fourth=${fourth.retryAfterMs} fifth=${fifth.retryAfterMs}`);
 
-  // ── 4. A resume must not paint the app before the keypad ─
+  // ── 5. A resume must not paint the app before the keypad ─
   // The reported defect: restarting the app showed the library for about
   // half a second before the PIN was asked. A resumed Tizen app repaints
   // its last frame before a state update from the visibility handler can

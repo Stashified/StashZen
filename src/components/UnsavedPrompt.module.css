@@ -1,0 +1,93 @@
+/*
+ * UnsavedPrompt — see UnsavedPrompt.jsx.
+ *
+ * A scrim over the Settings panel, smaller than the panel itself (640px), so
+ * it reads as a question rather than a second page. The flat scrim follows the
+ * note in SettingsPanel.module.css: nothing here may blur a live grid.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(var(--scrim-rgb), 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn 0.18s var(--ease-tv);
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  width: min(560px, 88vw);
+  padding: 28px 32px 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
+  text-align: center;
+  animation: panelIn 0.22s var(--ease-tv);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.title {
+  font-family: var(--font-condensed);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 22px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv),
+              color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
+}
+
+.btn.focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.btnPrimary {
+  background: var(--accent-fill);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btnPrimary.focused {
+  background: var(--accent-fill-hi);
+  border-color: var(--accent);
+}

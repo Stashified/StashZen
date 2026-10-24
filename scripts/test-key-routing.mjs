@@ -70,9 +70,21 @@ check('rail: Space is instant transport', is(ev(' ', 32), RAIL, 'media', true, t
 check('rail: 415 is instant transport', is(ev('', 415), RAIL, 'media', true, true));
 check('rail: 19 is instant transport', is(ev('', 19), RAIL, 'media', true, true));
 check('rail: 10252 is instant transport', is(ev('', 10252), RAIL, 'media', true, true));
-check('rail: ArrowUp steps back', is(ev('ArrowUp', 38), RAIL, 'step-prev', true, true));
-check('rail: ArrowDown steps forward', is(ev('ArrowDown', 40), RAIL, 'step-next', true, true));
-check('rail: ArrowUp by code alone steps back', is(ev('', 38), RAIL, 'step-prev', true, true));
+// The two directions are mirror images, and the buttons are the other stop of
+// the ladder: ↓ from the buttons steps to the next scene in one press, while ↑
+// leaves for the seek bar (←/→ skim there). ↑ and Back are both exits, but they
+// part ways on the bar: ↑ is the seek mode and leaves it up (the backend calls
+// showControls), Back dismisses it.
+check('rail: ArrowUp leaves the rail for the seek bar',
+  is(ev('ArrowUp', 38), RAIL, 'leave-rail-seek', true, true));
+check('rail: ArrowUp by code alone leaves the rail for the seek bar',
+  is(ev('', 38), RAIL, 'leave-rail-seek', true, true));
+check('rail: ArrowDown steps to the next scene', is(ev('ArrowDown', 40), RAIL, 'step-next', true, true));
+check('rail: ArrowDown by code alone steps to the next scene', is(ev('', 40), RAIL, 'step-next', true, true));
+check('rail, single: ArrowDown is consumed and does not move the cursor',
+  is(ev('ArrowDown', 40), { ...RAIL, singleScene: true }, 'none', true, true));
+check('rail, single: ArrowUp still reaches the seek bar',
+  is(ev('ArrowUp', 38), { ...RAIL, singleScene: true }, 'leave-rail-seek', true, true));
 check('rail: Escape leaves the rail', is(ev('Escape', 27), RAIL, 'leave-rail', true, true));
 check('rail: Backspace leaves the rail', is(ev('Backspace', 8), RAIL, 'leave-rail', true, true));
 check('rail: Tizen Back leaves the rail', is(ev('', 10009), RAIL, 'leave-rail', true, true));
@@ -108,10 +120,23 @@ check('no rail: 412 skims back', is(ev('', 412), NO_RAIL, 'skim-back', true, tru
 check('no rail: ArrowRight skims forward', is(ev('ArrowRight', 39), NO_RAIL, 'skim-forward', true, true));
 check('no rail: 417 skims forward', is(ev('', 417), NO_RAIL, 'skim-forward', true, true));
 
-// ↑/↓ step a queue, and only raise the rail for a lone scene — where there is
-// nothing to step to and doing nothing would read as a dropped key.
+// With the bar hidden, ↑/↓ step a queue directly: there is no rail on screen
+// to return to. A lone scene has nowhere to step, and doing nothing would read
+// as a dropped key, so both raise the rail instead.
 check('no rail, multi: ArrowUp steps back', is(ev('ArrowUp', 38), NO_RAIL, 'step-prev', true, true));
 check('no rail, multi: ArrowDown steps forward', is(ev('ArrowDown', 40), NO_RAIL, 'step-next', true, true));
+// With the bar up, the seek bar is the lower stop: ↓ returns to the buttons
+// (the press after it steps), and ↑ steps back at once. That is what makes
+// "seek bar → ↓ → controls → ↓ → next scene" and "controls → ↑ → seek bar →
+// ↑ → previous scene" work.
+check('no rail, bar up: ArrowDown returns to the buttons',
+  is(ev('ArrowDown', 40), VISIBLE, 'reveal-rail', true, true));
+check('no rail, bar up: ArrowUp steps back',
+  is(ev('ArrowUp', 38), VISIBLE, 'step-prev', true, true));
+check('no rail, bar up, single: ArrowUp raises the rail',
+  is(ev('ArrowUp', 38), { ...VISIBLE, singleScene: true }, 'reveal-rail', true, true));
+check('no rail, bar up, single: ArrowDown raises the rail',
+  is(ev('ArrowDown', 40), { ...VISIBLE, singleScene: true }, 'reveal-rail', true, true));
 check('no rail, single: ArrowUp reveals the rail', is(ev('ArrowUp', 38), SINGLE, 'reveal-rail', true, true));
 check('no rail, single: ArrowDown reveals the rail', is(ev('ArrowDown', 40), SINGLE, 'reveal-rail', true, true));
 

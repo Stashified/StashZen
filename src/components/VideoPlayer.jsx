@@ -15,11 +15,17 @@
  * only exists once the rail is up.
  *
  *   OK         open the rail, focused on ⏯ — then activate the focused button
- *   ↑ / ↓      previous / next scene, in every state — including with the rail
- *              up; at the ends of a queue, nothing. A one-scene queue has
- *              nowhere to step, so there they raise the rail instead.
+ *   ↓          buttons → next scene in one press. From the seek bar it is the
+ *              first press of the ladder: ↓ returns to the buttons and the
+ *              second ↓ steps. With the bar hidden, ↓ steps directly.
+ *   ↑          the mirror: buttons → seek bar (bar up, ←/→ skim), and the seek
+ *              bar's ↑ steps to the previous scene. With the bar hidden, ↑
+ *              steps directly.
  *   ← / →      skim −15s / +15s inside the current scene (and reveal the rail);
  *              inside the rail, move between buttons
+ *
+ *   At the ends of a queue, nothing. A one-scene queue has nowhere to step, so
+ *   there ↑/↓ raise the rail instead.
  *   Back/Esc   inside the rail, leave it — otherwise close the player
  *   Space, ⏯   instant transport in every state — Space and the remote's
  *              play/pause key (10252) toggle, its pause (19) and play (415)
@@ -64,11 +70,12 @@
  *
  * Queue stepping is ↑/↓ and the rail's ⏮/⏭, and the two are not redundant: the
  * buttons are the labelled affordance, the arrows are the blind path a user
- * finds by pressing. The arrows work in every state, the rail's included. The
- * rail is a single row, so ↑/↓ had nothing to do inside it, and spending ↑ on
- * "leave" made the key a user reaches for to skip a scene mean the opposite of
- * what it means everywhere else in the app. Back is the way out of the rail,
- * exactly as it is the way out of everything else here.
+ * finds by pressing. Between the scene steps sits the seek bar, which each
+ * direction reaches on its way past: ↓ from the buttons steps immediately,
+ * ↓ from the seek bar goes to the buttons first; ↑ from the buttons goes to
+ * the seek bar, and ↑ from there steps back (2026-10-24 TV report: "controls →
+ * down → scene change; controls → up → seek bar → up → scene change"). Back
+ * leaves the rail as well, exactly as it leaves everything else here.
  *
  * The queue object is `{ items, total, page, startIndex, startSeconds,
  * fetchPage }` — see usePlayQueue. `startSeconds` applies to the scene the
@@ -285,7 +292,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
 
   // Whether the rail is up, and the timer that puts it away.
   const {
-    controlsVisible, showControls, revealRail, leaveRail, hideControls,
+    controlsVisible, showControls, revealRail, leaveRail, leaveRailToSeek,
+    hideControls,
   } = useControlsVisibility({ railRef });
 
   // Where a scene starts: the prompt, the policy, and the seek latches the
@@ -446,6 +454,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     skim,
     revealRail,
     leaveRail,
+    leaveRailToSeek,
     hideControls,
     controlsVisible,
     stepScene,

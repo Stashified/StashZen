@@ -43,7 +43,6 @@ import {
   detectMuteCapability, mapMute, mapMuteRestore, clampLevel,
 } from '../../../utils/volumeMapping.js';
 import { emptyTimeRanges } from './contracts.js';
-
 // Measured refusals arrive in under 300 ms; this only catches a player that
 // never answers. Deliberately shorter than the browser's 10 s stall watchdog.
 const PREPARE_TIMEOUT_MS = 6000;
@@ -54,12 +53,14 @@ const NEAR_END_SECONDS = 1.5;
 const NEAR_END_GRACE_MS = 2000;
 const RESTORE_STEP_MS = 250;
 const RESTORE_STEPS = 4;
-// A direct seek that has not landed (or moved) this long after it was issued
-// is handed to the next candidate, at the position the user asked for, rather
-// than waited on for the coalescer's full deadline. The probe measured direct
-// seeks at 0.76–1.6 s on H.264; the reported 4K AV1 file never finished. The
-// browser plays that file, so the fallback is a real recovery, not a shrug.
-const SEEK_STUCK_MS = 4000;
+// A direct seek that has not landed this long after the burst started is
+// handed to the next candidate, at the position the user asked for. The probe
+// measured direct seeks at 0.76–1.6 s on H.264, but the panel's native HEVC
+// decoder was reported at 2–3 s (2026-10-24), and the old 4 s deadline turned
+// a rapid skim into an engine switch. Eight seconds still recovers a seek that
+// truly never finishes — the 4K AV1 case this fallback exists for — without
+// punishing one that is merely slow. Same deadline as the coalescer's default.
+const SEEK_STUCK_MS = SEEK_MAX_WAIT_MS;
 // A seek makes AVPlay pause and rebuffer. Re-asserting play() while that is
 // true is what resumes a slow seek; doing it on every 250 ms poll is not a
 // thing to do to the native player.
@@ -86,6 +87,10 @@ export function createAvplayBackend({
   doc = typeof document !== 'undefined' ? document : null,
   win = typeof window !== 'undefined' ? window : null,
   prepareTimeoutMs = PREPARE_TIMEOUT_MS,
+  // The stuck-seek deadline. An option so a test can reach the verdict without
+  // an eight-second wait; it stays above the coalescer's settle window in
+  // production, where both are measured values.
+  seekStuckMs = SEEK_STUCK_MS,
   now = () => Date.now(),
 } = {}) {
   // ── Session state ────────────────────────────────────────
@@ -106,6 +111,10 @@ export function createAvplayBackend({
   let lastDurationRead = 0;
   let nearEndSince = 0;
   let seekDegraded = false;
+  // One native recovery per scene: a stuck-seek reopen is cheap (measured
+  // 223–745 ms) and keeps the hardware decoder, but a second failure on the
+  // same file is the genuine case for the browser fallback.
+  let seekReopenUsed = false;
   // True from a seek request until a frame plays again. It tells the poll that
   // a PAUSED state is the engine rebuffering the seek, not a pause the user
   // asked for — the distinction that a frozen scene hangs on.
@@ -260,20 +269,29 @@ export function createAvplayBackend({
     // window. HLS measured 1.52 s against that 1.5 s window — a retry every
     // time, each one cancelling the seek that was about to finish.
     settleMs: () => (isHlsUrl(activeUrl) ? SEEK_SETTLE_HLS_MS : SEEK_SETTLE_MS),
-    // Direct play has somewhere to fall back to; a transcode does not (the
-    // next candidate is the browser on the same HLS URL), so HLS keeps the
-    // longer deadline and only records the degradation.
-    maxWaitMs: () => (isHlsUrl(activeUrl) ? SEEK_MAX_WAIT_MS : SEEK_STUCK_MS),
-    onDegraded: (target) => handleSeekDegraded(target),
+    // Both direct and HLS keep the long deadline. Direct play used to be
+    // shorter because it has somewhere to fall back to, but a direct HEVC
+    // seek can take 2–3 s and the fallback costs the hardware decoder; the
+    // deadline is for a seek that is actually stuck, not one that is slow.
+    maxWaitMs: seekStuckMs,
+    // The reason is load-bearing: only an arrived or progressing seek may be
+    // recovered by reopening natively; a frozen one is a content failure.
+    onDegraded: (target, reason) => handleSeekDegraded(target, reason),
   });
 
   /**
-   * The seek burst gave up. For a direct file, hand the scene to the next
-   * candidate at the position the user asked for. Leaving a frozen picture and
-   * a "degraded" note is what the TV reported for the 4K AV1 scene; the
-   * browser plays that file, so the fallback is the honest recovery.
+   * The seek burst gave up. Two recoveries, in order:
+   *
+   * 1. If the position *arrived* and only playback failed to resume, or was
+   *    still closing the gap, the file is seekable — it is the session that
+   *    did not continue. Reopen it natively at the requested position, once
+   *    per scene. Switching engines there cost the hardware decoder and is
+   *    what the TV reported on a rapid skim (2026-10-24).
+   * 2. Otherwise hand the scene to the next candidate at that position. A
+   *    frozen seek that never arrived is the 4K AV1 case this fallback exists
+   *    for; the browser plays that file, so the switch is the honest recovery.
    */
-  function handleSeekDegraded(target) {
+  function handleSeekDegraded(target, reason = 'stuck') {
     seekDegraded = true;
     seekAwaitingPlay = false;
     // HLS: the probe saw seek errors that playback survived, and the browser's
@@ -286,6 +304,13 @@ export function createAvplayBackend({
     lastTime = target;
     lastTimeEmitted = target;
     emit('timeupdate');
+    if ((reason === 'arrived' || reason === 'progress') && !seekReopenUsed) {
+      seekReopenUsed = true;
+      // `open()` clears `seekDegraded`: the recovery is in flight, not a
+      // verdict about the file.
+      reopenAtSaved(gen, target);
+      return;
+    }
     fail(gen, 'seek', {
       name: 'SEEK_STUCK',
       message: 'the seek did not complete',
@@ -336,6 +361,8 @@ export function createAvplayBackend({
       }
     }
 
+    let reassertedThisTick = false;
+
     if (state === ST_PLAYING) {
       wantPlaying = true;
       seekAwaitingPlay = false;
@@ -352,6 +379,7 @@ export function createAvplayBackend({
         // throttled to once a second.
         if (now() - lastPlayReassert >= PLAY_REASSERT_MS) {
           lastPlayReassert = now();
+          reassertedThisTick = true;
           try { avplay.play(); } catch (e) { /* the coalescer owns the verdict */ }
         }
       } else if (!seekAwaitingPlay) {
@@ -364,7 +392,23 @@ export function createAvplayBackend({
     }
 
     if (prepared) {
+      const wasSeeking = coalescer.isSeeking();
       coalescer.tick();
+      // A stuck seek can reopen the session synchronously from inside tick().
+      // This poll then belongs to the old generation: its reads would be the
+      // new, not-yet-prepared session's, and schedulePoll would arm a timer
+      // for a session that already has one.
+      if (gen !== myGen) return;
+      // The seek just settled and the engine is sitting paused on the new
+      // frame, waiting for a play() it already intended to send. Asking here
+      // rather than on the next poll takes up to a second off the resume the
+      // panel reports as "2–3 s" — the decode time is the engine's, but the
+      // request to continue is ours.
+      if (wasSeeking && !reassertedThisTick && !coalescer.isSeeking()
+        && seekAwaitingPlay && wantPlaying && readState() === 'PAUSED') {
+        lastPlayReassert = now();
+        try { avplay.play(); } catch (e) { /* the next tick retries */ }
+      }
       // A seek that hit its deadline fails the session synchronously from
       // inside tick(): the native player is already stopped, so nothing in
       // this poll's remaining work — a duration read, a near-end verdict, the
@@ -464,6 +508,9 @@ export function createAvplayBackend({
       // showing the app restores it at this position.
       suspended = true;
       cachedPosition = coalescer.pendingTarget() ?? startAt;
+      // Same rule as suspendSession: no mute of ours survives into a hidden
+      // page. The intent stays and is re-applied on the way back.
+      releaseMute();
       try { avplay.suspend(); } catch (e) { /* restore/reopen is the recovery */ }
       return;
     }
@@ -653,6 +700,9 @@ export function createAvplayBackend({
     completed = false;
     error = null;
     lastFailure = null;
+    // A new scene gets its own native recovery. The reopen itself passes the
+    // same URL, so it does not reset the guard that limits it to one.
+    if (String(url || '') !== activeUrl) seekReopenUsed = false;
     activeUrl = String(url || '');
     startAt = Math.max(0, Number(startSeconds) || 0);
     wantPlaying = !!autoplay;
@@ -714,6 +764,7 @@ export function createAvplayBackend({
     wantPlaying = false;
     playingLatch = false;
     seekAwaitingPlay = false;
+    seekReopenUsed = false;
     error = null;
     lastFailure = null;
     activeUrl = '';

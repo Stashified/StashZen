@@ -72,8 +72,22 @@ export function useControlsVisibility({ railRef }) {
     setControlsVisible(false);
   }, []);
 
+  // ↑ from the rail is the seek mode, not a dismissal: the cursor leaves the
+  // buttons and the bar stays up, so ←/→ skim a timeline the user can see.
+  // Hiding everything here was reported on 2026-10-24 as "it closes the bar,
+  // doesn't move to the seek bar". The auto-hide timer is re-armed, exactly as
+  // for any other activity, and runs out as usual once the viewer stops
+  // pressing.
+  const leaveRailToSeek = useCallback(() => {
+    document.activeElement?.blur?.();
+    showControls();
+  }, [showControls]);
+
   // The timer must not outlive the player.
   useEffect(() => () => clearTimeout(hideTimerRef.current), []);
 
-  return { controlsVisible, showControls, revealRail, leaveRail, hideControls };
+  return {
+    controlsVisible, showControls, revealRail,
+    leaveRail, leaveRailToSeek, hideControls,
+  };
 }

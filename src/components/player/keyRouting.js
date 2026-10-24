@@ -49,8 +49,20 @@ export function foreignDialogOpen(ownOverlay) {
  * Back is `leave-rail` either way, which hides the bar as it blurs.
  *
  * Returns `{ action, prevent, stop }`. `action` is one of:
- *   yield, media, step-prev, step-next, leave-rail, hide-controls, close,
- *   reveal-rail, skim-back, skim-forward, rail-pass, none
+ *   yield, media, step-prev, step-next, leave-rail, leave-rail-seek,
+ *   hide-controls, close, reveal-rail, skim-back, skim-forward, rail-pass,
+ *   none
+ *
+ * `leave-rail` and `leave-rail-seek` are both exits, and they differ in what
+ * they do to the bar: Back dismisses it (one level up on the way to closing
+ * the player); ↑ leaves the cursor on a bar that stays up so ←/→ can skim.
+ *
+ * The vertical keys walk a two-stop ladder (2026-10-24 TV report, restated):
+ * on the buttons ↓ steps to the next scene and ↑ goes to the seek bar; on the
+ * seek bar ↓ goes back to the buttons and ↑ steps to the previous scene. So a
+ * ↓ changes the scene from the buttons in one press and from the seek bar in
+ * two; ↑ is the mirror. With the bar hidden there is no middle stop, and both
+ * step directly.
  */
 export function routePlayerKey(
   event,
@@ -72,15 +84,22 @@ export function routePlayerKey(
     // would fire the focused rail button too.
     if (isMedia) return { action: 'media', prevent: true, stop: true };
 
-    // ↑/↓ step scenes here too, and the stop is load-bearing: without it the
-    // rail's own focusable handler would walk the cursor instead, so the key
-    // would do two things at once.
-    if (key === 'ArrowUp' || code === 38) return { action: 'step-prev', prevent: true, stop: true };
-    if (key === 'ArrowDown' || code === 40) return { action: 'step-next', prevent: true, stop: true };
+    // ↑ leaves the buttons for the seek bar and keeps the bar up, so ←/→ skim
+    // a timeline the user can see. The scene does not change: this is the
+    // first press of "controls → seek bar → previous scene".
+    // The stop is load-bearing: without it the rail's own focusable handler
+    // would walk the cursor.
+    if (key === 'ArrowUp' || code === 38) return { action: 'leave-rail-seek', prevent: true, stop: true };
+    // ↓ steps to the next scene directly — the buttons are the top stop of the
+    // downward ladder, not a detour to the seek bar (2026-10-24 TV report).
+    // A one-scene queue has nowhere to step, so the press is consumed and the
+    // cursor stays put rather than jumping to play/pause.
+    if (key === 'ArrowDown' || code === 40) {
+      return { action: singleScene ? 'none' : 'step-next', prevent: true, stop: true };
+    }
 
-    // Back leaves the rail — "one level up", which is the only thing Back
-    // means anywhere else in this app, and since ↑ no longer leaves it, this
-    // is now the rail's *only* exit.
+    // Back leaves the rail as well — "one level up", which is the only thing
+    // Back means anywhere else in this app.
     if (isBack) return { action: 'leave-rail', prevent: true, stop: true };
 
     return { action: 'rail-pass', prevent: false, stop: false };
@@ -105,6 +124,10 @@ export function routePlayerKey(
   if (key === 'ArrowLeft' || code === 37 || code === 412) return { action: 'skim-back', prevent: true, stop: true };
   if (key === 'ArrowRight' || code === 39 || code === 417) return { action: 'skim-forward', prevent: true, stop: true };
 
+  // Off the buttons, ↑ is the scene step on the seek bar as well as with the
+  // bar hidden: the seek bar is the *bottom* stop of the upward ladder, so
+  // there is no further stop above it to reach. ↓ and ↑ are mirror images:
+  // ↓ is buttons when the bar is up and a step when it is hidden.
   // A one-scene queue has nowhere to step, so ↑/↓ raise the controls instead:
   // the user pressing a direction on a lone video is reaching for the
   // transport, and doing nothing reads as a dropped key.
@@ -112,7 +135,8 @@ export function routePlayerKey(
     return { action: singleScene ? 'reveal-rail' : 'step-prev', prevent: true, stop: true };
   }
   if (key === 'ArrowDown' || code === 40) {
-    return { action: singleScene ? 'reveal-rail' : 'step-next', prevent: true, stop: true };
+    if (singleScene) return { action: 'reveal-rail', prevent: true, stop: true };
+    return { action: controlsVisible ? 'reveal-rail' : 'step-next', prevent: true, stop: true };
   }
 
   return { action: 'none', prevent: false, stop: true };

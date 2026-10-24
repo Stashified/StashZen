@@ -232,6 +232,9 @@ const tickCount = () => {
   return player().querySelectorAll('[class*="_markerTick_"]').length;
 };
 
+/** The progress track itself — the "seek bar" ↑ is supposed to reveal. */
+const progressTrack = () => player()?.querySelector('[class*="_progressTrack_"]') || null;
+
 /**
  * The controls container, found by walking up from the rail. `_controls_`
  * deliberately does not match `_controlsVisible_` (the trailing underscore),
@@ -462,37 +465,50 @@ async function run() {
     after415 === false && after415b === false, `first=${after415}, second=${after415b}`);
   check('R10 play/pause (10252) toggles', v.paused === true, `paused=${v.paused}`);
 
-  // ── R6/R3: the rail's exit and entry, under the ↑/↓-steps-scenes map ──
+  // ── R6/R3: the rail's exits and entry ─────────────────────
   //
-  // This block used to assert the opposite of what it asserts now — "↑ leaves
-  // the rail, ↓ comes back to ⏯" — and that mapping is exactly what was
-  // replaced. The stepping itself is S4-S6, on a queue with somewhere to go.
-  // What is checked here is the part the swap could have quietly broken: that
-  // the two keys no longer do the rail's job. ↓ is the one that needs saying,
-  // because before the change it was the rail's entry key, and an entry that
-  // still worked would re-enter on a press the user meant as "next scene".
-  const railCursor = document.activeElement;
+  // The vertical keys walk a two-stop ladder (2026-10-24): on the buttons ↓
+  // steps to the next scene and ↑ goes to the seek bar; on the seek bar ↓
+  // returns to the buttons and ↑ steps back. This is a one-scene queue, so ↓
+  // has nowhere to step and must leave the cursor in place; ↑ still reaches
+  // the seek bar. Back still dismisses the bar (see S9).
+  const beforeUpTitle = playingTitle();
   press(document.activeElement, 'ArrowUp', 38);
-  await sleep(140);
-  check('R6 ↑ inside the rail does not leave it', inRail(),
-    `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
-  press(document.activeElement, 'ArrowDown', 40);
-  await sleep(140);
-  check('R6 ...and ↓ does not walk the cursor along the rail',
-    document.activeElement === railCursor && inRail(),
-    `"${railCursor?.getAttribute('aria-label')}" → "${document.activeElement?.getAttribute('aria-label')}"`);
+  const upLeftWithBar = await waitFor(
+    () => !inRail() && controlsOpacity() === 1 && !!progressTrack(), 1000);
+  check('R6 ↑ inside the rail leaves it and keeps the seek bar up',
+    upLeftWithBar,
+    `inRail=${inRail()} opacity=${controlsOpacity()} track=${!!progressTrack()} activeElement="${document.activeElement?.tagName}"`);
+  check('R6 ...without changing the scene', playingTitle() === beforeUpTitle,
+    `"${beforeUpTitle}" → "${playingTitle()}"`);
 
-  // Back is the rail's exit now, and OK is its way back in.
-  press(document.activeElement, 'Backspace', 10009);
-  await sleep(140);
-  check('R6 Back is the rail\'s exit', !inRail(),
-    `activeElement="${document.activeElement?.tagName}"`);
+  // OK is the way back in, landing on play/pause.
   press(document.body, 'Enter', 13);
   await sleep(140);
   check('R3 OK re-enters the rail on play/pause',
     document.activeElement === byLabel('Pause', rail()) ||
     document.activeElement === byLabel('Play', rail()),
     `activeElement="${document.activeElement?.getAttribute('aria-label')}"`);
+
+  // ↓ from the buttons is the scene step, and this queue has only one scene:
+  // the press is consumed and the cursor stays where it was. A cursor that
+  // moved would mean the vertical keys were handed back to spatial nav.
+  const reentered = document.activeElement;
+  press(document.activeElement, 'ArrowDown', 40);
+  await sleep(140);
+  check('R6 ↓ on a one-scene queue does not leave the rail',
+    inRail() && controlsOpacity() === 1,
+    `inRail=${inRail()} opacity=${controlsOpacity()}`);
+  check('R6 ...and does not move the cursor along the rail',
+    document.activeElement === reentered,
+    `"${reentered?.getAttribute('aria-label')}" → "${document.activeElement?.getAttribute('aria-label')}"`);
+  check('R6 ...and does not change the scene', playingTitle() === beforeUpTitle,
+    `"${beforeUpTitle}" → "${playingTitle()}"`);
+
+  // OK is a no-op with the cursor already in the rail; the horizontal checks
+  // below start from play/pause regardless.
+  press(document.body, 'Enter', 13);
+  await sleep(140);
 
   // ── R5: inside the rail, ←/→ move the cursor and do not seek ──
   // Horizontal nav is zone-confined, so it can only walk the rail — and the
@@ -510,9 +526,9 @@ async function run() {
     Math.abs(v.currentTime - 30) < 0.5, `currentTime=${v.currentTime.toFixed(2)} (was 30.0)`);
 
   // ── R4: from behind the rail, ←/→ skim and reveal the rail ──
-  // Back, not ↑. ↑ steps scenes now, so it would leave the cursor exactly where
-  // it is and the wait below would be watching a rail that never let go of it —
-  // which is precisely how this check failed the first time the map changed.
+  // Back is the exit used here. ↑ would also leave the rail (R6 owns that),
+  // but ↓ steps the queue from the buttons; this block is about what the
+  // bare player does once the cursor is out of the row.
   press(document.activeElement, 'Backspace', 10009);   // leave the rail
   await sleep(3400);                              // let the controls hide again
   const hiddenAgain = controlsOpacity() === 0;
@@ -907,15 +923,28 @@ async function run() {
   check('S1 setup: a three-scene queue, on scene one, rail down',
     playingTitle() === 'VERIFY scene one' && !inRail() && !modal() && !detailsPage(),
     `title="${playingTitle()}" inRail=${inRail()}`);
+  // The remount starts with the bar on screen, so put it away explicitly: the
+  // hidden state is the resting one the first press tests (and the one the
+  // user is in after the three-second timer).
+  if (controlsOpacity() !== 0) {
+    press(document.body, 'Backspace', 10009);
+    await waitFor(() => controlsOpacity() === 0, 1000);
+  }
+  check('S1 setup: the bar is hidden', controlsOpacity() === 0,
+    `opacity=${controlsOpacity()} closed=${closedCount}`);
 
   press(document.body, 'ArrowDown', 40);
   await sleep(500);
   check('S2 ↓ steps to the next scene with the rail down',
     playingTitle() === 'VERIFY scene two', `title="${playingTitle()}"`);
 
+  // The step above showed the controls, so the cursor is on the seek bar. ↑
+  // there is the scene step — the seek bar is the lower stop of the ladder.
+  check('S3 setup: the step showed the bar', controlsOpacity() === 1,
+    `opacity=${controlsOpacity()}`);
   press(document.body, 'ArrowUp', 38);
-  await sleep(500);
-  check('S3 ↑ steps back to the previous scene',
+  await sleep(900);
+  check('S3 ↑ from the seek bar steps back to the previous scene',
     playingTitle() === 'VERIFY scene one', `title="${playingTitle()}"`);
 
   // ── S3b: the outgoing playhead is not inherited ──────────
@@ -924,9 +953,17 @@ async function run() {
   // first source starts from the resume decision, never from the clock the
   // previous scene was on when the queue stepped. The two share one ref, so
   // the discriminator is the scene id captured alongside the time.
+  // The cursor is off the rail on the seek bar. ↓ there returns to the
+  // buttons without stepping, and the second ↓ steps — the two-press rule
+  // this check needs before it measures the new scene's playhead.
   await seekTo(25);
   await sleep(400);            // let a save settle so it cannot be mistaken for the seek
   press(document.body, 'ArrowDown', 40);
+  await sleep(250);
+  check('S3b setup: ↓ from the seek bar returns to the buttons without stepping',
+    inRail() && playingTitle() === 'VERIFY scene one',
+    `inRail=${inRail()} title="${playingTitle()}"`);
+  press(document.activeElement, 'ArrowDown', 40);
   await sleep(900);            // the new URL loads and its metadata arrives
   await waitFor(() => (video()?.currentTime || 0) < 5, 2500);
   check('S3b stepping to the next scene starts it at the beginning, not at the ' +
@@ -934,45 +971,57 @@ async function run() {
     playingTitle() === 'VERIFY scene two' && (video()?.currentTime || 0) < 5,
     `title="${playingTitle()}" currentTime=${video()?.currentTime?.toFixed(1)} ` +
     '(the outgoing scene was at 25 s)');
-  press(document.body, 'ArrowUp', 38);   // back to scene one for S4
-  await sleep(500);
+  // Back to scene one for S4. The cursor is on the buttons: ↑ is the exit to
+  // the seek bar, and the seek bar's ↑ then steps back.
+  press(document.activeElement, 'ArrowUp', 38);
+  await sleep(250);
+  press(document.body, 'ArrowUp', 38);
+  await sleep(900);
+  check('S4 setup: back on scene one, cursor off the rail',
+    playingTitle() === 'VERIFY scene one' && !inRail(),
+    `title="${playingTitle()}" inRail=${inRail()}`);
 
-  // The rail up is where this behaviour changed, and where the old mapping did
-  // something else entirely: ↑ left the rail and ↓ was handed to spatial nav.
-  // The entry target is play/pause, which is the one rail button that is never
-  // disabled — so it is still focusable on any scene, and "the cursor stayed on
-  // the rail" can only be answered by focus rather than by a button that
-  // vanished.
+  // The vertical keys walk a two-stop ladder (2026-10-24): on the buttons ↓
+  // steps to the next scene in one press; on the seek bar ↓ returns to the
+  // buttons first and the second ↓ steps. ↑ is the mirror. The entry target
+  // is play/pause, the one rail button that is never disabled.
   press(document.body, 'Enter', 13);
   await sleep(350);
-  check('S4 setup: the rail is up with the cursor in it',
+  check('S4 the rail is up with the cursor in it',
     inRail() && document.activeElement === registry.get('player-rail-playpause')?.el,
     `inRail=${inRail()} el=${document.activeElement?.getAttribute('aria-label')}`);
 
   press(document.activeElement, 'ArrowDown', 40);
-  await sleep(500);
-  check('S5 ↓ steps the scene even with the rail up',
-    playingTitle() === 'VERIFY scene two', `title="${playingTitle()}"`);
-  check('S5 ...and the cursor is still on the rail',
-    inRail(), `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
-
-  press(document.activeElement, 'ArrowUp', 38);
-  await sleep(500);
-  check('S6 ↑ with the rail up steps back rather than leaving the rail',
-    playingTitle() === 'VERIFY scene one' && inRail(),
+  await sleep(900);
+  check('S5 ↓ from the buttons steps to the next scene in one press',
+    playingTitle() === 'VERIFY scene two',
     `title="${playingTitle()}" inRail=${inRail()}`);
 
-  // The end of the queue. Back is what gets the cursor out of the rail now that
-  // ↑ does not, so it is exercised before the wrap check rather than after.
-  document.activeElement?.blur?.();
-  press(document.body, 'ArrowDown', 40);
-  await sleep(500);
-  press(document.body, 'ArrowDown', 40);
-  await sleep(600);
-  check('S7 setup: stepping twice reaches the last scene',
-    playingTitle() === 'VERIFY scene three', `title="${playingTitle()}"`);
+  // ↑ from the buttons is the seek-bar stop, not a step: the scene stays put
+  // and the cursor leaves the row with the bar still up.
+  const beforeSeek = playingTitle();
+  press(document.activeElement, 'ArrowUp', 38);
+  const seekUp = await waitFor(
+    () => !inRail() && controlsOpacity() === 1 && !!progressTrack(), 1000);
+  check('S5b ↑ from the buttons leaves for the seek bar without stepping',
+    seekUp && playingTitle() === beforeSeek,
+    `inRail=${inRail()} opacity=${controlsOpacity()} track=${!!progressTrack()} "${beforeSeek}" → "${playingTitle()}"`);
 
   press(document.body, 'ArrowDown', 40);
+  const backToControls = await waitFor(() => inRail(), 1000);
+  check('S6 ↓ from the seek bar returns to the buttons without stepping',
+    backToControls && playingTitle() === beforeSeek,
+    `inRail=${inRail()} "${beforeSeek}" → "${playingTitle()}"`);
+
+  press(document.activeElement, 'ArrowDown', 40);
+  await sleep(900);
+  check('S6b ↓ from the buttons now steps to the next scene',
+    playingTitle() === 'VERIFY scene three', `title="${playingTitle()}"`);
+
+  check('S7 setup: the one-press ladder reached the last scene',
+    playingTitle() === 'VERIFY scene three', `title="${playingTitle()}"`);
+
+  press(document.activeElement, 'ArrowDown', 40);
   await sleep(500);
   check('S8 ↓ at the end of the queue does not wrap',
     playingTitle() === 'VERIFY scene three', `title="${playingTitle()}"`);

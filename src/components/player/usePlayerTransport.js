@@ -35,8 +35,9 @@ export function usePlayerTransport({
   // by `setEngine` in the player's layout effect — after this render — so it
   // is read again when the engine changes rather than during render, and the
   // button is disabled while the answer is still the previous engine's.
-  // (Hierarchy: tizen.tvaudiocontrol → avplay.setVolume → none; the browser is
-  // always 'property'.)
+  // (Hierarchy: tizen.tvaudiocontrol → avplay.setVolume → none. The browser
+  // engine reports 'property' off a TV and 'tvaudio' on one, so a remote mute
+  // shows up in the same button.)
   const [muteCapability, setMuteCapability] = useState(
     () => mediaRef.current?.getMuteCapability?.() ?? 'property',
   );
@@ -58,12 +59,23 @@ export function usePlayerTransport({
   useEffect(() => {
     const v = mediaRef.current;
     if (!v) return;
-    const sync = () => setMuted(!!v.muted);
+    // An event is a change, and once the viewer has expressed a preference
+    // every later change — the remote's included — is a preference too, so it
+    // has to travel to the next scene and the next engine. Before the first
+    // press the intent stays null, because AVPlay's `open()` must keep
+    // adopting a TV that was already muted rather than overriding it with a
+    // default. The initial read below is deliberately not this path.
+    const sync = () => {
+      setMuted(!!v.muted);
+      if (muteIntentRef && muteIntentRef.current != null) {
+        muteIntentRef.current = !!v.muted;
+      }
+    };
     if (v.kind === 'html5' && muteIntentRef && muteIntentRef.current != null
         && v.muted !== muteIntentRef.current) {
       v.muted = muteIntentRef.current;
     }
-    sync();
+    setMuted(!!v.muted);
     v.addEventListener('volumechange', sync);
     return () => v.removeEventListener('volumechange', sync);
   }, [engine, mediaRef, muteIntentRef]);

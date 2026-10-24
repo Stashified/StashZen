@@ -25,22 +25,43 @@
  *   seek fails to ever finish — the reported "seek never finishes" on a 4K
  *   AV1 file. The window is extended instead, up to the overall deadline
  *   (SEEK_MAX_WAIT_MS unless the caller decides per source).
- * - **Retry only a seek that was ignored.** A position that ran on past its
- *   starting point while still far from the target means the engine never
- *   took the request; that one is re-issued, twice, then degraded.
+ * - **Retry only a seek that was ignored.** "Ignored" means the position ran
+ *   on *away from* the target: playback keeps advancing while the distance it
+ *   has to cover grows. Movement that shrinks the distance is progress — a
+ *   forward seek can play on while the engine scans — and re-issuing there
+ *   was the 2026-10-24 report: rapid HEVC skims sometimes ended in the seek
+ *   being killed, retried, killed again, and the scene handed to the browser.
+ *   An ignored seek is re-issued, twice, then degraded.
+ * - **Re-issue a frozen seek only when the burst overlapped itself.** A single
+ *   frozen seek is the engine scanning; leave it alone. But a *rapid* burst
+ *   issues several `seekTo` calls on top of each other, and an engine left
+ *   paused at the pre-burst position after that is not scanning to the final
+ *   target — it lost it. One re-issue of the final target is what recovers
+ *   the 2026-10-24 "rapid seek fell back to the browser" case; it is
+ *   distinguished from the slow single seek by the request count, not by
+ *   time, so the seek that is merely slow is still never restarted.
+ * - **Wait longer for a seek that is closing the gap.** Movement toward the
+ *   target at the deadline is progress, not failure; the deadline is extended
+ *   once per burst before the burst is called failed.
  * - **Degrade eventually.** Three throws, an ignored seek past its retries, or
  *   SEEK_MAX_WAIT_MS of waiting turn degraded and onDegraded fires once for
- *   that burst. Degraded is not fatal: the spike saw HLS seek errors while
- *   playback continued.
+ *   that burst, with a reason (see `degrade`). Degraded is not fatal: the
+ *   spike saw HLS seek errors while playback continued.
  *
  * This module owns no timers. The backend's 250 ms poll calls `tick()`, which
  * makes the whole thing deterministic under test.
  */
 
 export const SEEK_TOLERANCE_SECONDS = 1.5;
-export const SEEK_SETTLE_MS = 1500;
-// HLS seeks measured 1.52 s; the longer window avoids retrying a seek that is
-// merely slow.
+// A direct HEVC seek on this panel was measured at 2–3 s (2026-10-24). The old
+// 1.5 s window turned every backward skim slower than that into a retry, and
+// the retry aborted the seek it was waiting for — the "sometimes switches to
+// the browser" report. The window is the point at which the coalescer is
+// allowed to *suspect* the engine ignored the request, not a deadline.
+export const SEEK_SETTLE_MS = 3000;
+// HLS seeks measured 1.52 s; this window avoids retrying a seek that is merely
+// slow. Direct play has its own, longer window: the native decoder can hold a
+// HEVC seek for seconds where the browser-backed HLS path was measured faster.
 export const SEEK_SETTLE_HLS_MS = 2500;
 export const SEEK_MAX_RETRIES = 2;
 // The seeker will keep waiting for a position that is not moving for this long
@@ -68,7 +89,19 @@ export function createSeekCoalescer({
   let target = null;
   let issuedAt = 0;
   let issuedPosition = null;
+  // How far the position had to travel when the seek was issued. Progress
+  // toward the target is the difference between a slow seek and an ignored
+  // one; null when the position could not be read at issue time.
+  let issuedDistance = null;
   let burstStartedAt = 0;
+  // How many requests the current burst has taken. More than one means the
+  // native seek calls overlapped each other, which is a different failure
+  // shape from a single slow seek (see the header).
+  let burstRequests = 0;
+  // Whether a progressing burst has already been given its one extension.
+  let deadlineExtended = false;
+  // Whether an overlapped frozen burst has already been re-issued once.
+  let burstReissued = false;
   let retries = 0;
   let degraded = false;
 
@@ -76,7 +109,10 @@ export function createSeekCoalescer({
     active = false;
     target = null;
     retries = 0;
+    burstRequests = 0;
+    deadlineExtended = false;
     issuedPosition = null;
+    issuedDistance = null;
   }
 
   const readTime = () => {
@@ -113,8 +149,10 @@ export function createSeekCoalescer({
     target = next;
     issuedAt = now();
     // Where the engine was when the seek was asked for: the reference that
-    // tells "still working" (position frozen) from "ignored" (playback ran on).
+    // tells "still working" (position frozen) from "ignored" (playback ran on
+    // *away* from the target).
     issuedPosition = readTime();
+    issuedDistance = issuedPosition == null ? null : Math.abs(issuedPosition - next);
     try {
       seekTo(next);
       return true;
@@ -123,10 +161,20 @@ export function createSeekCoalescer({
     }
   }
 
-  function degrade(failedTarget) {
+  /**
+   * End the burst as failed. The reason is for the engine, not the user:
+   *   stuck     the position never moved (a seek the engine never took)
+   *   ignored   playback ran on away from the target, and retries are spent
+   *   arrived   the position reached the target but playback never resumed
+   *   progress  still closing the gap at the second deadline
+   *   threw     the native call itself keeps throwing
+   * A caller can recover some of these natively (a reopen keeps the hardware
+   * engine) and has to hand the rest to the next candidate.
+   */
+  function degrade(failedTarget, reason = 'stuck') {
     settle();
     degraded = true;
-    try { onDegraded(failedTarget); } catch (e) { /* observer must not break the player */ }
+    try { onDegraded(failedTarget, reason); } catch (e) { /* observer must not break the player */ }
   }
 
   return {
@@ -139,9 +187,15 @@ export function createSeekCoalescer({
       const n = Number(seconds);
       if (!Number.isFinite(n)) return;
       const next = Math.max(0, n);
+      if (!active) {
+        burstRequests = 0;
+        deadlineExtended = false;
+      }
       active = true;
       degraded = false;
       retries = 0;
+      burstRequests += 1;
+      burstReissued = false;
       burstStartedAt = now();
       if (issue(next)) return;
 
@@ -150,7 +204,7 @@ export function createSeekCoalescer({
       for (let i = 0; i < maxRetries; i++) {
         if (issue(next)) return;
       }
-      degrade(next);
+      degrade(next, 'threw');
     },
 
     /**
@@ -172,16 +226,22 @@ export function createSeekCoalescer({
         return;
       }
 
-      if (now() - issuedAt < settleWindow()) return;
-
+      // The overall deadline is not debounced by the settle window. Waiting
+      // for the window to re-elapse after the deadline had already passed
+      // added up to one more window (3 s) of dead air before the recovery —
+      // measured on the 2026-10-24 reopen: a 4 s deadline fired at 6.2 s.
+      // Once the burst is out of time there is no further evidence to collect.
       const expired = now() - burstStartedAt >= maxWaitWindow();
+      if (!expired && now() - issuedAt < settleWindow()) return;
 
       // The position is at the target and only the engine's playing state is
       // behind (it is buffering the new position). Re-issuing the seek now
       // restarts that fetch and can loop forever on a slow seek, so wait.
       if (close) {
         if (expired) {
-          degrade(target);
+          // The seek itself is done; it is playback that did not resume. The
+          // engine gets a reason so it can recover without changing engines.
+          degrade(target, 'arrived');
           return;
         }
         issuedAt = now();
@@ -195,9 +255,34 @@ export function createSeekCoalescer({
       const readable = Number.isFinite(t);
       const moved = readable && issuedPosition != null
         && Math.abs(t - issuedPosition) > SEEK_MOVED_SECONDS;
-      if (!moved) {
+      // Movement alone is not a verdict. A forward seek plays on while the
+      // engine scans, and the distance to the target shrinks the whole time;
+      // only movement *away from* the target says the request was not taken.
+      // The 2026-10-24 report was rapid HEVC skims ending in the browser
+      // because this re-issued a seek that was still being worked on.
+      const progressing = issuedDistance != null && readable
+        && Math.abs(t - target) <= issuedDistance - SEEK_MOVED_SECONDS;
+      if (!moved || progressing) {
         if (expired) {
-          degrade(target);
+          // A seek that is still closing the gap is making progress, not
+          // failing. Give it one more window before calling the burst failed.
+          if (progressing && !deadlineExtended) {
+            deadlineExtended = true;
+            burstStartedAt = now();
+            issuedAt = now();
+            return;
+          }
+          degrade(target, progressing ? 'progress' : 'stuck');
+          return;
+        }
+        // A frozen position is normally the engine scanning: leave it alone.
+        // But if this burst issued overlapping seeks and the position has not
+        // moved from where the newest one was issued, the engine is not
+        // scanning toward the final target — it lost it. One fresh re-issue is
+        // what recovers a rapid skim; a slow single seek never qualifies.
+        if (!moved && burstRequests > 1 && !burstReissued) {
+          burstReissued = true;
+          if (!issue(target)) degrade(target, 'threw');
           return;
         }
         issuedAt = now();
@@ -208,10 +293,10 @@ export function createSeekCoalescer({
       // it. Re-issue, within the retry budget and the same overall deadline.
       if (retries < maxRetries && !expired) {
         retries += 1;
-        if (!issue(target)) degrade(target);
+        if (!issue(target)) degrade(target, 'threw');
         return;
       }
-      degrade(target);
+      degrade(target, 'ignored');
     },
 
     /** Abandon any pending seek — source change, pause, teardown. */

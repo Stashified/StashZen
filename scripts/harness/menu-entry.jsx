@@ -166,6 +166,39 @@ const playingScene = () => {
   return m ? Number(m[1]) : null;
 };
 
+// ── Stepping the queue by key ───────────────────────────────
+// The player's vertical keys are a two-stop ladder, so one press is not one
+// step in every state: with the seek bar up and no cursor on it, ↓ returns to
+// the buttons and only the second ↓ steps; with the bar hidden, ↓ steps
+// directly. `stepNext` presses, notices whether the cursor landed on the
+// rail's ⏯ (that is the reveal, not a step), and presses again only then. It
+// blurs afterwards so the next call starts from the same place this one did.
+// `stepPrev` is the mirror: from the buttons, ↑ reaches the seek bar first.
+const railFocused = () =>
+  ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
+
+async function stepNext() {
+  if (railFocused()) {
+    press('ArrowDown', 40);
+  } else {
+    press('ArrowDown', 40);
+    await sleep(130);
+    if (railFocused()) press('ArrowDown', 40);
+  }
+  await sleep(130);
+  active()?.blur?.();
+}
+
+async function stepPrev() {
+  if (railFocused()) {
+    press('ArrowUp', 38);
+    await sleep(130);
+  }
+  press('ArrowUp', 38);
+  await sleep(130);
+  active()?.blur?.();
+}
+
 // ── Long press ──────────────────────────────────────────────
 // The whole mechanism in one place: a tap must fire the short action once,
 // and only on keyup; a hold must fire the menu and nothing else; and moving
@@ -307,16 +340,19 @@ async function runMenu() {
     (await requests()).length === 0, `${(await requests()).length} requests`);
 
   // ── Advancing walks the seeded listing ───────────────────
+  // The player opens with the seek bar up, so these go through the ladder's
+  // two stops (see stepNext/stepPrev); ↑ is its mirror. What is under test is
+  // the queue, not the key count.
   mediaEl()?.pause();
-  press('ArrowDown', 40);
-  await sleep(400);
+  await stepNext();
+  await sleep(300);
   check('M2 Down advances to the next scene in listing order',
     playingScene() === 6, `playing scene ${playingScene()}`);
-  press('ArrowDown', 40);
-  await sleep(400);
+  await stepNext();
+  await sleep(300);
   check('M2 and again', playingScene() === 7, `playing scene ${playingScene()}`);
-  press('ArrowUp', 38);
-  await sleep(400);
+  await stepPrev();
+  await sleep(300);
   check('M2 Up steps back', playingScene() === 6, `playing scene ${playingScene()}`);
 
   // ── Off the end of the loaded page, and on to the end of the listing ──
@@ -324,6 +360,11 @@ async function runMenu() {
   // extend, and the walk has to stay contiguous — a gap would silently drop
   // scenes and a repeat would re-fetch one.
   await clearLogs();
+  // One press to return from the seek bar to the buttons; from there each ↓
+  // is a step (the cursor stays on the rail through a step), so the 35
+  // presses that follow walk scenes 6 → 41.
+  press('ArrowDown', 40);
+  await sleep(120);
   for (let id = 7; id <= 41; id++) {
     press('ArrowDown', 40);
     await sleep(60);
@@ -485,7 +526,7 @@ async function runSaves() {
   v.currentTime = 25;
   await sleep(600);            // let a timeupdate carry 25 into the ref
   const at = v.currentTime;
-  press('ArrowDown', 40);
+  await stepNext();            // through the seek bar's stop, see stepNext
   await sleep(900);
 
   check('S2 Down advanced the queue', playingScene() === 2, `scene ${playingScene()}`);

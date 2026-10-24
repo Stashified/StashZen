@@ -227,7 +227,18 @@ export function usePlayerMedia({
   // with it. Dropping it here means the new scene shows *its* duration from
   // the API immediately, instead of the previous scene's until this one
   // reports its own — which for an MP4 transcode is never.
-  useEffect(() => {
+  //
+  // A **layout** effect for the same class of reason the wiring above is one.
+  // The read has to happen in the commit that swaps the source, before the
+  // element's load task runs: an engine hand-off mounts the `<video>` and sets
+  // its `src`, and `loadedmetadata` reads `fallbackSeekRef` and
+  // `sourceFreshRef`. As a passive effect this ran after the element had
+  // already started, and the harness caught the consequence once in a sweep —
+  // the browser fallback resumed at 0.4 s instead of 12.9 s, because the seek
+  // target had still been read from the outgoing engine's empty timeline and
+  // `loadedmetadata` had arrived before the latch was armed. Layout effects
+  // all run before the load task, so the capture is never late.
+  useLayoutEffect(() => {
     const sceneId = video?.id ?? null;
     const prev = fallbackSeekRef.current;
     // Same scene, different source: that is a fallback, and the playhead on
