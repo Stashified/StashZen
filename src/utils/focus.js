@@ -58,10 +58,24 @@ const MAX_RESTORE_MS = 8000;
 const MAX_EXTRA_PAGES = 12;
 
 // Cards are `<prefix>-<id>`, and the prefixes in use contain no dash.
+// The showroom shelves are the exception (`showroom-recent-scenes-video-…`):
+// they are not paged listings and register no driver, so a restore that names
+// one still succeeds through the registry lookup and simply skips `loadMore`.
 const prefixOf = (id) => {
   const at = String(id).indexOf('-');
   return at > 0 ? String(id).slice(0, at) : null;
 };
+
+/** Focus the first control in the content area.
+ *
+ * The closing fallback for an overlay whose remembered element has gone. It is
+ * better than leaving the cursor on <body>, where there is no zone for the
+ * D-pad to move from.
+ */
+export function focusFirstControl() {
+  const first = document.querySelector('[role="main"] [tabindex="0"]:not([disabled])');
+  if (first) first.focus();
+}
 
 export function focusByIdWhenReady(id, { fallback } = {}) {
   if (!id) return;

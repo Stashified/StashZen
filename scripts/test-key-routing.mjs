@@ -36,6 +36,7 @@ function check(name, cond, detail = '') {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const ev = (key, keyCode) => ({ key, keyCode });
+const repeatEv = (key, keyCode) => ({ key, keyCode, repeat: true });
 
 // `controlsVisible: false` is the resting state this file's no-rail checks were
 // written against: the bar auto-hides after three seconds, so "Back closes the
@@ -97,6 +98,19 @@ check('rail: 412 is passed to the rail', is(ev('', 412), RAIL, 'rail-pass', fals
 check('no rail: Escape closes', is(ev('Escape', 27), NO_RAIL, 'close', true, true));
 check('no rail: Backspace closes', is(ev('Backspace', 8), NO_RAIL, 'close', true, true));
 check('no rail: Tizen Back closes', is(ev('', 10009), NO_RAIL, 'close', true, true));
+
+// ── A held Back is one press ────────────────────────────────
+// Repeats used to walk the two-stop ladder and close the player from the same
+// hold, then reach the app's own Back handler after the player unmounted.
+for (const e of [repeatEv('Escape', 27), repeatEv('Backspace', 8), repeatEv('', 10009)]) {
+  for (const [name, ctx] of [['no rail', NO_RAIL], ['bar up', VISIBLE], ['rail', RAIL]]) {
+    check(`repeat Back on ${name} is swallowed and inert`,
+      is(e, ctx, 'none', true, true), show(route(e, ctx)));
+  }
+}
+check('repeat arrows still navigate (they are held on purpose)',
+  eq(route(repeatEv('ArrowLeft', 37)), route(ev('ArrowLeft', 37))),
+  show(route(repeatEv('ArrowLeft', 37))));
 check('no rail: 413 closes', is(ev('', 413), NO_RAIL, 'close', true, true));
 
 // ── No rail, bar up: Back puts the bar away first ──────────

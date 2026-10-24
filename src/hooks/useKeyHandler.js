@@ -385,6 +385,11 @@ export function useKeyHandler({ onBack } = {}) {
       }
 
       if (key === 'Backspace' || e.keyCode === TIZEN_BACK) {
+        // One press, one layer. Remotes repeat a held key — arrows are
+        // explicitly throttled above for that reason — and an unguarded Back
+        // repeat closes the player on the first event and keeps unwinding
+        // behind it: the page under it, then the exit prompt.
+        if (e.repeat) return;
         // The on-screen keyboard's delete button sends Backspace. Don't
         // interpret that as the global Back action while a text field
         // has focus — let the browser delete the character normally.

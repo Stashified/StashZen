@@ -234,6 +234,59 @@ function rig({ playOk = true, playError = 'play failed' } = {}) {
     eq(completed, ['1']), JSON.stringify(completed));
 }
 
+// ── A completion outlives the scene it belongs to ──────────
+{
+  const { reporter, writes, pending, completed } = rig();
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.tick(10, false);
+  reporter.tick(11.5, false);  // 1.5 s owed
+  reporter.complete();
+  reporter.save('1');
+
+  // `ended` calls save() and then goNext(); the queue has moved on by the
+  // time the write lands. The prune still names scene 1.
+  reporter.setScene('2');
+  reporter.resetScene();
+  pending[0].resolve({ ok: true });
+  await flush();
+
+  check('a completion that lands after a queue advance still prunes its card',
+    eq(completed, ['1']), JSON.stringify(completed));
+  check('the late completion does not write anything for the new scene',
+    writes.length === 1, JSON.stringify(writes));
+}
+
+{
+  const reporterRig = rig();
+  const { reporter, pending, completed } = reporterRig;
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.tick(10, false);
+  reporter.tick(11.5, false);
+  reporter.complete();
+  reporter.save('1');
+  // Back-to-close disposes the reporter before the write settles. The shelf
+  // under the closed player is still there to be pruned.
+  reporter.dispose();
+  pending[0].resolve({ ok: true });
+  await flush();
+  check('a completion that lands after the player closed still prunes its card',
+    eq(completed, ['1']), JSON.stringify(completed));
+
+  const failedRig = rig();
+  failedRig.reporter.setScene('1');
+  failedRig.reporter.resetScene();
+  failedRig.reporter.tick(10, false);
+  failedRig.reporter.tick(11.5, false);
+  failedRig.reporter.complete();
+  failedRig.reporter.save('1');
+  failedRig.pending[0].resolve({ ok: false, error: { message: 'nope' } });
+  await flush();
+  check('a completion the server rejected does not prune the card',
+    failedRig.completed.length === 0, JSON.stringify(failedRig.completed));
+}
+
 // ── The play counter ───────────────────────────────────────
 {
   const { reporter, plays, sync } = rig();

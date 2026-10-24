@@ -1,11 +1,11 @@
 {
   "name": "stashzen",
-  "version": "0.36.2",
+  "version": "0.37.0",
   "description": "StashZen — a Stash client for Samsung Tizen TVs, with D-pad navigation",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,7 @@
     "postbuild": "node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "npm run test:filters && npm run test:draft && npm run test:chain && npm run test:queue && npm run test:progress && npm run test:request-key && npm run test:keys && npm run test:bundle-guard && npm run test:target && npm run test:batch && npm run test:engine-policy && npm run test:seek && npm run test:volume && npm run test:avplay-errors && npm run test:stats && npm run test:engine-controller && npm run test:avplay-availability && npm run test:avplay-backend",
+    "test": "npm run test:filters && npm run test:draft && npm run test:chain && npm run test:queue && npm run test:progress && npm run test:request-key && npm run test:keys && npm run test:bundle-guard && npm run test:target && npm run test:batch && npm run test:engine-policy && npm run test:seek && npm run test:volume && npm run test:avplay-errors && npm run test:stats && npm run test:engine-controller && npm run test:avplay-availability && npm run test:avplay-backend && npm run test:manifest",
     "test:filters": "node scripts/test-translate.mjs",
     "test:draft": "node scripts/test-criterion-draft.mjs",
     "test:chain": "node scripts/test-filter-chain.mjs",
@@ -40,7 +40,8 @@
     "test:stats": "node scripts/test-playback-stats.mjs",
     "test:engine-controller": "node scripts/test-engine-controller.mjs",
     "test:avplay-availability": "node scripts/test-avplay-availability.mjs",
-    "test:avplay-backend": "node scripts/test-avplay-backend.mjs"
+    "test:avplay-backend": "node scripts/test-avplay-backend.mjs",
+    "test:manifest": "node scripts/test-manifest.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",

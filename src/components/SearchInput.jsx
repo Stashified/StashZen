@@ -22,8 +22,13 @@ export default function SearchInput({ value, onChange, placeholder = 'Search…'
   const [draft, setDraft] = useState(value || '');
   const debounceRef = useRef(null);
 
-  // External value resets (e.g. tab change) should reset the draft.
-  useEffect(() => { setDraft(value || ''); }, [value]);
+  // External value resets (e.g. tab change) should reset the draft — and the
+  // pending debounce with it. Left running, the timer fired the old tab's
+  // text once the new tab was up, searching the wrong listing for it.
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    setDraft(value || '');
+  }, [value]);
 
   const commit = () => {
     clearTimeout(debounceRef.current);
@@ -83,7 +88,11 @@ export default function SearchInput({ value, onChange, placeholder = 'Search…'
         {showClear && (
           <button
             className={styles.clearBtn}
-            onClick={() => { setDraft(''); onChange(''); }}
+            onClick={() => {
+              clearTimeout(debounceRef.current);
+              setDraft('');
+              onChange('');
+            }}
             aria-label="Clear search"
             tabIndex={-1}
           >×</button>

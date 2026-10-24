@@ -245,7 +245,14 @@ export default function App() {
             showGridSize={config.showGridSize
               && activeMode !== 'carousel' && activeMode !== 'coverflow' && activeMode !== 'list'}
             filterOptions={filterOptions}
-            onBuildFilter={filterMode ? () => setBuilderOpen(true) : null}
+            onBuildFilter={filterMode ? () => {
+              // The builder's first D-pad press pulls the cursor inside its
+              // dialog, so closing it unmounts whatever held focus and drops
+              // the cursor to <body>. Remember the Build control — it stays
+              // mounted underneath — for closeBuilder to restore.
+              mainFocus.remember(document.activeElement);
+              setBuilderOpen(true);
+            } : null}
             showSearch={config.showSearch}
             previewMuted={previewMuted}
             onMuteToggle={togglePreviewMuted}

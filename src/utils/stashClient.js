@@ -48,9 +48,30 @@ export class StashError extends Error {
 /**
  * `fetch` that cannot hang. Resolves to a Response, or rejects with a
  * StashError whose code is 'timeout' or 'network'.
+ *
+ * `consume` runs *inside* the timeout, before the timer is cleared. That
+ * matters for JSON: `fetch` resolves when the headers arrive, so a server (or
+ * proxy) that sends headers and then stalls the body would otherwise leave the
+ * caller's `res.json()` pending forever with no error. Passing the body read as
+ * `consume` keeps it under the same budget and the same abort signal.
  */
-export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+export async function fetchWithTimeout(
+  url,
+  options = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  consume = res => res,
+) {
+  const external = options.signal || null;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
+
+  // The caller's own signal (an unmount abort) must still cancel the socket.
+  // The controller below belongs to the timeout and replaces `options.signal`
+  // on the fetch, so it has to follow the external one too.
+  const onExternalAbort = () => controller?.abort();
+  if (external && controller) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener('abort', onExternalAbort);
+  }
 
   let timer = null;
   const timedOut = new Promise((_, reject) => {
@@ -60,7 +81,8 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TI
     }, timeoutMs);
   });
 
-  const request = fetch(url, controller ? { ...options, signal: controller.signal } : options);
+  const request = fetch(url, controller ? { ...options, signal: controller.signal } : options)
+    .then(consume);
   // If the timer wins the race, this promise may still reject later with
   // AbortError. Nothing is awaiting it by then, so swallow it here rather
   // than let it surface as an unhandled rejection.
@@ -70,10 +92,15 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TI
     return await Promise.race([request, timedOut]);
   } catch (e) {
     if (e instanceof StashError) throw e;
-    // Our own abort() surfaces as AbortError — report it as the timeout
-    // it was, not as a generic network failure.
-    if (e?.name === 'AbortError' && controller?.signal.aborted) {
-      throw new StashError('The server took too long to respond.', 'timeout');
+    if (e?.name === 'AbortError') {
+      // The caller cancelled it (the hook that owns it ignores the rejection,
+      // but it must not be reported as a timeout).
+      if (external?.aborted) throw e;
+      // Our own abort() surfaces as AbortError — report it as the timeout
+      // it was, not as a generic network failure.
+      if (controller?.signal.aborted) {
+        throw new StashError('The server took too long to respond.', 'timeout');
+      }
     }
     throw new StashError(
       'Cannot reach the Stash server. Check the URL and that the TV is on the same network.',
@@ -81,6 +108,7 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TI
     );
   } finally {
     clearTimeout(timer);
+    external?.removeEventListener?.('abort', onExternalAbort);
   }
 }
 
@@ -102,40 +130,39 @@ export async function graphqlRequest(query, variables, { url, key, timeoutMs } =
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers['ApiKey'] = key;
 
-  const res = await fetchWithTimeout(`${url.replace(/\/+$/, '')}/graphql`, {
+  const json = await fetchWithTimeout(`${url.replace(/\/+$/, '')}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ query, variables }),
-  }, timeoutMs);
-
-  if (!res.ok) {
-    // Stash returns a *rejected filter* — a criterion in the wrong shape — as a
-    // non-2xx status (400 in practice) whose body still carries a precise
-    // GraphQL error, e.g. `cannot use map as Boolean`. The old code threw on the
-    // status alone and never read the body, so every malformed filter reached
-    // the user as "GraphQL HTTP 400" with no indication of which criterion was
-    // wrong. Read the body before giving up on the detail.
-    let detail = null;
-    try {
-      const body = await res.json();
-      detail = body?.errors?.[0]?.message || null;
-    } catch {
-      // Not JSON (a proxy error page, say) — the status is all we have.
+  }, timeoutMs, async (res) => {
+    if (!res.ok) {
+      // Stash returns a *rejected filter* — a criterion in the wrong shape — as
+      // a non-2xx status (400 in practice) whose body still carries a precise
+      // GraphQL error, e.g. `cannot use map as Boolean`. The old code threw on
+      // the status alone and never read the body, so every malformed filter
+      // reached the user as "GraphQL HTTP 400" with no indication of which
+      // criterion was wrong. Read the body before giving up on the detail.
+      let detail = null;
+      try {
+        const body = await res.json();
+        detail = body?.errors?.[0]?.message || null;
+      } catch {
+        // Not JSON (a proxy error page, say) — the status is all we have.
+      }
+      throw new StashError(
+        detail ? `GraphQL HTTP ${res.status}: ${detail}` : `GraphQL HTTP ${res.status}`,
+        'http',
+        res.status,
+      );
     }
-    throw new StashError(
-      detail ? `GraphQL HTTP ${res.status}: ${detail}` : `GraphQL HTTP ${res.status}`,
-      'http',
-      res.status,
-    );
-  }
 
-  let json;
-  try {
-    json = await res.json();
-  } catch {
-    // A session wall or captive portal answers 200 with HTML.
-    throw new StashError('The server returned an unexpected response.', 'parse');
-  }
+    try {
+      return await res.json();
+    } catch {
+      // A session wall or captive portal answers 200 with HTML.
+      throw new StashError('The server returned an unexpected response.', 'parse');
+    }
+  });
 
   if (json.errors) throw new StashError(json.errors[0]?.message || 'GraphQL error', 'graphql');
   return json.data;

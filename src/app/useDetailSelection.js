@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
-import { focusByIdWhenReady } from '../utils/focus.js';
+import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
 
 export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   const [selectedPerformer, setSelectedPerformer] = useState(null);
@@ -107,10 +107,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
       // from Continue Watching while this overlay is still up. Fall back to
       // the first control in the page rather than stranding the cursor on
       // <body>, where no D-pad press can move it.
-      fallback: () => {
-        const first = document.querySelector('[role="main"] [tabindex="0"]:not([disabled])');
-        if (first) first.focus();
-      },
+      fallback: focusFirstControl,
     });
   };
 
