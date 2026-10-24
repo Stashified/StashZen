@@ -108,7 +108,7 @@ function fakeDoc() {
       listeners.get(type).add(fn);
     },
     removeEventListener(type, fn) { listeners.get(type)?.delete(fn); },
-    fire(type) { listeners.get(type)?.forEach((fn) => fn()); },
+    fire(type, ...args) { listeners.get(type)?.forEach((fn) => fn(...args)); },
     count(type) { return listeners.get(type)?.size || 0; },
   };
 }
@@ -121,11 +121,12 @@ function fakeWin() {
       listeners.get(type).add(fn);
     },
     removeEventListener(type, fn) { listeners.get(type)?.delete(fn); },
-    fire(type) { listeners.get(type)?.forEach((fn) => fn()); },
+    fire(type, ...args) { listeners.get(type)?.forEach((fn) => fn(...args)); },
+    count(type) { return listeners.get(type)?.size || 0; },
   };
 }
 
-function rig(opts = {}) {
+function rig(opts = {}, backendOpts = {}) {
   const fake = fakeAvplay(opts);
   const events = [];
   const doc = fakeDoc();
@@ -137,7 +138,7 @@ function rig(opts = {}) {
     // arrives, or usePlayerMedia's guard drops it.
     if (type === 'error') events.push(backend.error ? 'error:set' : 'error:unset');
   };
-  backend = createAvplayBackend({ avplay: fake.api, emit, doc, win });
+  backend = createAvplayBackend({ avplay: fake.api, emit, doc, win, ...backendOpts });
   return { fake, events, doc, win, backend };
 }
 
@@ -293,7 +294,10 @@ function rig(opts = {}) {
   await sleep(320);
   r.backend.currentTime = 60;
   const failed = await (async () => {
-    const end = Date.now() + 6000;
+    // Past the backend's 8 s seek deadline (SEEK_MAX_WAIT_MS): a direct HEVC
+    // seek measured 2–3 s, so the deadline is deliberately generous and this
+    // wait has to outlast it.
+    const end = Date.now() + 9500;
     while (Date.now() < end) {
       if (r.backend.error) return true;
       await sleep(100);
@@ -308,6 +312,41 @@ function rig(opts = {}) {
   check('no events follow the failed seek',
     r.events.length === afterFailure, r.events.slice(afterFailure).join(','));
   check('the session is no longer seeking', r.backend.seeking === false);
+  r.backend.close();
+}
+
+// ── An arrived seek recovers natively, not in the browser ──
+// The 2026-10-24 report: a rapid skim reached its position, the engine never
+// resumed, and the session was handed to the browser. A position at the target
+// is proof the file is seekable — it is the session that stopped — so the
+// backend reopens the same source at that position and keeps the hardware
+// decoder. Only a seek that never arrived falls back.
+{
+  const r = rig({}, { seekStuckMs: 4000 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(320);
+  // The seek lands, but the panel stays paused on it: re-asserting play does
+  // nothing. That is the 'arrived' shape, not a stuck seek.
+  r.fake.api.play = () => { r.fake.calls.play += 1; };
+  r.backend.currentTime = 30;
+  r.fake.setState('PAUSED');
+  const reopened = await (async () => {
+    const end = Date.now() + 5500;
+    while (Date.now() < end) {
+      if (r.fake.calls.open.length >= 2
+          && r.fake.calls.seek.filter((ms) => ms === 30000).length >= 2) return true;
+      await sleep(100);
+    }
+    return false;
+  })();
+  check('an arrived seek reopens the session instead of falling back', reopened,
+    `opens=${r.fake.calls.open.length} error=${r.backend.error?.name || 'none'}`);
+  check('...at the position the user asked for',
+    r.fake.calls.seek.filter((ms) => ms === 30000).length >= 2,
+    `seeks=${r.fake.calls.seek.join(',')}`);
+  check('...without reporting a failure', r.backend.error == null);
+  check('...and the engine is no longer marked degraded',
+    r.backend.isSeekDegraded() === false);
   r.backend.close();
 }
 

@@ -164,9 +164,10 @@ export function createEngineController({ healthLimit = 2 } = {}) {
 
     /**
      * Record a browser refusal of a **direct** attempt: a media error whose
-     * source the element could not decode, or a stall the watchdog gave up on.
-     * Not for transcode failures (Stash produced that file) and not for
-     * network errors, which say nothing about the format.
+     * source the element could not decode (3 or 4). Not for a watchdog stall —
+     * a slow start is not a format verdict — not for transcode failures (Stash
+     * produced that file), and not for network errors, which say nothing
+     * about the format.
      */
     browserRefused(video) {
       const key = keyOf(video);

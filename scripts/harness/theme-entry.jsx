@@ -83,6 +83,14 @@ async function enter(el) {
 const dialogButtons = () => [...document.querySelectorAll('[role="dialog"] button')];
 const byLabel = (label) => dialogButtons().find(b => b.textContent.trim() === label);
 
+// The prompt's `autoFocus` lands 50 ms after it mounts (useFocusable's timer).
+// A `focus()` issued before that is stolen back, and the Enter that follows
+// activates "Keep editing" instead of the button this driver meant to press —
+// which is a passing-looking dismissal, not a failing click. Wait for the
+// timer to have fired before addressing any other button in the prompt.
+const promptReady = () =>
+  waitFor(() => document.activeElement === byLabel('Keep editing'), 1000);
+
 async function run() {
   // ── 1. A relaunch with OLED saved ──────────────────────────
   localStorage.setItem(LS_KEY, JSON.stringify(SAVED));
@@ -154,14 +162,62 @@ async function run() {
   check('T4 choosing Standard updates the draft but not the document',
     htmlTheme() === 'oled' && mod.getSettings().theme === 'oled',
     `data-theme=${JSON.stringify(htmlTheme())} store=${mod.getSettings().theme}`);
+  // Cancel with a dirty draft asks first; Discard is the answer that leaves.
+  window.__closed = false;
   await enter(byLabel('Cancel'));
-  check('T5 Cancel leaves the document and the store on OLED',
+  const asked = await waitFor(() => !!byLabel('Discard') && !!byLabel('Keep editing'), 2000);
+  await promptReady();
+  check('T5a Cancel with an unsaved draft asks instead of discarding',
+    asked && !window.__closed && htmlTheme() === 'oled'
+      && mod.getSettings().theme === 'oled',
+    `asked=${asked} closed=${!!window.__closed} data-theme=${JSON.stringify(htmlTheme())}`);
+  await enter(byLabel('Discard'));
+  check('T5 Cancel → Discard leaves the document and the store on OLED',
     htmlTheme() === 'oled' && mod.getSettings().theme === 'oled'
-      && stored()?.theme === 'oled',
-    `data-theme=${JSON.stringify(htmlTheme())} store=${mod.getSettings().theme} saved=${stored()?.theme}`);
+      && stored()?.theme === 'oled' && window.__closed === true,
+    `data-theme=${JSON.stringify(htmlTheme())} store=${mod.getSettings().theme} saved=${stored()?.theme} closed=${!!window.__closed}`);
+  panel.unmount();
+
+  // The Back route: the question appears, Back again keeps editing and puts
+  // the cursor back where it was. The draft must survive the question.
+  window.__closed = false;
+  const panelBack = await mountPanel();
+  await enter(byLabel('Standard'));
+  press('Escape', 27);
+  const askedBack = await waitFor(() => !!byLabel('Keep editing'), 2000);
+  press('Escape', 27);
+  const backToEditing = await waitFor(
+    () => !byLabel('Keep editing') && !!byLabel('Save'), 2000);
+  check('T5b Back with an unsaved draft asks first',
+    askedBack && window.__closed === false,
+    `asked=${askedBack} closed=${!!window.__closed}`);
+  check('T5b Back again keeps editing, with the draft intact',
+    backToEditing && byLabel('Standard')?.getAttribute('aria-checked') === 'true'
+      && htmlTheme() === 'oled' && mod.getSettings().theme === 'oled',
+    `open=${backToEditing} Standard=${byLabel('Standard')?.getAttribute('aria-checked')} data-theme=${JSON.stringify(htmlTheme())}`);
+  check('T5b ...and focus returns to the control it left',
+    document.activeElement === byLabel('Standard'),
+    `active=${document.activeElement?.textContent?.trim()}`);
+
+  // Save & close from the question is the same commit as the footer button.
+  press('Escape', 27);
+  const askedSave = await waitFor(() => !!byLabel('Save & close'), 2000);
+  await promptReady();
+  await enter(byLabel('Save & close'));
+  check('T5c Save & close from the question applies the draft',
+    askedSave && htmlTheme() === null && stored()?.theme === 'standard'
+      && mod.getSettings().theme === 'standard',
+    `asked=${askedSave} data-theme=${JSON.stringify(htmlTheme())} saved=${stored()?.theme}`);
+  panelBack.unmount();
+
+  // Put OLED back so T6 still measures a real transition.
+  window.__closed = false;
+  const panelReset = await mountPanel();
+  await enter(byLabel('OLED'));
+  await enter(byLabel('Save'));
+  panelReset.unmount();
 
   // Save Standard: applied immediately, persisted, and the page goes back.
-  panel.unmount();
   const panel2 = await mountPanel();
   await enter(byLabel('Standard'));
   await enter(byLabel('Save'));

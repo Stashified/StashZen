@@ -19,6 +19,7 @@ import {
   isEngineLevel,
   describeAvplayFailure,
   avplayFormatKey,
+  resolutionBand,
 } from '../src/utils/avplayErrors.js';
 
 let passed = 0;
@@ -119,6 +120,42 @@ check('a transient is not engine-level',
     avplayFormatKey({}) === null);
   check('an unknown file is not cached under a shared key',
     avplayFormatKey({ container: null, videoCodec: '', audioCodec: undefined }) === null);
+
+  // A partial triple is not coarser — it is a shared key. `mp4||` would be
+  // written by the first unprobed scene that failed and then read by every
+  // other unprobed scene, turning one refusal into a session-wide verdict.
+  check('a known container and video but unknown audio is not a key',
+    avplayFormatKey({ container: 'mp4', videoCodec: 'h264' }) === null);
+  check('a known video and audio but unknown container is a key',
+    avplayFormatKey({ videoCodec: 'h264', audioCodec: 'aac' }) === '|h264|aac');
+  check('a known audio and container but unknown video is not a key',
+    avplayFormatKey({ container: 'mp4', audioCodec: 'aac' }) === null);
+}
+
+// ── Resolution bands ───────────────────────────────────────
+{
+  check('a 1080p short edge is 1080', resolutionBand({ width: 1920, height: 1080 }) === '1080');
+  check('the short edge classifies portrait the same way',
+    resolutionBand({ width: 1080, height: 1920 }) === '1080');
+  check('4K is 4k', resolutionBand({ width: 3840, height: 2160 }) === '4k');
+  check('1440 is 1440', resolutionBand({ width: 2560, height: 1440 }) === '1440');
+  check('720 is 720', resolutionBand({ width: 1280, height: 720 }) === '720');
+  check('below 720 is sd', resolutionBand({ width: 720, height: 480 }) === 'sd');
+  check('height alone is enough', resolutionBand({ height: 2160 }) === '4k');
+  check('width alone is enough', resolutionBand({ width: 3840 }) === '4k');
+  check('no dimensions is no band', resolutionBand({}) === '');
+  check('zero is not a dimension', resolutionBand({ width: 0, height: 0 }) === '');
+  check('a non-number is not a dimension', resolutionBand({ width: '1080p', height: null }) === '');
+
+  // The point of the band: one refused 4K file must not exile 1080p.
+  check('4K and 1080p of the same codecs are different keys',
+    avplayFormatKey({ container: 'mp4', videoCodec: 'av1', audioCodec: 'aac', width: 3840, height: 2160 })
+      !== avplayFormatKey({ container: 'mp4', videoCodec: 'av1', audioCodec: 'aac', width: 1920, height: 1080 }));
+  check('the band is appended to the codec triple',
+    avplayFormatKey({ container: 'mp4', videoCodec: 'av1', audioCodec: 'aac', width: 3840, height: 2160 })
+      === 'mp4|av1|aac|4k');
+  check('no dimensions keeps the coarser key',
+    avplayFormatKey({ container: 'mp4', videoCodec: 'av1', audioCodec: 'aac' }) === 'mp4|av1|aac');
 }
 
 console.log(`\n${passed}/${passed + failed} checks passed`);

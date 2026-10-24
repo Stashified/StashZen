@@ -76,7 +76,7 @@ this later, use **Settings → Connection setup → Run setup again**.
 | D-pad | Move focus. |
 | OK / Enter | Open the focused item or activate the control. On a card, opens its detail page. |
 | Long press OK | Open the card's menu: **Play**, **Play all**, **Play from here** for a scene (a marker's Play starts at its timestamp); slideshows for an image or gallery; **Info** / **Details** where there is a page to open. |
-| Back / Esc | Close the topmost thing: dropdown, page, player. On the main screen it asks to exit. |
+| Back / Esc | Close the topmost thing: dropdown, page, player. On the main screen and on the PIN screen it asks to exit. |
 
 **Navigating**
 
@@ -93,6 +93,8 @@ this later, use **Settings → Connection setup → Run setup again**.
 | Key | Action |
 |---|---|
 | ← / → | Seek 15 seconds. |
+| ↓ | From the buttons, steps to the next scene. From the seek bar, returns to the buttons first; **↓** again steps. With the controls hidden, steps directly. |
+| ↑ | From the buttons, goes to the seek bar (where ← / → skim) without changing the scene; **↑** again steps to the previous scene. With the controls hidden, steps directly. |
 | Back | With the controls on screen, the first press hides them and the second closes the player. |
 
 **Image viewer**
@@ -145,6 +147,8 @@ this later, use **Settings → Connection setup → Run setup again**.
 - **Library stats and server jobs**: counts, storage and watch time; running jobs with progress and
   a two-press **Stop**; start a library scan from the TV.
 - **Theme**: Standard or OLED (true black on OLED panels).
+- **Unsaved-changes guard**: leaving Settings without pressing **Save** asks whether to save,
+  discard, or keep editing, instead of silently throwing the edits away.
 - **PIN lock**: optional four-digit code at launch.
 - **Test mode**: every screen on sample data, no server required.
 

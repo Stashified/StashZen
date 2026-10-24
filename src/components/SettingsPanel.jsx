@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState } from 'react';
 import styles from './SettingsPanel.module.css';
 import { ActionButton } from './tvActions.jsx';
+import UnsavedPrompt from './UnsavedPrompt.jsx';
 import { useSettings, setSettings, testStashConnection } from '../utils/settings.js';
 import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
@@ -59,6 +60,7 @@ export default function SettingsPanel({ onClose }) {
     previewsEnabled, setPreviewsEnabled,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
+    dirty,
     save, clear,
   } = useSettingsDraft(settings);
 
@@ -122,10 +124,46 @@ export default function SettingsPanel({ onClose }) {
     }
   }, [useMock]);
 
+  // Leaving with unsaved drafts asks first. Reported from the TV, 2026-10-24:
+  // backing out silently threw the change away, and the panel looked identical
+  // to one that had saved ("I sometimes forget to go press save"). The prompt
+  // is the only place a discard can happen now, and it names the alternative.
+  //
+  // `leavePrompt` is state, but the Back listener reads the freshest closure
+  // through useBackKey's ref, so the open flag is never stale.
+  const [leavePrompt, setLeavePrompt] = useState(false);
+  // Where the cursor was when Back raised the prompt. Restored if the user
+  // keeps editing, so dismissing the question does not also move them.
+  const returnFocusRef = useRef(null);
+
+  const dismissLeavePrompt = () => {
+    setLeavePrompt(false);
+    const el = returnFocusRef.current;
+    returnFocusRef.current = null;
+    el?.focus?.();
+  };
+
+  const requestClose = () => {
+    // Back while the prompt is open answers "keep editing" rather than
+    // re-opening it. The prompt registers no Back handler of its own: this
+    // listener runs first, and two sibling capture listeners cannot suppress
+    // each other — see the note in useSettingsBack.
+    if (leavePrompt) {
+      dismissLeavePrompt();
+      return;
+    }
+    if (dirty) {
+      returnFocusRef.current = document.activeElement;
+      setLeavePrompt(true);
+      return;
+    }
+    onClose?.();
+  };
+
   // Trap Back / Esc to close — except when the user is typing in
   // a text field, where Backspace should delete a character normally, and
   // while the PIN keypad is open. See the hook.
-  useSettingsBack(onClose, pinFlowRef);
+  useSettingsBack(requestClose, pinFlowRef);
 
   useEffect(() => { setTestResult(null); }, [stashUrl, stashKey]);
 
@@ -135,6 +173,18 @@ export default function SettingsPanel({ onClose }) {
   // delay let the stale timeout close the *newly opened* panel.
   const closeTimerRef = useRef(null);
 
+  // The scrolling body. The footer is a sibling, so moving Down to Save does
+  // not scroll it: the last focusable in the body is the PIN button, and the
+  // explanatory hint below it has no D-pad stop of its own. The focus landed
+  // on Save with that hint clipped at the fold (TV report 2026-10-24 — only
+  // the first pixels of "A forgotten PIN cannot be recovered…" were visible).
+  // The footer is the end of the panel, so it brings the body's end with it.
+  const bodyRef = useRef(null);
+  const revealBodyEnd = () => {
+    const body = bodyRef.current;
+    if (body) body.scrollTop = body.scrollHeight;
+  };
+
   useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const handleSave = () => {
@@ -142,6 +192,18 @@ export default function SettingsPanel({ onClose }) {
     setSaved(true);
     clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => onClose?.(), SAVE_CLOSE_DELAY_MS);
+  };
+
+  // The prompt's answers. Save goes through the normal path so the footer
+  // reports "Saved ✓" and the panel closes on the same timer as always;
+  // discard is the only route that leaves the drafts behind.
+  const saveAndClose = () => {
+    setLeavePrompt(false);
+    handleSave();
+  };
+  const discardAndClose = () => {
+    setLeavePrompt(false);
+    onClose?.();
   };
 
 
@@ -177,7 +239,7 @@ export default function SettingsPanel({ onClose }) {
           <p className={styles.subtitle}>Connection, data source &amp; security</p>
         </header>
 
-        <div className={styles.body}>
+        <div className={styles.body} ref={bodyRef}>
           <ModeToggle value={useMock} onChange={setUseMock} />
 
           {/* Live-mode fields. Unmounted in Test mode rather than dimmed:
@@ -342,7 +404,7 @@ export default function SettingsPanel({ onClose }) {
           <AppLockSection pinFlowRef={pinFlowRef} />
         </div>
 
-        <footer className={styles.footer}>
+        <footer className={styles.footer} onFocusCapture={revealBodyEnd}>
           <ActionButton
             id="settings-clear"
             label={confirmingClear ? 'Press again to confirm' : 'Clear saved'}
@@ -354,7 +416,7 @@ export default function SettingsPanel({ onClose }) {
           <ActionButton
             id="settings-cancel"
             label="Cancel"
-            onClick={onClose}
+            onClick={requestClose}
             zone="settings-footer"
           />
           <ActionButton
@@ -366,7 +428,14 @@ export default function SettingsPanel({ onClose }) {
           />
         </footer>
       </div>
-      
+
+      {leavePrompt && (
+        <UnsavedPrompt
+          onSave={saveAndClose}
+          onDiscard={discardAndClose}
+          onKeepEditing={dismissLeavePrompt}
+        />
+      )}
     </div>
   );
 }

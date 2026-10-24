@@ -61,6 +61,7 @@ import { needsTranscode } from './playbackSource.js';
  *   tv      — AVPlay first, the browser as fallback. An on-panel A/B lever;
  *             the seek fix that made the browser the default is recent, and
  *             comparing the two on the same file should not need a rebuild.
+ *             `tv` is the stored token only: Settings labels it "TV player".
  *   browser — exactly the pre-0.36 player and the rollback lever
  */
 export const PLAYBACK_ENGINES = ['auto', 'tv', 'browser'];

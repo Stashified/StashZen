@@ -59,6 +59,26 @@ function release(key, keyCode) {
   }));
 }
 
+// ↓ is a two-stop ladder in the player: with the seek bar up and no cursor on
+// it, the first press returns to the buttons and only the second steps. The
+// player opens with the bar up, so a queue step needs both. The reveal is
+// visible as the cursor landing on the rail's ⏯; blurring afterwards leaves
+// the next call in the same state this one started from.
+const railFocused = () =>
+  ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
+
+async function stepNext() {
+  if (railFocused()) {
+    press('ArrowDown', 40);
+  } else {
+    press('ArrowDown', 40);
+    await sleep(130);
+    if (railFocused()) press('ArrowDown', 40);
+  }
+  await sleep(130);
+  active()?.blur?.();
+}
+
 /** Hold Enter the way a remote does, then let go. Crosses the 600 ms long press. */
 async function holdEnter(ms = 950) {
   press('Enter', 13);
@@ -242,7 +262,7 @@ async function runMarkers() {
     playingTitle() === 'VERIFY scene 1 — VERIFY marker 1' && allStarted,
     `playing "${playingTitle()}" at ${v2?.currentTime?.toFixed(1)}s`);
 
-  press('ArrowDown', 40);
+  await stepNext();
   await waitFor(() => /VERIFY scene 2\b/.test(playingTitle()), 3000);
   await sleep(700);
   check('M3 Down walks to the next scene, not the next marker row',

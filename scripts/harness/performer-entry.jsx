@@ -251,6 +251,12 @@ async function run() {
   // ── The write authority (item 6) ────────────────────────
   // The card was unrated and unfavourited; the detail answer is 75 and
   // favourite, so both readings here are adopted values, not the card's.
+  //
+  // Wait for the adoption: the profile renders the aliases, then an effect
+  // copies `rating100`/`favorite` into the edit state, so the stepper lands one
+  // commit later. Reading straight after the alias group can catch the frame
+  // between the two and see the card's 0 — a race, not a stale answer.
+  await waitFor(() => ratingStars() === 8, 4000);
   check('P1 the rating and favourite come from the detail answer',
     ratingStars() === 8 && !!favoriteStar()
       && favoriteButton()?.getAttribute('aria-pressed') === 'true',

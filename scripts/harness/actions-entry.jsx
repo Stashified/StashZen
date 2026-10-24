@@ -44,6 +44,16 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+/** Poll for a DOM condition a state update produces, rather than guessing. */
+async function waitFor(pred, ms = 2000, step = 25) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (pred()) return true;
+    await sleep(step);
+  }
+  return false;
+}
+
 // ── Input ───────────────────────────────────────────────────
 // Dispatched on whatever currently holds focus, the way a remote would. Every
 // button on these two panels fires on keydown (none of them opts into
@@ -157,13 +167,22 @@ async function runSettings() {
     /✓|✗/.test(resultText),
     `result row: ${(resultText.match(/[✓✗][^✓✗]{0,40}/) || ['<none>'])[0]}`);
 
-  // ── A4  Enter on Cancel calls onClose, and only that ─────
-  // The store is read either side: Cancel is a *draft* discard, so a button
-  // wired to the wrong handler saves what the user just refused.
+  // ── A4  Enter on Cancel asks, and only an answer closes ──
+  // A2 left the draft dirty, so this is the unsaved path. Cancel no longer
+  // closes on its own: it raises the question ("I sometimes forget to go
+  // press save"), and only an answer to it leaves. The store is read either
+  // side: Cancel is a *draft* discard, so a button wired to the wrong handler
+  // saves what the user just refused.
   const urlBefore = getSettings().stashUrl;
   await enter(byLabel('Cancel'));
+  const asked = await waitFor(() =>
+    !!byLabel('Keep editing') && !!byLabel('Discard') && !!byLabel('Save & close'), 2000);
+  check('A4 Cancel with an unsaved draft asks first',
+    asked && window.__closed !== true,
+    `prompt=${asked} onClose called: ${window.__closed === true}`);
+  await enter(byLabel('Discard'));
   await sleep(200);
-  check('A4 Cancel asked the panel to close', window.__closed === true,
+  check('A4 Discard asked the panel to close', window.__closed === true,
     `onClose called: ${window.__closed === true}`);
   // The detail is deliberately port-free on the passing path. It used to
   // print the URL, and since the driver picks a random port that string

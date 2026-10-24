@@ -9,10 +9,17 @@
  * screen where nothing is behind the panel by construction — AppLock
  * unmounts the app tree rather than drawing over it — so there is nothing
  * to blur, and a solid fill makes that explicit.
+ *
+ * Back asks whether to close the app. It must not dismiss the lock — that
+ * would make the PIN a suggestion — but a Back that does nothing at all
+ * reads as a broken remote, which is what a viewer on the lock screen
+ * reported on 2026-10-24. The confirmation is the same component the main
+ * screen uses, so "Back → Exit app?" behaves identically everywhere.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import PinPad from './PinPad.jsx';
+import ExitPrompt from './ExitPrompt.jsx';
 import { useKeyHandler } from '../hooks/useKeyHandler.js';
 import { attemptPin } from '../utils/appLock.js';
 import styles from './LockScreen.module.css';
@@ -26,8 +33,21 @@ export default function LockScreen({ onUnlock }) {
   // Escape and Tizen Back before they could reach this bubble-phase
   // listener, so only the arrows actually arrive here.
   //
-  // No `onBack`: Back must never dismiss the lock.
+  // No `onBack`: Back is PinPad's `onCancel` below, and while the exit
+  // prompt is up it is ExitPrompt's own handler. This listener never sees
+  // either.
   useKeyHandler({});
+
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
+
+  // Back (Escape / Tizen Back) from the keypad. Opening the prompt unmounts
+  // the pad rather than stacking over it, and that is deliberate on three
+  // counts: the pad's overlay sits above ExitPrompt's, the pad's
+  // window-capture listener would otherwise go on swallowing digits and
+  // Backspace behind the dialog, and remounting the pad puts the cursor
+  // back on "1" when the prompt closes.
+  const handleCancel = useCallback(() => setExitPromptOpen(true), []);
+  const closeExitPrompt = useCallback(() => setExitPromptOpen(false), []);
 
   const handleSubmit = useCallback((pin) => {
     // attemptPin, not verifyPin: it owns the wrong-PIN backoff. PinPad
@@ -50,23 +70,16 @@ export default function LockScreen({ onUnlock }) {
 
   return (
     <div className={styles.cover}>
-      <PinPad
-        title="Enter PIN"
-        subtitle="StashZen is locked"
-        onSubmit={handleSubmit}
-        onCancel={noopCancel}
-      />
+      {exitPromptOpen ? (
+        <ExitPrompt onCancel={closeExitPrompt} />
+      ) : (
+        <PinPad
+          title="Enter PIN"
+          subtitle="StashZen is locked"
+          onSubmit={handleSubmit}
+          onCancel={handleCancel}
+        />
+      )}
     </div>
   );
 }
-
-/**
- * Back must never dismiss the lock — deliberately does nothing.
- *
- * Note this is belt-and-braces rather than the only thing holding: AppLock
- * does not render <App /> at all while locked, so App's own Back handler
- * (which opens the exit prompt) is not even registered. But the lock screen
- * is the wrong place for a "cancel" affordance under any circumstance, so
- * the handler is explicit here rather than left to inference.
- */
-function noopCancel() {}

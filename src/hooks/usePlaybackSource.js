@@ -103,7 +103,15 @@ export function usePlaybackSource(video, mediaRef, {
     container: video?.container,
     videoCodec: video?.videoCodec,
     audioCodec: video?.audioCodec,
-  }), [sceneId, directUrl, video?.container, video?.videoCodec, video?.audioCodec]);
+    // Resolution is part of the negative-cache key: a panel can refuse one
+    // resolution of a codec and play another. Queue rows built by hand (the
+    // marker queue) may not carry it, which only makes that key coarser.
+    width: video?.width,
+    height: video?.height,
+  }), [
+    sceneId, directUrl, video?.container, video?.videoCodec, video?.audioCodec,
+    video?.width, video?.height,
+  ]);
 
   const [src, setSrc] = useState(null);
   // Which half of the plan produced `src`. The player uses it to say whether
@@ -224,12 +232,13 @@ export function usePlaybackSource(video, mediaRef, {
         // honestly, and re-sourcing would be a lie about what went wrong.
         const el = mediaRef.current;
         if (el && el.readyState >= 1) return;
-        // A browser direct attempt that never produced metadata is a format
-        // verdict: this file does not start in the browser. Remember it before
-        // the walk moves on, so the next scene of the format does not pay the
-        // watchdog again. (Transcodes and AVPlay attempts are not cached here:
-        // the former is about Stash, and the latter has its own cache.)
-        if (browserDirect) controller.browserRefused(plan.video);
+        // Move on, but do not record a verdict. A source that produced no
+        // metadata in four seconds did not necessarily refuse the format: a
+        // moov-at-the-end MP4, a spinning-up NAS, a busy Stash or a dropped
+        // LAN can all stall a file the browser would play, and a cached
+        // verdict would exile that format for the rest of the session. The
+        // only trustworthy evidence is the element's own error (3/4, in
+        // reportFailure); this timer is a hand-off, not a diagnosis.
         void runFrom(plan);
       }, browserDirect ? BROWSER_DIRECT_STALL_MS : STALL_MS);
       return;
