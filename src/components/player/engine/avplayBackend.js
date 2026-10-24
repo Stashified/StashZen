@@ -719,11 +719,21 @@ export function createAvplayBackend({
 
     desiredMuted = requestedMuted == null ? null : !!requestedMuted;
     captureMuteState();
-    // Apply the sitting's mute now when the rung allows it (tvaudio works
-    // before open). A setVolume rung needs the live session, so it is retried
-    // in onPrepared — and a scene advance recreates the session, which is
-    // exactly when the old code lost the mute.
-    if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
+    // The setVolume rung is session-local: a new native session starts at the
+    // panel's own level, so this backend's remembered mute no longer describes
+    // it. Without the reset a muted scene followed by another looked "already
+    // applied", onPrepared skipped its retry, and the new scene played with
+    // the sound back while the button still said muted. tvaudiocontrol is
+    // panel-wide and survives the new session, so its value stays as it is.
+    if (muteCapability === 'setVolume') muted = initialMuted;
+    // Apply the sitting's mute now only on the rung that is independent of the
+    // native session: tvaudiocontrol mutes the panel, so it works before
+    // `open()`. A setVolume call made before the session exists cannot belong
+    // to the one about to prepare, so that rung is always left to onPrepared.
+    if (muteCapability === 'tvaudio'
+        && desiredMuted != null && desiredMuted !== muted) {
+      applyMuted(desiredMuted);
+    }
     bindLifecycle();
 
     try {

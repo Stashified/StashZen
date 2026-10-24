@@ -227,9 +227,16 @@ function translateCriterion(c, typeName) {
   // silently *widens* the filter; `EXCLUDES ""` matches none, silently emptying
   // it. Neither is what an unset value means to the user, and Stash's UI never
   // intends to save one — an empty box is just echoed back into the saved object.
-  if (!NULLARY_MODIFIERS.has(out.modifier)) {
-    if (out.value === '' || (Array.isArray(out.value) && out.value.length === 0)) return undefined;
-  }
+  //
+  // An empty value is only "nothing" when there are no exclusions either. A
+  // multi-select can legitimately carry `items: []` beside a non-empty
+  // `excluded` list, and that criterion *does* constrain the result — dropping
+  // it because the include side is empty silently showed the rows the user had
+  // excluded.
+  const emptyValue = out.value === ''
+    || (Array.isArray(out.value) && out.value.length === 0);
+  const hasExcludes = Array.isArray(out.excludes) && out.excludes.length > 0;
+  if (!NULLARY_MODIFIERS.has(out.modifier) && emptyValue && !hasExcludes) return undefined;
 
   return out;
 }

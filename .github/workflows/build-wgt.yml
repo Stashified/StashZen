@@ -5,13 +5,35 @@ name: Build Tizen .wgt
 # and additionally attaches the .wgt to a GitHub Release.
 on:
   workflow_dispatch:
+    inputs:
+      # Manual runs only — a tag push has no inputs and is always a release.
+      # `test` deliberately ignores the distributor secrets and signs with
+      # Tizen's bundled TEST distributor, for exercising the pipeline without
+      # certificates. Apps2Samsung installs such a package (verified
+      # 2026-10-24), but such an artifact must never be published.
+      signing:
+        description: 'Distributor certificate to sign with'
+        type: choice
+        options:
+          - real
+          - test
+        default: real
   push:
     tags:
       - 'v*'
 
-# `gh release create` needs to write releases.
+# The build itself only reads. Write access belongs to the release job alone,
+# so a compromised dependency's lifecycle script cannot push with the token
+# that `checkout` leaves in the workspace for the whole build.
 permissions:
-  contents: write
+  contents: read
+
+# One run per ref. A second tag push (or a dispatch racing one) must not
+# interleave two sets of release assets; the newer run wins, the older is not
+# cancelled mid-signing.
+concurrency:
+  group: build-wgt-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   # Name of the Tizen security profile generated at build time. Must match the
@@ -37,6 +59,9 @@ jobs:
   build:
     name: Build and sign
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     # Load-bearing: the signing secrets live in a GitHub *environment*, and a
     # job only sees environment secrets if it names the environment here.
@@ -103,15 +128,91 @@ jobs:
           "$TIZEN_STUDIO/tools/ide/bin/tizen" version
           echo "$TIZEN_STUDIO/tools/ide/bin" >> "$GITHUB_PATH"
 
+      - name: Install dependencies
+        run: npm ci
+
+      # A separate step so a lint failure is its own red X in the run
+      # summary rather than being buried in the build log. This is also
+      # what makes the lint a real gate: a plugin upgrade that starts
+      # flagging something can't reach a release unnoticed.
+      - name: Lint
+        run: npm run lint
+
+      # The offline checks that can run without a browser: filter translation
+      # and the bundle-leak guard's own tests. The headless harness is too
+      # heavy for this job and stays a pre-release, local gate.
+      - name: Test
+        run: npm test
+
+      # Deliberately does NOT receive the signing secrets, and no .env.production
+      # exists in CI (it is gitignored), so nothing about your Stash server can
+      # end up inside the released bundle. See the guard step below.
+      - name: Build web app
+        id: version
+        run: |
+          set -euo pipefail
+
+          # Tag builds take their version from the tag; manual runs use
+          # package.json. Tizen compares widget versions when updating an
+          # installed app, so a release that kept 0.1.0 forever would never
+          # look like a new version to the TV.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # The release job names the artifact after this; a tag build takes
+          # the tag's version and a dispatch takes package.json's, so the
+          # output has to be computed here rather than in the consumer.
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+          # Stamp before the build so vite's __APP_VERSION__ picks it up.
+          sed -i -E "s|(\"version\":[[:space:]]*\")[^\"]*(\")|\1${VERSION}\2|" package.json
+          node -p "require('./package.json').version"
+
+          npm run build
+
+          # Stage the Tizen manifest and icons alongside the built assets.
+          # `config.xml` names `icon-black.png`; the original transparent
+          # `icon.png` is staged too, because reverting the manifest line is
+          # then all it takes to switch back.
+          cp tizen/config.xml dist/
+          cp tizen/icon.png dist/
+          cp tizen/icon-black.png dist/
+          sed -i -E "s|(<widget[^>]*version=\")[^\"]*(\")|\1${VERSION}\2|" dist/config.xml
+
+      # `npm run build` already ran this as its postbuild step. It runs again
+      # here so the credential check has its own named step in the run summary,
+      # and so a future change to the build script cannot quietly drop it.
+      - name: Guard against leaked credentials
+        run: node scripts/check-bundle.mjs
+
+      # The TV floor: JS is checked from source and CSS from the bundle built
+      # above, so this has to run after "Build web app". The target engine and
+      # the reason for it live in scripts/compat-floor.mjs.
+      - name: Compatibility floor (Tizen 6.5)
+        run: npm run check:compat
+
       # Turns the certificate secrets into a profiles.xml. Signing is entirely
       # profile-driven, so this is all that stands between a bare CLI and a
       # signed .wgt — no Certificate Manager / GUI step is needed.
+      #
+      # It runs *last*, after every dependency install, lint, test and build
+      # step. The key material and passwords only need to exist in the window
+      # between here and `tizen package`; after this step the job only packages
+      # and uploads the artifact. Moving it earlier (it used to sit before
+      # `npm ci`) left a readable private key on disk while every dependency
+      # lifecycle script ran.
       - name: Generate signing profile
         env:
           TIZEN_AUTHOR_P12: ${{ secrets.TIZEN_AUTHOR_P12 }}
           TIZEN_AUTHOR_PASSWORD: ${{ secrets.TIZEN_AUTHOR_PASSWORD }}
           TIZEN_DISTRIBUTOR_P12: ${{ secrets.TIZEN_DISTRIBUTOR_P12 }}
           TIZEN_DISTRIBUTOR_PASSWORD: ${{ secrets.TIZEN_DISTRIBUTOR_PASSWORD }}
+          # Empty on a tag push (no inputs) and therefore `real`.
+          SIGNING_MODE: ${{ inputs.signing || 'real' }}
         run: |
           set -euo pipefail
 
@@ -137,18 +238,36 @@ jobs:
           AUTHOR_PASSWORD="$TIZEN_AUTHOR_PASSWORD"
 
           # ── Distributor key ─────────────────────────────────────────────
-          # Required for a real Samsung TV. The bundled fallback below is
+          # Required for the normal install path. The bundled fallback below is
           # Tizen's *test* distributor (its chain roots at "Tizen Test CA"
-          # under O=Tizen Test CA) and a Samsung TV will refuse a package
-          # signed with it. Create a Samsung distributor certificate in Tizen
-          # Studio's Certificate Manager — it is issued against your Samsung
+          # under O=Tizen Test CA), and `tizen install` refuses a package
+          # signed with it. Apps2Samsung installs it (verified 2026-10-24),
+          # so the fallback stays for manual runs — but a release must not
+          # depend on that. Create a Samsung distributor certificate in Tizen
+          # Studio's Certificate Manager: it is issued against your Samsung
           # account and embeds the DUID(s) of the TVs allowed to install.
-          if [ -n "${TIZEN_DISTRIBUTOR_P12:-}" ]; then
+          #
+          # On a tag build the fallback is refused outright: a published
+          # release signed with a test certificate is worse than a red run,
+          # because the release looks like it succeeded and users who install
+          # the normal way get a failure. A manual dispatch keeps the warning
+          # so the build pipeline can still be exercised without the secrets.
+          if [ "$SIGNING_MODE" = "test" ]; then
+            # Deliberate: the environment may well hold a real Samsung
+            # distributor pair, and this mode exists precisely to ignore it.
+            echo "::warning::signing=test — ignoring the distributor secrets and using Tizen's TEST distributor. Apps2Samsung accepts this signature (verified 2026-10-24) but the standard install path does not; the artifact is for experimentation only and must not be published."
+            DIST_KEY="$CERTS/distributor/sdk-public/tizen-distributor-signer.p12"
+            DIST_PASSWORD="tizenpkcs12passfordsigner"
+          elif [ -n "${TIZEN_DISTRIBUTOR_P12:-}" ]; then
             printf '%s' "$TIZEN_DISTRIBUTOR_P12" | base64 -d > "$WORK/distributor.p12"
             DIST_KEY="$WORK/distributor.p12"
             DIST_PASSWORD="$TIZEN_DISTRIBUTOR_PASSWORD"
           else
-            echo "::warning::No distributor secrets set — falling back to Tizen's TEST distributor. The resulting .wgt will NOT install on a Samsung TV."
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "::error::No distributor signing secrets on tag $GITHUB_REF_NAME. The release would carry Tizen's TEST distributor, which the standard install path rejects; refusing to publish it."
+              exit 1
+            fi
+            echo "::warning::No distributor secrets set — falling back to Tizen's TEST distributor. The standard install path rejects a test-signed .wgt; this artifact is for exercising the pipeline, not for distribution."
             DIST_KEY="$CERTS/distributor/sdk-public/tizen-distributor-signer.p12"
             DIST_PASSWORD="tizenpkcs12passfordsigner"
           fi
@@ -192,68 +311,6 @@ jobs:
 
           tizen security-profiles list
 
-      - name: Install dependencies
-        run: npm ci
-
-      # A separate step so a lint failure is its own red X in the run
-      # summary rather than being buried in the build log. This is also
-      # what makes the lint a real gate: a plugin upgrade that starts
-      # flagging something can't reach a release unnoticed.
-      - name: Lint
-        run: npm run lint
-
-      # The offline checks that can run without a browser: filter translation
-      # and the bundle-leak guard's own tests. The headless harness is too
-      # heavy for this job and stays a pre-release, local gate.
-      - name: Test
-        run: npm test
-
-      # Deliberately does NOT receive the signing secrets, and no .env.production
-      # exists in CI (it is gitignored), so nothing about your Stash server can
-      # end up inside the released bundle. See the guard step below.
-      - name: Build web app
-        run: |
-          set -euo pipefail
-
-          # Tag builds take their version from the tag; manual runs use
-          # package.json. Tizen compares widget versions when updating an
-          # installed app, so a release that kept 0.1.0 forever would never
-          # look like a new version to the TV.
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="$(node -p "require('./package.json').version")"
-          fi
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Building version $VERSION"
-
-          # Stamp before the build so vite's __APP_VERSION__ picks it up.
-          sed -i -E "s|(\"version\":[[:space:]]*\")[^\"]*(\")|\1${VERSION}\2|" package.json
-          node -p "require('./package.json').version"
-
-          npm run build
-
-          # Stage the Tizen manifest and icons alongside the built assets.
-          # `config.xml` names `icon-black.png`; the original transparent
-          # `icon.png` is staged too, because reverting the manifest line is
-          # then all it takes to switch back.
-          cp tizen/config.xml dist/
-          cp tizen/icon.png dist/
-          cp tizen/icon-black.png dist/
-          sed -i -E "s|(<widget[^>]*version=\")[^\"]*(\")|\1${VERSION}\2|" dist/config.xml
-
-      # `npm run build` already ran this as its postbuild step. It runs again
-      # here so the credential check has its own named step in the run summary,
-      # and so a future change to the build script cannot quietly drop it.
-      - name: Guard against leaked credentials
-        run: node scripts/check-bundle.mjs
-
-      # The TV floor: JS is checked from source and CSS from the bundle built
-      # above, so this has to run after "Build web app". The target engine and
-      # the reason for it live in scripts/compat-floor.mjs.
-      - name: Compatibility floor (Tizen 6.5)
-        run: npm run check:compat
-
       - name: Package and sign .wgt
         run: |
           set -euo pipefail
@@ -283,13 +340,44 @@ jobs:
           path: ${{ env.WGT }}
           if-no-files-found: error
 
+  # Publishing is a separate job only so that write access can be scoped to
+  # it: the build job runs `npm ci` and every dependency lifecycle script, and
+  # a workflow-level `contents: write` would leave the repository token able
+  # to push during all of that. Here the only thing that runs is `gh`.
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      # Pinned by SHA like every other action here. This is the download half
+      # of the v4 artifact API; upload-artifact above is v4.6.2.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: StashZen-${{ needs.build.outputs.version }}-wgt
+
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # There is no checkout in this job, so `gh` has no git remote to
+          # infer the repository from. Name it explicitly.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
+
+          # The artifact carries exactly one file at the workspace root. Find
+          # it rather than reconstructing the name, so a change to the naming
+          # scheme in the build job cannot silently make the release empty.
+          WGT="$(find . -maxdepth 1 -name '*.wgt' | head -1)"
+          if [ -z "$WGT" ]; then
+            echo "::error::download-artifact restored no .wgt — refusing to publish an empty release."
+            exit 1
+          fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — replacing the asset."

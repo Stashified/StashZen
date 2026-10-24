@@ -72,6 +72,16 @@ export function createProgressReporter({
     }).then((res) => {
       saveInFlight = false;
 
+      // The completion prune names the scene the snapshot describes, so it
+      // must not wait for that scene to still be the one on screen: a queue
+      // advance or a player close happens before this write lands, and under
+      // the old placement the shelf kept a card whose resume point had just
+      // been cleared. Neither does it need the component: the App that owns
+      // the shelf is still mounted after the player closes (or the tab
+      // remounted), and the set is idempotent. Only a *landed* save proves
+      // Stash took the position, so the success check stays.
+      if (res.ok && snapshot.completed) onCompleted?.(snapshot.id);
+
       if (mounted) {
         if (res.ok) {
           syncError = null;
@@ -86,10 +96,6 @@ export function createProgressReporter({
             // was captured is still owed and, under the old zeroing, was
             // discarded on every save that landed while playback continued.
             played = Math.max(0, played - snapshot.played);
-            // Only after the server took it: the shelf prune is a local
-            // claim, and pruning a card whose resume point Stash still holds
-            // would hide the scene until the tab remounts.
-            if (snapshot.completed) onCompleted?.(snapshot.id);
           }
         } else {
           // Deliberately not clearing played: the watch time stays owed, and

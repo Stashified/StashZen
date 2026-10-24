@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import { saveFilter } from '../utils/filterService.js';
+import { focusFirstControl } from '../utils/focus.js';
 import { WORKING_FILTER_ID } from './tabConfig.js';
 
 export function useFilterBuilder({
@@ -27,7 +28,11 @@ export function useFilterBuilder({
 
   const closeBuilder = () => {
     setBuilderOpen(false);
-    mainFocus.restore();
+    // The Build control is remembered when the builder opens. The fallback
+    // covers the case where it has gone (the tab's controls changed while the
+    // builder was up): without it the cursor stays on <body> and horizontal
+    // navigation has no zone to move from.
+    mainFocus.restore({ fallback: focusFirstControl });
   };
 
   const applyWorkingFilter = (objectFilter) => {

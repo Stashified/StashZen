@@ -89,6 +89,11 @@ check('plain multi drops depth (MultiCriterionInput has no such field)',
 check('excluded entries become excludes and are unwrapped',
   t({ tags: { modifier: 'EXCLUDES', value: { items: [{ id: '1' }], excluded: [{ id: '2' }] } } }),
   { tags: { value: ['1'], excludes: ['2'], modifier: 'EXCLUDES' } });
+check('keeps an exclusion-only multi (empty items, non-empty excluded)',
+  t({ tags: { modifier: 'EXCLUDES', value: { items: [], excluded: [{ id: '2' }] } } }),
+  { tags: { value: [], excludes: ['2'], modifier: 'EXCLUDES' } });
+check('still drops a multi with neither items nor exclusions',
+  t({ tags: { modifier: 'INCLUDES', value: { items: [], excluded: [] } } }), {});
 
 console.log('\n── special-value criteria');
 check('phash_distance hoists distance',

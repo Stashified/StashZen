@@ -173,7 +173,13 @@ export default function MarkerModal({
 
   const submit = useCallback(async () => {
     if (savingRef.current) return;
-    const tag = options.find(t => t.id === tagId);
+    // The two rows are built from different sources: `options` is the usage
+    // head (60 tags), while the recent row comes from the markers themselves.
+    // A tag used for a marker but outside that head is selectable on the
+    // recent row and nowhere else, so looking it up in `options` alone made
+    // the form reject its own selection with "Pick a tag first".
+    const tag = options.find(t => t.id === tagId)
+      || recentTags.find(t => t.id === tagId);
     if (!tag) {
       setError('Pick a tag first');
       return;
@@ -196,7 +202,7 @@ export default function MarkerModal({
       setError(e?.message ? `Could not save: ${e.message}` : 'Could not save the marker');
       setSaving(false);
     }
-  }, [sceneId, seconds, tagId, options, title.inputRef, onClose, onCreated]);
+  }, [sceneId, seconds, tagId, options, recentTags, title.inputRef, onClose, onCreated]);
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Add marker">

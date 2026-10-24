@@ -24,6 +24,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { withApiKey } from '../utils/stashUrl.js';
+import { fetchWithTimeout, DEFAULT_TIMEOUT_MS } from '../utils/stashClient.js';
 
 function parseTimestamp(ts) {
   // 00:00:00.000 or 00:00.000
@@ -133,13 +134,14 @@ export function useSpriteVtt(vttUrl) {
     let cancelled = false;
     // The cleanup below can run while the request is still open (channel
     // surfing unmounts the player); aborting frees it instead of letting a
-    // body nobody wants finish arriving.
+    // body nobody wants finish arriving. The timeout is the same one every
+    // other request uses: a stalled media URL used to leave the skim bar
+    // waiting forever.
     const controller = new AbortController();
-    fetch(vttUrl, { signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error(`VTT HTTP ${res.status}`);
-        return res.text();
-      })
+    fetchWithTimeout(vttUrl, { signal: controller.signal }, DEFAULT_TIMEOUT_MS, res => {
+      if (!res.ok) throw new Error(`VTT HTTP ${res.status}`);
+      return res.text();
+    })
       .then(text => {
         if (cancelled) return;
         const cues = parseVtt(text, vttUrl);

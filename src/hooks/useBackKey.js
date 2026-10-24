@@ -41,6 +41,11 @@ export function useBackKey(onBack, {
       if (!isBack(e)) return;
       if (preventDefault) e.preventDefault();
       if (stopPropagation) e.stopPropagation();
+      // A held Back repeats, and each repeat reaches whichever layer is on
+      // top by then — so one press could close the layer that owned it and
+      // every layer behind it. The first keydown is the press; the rest are
+      // the same press. The event is still swallowed above.
+      if (e.repeat) return;
       handlerRef.current?.(e);
     };
     window.addEventListener('keydown', onKey, capture);

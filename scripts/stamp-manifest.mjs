@@ -48,12 +48,17 @@ try {
 // Anchored to the `<widget` element's own attribute: a bare /version="[^"]*"/
 // would match `<tizen:application ... version="4.0"` first if the attributes
 // were ever reordered, and would silently stamp the *required Tizen version*.
-const stamped = xml.replace(/(<widget[^>]*\sversion=")[^"]*(")/, `$1${version}$2`);
+const VERSION_ATTR = /(<widget[^>]*\sversion=")[^"]*(")/;
 
-if (stamped === xml && !xml.includes(`<widget`) ) {
-  console.error(`stamp-manifest: ${target} has no <widget> element — nothing to stamp.`);
+// Tested before replacing: "the file did not change" is also what a successful
+// stamp onto an already-correct manifest looks like, so the old guard could
+// not tell a no-op from a manifest this regex never matched.
+if (!VERSION_ATTR.test(xml)) {
+  console.error(`stamp-manifest: ${target} has no <widget … version="…"> attribute — nothing to stamp.`);
   process.exit(1);
 }
+
+const stamped = xml.replace(VERSION_ATTR, `$1${version}$2`);
 
 writeFileSync(path, stamped);
 console.log(`   ${target} stamped ${version}`);

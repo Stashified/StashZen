@@ -30,10 +30,13 @@ import { TIZEN_BACK, isTextInput, focusScopeOf } from '../../utils/input.js';
  * the check.
  *
  * The `open` snapshot goes through a ref rather than the dependency list, so
- * the listener is registered once per `onClose`. A ref written in an effect,
- * not during render: a render-phase ref write is not safe under a discarded
- * or replayed render, and there is nothing to gain — the value is only ever
- * read from a key event, which is always after commit.
+ * the listener is registered once — and so does `onClose`, for the same
+ * ordering reason: the caller recreates it on every render, and re-registering
+ * would move this listener behind the pickers' and break the guard. A ref
+ * written in an effect, not during render: a render-phase ref write is not
+ * safe under a discarded or replayed render, and there is nothing to gain —
+ * the values are only ever read from a key event, which is always after
+ * commit.
  *
  * Returns the ref for the builder's own dialog element. The guard uses it to
  * tell "focus is in this builder" from "focus is in something layered over
@@ -51,6 +54,9 @@ export function useBuilderBack({ open, onClose }) {
 
   const rootRef = useRef(null);
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
     const handler = (e) => {
       if (overlayOpenRef.current) return;   // a nested layer owns Back right now
@@ -58,14 +64,17 @@ export function useBuilderBack({ open, onClose }) {
       if (scope && scope !== rootRef.current) return;
       if (e.key === 'Escape' || e.keyCode === TIZEN_BACK
         || (e.key === 'Backspace' && !isTextInput(document.activeElement))) {
+        // A held Back is one press; repeats must not close what a nested
+        // layer opened after the first one (see useBackKey).
+        if (e.repeat) return;
         e.preventDefault();
         e.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, []);
 
   return rootRef;
 }

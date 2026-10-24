@@ -486,6 +486,16 @@ function rig(opts = {}, backendOpts = {}) {
   check('a mute requested before prepare is applied once prepared',
     eq(volumes, [0]) && backend.muted === true,
     `volumes=[${volumes.join(',')}] muted=${backend.muted}`);
+
+  // A queue advance opens a new native session, which starts at the panel's
+  // own level. The backend's remembered `muted` described the old session;
+  // keeping it made the onPrepared retry look already applied, so the new
+  // scene played with sound while the button still said muted.
+  backend.open('http://x/2.mp4', { muted: true });
+  await sleep(40);
+  check('a mute survives into the next native session',
+    eq(volumes, [0, 0]) && backend.muted === true,
+    `volumes=[${volumes.join(',')}] muted=${backend.muted}`);
   backend.close();
 }
 

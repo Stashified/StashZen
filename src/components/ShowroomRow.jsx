@@ -77,9 +77,21 @@ export default function ShowroomRow({
   // app's established "this listing has nowhere to extend into" marker (see
   // `single()` in App.jsx) — a long-press "play all" from a shelf queues the
   // five scenes the user can actually see.
+  //
+  // `focusPrefix` is what a queue opened from this shelf uses to name the card
+  // Back should return to. The shelf cards register under
+  // `showroom-<shelf>-video-<id>`, not the Scenes listing's `video-<id>`, so
+  // the default would send the player's restore looking for a card that does
+  // not exist and leave it polling until the deadline. See usePlayback.
   const list = useMemo(
-    () => ({ items, total: items.length, page: 1, fetchPage: null }),
-    [items],
+    () => ({
+      items,
+      total: items.length,
+      page: 1,
+      fetchPage: null,
+      focusPrefix: row.focusIdPrefix,
+    }),
+    [items, row.focusIdPrefix],
   );
 
   // A row with nothing in it is not a shelf. It is also not an error state:

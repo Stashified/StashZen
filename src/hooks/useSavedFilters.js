@@ -22,7 +22,16 @@ export function useSavedFilters(mode, source = '', revision = 0) {
   const lastScopeRef = useRef(null);
 
   useEffect(() => {
-    if (!mode) { setFilters([]); lastScopeRef.current = null; return; }
+    if (!mode) {
+      // Clear the in-flight state too: the previous effect's cleanup has
+      // already cancelled its promise, so nothing would ever lower this flag.
+      // Its only consumer ignores it today; the next one would not.
+      setFilters([]);
+      setLoading(false);
+      setError(null);
+      lastScopeRef.current = null;
+      return;
+    }
 
     let cancelled = false;
     setLoading(true);

@@ -76,6 +76,13 @@ export function routePlayerKey(
   const isBack = key === 'Escape' || key === 'Backspace' || code === TIZEN_BACK;
   const isMedia = key === ' ' || code === 32 || code === 415 || code === 19 || code === 10252;
 
+  // A held Back is one press. Its repeats would otherwise walk the two-stop
+  // ladder and close the player from the same hold (hide the controls, then
+  // close), and would keep unwinding after the player is gone. Swallowed
+  // explicitly so the repeat cannot reach the app's Back handler behind it.
+  // Arrows and media keys are deliberately repeatable.
+  if (isBack && event.repeat) return { action: 'none', prevent: true, stop: true };
+
   if (railHoldsFocus) {
     // Instant transport, in every state. The media keys are the remote's own
     // play/pause button and there is no reason to make them raise a rail

@@ -95,12 +95,33 @@ if (result.error) {
   console.error(`Could not run doiuse: ${result.error.message}`);
   process.exit(1);
 }
+// doiuse exits 0 even when it reports features (the findings are the report),
+// so a non-zero status means the tool itself did not finish.
+if (result.status !== 0) {
+  console.error(`doiuse exited with status ${result.status}; the CSS scan did not complete.`);
+  if (result.stdout) console.error(result.stdout);
+  if (result.stderr) console.error(result.stderr);
+  process.exit(1);
+}
 
-// Point the report back at dist/assets, and drop the tokenizer note that
-// predates the blanking and is not a finding.
-let output = `${result.stdout || ''}${result.stderr || ''}`
+const lines = `${result.stdout || ''}${result.stderr || ''}`
   .split('\n')
-  .filter(line => line.trim() && !line.startsWith('[css-tokenize]'));
+  .filter(line => line.trim());
+
+// A tokenizer note means doiuse stopped parsing part of the bundle, so every
+// rule after it went unscanned. This used to be filtered out as noise, which
+// turned a partial scan into a green check — the same false assurance the
+// @font-face blanking above exists to remove. Blanking leaves no such note on
+// a healthy bundle, so its presence is always a failure.
+const tokenizerNotes = lines.filter(line => line.startsWith('[css-tokenize]'));
+if (tokenizerNotes.length) {
+  for (const line of tokenizerNotes) console.error(line);
+  console.error('CSS: doiuse could not tokenize the built stylesheet; the scan is incomplete.');
+  process.exit(1);
+}
+
+// Point the report back at dist/assets.
+let output = lines;
 for (const file of scanned) {
   output = output.map(line => line.split(file.copy).join(path.relative(root, file.source)));
 }

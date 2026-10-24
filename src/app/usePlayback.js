@@ -14,7 +14,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
-import { focusByIdWhenReady } from '../utils/focus.js';
+import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
 
 /** Which entity sections have a long-press menu, and what to call it. */
 const ENTITY_MENU_KIND = { images: 'image', galleries: 'gallery' };
@@ -140,21 +140,22 @@ export function usePlayback({
   // a listing, so the card to return to is the one for the scene on screen
   // when Back was pressed — the user's last position, not the one the session
   // started from. The session says which listing it walks: a scene queue
-  // restores the `video-<id>` card, and a marker queue (which plays scenes,
-  // one per marker row) restores the marker card that row came from. A
-  // single-scene Play sets neither — its card never changed — and keeps the
+  // restores that listing's scene card, and a marker queue (which plays
+  // scenes, one per marker row) restores the marker card that row came from.
+  // A single-scene Play sets neither — its card never changed — and keeps the
   // element restore.
-  const focusFirstControl = () => {
-    const first = document.querySelector('[role="main"] [tabindex="0"]:not([disabled])');
-    if (first) first.focus();
-  };
-
+  //
+  // The card's id prefix comes from the listing, because not every scene card
+  // is named `video-<id>`: Home's shelves register under
+  // `showroom-<shelf>-video-<id>`. Assuming the grid's prefix there made the
+  // restore poll for a card that could never appear. See ShowroomRow's `list`.
   const handlePlayerClose = () => {
     const session = playSession;
     const last = lastItemRef.current;
     setPlaySession(null);
+    const videoPrefix = session?.focusPrefix || 'video';
     const focusId = session?.restoreBy === 'video' && last?.id != null
-      ? `video-${last.id}`
+      ? `${videoPrefix}-${last.id}`
       : session?.restoreBy === 'marker' && last?.markerId != null
         ? `marker-${last.markerId}`
         : null;

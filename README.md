@@ -213,8 +213,9 @@ message on the screen helps.
   therefore appears in Stash's and any reverse proxy's access logs, and over plain HTTP it is
   readable on the network. Beyond a trusted LAN, put Stash behind HTTPS: the URL still carries the
   key, but the connection does not expose it in transit.
-- **Release packages carry no credentials.** CI sets no `VITE_*` variables and refuses to package a
-  bundle containing a key, so a fresh install starts on the Setup screen. A locally built package
+- **Release packages carry no credentials.** CI sets no `VITE_*` variables, and the credential
+  guard fails the build when a JWT-shaped key is found in the bundle, so a fresh install starts on
+  the Setup screen. A locally built package
   can contain your key; see [Building your own package](#building-your-own-package).
 
 ---
@@ -223,7 +224,8 @@ message on the screen helps.
 
 ### Run it locally
 
-Requires Node.js 20+ (CI uses 22).
+Requires Node.js 20.19+ or 22.12+ (CI uses 22). Those are Vite 8's declared floors; an older Node
+fails inside Vite rather than with a message that names the version problem.
 
 ```bash
 git clone https://github.com/Stashified/StashZen
@@ -300,6 +302,10 @@ A `.wgt` is a signed zip of `dist/` plus `tizen/config.xml`.
    tizen package -t wgt -s <profile-name> -- ./dist
    ```
 
+   If you have a `.env.production` with your Stash address and API key, `npm run build` stops at
+   the credential guard (see **Credential guard** below). That is deliberate: a local package only
+   for your own TV is the one case where `ALLOW_BAKED_KEY=1 npm run build` is the right call.
+
    The stamp step writes `package.json`'s version into the staged manifest, so a local package
    claims the version it actually is. To install over sdb as well:
 
@@ -313,13 +319,20 @@ distributor certificate. Tizen's own installer expects the target TV's device ID
 that certificate.
 
 **Apps2Samsung is not limited by that.** A release signed with a certificate whose device ID belongs
-to no real TV installed and ran on a TV the certificate does not name (verified 2026-10-18).
-Apps2Samsung also manages certificates per TV and may add the target TV itself. So a shared build
-works there too; for wider sharing, TizenBrew or the Samsung Seller Office are the routes to use.
+to no real TV installed and ran on a TV the certificate does not name (verified 2026-10-18). A
+package carrying no Samsung distributor certificate at all — signed with Tizen's bundled *test*
+distributor — installed the same way (verified 2026-10-24, using a separate ten-character package
+id so it could sit alongside the real app). Apps2Samsung also manages certificates per TV and may
+add the target TV itself. So a shared build works there too; for wider sharing, TizenBrew or the
+Samsung Seller Office are the routes to use.
 
-**Credential guard.** `npm run build` ends with `scripts/check-bundle.mjs`. If `.env.production`
-supplied an API key, the build **fails** rather than producing a package that contains it. To bake
-the key in deliberately for your own TV:
+**Credential guard.** `npm run build` ends with `scripts/check-bundle.mjs`. It text-searches the
+built bundle for a JWT-shaped key (Stash keys always start with `eyJhbGciOi`) and for the exact
+`VITE_STASH_API_KEY` from `.env.production`, and **fails the build** when either is found. A
+private-network address is only a warning, because the documented example address is in every
+bundle. This is a guard against the mistake that actually happens — inlining `.env.production` —
+not a proof: a key that was encoded or compressed into the bundle would pass it. To bake the key
+in deliberately for your own TV:
 
 ```bash
 ALLOW_BAKED_KEY=1 npm run build
@@ -346,12 +359,23 @@ in its `environment:` line (a job only sees environment secrets when it names on
 | `TIZEN_AUTHOR_P12` / `TIZEN_AUTHOR_PASSWORD` | base64 of your author `.p12`, and its password |
 | `TIZEN_DISTRIBUTOR_P12` / `TIZEN_DISTRIBUTOR_PASSWORD` | base64 of your Samsung distributor `.p12`, and its password |
 
+On a **tag** build all four are required. With no distributor pair the workflow stops instead of
+falling back to Tizen's test distributor: `tizen install` refuses a test-signed package, so a
+release that carried one would be installable only through tools that accept it.
+
+A **manual run** can choose `signing: test`, which ignores the distributor secrets and signs with
+Tizen's bundled test distributor. That exercises the pipeline without certificates; it also showed
+Apps2Samsung installs such a package (2026-10-24). Treat the result as an experiment, never as
+something to publish. The author pair is still required either way — Tizen will not package without
+an author certificate.
+
 ```bash
 openssl base64 -in author.p12 | tr -d '\n'
 ```
 
-Release packages carry **no credentials**: the workflow sets no `VITE_*` variables and aborts if one
-was inlined, so a fresh install always starts on the Setup screen.
+Release packages carry **no credentials**: the workflow sets no `VITE_*` variables and its
+credential guard aborts the build if a JWT-shaped key appears in the bundle, so a fresh install
+always starts on the Setup screen.
 
 ## License & credits
 
