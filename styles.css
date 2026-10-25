@@ -175,7 +175,9 @@ h3 {
 }
 
 .hero h1 {
-  font-size: clamp(3.2rem, 8vw, 6.2rem);
+  /* Four short lines instead of two long ones: the tagline is complete, so
+     the size drops to keep every line inside the 880px measure. */
+  font-size: clamp(2.6rem, 6vw, 4.8rem);
   letter-spacing: -0.02em;
 }
 .hero h1 span {
