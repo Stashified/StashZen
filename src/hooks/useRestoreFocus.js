@@ -4,17 +4,12 @@ import { useCallback, useRef } from 'react';
  * Remember an element and put focus back on it after the thing that took
  * focus away has unmounted.
  *
- * The delay is not stylistic. An overlay close unmounts its DOM and then the
- * browser settles focus around that removal; focusing an element in the same
- * tick drops the cursor to <body>, where no D-pad press can move it. The app
- * has used 50 ms at every overlay close; callers that remove the competing
- * element synchronously can pass a shorter delay.
- *
- * The remembered element is checked against the document when the timer
- * fires, not when it is remembered, because the card can be pruned while the
- * overlay it opened is still up (Continue Watching drops a scene whose
- * progress was cleared). `fallback` is the caller's answer to that — focus
- * something else rather than strand the cursor.
+ * The delay is load-bearing: an overlay close unmounts its DOM and the browser
+ * then settles focus, so focusing in the same tick drops the cursor to <body>,
+ * where no D-pad press can move it. The element is checked with
+ * `document.contains` when the timer fires because the card can be pruned
+ * while its overlay is still open; `fallback` focuses something else rather
+ * than stranding the cursor.
  */
 export function useRestoreFocus() {
   const targetRef = useRef(null);

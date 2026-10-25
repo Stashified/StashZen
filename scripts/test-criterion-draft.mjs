@@ -4,13 +4,12 @@
  *
  *   node scripts/test-criterion-draft.mjs
  *
- * Three functions decide what a built filter actually contains:
- * `blankCriterion` seeds a row, `seedCriterion` converts a GraphQL-shaped
- * working filter into the stored envelope, and `effectiveCriteria` decides
- * which rows are real enough to send. Each branch here is one the harness
- * cannot reach directly (it builds filters through the DOM), and the
- * boolean/list-valued-enum branches are the ones that have shipped broken
- * before. No framework, same as test-translate.mjs.
+ * Three functions decide what a built filter contains: `blankCriterion` seeds
+ * a row, `seedCriterion` converts a GraphQL-shaped working filter into the
+ * stored envelope, and `effectiveCriteria` decides which rows are real enough
+ * to send. Each branch is unreachable from the harness (which builds filters
+ * through the DOM); the boolean and list-valued-enum branches have shipped
+ * broken before.
  */
 
 import {

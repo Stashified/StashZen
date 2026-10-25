@@ -1,37 +1,25 @@
 /**
  * usePagedList re-entrancy probe.
  *
- * The defect this pins was reported from the TV (2026-10-20): back out of a
- * performer page after scrolling deep into the listing and the grid says
- * "40 performers" instead of "40 of 1,892 performers", and nothing loads past
- * page 1.
+ * Two triggers can ask for the next page in one tick: the sentinel observer
+ * (already inside its 400px rootMargin on a page-1 render) racing a focus
+ * restore (utils/focus.js). The old guard was `loadingMore` React state, so
+ * the second call saw the old value and fetched the same page too. Both got
+ * the same rows (the list cache shares the in-flight request); the first
+ * appended them, the second found no new ids and hit the "no progress" stop,
+ * rewriting the total and marking the list exhausted — "40 performers",
+ * unable to page again.
  *
- * Two triggers can ask for the next page in the same tick. On every grid that
- * is the sentinel observer (a page-1 render whose sentinel is already inside
- * the 400px rootMargin) racing a focus restore, which pages the listing
- * forward to the card Back should land on (utils/focus.js). The guard used to
- * be `loadingMore`, which is React state: the second call in the same tick
- * sees the old value and fetches the same page too. Both callers receive the
- * same rows (the list cache shares the in-flight request), the first appends
- * them, and the second finds no new ids — which is the hook's "no progress"
- * stop. It then rewrites the total to the rows held at that moment and marks
- * the list exhausted, so the count line collapses to "40 performers" and the
- * listing can never page again.
+ * The driver calls `loadMore()` twice from one effect rather than relying on
+ * Firefox timing. Red control: without the ref guard it reports three
+ * failures.
  *
- * The driver reproduces the two-trigger tick directly rather than hoping the
- * TV's timing shows up in Firefox: it calls `loadMore()` twice from one
- * effect, which is exactly what the observer plus the restore do to this
- * hook. Red control: without the ref guard this reports three failures.
- *
- * The second probe covers the guard's *ownership* (the review's R1): page 2 of
- * one listing is held in flight while the request identity changes (a sort or
- * filter change), then the new listing asks for its page 2. A boolean guard —
- * the first version — refuses, and the new list never pages again until the
- * user scrolls the sentinel out and back. Red control: restore the boolean
- * (`inFlightRef.current === true`) and L7 fails with B stuck at 40 rows.
- *
- * Not covered here: which trigger wins in the real app. That is timing, and
- * the guard makes the answer not matter.
+ * The second probe covers the guard's ownership: page 2 of one listing is
+ * held in flight while the request identity changes, then the new listing asks
+ * for its page 2. A boolean guard refuses and the new list never pages again.
+ * Red control: `inFlightRef.current === true` makes L7 fail with B stuck at 40
+ * rows. Which trigger wins in the real app is timing, and the guard makes it
+ * moot.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -58,8 +46,8 @@ async function waitFor(fn, ms = 6000) {
   return false;
 }
 
-// The probe's live listing, refreshed on every render. The driver reads it
-// from outside React, so it can call `loadMore` the way the sentinel does.
+// The live listing, refreshed each render; the driver reads it outside React
+// to call `loadMore` the way the sentinel does.
 let latest = null;
 
 function Probe() {
@@ -85,8 +73,8 @@ function Probe() {
 }
 
 // ── Probe 2: identity change with a page in flight (R1) ────
-// A controlled `fetchPage`, not the fake server: the case needs one request
-// held open across the identity change, and a timeout delay would be a race.
+// A controlled `fetchPage`, not the fake server: it needs one request held
+// open across the identity change; a timeout would be a race.
 const keyProbe = { setKey: null, list: null };
 const keyRequests = [];
 const heldResolvers = new Map();
@@ -139,8 +127,8 @@ async function run() {
     latest?.exhausted === false,
     `exhausted ${latest?.exhausted}`);
 
-  // The other half of the TV report: once stopped, nothing could page it
-  // again. After the guard, the same trigger still reaches page 3.
+  // The other half of the report: once stopped nothing could page again. With
+  // the guard, the same trigger still reaches page 3.
   latest?.loadMore();
   const third = await waitFor(() => latest && latest.items.length === 100, 8000);
   check('L5 a later trigger still pages forward', third,
@@ -156,8 +144,8 @@ async function run() {
   check('L6 page 1 of listing A settles', aReady,
     keyProbe.list ? `${keyProbe.list.items.length} rows` : 'no listing');
 
-  // A:2 is held open by the controlled fetch. Do not await this: the promise
-  // is the *response*, and it is deliberately still in flight below.
+  // A:2 is held open; do not await — the promise is the response and stays in
+  // flight below.
   const aPending = keyProbe.list.loadMore();
   check('L7 A asks for its second page', keyRequests.includes('A:2'), keyRequests.join(' '));
 
@@ -168,15 +156,14 @@ async function run() {
   check('L8 the new identity fetches its own page 1', bReady,
     keyProbe.list ? `${keyProbe.list.items.length} rows` : 'no listing');
 
-  // The heart of R1: A still holds an in-flight request, but it belongs to a
-  // listing that no longer exists. B must be able to page.
+  // The heart of R1: A's in-flight request belongs to a listing that no
+  // longer exists; B must still be able to page.
   const bStarted = keyProbe.list.loadMore();
   check('L9 B starts its own second page while A is still in flight',
     keyRequests.filter(r => r === 'B:2').length === 1, keyRequests.join(' '));
 
-  // Settle A *while B's page is in flight*. A's `finally` must clear only its
-  // own slot — an unconditional clear would free B's, letting a second
-  // trigger fetch B:2 again.
+  // Settle A while B's page is in flight: A's `finally` must clear only its
+  // own slot, or B's is freed and a second trigger refetches B:2.
   heldResolvers.get('A:2')?.({ items: rowsFor('A', 2), total: KEY_TOTAL });
   await aPending;
   const secondTrigger = keyProbe.list.loadMore();

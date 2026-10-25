@@ -32,7 +32,6 @@
   margin: 0 8px;
 }
 
-/* ── Select ─────────────────────────────────────────────── */
 .selectWrapper {
   position: relative;
 }
@@ -81,7 +80,6 @@
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 
-/* When the dropdown has many grouped items, make it scrollable */
 .dropdownScrollable {
   max-height: 480px;
   overflow-y: auto;
@@ -98,7 +96,6 @@
   border-radius: 3px;
 }
 
-/* ── Dropdown groups ───────────────────────────────────── */
 .dropdownGroup {
   display: flex;
   flex-direction: column;
@@ -112,11 +109,9 @@
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 10px 16px 6px;
-  /* Opaque, not a tint: the header is sticky, so rows scroll underneath it.
-     At rgba(0,0,0,0.15) both layers stayed readable at once and the section
-     name sat visibly on top of an option's text — reported from the TV. The
-     hairline is drawn with a shadow rather than a border so it does not
-     change the header's height as it sticks. */
+  /* Opaque, not a tint: rows scroll under this sticky header, and at
+     rgba(0,0,0,0.15) the section name sat on top of an option's text on the
+     TV. The hairline is a shadow so sticking does not change the height. */
   background: var(--bg-elevated);
   box-shadow: 0 1px 0 var(--border);
   position: sticky;
@@ -143,8 +138,8 @@
   border: none;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
-  /* The sticky group header sits over the top row; without this a focused
-     row scrolled into view by the D-pad could come to rest underneath it. */
+  /* The sticky header sits over the top row, so a row the D-pad scrolls into
+     view must not come to rest underneath it. */
   scroll-margin-top: 30px;
 }
 
@@ -167,7 +162,6 @@
   font-size: 14px;
 }
 
-/* ── Toggle Buttons ─────────────────────────────────────── */
 .orderGroup {
   display: flex;
   gap: 4px;
@@ -203,7 +197,6 @@
   box-shadow: var(--focus-ring);
 }
 
-/* ── Stepper ────────────────────────────────────────────── */
 .gridSizer {
   display: flex;
   align-items: center;

@@ -1,35 +1,14 @@
 /**
- * Headless driver for the filter builder (0.9.0 / P2).
+ * Headless driver for the filter builder.
  *
- * Mounts the whole `App`, like rail-entry, because the builder is not a
- * component you can hand props to and learn anything from. Its claims are
- * about a *path*: a control in the bar opens it, a criterion is composed in
- * Stash's stored envelope, that envelope becomes the listing's filter, and the
- * server that receives it sees the thing the user asked for. Every step of
- * that is in a different file, and the only place all of them are assembled is
- * the real App talking to a real (fake) endpoint.
- *
- * WHAT F1–F3 AND F7 ACTUALLY PROVE. `scene_filter` in `/requests` is the
- * server's own record of the GraphQL variables it was sent. Asserting on it is
- * therefore an end-to-end claim — builder → stored envelope → `workingFilter`
- * → `translateFilter` → wire — and not a claim about any one of those. A
- * driver that stopped at "the row appeared in the DOM" would pass on a builder
- * that composed a filter Stash rejects.
- *
- * F5 is the one check that exists because of a bug found while writing this
- * file, and it is worth knowing that is why. The builder registers its Back
- * handler on `window` in the capture phase; so does every overlay it opens;
- * capture listeners on one target run in *registration* order, so the
- * builder's — registered at mount, before any picker existed — ran first, and
- * one Back closed the picker and the builder together. `stopPropagation` does
- * not help against a sibling listener on the same target. The control
- * experiment for F5 is to delete `overlayOpenRef` from FilterBuilder and watch
- * it go red; without that, the check is a check on nothing.
- *
- * What this cannot tell you: that any of it looks good, and anything at all
- * about the TV's IME. The search box inside the entity picker is driven here
- * by setting the input's value directly, which is precisely the layer the real
- * remote would have to go through and the harness cannot.
+ * Mounts the whole App, because the builder's claims are about a path: a
+ * control opens it, a criterion is composed in Stash's stored envelope, that
+ * becomes the listing's filter, and the server sees what was asked for. F1–F3/F7
+ * assert on `scene_filter` in `/requests` — the server's own record — so they
+ * are end-to-end, not a claim about one file. F5 guards capture-phase Back:
+ * the builder registers before its picker, so one Back closed both; the control
+ * is deleting `overlayOpenRef`. What this cannot tell: whether it looks good,
+ * or anything about the TV's IME (the search box is driven by setting value).
  */
 
 import '../../src/index.css';
@@ -107,11 +86,8 @@ async function clearLog() {
 }
 
 // ── The run ─────────────────────────────────────────────────
-// A probe for `useSavedFilters` itself. The hook is used only by App, and App
-// has no saved filter on the Performers tab, so a mode switch that keeps the
-// previous mode's rows is invisible unless the read for the new mode fails.
-// This mounts the real hook in a second root and switches its mode under a
-// failing read — the exact situation the clear-on-mode-change exists for.
+// A probe for `useSavedFilters`. App never switches to a mode whose read fails
+// with a saved filter showing, so drive the hook directly: clear-on-mode-change.
 let probeState = { mode: null, names: [], error: null };
 
 function SavedFilterProbe({ initialMode, source }) {
@@ -132,16 +108,9 @@ function SavedFilterProbe({ initialMode, source }) {
 }
 
 async function run() {
-  // Home is the showroom as of 0.15.0 and carries no controls bar at all, so
-  // the filter builder this driver is about now lives on the Scenes tab.
-  // Switch there the way a remote does before waiting on the listing.
-  //
-  // The settle first is load-bearing, not politeness. `nav-home` autoFocuses
-  // on a 50 ms timer of its own; this driver used to focus `nav-scenes` the
-  // moment the rail existed, then lose the race — the timer pulled focus back
-  // to Home before the Enter landed, so Enter re-entered Home and every check
-  // below ran against a screen with no controls bar. Waiting past the timer
-  // is what makes the next press go where it says it goes.
+  // Home is the showroom since 0.15.0 and has no controls bar, so the builder
+  // lives on the Scenes tab. The settle is load-bearing: `nav-home` autoFocuses
+  // on a 50 ms timer and would pull focus back before Enter lands.
   await waitFor(() => registry.has('nav-scenes'));
   await sleep(400);
   registry.get('nav-scenes')?.el.focus();
@@ -149,11 +118,9 @@ async function run() {
   await tapEnter();
   await sleep(400);
   const onScenes = await waitFor(() => registry.has('video-1'));
-  // A precondition stated rather than assumed: every check below is about the
-  // filter bar, which only exists on a listing tab. Without this, a driver
-  // that failed to leave Home reported "no Build button" — a true sentence
-  // about the wrong screen, and the same class of wrong-reason pass this
-  // suite has been burned by before.
+  // A stated precondition: every check below is about the filter bar, which only
+  // exists on a listing tab; without this, failing to leave Home reports "no
+  // Build button" — a true sentence about the wrong screen.
   check('F0 the driver reached the Scenes tab',
     onScenes && !!registry.get('ctrl-build-filter'),
     `scenes cards=${registry.has('video-1')} build=${!!registry.get('ctrl-build-filter')} `
@@ -203,12 +170,9 @@ async function run() {
   check('F3e it offers Common / All fields / Unavailable',
     tabs.join('|') === 'Common|All fields|Unavailable', tabs.join('|'));
 
-  // The Unavailable tab is the whole of the "all fields" claim. The builder
-  // reaches every field of SceneFilterType except a handful, and PLAN.md says
-  // those are *listed with a reason* rather than hidden — which is only true
-  // if this tab has rows in it. Asserted rather than assumed, because a
-  // silently empty list would look identical to a filter type with nothing
-  // unreachable.
+  // The Unavailable tab is the whole "all fields" claim: PLAN.md says unreachable
+  // fields are listed with a reason rather than hidden, and a silently empty list
+  // would look like a type with nothing unreachable.
   const offTab = Array.from(picker.querySelectorAll('[role="tab"]'))
     .find(t => t.textContent.trim() === 'Unavailable');
   offTab?.click();
@@ -247,10 +211,9 @@ async function run() {
   const p2 = dialogNamed(/Add a criterion/);
   if (!p2) { check('F4 could reopen the field picker', false); return; }
 
-  // "Title" is in SceneFilterType's Common list and takes a plain string, so
-  // it exercises the text editor without needing an entity lookup. Focus the
-  // row by its registry id — the field picker's rows carry no DOM id and their
-  // CSS-module classes are hashed.
+  // "Title" is in SceneFilterType's Common list and takes a plain string, so it
+  // exercises the text editor without an entity lookup. Focus by registry id:
+  // the rows have no DOM id and their classes are hashed.
   const titleEntry = Array.from(registry.entries())
     .find(([id]) => id.startsWith('fp-title'));
   check('F4 the field picker has a Title row', !!titleEntry,
@@ -271,12 +234,9 @@ async function run() {
   check('F4c the row carries a value editor', !!valueInput);
   if (!valueInput) return;
 
-  // Drive the modifier dropdown rather than accepting its default. A
-  // criterion that is added and never touched is `EQUALS` — whatever the
-  // builder's `blankCriterion` happens to pick — so asserting on the default
-  // would be asserting on the literal in that function and nothing else. Going
-  // through the menu is what exercises the Choice component, the modifier
-  // labels and the envelope rewrite that `setModifier` does.
+  // Drive the modifier dropdown rather than accepting its default. An untouched
+  // criterion is `EQUALS` from `blankCriterion`, so asserting the default would
+  // test that literal; the menu exercises Choice, labels and `setModifier`.
   const modEntry = registry.get('fb-mod-title');
   check('F4c2 the row carries a modifier dropdown', !!modEntry);
   if (modEntry) {
@@ -315,29 +275,17 @@ async function run() {
     sent && sent.title && sent.title.value === 'harness' && sent.title.modifier === 'INCLUDES',
     `scene_filter: ${JSON.stringify(sent)}`);
 
-  // …and the filter has to have *taken effect*, not merely been sent. The fake
-  // listing is titled "VERIFY scene N", so "harness" matches nothing and a
-  // working filter leaves the grid empty. Asserting on the request alone would
-  // pass on a builder that composed a filter nobody then applied.
+  // The filter must have taken effect, not merely been sent: the fake listing is
+  // "VERIFY scene N", so "harness" matches nothing and a working filter leaves
+  // the grid empty. A request-only assertion passes if nobody applied it.
   await waitFor(() => !registry.has('video-1'), 3000);
   check('F4g the listing is now empty — the filter was applied, not just sent',
     !registry.has('video-1'),
     `video-1 still registered: ${registry.has('video-1')}`);
 
   // ── F10  the row's own controls are reachable by a remote ─
-  //
-  // Added after reading the component rather than after watching it fail, and
-  // it is the one class of defect no other check in this file can see: every
-  // press in this driver ends in a `.click()` or a dispatched event on an
-  // element the driver located *itself*, so a control no remote can reach
-  // behaves identically to one that works. Spatial nav searches `registry`,
-  // and only `useFocusable` populates it — so the assertion is on the
-  // registry, and what it covers is "the entity picker cannot be opened from
-  // the TV at all", which is most of what this release adds.
-  //
-  // Tags, because it is multi-valued with an entity source, which is the only
-  // shape that renders a pick button. Both row controls were plain <button>s
-  // when this check was written.
+  // Presses here end in `.click()` on a self-found element, so an unreachable
+  // control looks identical; spatial nav searches `registry`. Tags has a pick button.
   btnByText(document, 'Build…')?.click();
   await sleep(300);
   const b6 = dialogNamed(/^Filter scenes/);
@@ -373,24 +321,8 @@ async function run() {
   await sleep(250);
 
   // ── F10g  Left/Right stay on the criterion row ──────────
-  //
-  // Reported from the TV, 2026-10-17: on a row with "This only" (the Depth
-  // choice on a hierarchical field), Left went to Cancel in the footer before
-  // it would reach "Choose…" on the same line. `.rowBody` wraps, so the
-  // geometry had a nearer neighbour that was not on the line.
-  //
-  // The Tags row above is the shape in the report: F10b's dump shows it
-  // renders `fb-pick-tags` *and* `fb-depth-tags`, i.e. it is HIERARCHICAL.
-  // (A first draft of this block assumed it was MULTI and tried to add Scene
-  // tags instead; the field picker's common scope does not offer that one, the
-  // added criterion never appeared, and the leftover field-picker dialog took
-  // F10f and F8 down with it. Use the row that is already there.)
-  //
-  // The zone assertion is the part whose failure mode does not depend on this
-  // window's wrapping: on the old build every row control shared the builder's
-  // zone, so Left could leave the line at all. The presses below are the
-  // user's own path, and would be green on the old build at a width where the
-  // row happens not to wrap.
+  // On a hierarchical row ("This only") `.rowBody` wraps, so a nearest-centre
+  // score left the line for Cancel. Zones, not presses, make this window-independent.
   const activeId = () => {
     for (const [id, e] of registry) if (e.el === document.activeElement) return id;
     return document.activeElement?.tagName || 'body';
@@ -424,11 +356,9 @@ async function run() {
     await tapEnter();
     await sleep(250);
   }
-  // Null-guarded: on a build where the row controls are unreachable this runs
-  // with the builder in whatever state the previous check left it, and a
-  // `rowLabels(null)` throws out of the check's own argument list — which
-  // reports HARNESS CRASHED and hides every check after it. A control
-  // experiment should produce one red line, not an abort.
+  // Null-guarded: a missing builder would make `rowLabels(null)` throw out of the
+  // check's argument list, reporting HARNESS CRASHED and hiding every check after
+  // it. A control experiment should produce one red line, not an abort.
   const b8 = dialogNamed(/^Filter scenes/);
   check('F10e Enter on remove drops the row',
     !!b8 && !rowLabels(b8).includes('Tags'),
@@ -451,22 +381,8 @@ async function run() {
     /Custom filter/.test(filterText), `dropdown reads "${filterText}"`);
 
   // ── F7  and clearing it puts the filter back ────────────
-  //
-  // Asserted on the *listing*, not on the dropdown's label and not on a
-  // follow-up request. Both of those were tried first and both were checks
-  // with no failure mode:
-  //
-  //   - the label is driven by `filterId` alone, so it reads "All" whether or
-  //     not the working filter is still in force — it passed with the reducer
-  //     guard deleted;
-  //   - choosing All returns the filter to `null`, which is the key the first
-  //     listing was fetched under, so the grid is served from
-  //     `createListCache` and no request goes out to inspect.
-  //
-  // The grid coming back is the observable that distinguishes the two, and it
-  // only works because the fake now honours a title criterion. With the guard
-  // deleted the filter stays in force, the key does not change, and the grid
-  // stays empty — which is the bug, visible.
+  // Assert on the listing: the label follows `filterId` alone, and All returns the
+  // first listing's cache key, so no request goes out. The grid is the observable.
   const trigger = Array.from(document.querySelectorAll('button'))
     .find(b => /Custom filter/.test(b.textContent || ''));
   check('F7 the dropdown trigger carries the working filter', !!trigger);
@@ -544,9 +460,8 @@ async function run() {
   }
 
   // ── F9  what was saved can be reopened ──────────────────
-  // The failure this catches is silent: the filter appears in the dropdown and
-  // loads empty. So the assertion is on the *criteria rows*, not on the
-  // dropdown entry existing.
+  // The failure is silent: the filter appears in the dropdown and loads empty, so
+  // assert on the criteria rows, not on the dropdown entry.
   await sleep(300);
   const store = await getJson('/savedfilters');
   check('F9 the filter is in the store after saving',
@@ -563,11 +478,9 @@ async function run() {
     `rows: ${reopenedRows.join(', ') || 'none'}`);
 
   // ── F11  boolean criteria count and reach the wire ──────
-  // `blankCriterion` stores a boolean operand as a bare string at
-  // `criterion.value`; `effective` used to look only inside `inner.value`, so
-  // an "Organized — Yes" criterion could be added, was still counted as 0, and
-  // Apply stayed disabled. The picker is left open by F9, so the boolean is
-  // added beside the Title criterion seeded there.
+  // `blankCriterion` stores a boolean operand as a bare string at `criterion.value`;
+  // `effective` looked only inside `inner.value`, so the criterion counted 0 and
+  // Apply stayed disabled. The picker is left open by F9.
   const b7 = dialogNamed(/^Filter scenes/);
   btnByText(b7, '+ Add criterion')?.click();
   await sleep(200);
@@ -601,10 +514,8 @@ async function run() {
   }
 
   // ── F12  a tag activation seeds the builder ─────────────
-  // Activating a tag puts the *GraphQL* shape into `workingFilter`
-  // (`{value:[id]}`). The builder used to seed straight from it, so the Tags
-  // row rendered "Choose…", the count read 0 and Apply was disabled — while a
-  // tag filter was patently applied. The seed conversion is what this checks.
+  // A tag puts the GraphQL shape (`{value:[id]}`) into `workingFilter`; seeded
+  // straight from it, the row read "Choose…" and Apply was disabled. Convert it.
   registry.get('nav-tags')?.el.focus();
   await sleep(120);
   await tapEnter();
@@ -643,12 +554,8 @@ async function run() {
   }
 
   // ── H  a mode switch does not leave the old mode's filters on screen ──
-  // Filter ids are namespaced by mode, so a scene filter left selectable
-  // under Performers is a criterion that cannot resolve. App never switches
-  // to a mode whose read fails with a saved filter already showing, which is
-  // why this drives the hook directly: the clear is a property of the hook,
-  // and the failing read is what keeps the old bug observable (on success
-  // the new list arrives and the stale rows vanish for the wrong reason).
+  // Filter ids are namespaced by mode, so a scene filter under Performers cannot
+  // resolve. Drive the hook directly: the failing read keeps the stale rows visible.
   await fetch(`http://127.0.0.1:${PORT}/graphql`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -685,11 +592,8 @@ async function run() {
   });
 
   // ── H2  a *source* change clears them too ───────────────
-  // The same trap as H1, one level up: a saved id names a row on one Stash
-  // instance. Kept across a server switch it either names nothing — the
-  // listing runs unfiltered while the bar shows a filter — or, worse, names a
-  // different filter entirely. The failing read keeps the old rows the only
-  // thing that could be on screen.
+  // A saved id names a row on one Stash instance; kept across a switch it names
+  // nothing (unfiltered listing, filtered bar) or a different filter. Fail the read.
   document.getElementById('probe-switch-mode').click();    // back to scenes
   const reloaded = await waitFor(
     () => probeState.names.includes('VERIFY stale scene filter'), 4000);

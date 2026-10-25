@@ -1,17 +1,13 @@
 /**
  * EntityPicker — choose entities for a multi-select criterion.
  *
- * NOT PORTALLED, AND THAT IS A REQUIREMENT RATHER THAN A STYLE. This renders
- * inside FilterBuilder's overlay, as a DOM child of it. `focusScopeOf` in
- * useKeyHandler walks up from the focused element and returns the *nearest*
- * enclosing `role="dialog"`, so a nested dialog wins and the D-pad is confined
- * to the picker. Render this through a portal instead and it lands in
- * <body> — outside the builder's dialog — where the scope is the outer one
- * again and the arrow keys walk the builder's rows behind an open picker.
+ * NOT PORTALLED. `focusScopeOf` returns the *nearest* enclosing
+ * `role="dialog"`, so as a DOM child of FilterBuilder this dialog confines the
+ * D-pad to the picker. Portalled into <body> the scope would be the builder
+ * again, and the arrows would walk its rows behind the picker.
  *
- * The stored shape is Stash's own: `[{id, label}]`. Labels are kept alongside
- * ids because that is what the saved filter carries, and it is what lets the
- * builder show "Blonde" when the user reopens a filter without a round trip.
+ * The stored shape is Stash's own `[{id, label}]`: labels let the builder show
+ * "Blonde" when a filter is reopened, without a round trip.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -50,22 +46,17 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
   const [error, setError] = useState(null);
   const [chosen, setChosen] = useState(selected);
 
-  // Search box. Same two-step select-then-edit as SettingsPanel's fields: the
-  // D-pad selects the wrapper, Enter raises the TV's IME. Everything about why
-  // lives in useEditableField.
+  // Search box: the same select-then-edit field as SettingsPanel's — see
+  // useEditableField. Select the wrapper (not the input) so it is the picker's
+  // first landing spot; Enter still decides when the IME appears.
   const { setWrapperRef, inputRef, selected: boxSelected, editing, inputHandlers } = useEditableField({
     id: 'pick-search',
     zone: 'entity-picker',
-    // Opening the picker used to leave focus on the "Choose…" button behind
-    // the overlay. Selecting the search box (not the input) is the right
-    // landing spot: it is the picker's first control and Enter still decides
-    // when the keyboard appears.
     autoFocus: true,
   });
 
-  // Results are re-fetched per keystroke. The guard is the request id, not a
-  // debounce: a debounce would still let a slow first response land after a
-  // fast second one, which is the failure that shows the wrong list.
+  // Re-fetched per keystroke. The guard is a request id, not a debounce: a
+  // debounce still lets a slow first response land after a fast second one.
   const reqRef = useRef(0);
   useEffect(() => {
     const id = ++reqRef.current;
@@ -84,19 +75,11 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
       });
   }, [entity, query]);
 
-  // Back closes the picker, not the builder.
-  //
-  // `stopPropagation` here is NOT what achieves that, and it is worth being
-  // precise because the obvious reading is wrong: this listener is registered
-  // *after* the builder's, so on a shared `window` capture target the
-  // builder's runs first, and `stopPropagation` cannot suppress a sibling
-  // listener on the same target anyway. What keeps the builder open is
-  // FilterBuilder's own `overlayOpenRef` guard, which makes it stand down
-  // while any nested layer is up. This handler is the one that actually acts.
-  // Escape and the hardware Back always cancel; Backspace cancels only when
-  // the picker is not in its text-entry mode. This is the picker's own rule —
-  // `isBackKey`'s document-activeElement test is not a substitute for
-  // `editing`, which is what the old handler keyed on.
+  // Back closes the picker, not the builder: this listener registers after the
+  // builder's, so the builder's runs first, and FilterBuilder's `overlayOpenRef`
+  // guard stands down while a nested layer is up — not any `stopPropagation`
+  // here. Backspace cancels only outside text-entry mode, tested by the picker's
+  // own `editing` flag rather than `isBackKey`'s activeElement heuristic.
   const pickerIsBack = useCallback(
     (e) => e.key === 'Escape' || e.keyCode === TIZEN_BACK
       || (e.key === 'Backspace' && !editing),

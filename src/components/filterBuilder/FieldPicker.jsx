@@ -5,7 +5,6 @@ import { isHardBackKey } from '../../utils/input.js';
 import { criteriaFor } from '../../utils/filterCriteria.js';
 import styles from '../FilterBuilder.module.css';
 
-// ── Field chooser ─────────────────────────────────────────
 export function FieldPicker({ filterType, used, onAdd, onClose }) {
   const [scope, setScope] = useState('common');
   const all = useMemo(() => criteriaFor(filterType), [filterType]);
@@ -17,17 +16,13 @@ export function FieldPicker({ filterType, used, onAdd, onClose }) {
     return scope === 'common' ? c.common : true;
   });
 
-  // Escape and the hardware Back only. This dialog never closed on Backspace
-  // and still must not — the shared default would add that.
+  // Escape and hardware Back only; Backspace must stay inert, which the shared
+  // default would not.
   useBackKey(onClose, { isBack: isHardBackKey });
 
-  // The dialog takes focus when it opens. These rows are plain buttons and had
-  // no `autoFocus`, so opening the picker left focus on the "+ Add criterion"
-  // button *behind* the overlay — the D-pad started each press on whatever the
-  // geometry could reach through the dialog's scope, which was nothing.
-  //
-  // A disabled row (the "Unavailable" scope) cannot take focus, so fall back
-  // to the tabs; they always exist.
+  // Without an `autoFocus` the dialog left focus on "+ Add criterion" behind
+  // the overlay, and the D-pad had nothing inside to reach. A disabled row
+  // cannot take focus, so fall back to the tabs, which always exist.
   const firstField = shown.find(c => c.editor)?.field ?? null;
 
   return (

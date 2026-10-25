@@ -1,7 +1,7 @@
 /*
- * Positioned absolutely inside the player overlay, below the top bar. Inert:
- * `pointer-events: none`, and nothing inside is focusable — the panel is a
- * readout, and a D-pad stop with nothing to activate would be a dead end.
+ * Absolutely positioned inside the player overlay, below the top bar. Inert:
+ * `pointer-events: none` and nothing focusable, since a D-pad stop with nothing
+ * to activate would be a dead end.
  */
 .panel {
   position: absolute;

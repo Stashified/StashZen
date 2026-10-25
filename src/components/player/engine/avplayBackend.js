@@ -1,36 +1,31 @@
 /**
  * avplayBackend — the TV's own player, behind the media facade.
  *
- * AVPlay is not an `HTMLMediaElement`: it has no DOM node, no events, no
- * buffer or seekable ranges, and it draws *behind* the page rather than inside
- * it. This adapter turns it into the same small object html5Backend presents,
- * so the player's hooks do not know which engine is running. What it cannot
- * honestly supply (buffer, seekable, readyState, resolution, frame counts) is
- * left neutral and hidden from the stats panel by `capabilities.stats`.
+ * AVPlay has no DOM node, events, buffer or seekable ranges, and draws *behind*
+ * the page. This adapter presents the same small object html5Backend does, so
+ * the hooks do not know which engine runs. What it cannot honestly supply
+ * (buffer, seekable, readyState, resolution, frames) is left neutral and hidden
+ * by `capabilities.stats`.
  *
- * The shape and the calls come from the Phase 0 probe that ran on the target
- * panel (Tizen 9.0, AVPlay 7.0). Things it settled that the code depends on:
+ * Panel facts the code depends on:
+ *   - `prepareAsync` refuses a codec in 110–276 ms; the 6 s watchdog is a
+ *     safety net, not the normal path.
+ *   - Seek callbacks are not trustworthy: a seek is settled by polling the
+ *     position (`seekCoalescer`).
+ *   - `restore(null, position, prepare)` throws `TypeError`; only no-arg
+ *     `restore()` works, and it can lose its place by seconds, so the cached
+ *     position is authoritative.
+ *   - There is no `setVolume`; mute goes through the TV audio API (see
+ *     volumeMapping.js).
  *
- *   - `prepareAsync` fails in 110–276 ms for a refused codec, with no hangs.
- *     A 6 s watchdog is still armed, but it is a safety net, not the normal
- *     path.
- *   - There are no seek callbacks worth trusting: a seek is settled by polling
- *     the position, which is what `seekCoalescer` does.
- *   - `restore(null, position, prepare)` throws `TypeError`; only the no-arg
- *     `restore()` works. A restore can also lose its place by several seconds,
- *     so the cached position is authoritative and is re-asserted.
- *   - There is no `setVolume`. Mute goes through the TV's own audio API when
- *     the panel exposes it; see volumeMapping.js.
+ * **Every callback carries the generation it was registered under.** A late
+ * `onerror` or `onstreamcompleted` for a closed session would otherwise report
+ * an error for the scene that replaced it.
  *
- * **Every callback carries the generation it was registered under.** The
- * native player can deliver a late `onerror` or `onstreamcompleted` for a
- * session that has already been closed, and a player that reacts to one of
- * those reports an error for the scene it replaced.
- *
- * Error handling is phase-based, because a refused codec and a broken engine
- * both arrive as `PLAYER_ERROR_CONNECTION_FAILED` here. `lastFailure` keeps the
- * classified result so the source resolver can decide between "try the next
- * candidate" and "stop using AVPlay".
+ * Error handling is phase-based: a refused codec and a broken engine both
+ * arrive as `PLAYER_ERROR_CONNECTION_FAILED`. `lastFailure` keeps the classified
+ * result so the resolver can choose between the next candidate and dropping
+ * AVPlay.
  */
 
 import {
@@ -43,8 +38,8 @@ import {
   detectMuteCapability, mapMute, mapMuteRestore, clampLevel,
 } from '../../../utils/volumeMapping.js';
 import { emptyTimeRanges } from './contracts.js';
-// Measured refusals arrive in under 300 ms; this only catches a player that
-// never answers. Deliberately shorter than the browser's 10 s stall watchdog.
+// Refusals arrive in under 300 ms; this only catches a player that never
+// answers. Shorter than the browser's 10 s stall watchdog on purpose.
 const PREPARE_TIMEOUT_MS = 6000;
 const POLL_MS = 250;
 const POLL_PAUSED_MS = 500;
@@ -53,17 +48,14 @@ const NEAR_END_SECONDS = 1.5;
 const NEAR_END_GRACE_MS = 2000;
 const RESTORE_STEP_MS = 250;
 const RESTORE_STEPS = 4;
-// A direct seek that has not landed this long after the burst started is
-// handed to the next candidate, at the position the user asked for. The probe
-// measured direct seeks at 0.76–1.6 s on H.264, but the panel's native HEVC
-// decoder was reported at 2–3 s (2026-10-24), and the old 4 s deadline turned
-// a rapid skim into an engine switch. Eight seconds still recovers a seek that
-// truly never finishes — the 4K AV1 case this fallback exists for — without
-// punishing one that is merely slow. Same deadline as the coalescer's default.
+// A direct seek not landed this long after the burst started is handed to the
+// next candidate at the requested position. Direct seeks measured 0.76–1.6 s on
+// H.264 and 2–3 s on the native HEVC decoder; a shorter deadline turned a rapid
+// skim into an engine switch, while eight seconds still recovers a truly stuck
+// seek (the 4K AV1 case). Same deadline as the coalescer's default.
 const SEEK_STUCK_MS = SEEK_MAX_WAIT_MS;
-// A seek makes AVPlay pause and rebuffer. Re-asserting play() while that is
-// true is what resumes a slow seek; doing it on every 250 ms poll is not a
-// thing to do to the native player.
+// A seek makes AVPlay pause and rebuffer; re-asserting play() resumes a slow
+// seek, but not on every 250 ms poll.
 const PLAY_REASSERT_MS = 1000;
 
 const ST_PLAYING = 'PLAYING';
@@ -88,8 +80,7 @@ export function createAvplayBackend({
   win = typeof window !== 'undefined' ? window : null,
   prepareTimeoutMs = PREPARE_TIMEOUT_MS,
   // The stuck-seek deadline. An option so a test can reach the verdict without
-  // an eight-second wait; it stays above the coalescer's settle window in
-  // production, where both are measured values.
+  // an eight-second wait; in production it stays above the settle window.
   seekStuckMs = SEEK_STUCK_MS,
   now = () => Date.now(),
 } = {}) {
@@ -111,13 +102,11 @@ export function createAvplayBackend({
   let lastDurationRead = 0;
   let nearEndSince = 0;
   let seekDegraded = false;
-  // One native recovery per scene: a stuck-seek reopen is cheap (measured
-  // 223–745 ms) and keeps the hardware decoder, but a second failure on the
-  // same file is the genuine case for the browser fallback.
+  // One native recovery per scene: a reopen is cheap (223–745 ms) and keeps the
+  // hardware decoder, but a second failure on the same file needs the browser.
   let seekReopenUsed = false;
-  // True from a seek request until a frame plays again. It tells the poll that
-  // a PAUSED state is the engine rebuffering the seek, not a pause the user
-  // asked for — the distinction that a frozen scene hangs on.
+  // True from a seek request until a frame plays again: it tells the poll that
+  // PAUSED is the engine rebuffering, not a pause the user asked for.
   let seekAwaitingPlay = false;
   let lastPlayReassert = 0;
   let cachedPosition = 0;
@@ -126,19 +115,17 @@ export function createAvplayBackend({
   let lifecycleBound = false;
 
   // ── Mute state ───────────────────────────────────────────
-  // Captured once, on the first open: the panel is restored to the state it
-  // was in when this player session started, never to a guess.
+  // Captured once, on the first open: close() restores the state the panel was
+  // found in, never a guess.
   let muteCaptured = false;
   let initialMuted = false;
   let initialLevel = 100;
   let muted = false;
-  // What the player asked the sitting to be, as opposed to what the TV was
-  // found doing. Null until something expresses a preference; a remote-made
-  // TV mute must not be overridden by the button's default.
+  // What the player asked for, not what the TV was found doing. Null until
+  // something expresses a preference, so a remote-made mute is not overridden.
   let desiredMuted = null;
-  // Whether the app's current state differs from the state it found, which is
-  // what close() restores. Not "the app muted": unmuting a TV that was muted
-  // with the remote is also a change the app has to undo.
+  // Whether the app's state differs from the state it found, which close()
+  // restores. Not "the app muted": unmuting a remote-made mute is a change too.
   let appMuted = false;
   const muteCapability = detectMuteCapability({ tvaudiocontrol, avplay });
 
@@ -182,16 +169,16 @@ export function createAvplayBackend({
     const plan = mapMute({ capability: muteCapability, muted: next, level: initialLevel });
     if (!plan.effective) return false;
     // Remembered before the native call: the setVolume rung needs a prepared
-    // session, so a mute pressed while `prepareAsync` is in flight fails here
-    // and is retried by onPrepared rather than silently dropped.
+    // session, so a mute during `prepareAsync` fails here and onPrepared
+    // retries it rather than dropping it.
     desiredMuted = plan.muted;
     if (!runCalls(plan.calls)) return false;
     muted = plan.muted;
     // Restore only what the app changed: unmuting a remote-made mute is a
     // change too, and close() has to put it back.
     appMuted = plan.muted !== initialMuted;
-    // The button is owned by the player's transport, which listens for this
-    // rather than assuming its own state is what the panel is doing.
+    // The transport's button listens for this rather than assuming its own
+    // state is what the panel is doing.
     emit('volumechange');
     return true;
   }
@@ -258,21 +245,18 @@ export function createAvplayBackend({
       );
     },
     getTime: () => lastTime,
-    // Arrival is enough when the user has not asked for playback: a seek made
-    // while paused must settle on the position, not wait for a PLAYING state
-    // that is not coming — waiting was a burst that "degraded" after every
-    // paused skim.
+    // Arrival is enough when the user has not asked for playback: a paused seek
+    // must settle on the position, not wait for a PLAYING state that never
+    // comes (waiting degraded every paused skim).
     isPlaying: () => !suspended && (readState() === ST_PLAYING || !wantPlaying),
     now,
-    // A function, not a value: the URL is only known once `open()` has run,
-    // and a value captured here would pin every HLS seek to the direct
-    // window. HLS measured 1.52 s against that 1.5 s window — a retry every
-    // time, each one cancelling the seek that was about to finish.
+    // A function, not a value: the URL is only known once `open()` has run, and
+    // HLS measured 1.52 s against the 1.5 s direct window — a pinned value
+    // would retry every time, cancelling the seek about to finish.
     settleMs: () => (isHlsUrl(activeUrl) ? SEEK_SETTLE_HLS_MS : SEEK_SETTLE_MS),
-    // Both direct and HLS keep the long deadline. Direct play used to be
-    // shorter because it has somewhere to fall back to, but a direct HEVC
-    // seek can take 2–3 s and the fallback costs the hardware decoder; the
-    // deadline is for a seek that is actually stuck, not one that is slow.
+    // Both direct and HLS keep the long deadline: a direct HEVC seek can take
+    // 2–3 s and a fallback costs the hardware decoder. The deadline is for a
+    // stuck seek, not a slow one.
     maxWaitMs: seekStuckMs,
     // The reason is load-bearing: only an arrived or progressing seek may be
     // recovered by reopening natively; a frozen one is a content failure.
@@ -282,32 +266,28 @@ export function createAvplayBackend({
   /**
    * The seek burst gave up. Two recoveries, in order:
    *
-   * 1. If the position *arrived* and only playback failed to resume, or was
-   *    still closing the gap, the file is seekable — it is the session that
-   *    did not continue. Reopen it natively at the requested position, once
-   *    per scene. Switching engines there cost the hardware decoder and is
-   *    what the TV reported on a rapid skim (2026-10-24).
-   * 2. Otherwise hand the scene to the next candidate at that position. A
-   *    frozen seek that never arrived is the 4K AV1 case this fallback exists
-   *    for; the browser plays that file, so the switch is the honest recovery.
+   * 1. If the position *arrived* (or was still closing the gap) and only
+   *    playback stalled, the file is seekable — reopen natively at the target,
+   *    once per scene. Switching engines costs the hardware decoder.
+   * 2. Otherwise hand the scene to the next candidate at that position: a
+   *    frozen seek that never arrived is the 4K AV1 case this exists for.
    */
   function handleSeekDegraded(target, reason = 'stuck') {
     seekDegraded = true;
     seekAwaitingPlay = false;
-    // HLS: the probe saw seek errors that playback survived, and the browser's
-    // HLS path seeks the same stream. Tearing the session down for that would
-    // trade a slow seek for a stutter.
+    // HLS: the panel showed seek errors that playback survived, and the
+    // browser's HLS path seeks the same stream. Tearing down would trade a slow
+    // seek for a stutter.
     if (isHlsUrl(activeUrl)) return;
-    // The next candidate starts from this object's `currentTime`, and the live
-    // clock is still frozen where the seek began. Publish the requested
-    // position first, so the fallback lands where the user asked to be.
+    // The next candidate starts from `currentTime`, and the live clock is still
+    // frozen where the seek began. Publish the target first, so the fallback
+    // lands where the user asked to be.
     lastTime = target;
     lastTimeEmitted = target;
     emit('timeupdate');
     if ((reason === 'arrived' || reason === 'progress') && !seekReopenUsed) {
       seekReopenUsed = true;
-      // `open()` clears `seekDegraded`: the recovery is in flight, not a
-      // verdict about the file.
+      // `open()` clears `seekDegraded`: recovery is in flight, not a verdict.
       reopenAtSaved(gen, target);
       return;
     }
@@ -324,11 +304,10 @@ export function createAvplayBackend({
 
   function schedulePoll(myGen) {
     stopPoll();
-    // `error` and `completed` are states the poll itself can enter mid-tick:
-    // a degraded seek calls fail() from inside coalescer.tick(), and the
-    // near-end fallback calls finishEnded(). Re-arming after either would
-    // poll a closed native player — and its first read would overwrite the
-    // position the fallback was told to resume at with 0.
+    // `error` and `completed` can be entered mid-tick (a degraded seek calls
+    // fail(), the near-end fallback calls finishEnded()). Re-arming would poll
+    // a closed player, whose first read would overwrite the fallback's position
+    // with 0.
     if (gen !== myGen || closed || suspended || error || completed) return;
     const delay = wantPlaying ? POLL_MS : POLL_PAUSED_MS;
     pollTimer = setTimeout(() => tick(myGen), delay);
@@ -352,9 +331,8 @@ export function createAvplayBackend({
     const t = readTime();
     if (t != null) {
       lastTime = t;
-      // `timeupdate` at the same 4 Hz the browser uses. Only on a change: a
-      // paused scene repeating the same position would keep the progress UI
-      // re-rendering for nothing.
+      // `timeupdate` at the same 4 Hz the browser uses, only on a change: a
+      // paused scene would otherwise re-render the progress UI for nothing.
       if (Math.abs(t - lastTimeEmitted) > 0.01) {
         lastTimeEmitted = t;
         emit('timeupdate');
@@ -372,19 +350,17 @@ export function createAvplayBackend({
       }
     } else if (state === 'PAUSED' && playingLatch) {
       if (seekAwaitingPlay && wantPlaying) {
-        // AVPlay pauses while it rebuffers a seek. That is not a pause the
-        // user asked for, and declaring one here is how a seek on a slow file
-        // turned into a scene that never resumed: `wantPlaying` went false and
-        // nothing ever asked the engine to play again. Ask again instead,
-        // throttled to once a second.
+        // AVPlay pauses while it rebuffers a seek — not a user pause. Declaring
+        // one clears `wantPlaying` and nothing ever resumes the scene; ask
+        // again instead, throttled to once a second.
         if (now() - lastPlayReassert >= PLAY_REASSERT_MS) {
           lastPlayReassert = now();
           reassertedThisTick = true;
           try { avplay.play(); } catch (e) { /* the coalescer owns the verdict */ }
         }
       } else if (!seekAwaitingPlay) {
-        // A pause that did not come from our pause() — the end of the stream,
-        // a system pause. Report it the way the browser would.
+        // A pause that did not come from our pause() (end of stream, a system
+        // pause): report it the way the browser would.
         playingLatch = false;
         wantPlaying = false;
         emit('pause');
@@ -394,42 +370,36 @@ export function createAvplayBackend({
     if (prepared) {
       const wasSeeking = coalescer.isSeeking();
       coalescer.tick();
-      // A stuck seek can reopen the session synchronously from inside tick().
-      // This poll then belongs to the old generation: its reads would be the
-      // new, not-yet-prepared session's, and schedulePoll would arm a timer
-      // for a session that already has one.
+      // A stuck seek can reopen the session synchronously inside tick(). This
+      // poll then belongs to the old generation — its reads would hit the new,
+      // not-yet-prepared session, and it would arm a duplicate timer.
       if (gen !== myGen) return;
-      // The seek just settled and the engine is sitting paused on the new
-      // frame, waiting for a play() it already intended to send. Asking here
-      // rather than on the next poll takes up to a second off the resume the
-      // panel reports as "2–3 s" — the decode time is the engine's, but the
-      // request to continue is ours.
+      // The seek just settled and the engine sits paused on the new frame,
+      // waiting for the play() it already intended. Asking here instead of on
+      // the next poll takes up to a second off the panel's "2–3 s" resume.
       if (wasSeeking && !reassertedThisTick && !coalescer.isSeeking()
         && seekAwaitingPlay && wantPlaying && readState() === 'PAUSED') {
         lastPlayReassert = now();
         try { avplay.play(); } catch (e) { /* the next tick retries */ }
       }
-      // A seek that hit its deadline fails the session synchronously from
-      // inside tick(): the native player is already stopped, so nothing in
-      // this poll's remaining work — a duration read, a near-end verdict, the
-      // next timer — belongs to a live session. `handleSeekDegraded` has just
-      // published the requested position; a later tick would read 0 from the
-      // closed player and erase it before the fallback captured it.
+      // A seek that hit its deadline fails the session synchronously inside
+      // tick(): the native player is stopped, so no remaining work belongs to a
+      // live session. `handleSeekDegraded` has just published the target; a
+      // later tick would read 0 and erase it before the fallback captured it.
       if (error || closed) return;
       if (now() - lastDurationRead >= DURATION_POLL_MS) {
         lastDurationRead = now();
         const d = readDuration();
-        // HLS duration is not final at prepare; report it when it settles.
+        // HLS duration is not final at prepare; report it once it settles.
         if (Number.isFinite(d) && (!Number.isFinite(durationSec)
           || Math.abs(d - durationSec) > 0.5)) {
           durationSec = d;
           emit('durationchange');
         }
       }
-      // `onstreamcompleted` arrived 4 s after a near-end seek in the probe, so
-      // this fallback is only for the case where it never arrives at all. It
-      // must not fire while a seek is in flight, or a skim to the last seconds
-      // would look like the scene ending.
+      // `onstreamcompleted` arrived 4 s after a near-end seek, so this only
+      // covers the case where it never arrives. It must not fire during a seek,
+      // or a skim to the last seconds would look like the scene ending.
       if (state === ST_PLAYING && !coalescer.isSeeking()
         && Number.isFinite(durationSec) && lastTime >= durationSec - NEAR_END_SECONDS) {
         if (!nearEndSince) nearEndSince = now();
@@ -453,7 +423,7 @@ export function createAvplayBackend({
       message: info.message,
     });
     lastFailure = result;
-    // `error` is assigned *before* the event: usePlayerMedia's guard reads it
+    // `error` is assigned *before* the event: usePlayerMedia's guard reads it,
     // and would otherwise drop a genuine failure.
     error = {
       code: result.level === 'content' ? 4 : 3,
@@ -484,12 +454,10 @@ export function createAvplayBackend({
     lastTimeEmitted = -1;
     lastDurationRead = now();
     durationSec = readDuration();
-    // The session's own start position is queued *before* metadata is
-    // announced, not after. The player's loadedmetadata handler may seek (a
-    // mid-scene engine fallback resumes at the live playhead, which is not
-    // `startAt`), and the coalescer is latest-wins: announcing first let this
-    // stale start position overwrite the player's newer one and threw a
-    // fallback back to the resume point.
+    // The start position is queued *before* metadata is announced. The
+    // loadedmetadata handler may seek (a mid-scene fallback resumes at the live
+    // playhead), and the coalescer is latest-wins: announcing first let this
+    // stale position overwrite the newer one and reset the fallback.
     if (startAt > 0) {
       seekAwaitingPlay = true;
       lastPlayReassert = 0;
@@ -498,18 +466,17 @@ export function createAvplayBackend({
     emit('loadedmetadata');
     emit('durationchange');
     emit('canplay');
-    // The TV owns a mute the app asked for; a setVolume rung can only be
-    // applied once the native session exists, so this is its second chance.
+    // The setVolume rung can only be applied once the native session exists;
+    // this is its second chance.
     if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
     if (pageHidden()) {
-      // prepareAsync finished while the app was hidden (or the scene was
-      // opened while hidden). Do not start a session behind the page: enter
-      // the same suspended state the visibility hook would have entered, so
-      // showing the app restores it at this position.
+      // Prepare finished while the app was hidden. Do not start a session
+      // behind the page: enter the suspended state the visibility hook would
+      // have, so showing the app restores it at this position.
       suspended = true;
       cachedPosition = coalescer.pendingTarget() ?? startAt;
-      // Same rule as suspendSession: no mute of ours survives into a hidden
-      // page. The intent stays and is re-applied on the way back.
+      // As in suspendSession: no mute of ours survives into a hidden page. The
+      // intent stays and is re-applied on the way back.
       releaseMute();
       try { avplay.suspend(); } catch (e) { /* restore/reopen is the recovery */ }
       return;
@@ -524,12 +491,12 @@ export function createAvplayBackend({
       avplay.play();
     } catch (e) {
       // A play() that throws before the first frame is a content-level
-      // failure; report it through the same path as an async one.
+      // failure: report it through the async path.
       fail(gen, 'play', e);
       return;
     }
-    // `play` now, `playing` when the poll sees PLAYING — the same split the
-    // browser makes between "asked to play" and "a frame is moving".
+    // `play` now, `playing` when the poll sees PLAYING — the browser's split
+    // between "asked to play" and "a frame is moving".
     emit('play');
   }
 
@@ -555,9 +522,8 @@ export function createAvplayBackend({
       },
       onstreamcompleted: () => {
         if (gen !== myGen || closed || error) return;
-        // A completion that arrives while the user's seek is in flight is
-        // about the position they just left, not the one on screen. The
-        // near-end fallback makes the same distinction.
+        // A completion during a seek is about the position just left, not the
+        // one on screen; the near-end fallback makes the same distinction.
         if (coalescer.isSeeking()) return;
         finishEnded(myGen);
       },
@@ -567,10 +533,9 @@ export function createAvplayBackend({
           : coalescer.isSeeking() ? 'seek'
             : 'runtime';
         if (phase === 'seek') {
-          // The picture is still there. Do not call the seek failed here: the
-          // probe saw errors on a burst of HLS seeks that playback survived,
-          // and the coalescer is what decides whether this burst is actually
-          // stuck — it retries, and only then reports degraded.
+          // The picture is still there. Errors on a burst of HLS seeks were
+          // survived by playback, so the coalescer decides whether the burst is
+          // stuck: it retries, and only then reports degraded.
           return;
         }
         fail(myGen, phase, raw);
@@ -618,8 +583,8 @@ export function createAvplayBackend({
   }
 
   function onPageHide() {
-    // The app is going away. suspend() releases the native pipeline; there is
-    // no restore to run, and close()/teardown restores the TV mute.
+    // The app is going away: suspend() releases the native pipeline. There is
+    // no restore to run; close()/teardown restores the TV mute.
     suspendSession();
     wantPlaying = false;
   }
@@ -641,19 +606,18 @@ export function createAvplayBackend({
 
   function waitForRestore(myGen, saved, stepsLeft) {
     if (gen !== myGen || closed || error) return;
-    // Hidden again while the chain was in flight: the session is suspended,
-    // not failed, and stepping on would decide "restore did not come back"
-    // and reopen the stream behind the hidden page. The next show starts a
-    // fresh restore.
+    // Hidden again mid-chain: the session is suspended, not failed, and
+    // stepping on would reopen the stream behind the hidden page. The next show
+    // starts a fresh restore.
     if (suspended) return;
     const state = readState();
     if (state === ST_PLAYING || state === 'PAUSED' || state === 'READY') {
-      // The probe saw the position drift +3.0–5.4 s across a hide even with
-      // suspend() called, so the cached position wins.
+      // The position drifted +3.0–5.4 s across a hide even with suspend()
+      // called, so the cached position wins.
       const t = readTime();
       if (t != null && Math.abs(t - saved) > 1) coalescer.request(saved);
-      // The poll emits `playing` when it sees PLAYING; if the user had paused
-      // before hiding, restore leaves it paused and nothing is emitted.
+      // The poll emits `playing` when it sees PLAYING; a scene paused before
+      // hiding stays paused and emits nothing.
       if (wantPlaying && !playingLatch) startNativePlay();
       schedulePoll(myGen);
       return;
@@ -668,8 +632,8 @@ export function createAvplayBackend({
   /** Restore did not come back: reopen the same source at the saved position. */
   function reopenAtSaved(myGen, saved) {
     if (gen !== myGen || closed) return;
-    // `muted` travels with the reopen: this is a new native session, and the
-    // sitting's mute choice is not something a restore failure should undo.
+    // `muted` travels with the reopen: this is a new native session, and a
+    // restore failure must not undo the sitting's mute choice.
     open(activeUrl, { startSeconds: saved, autoplay: wantPlaying, muted: desiredMuted });
   }
 
@@ -700,8 +664,8 @@ export function createAvplayBackend({
     completed = false;
     error = null;
     lastFailure = null;
-    // A new scene gets its own native recovery. The reopen itself passes the
-    // same URL, so it does not reset the guard that limits it to one.
+    // A new scene gets its own native recovery. The reopen passes the same URL,
+    // so it does not reset the one-per-scene guard.
     if (String(url || '') !== activeUrl) seekReopenUsed = false;
     activeUrl = String(url || '');
     startAt = Math.max(0, Number(startSeconds) || 0);
@@ -719,17 +683,14 @@ export function createAvplayBackend({
 
     desiredMuted = requestedMuted == null ? null : !!requestedMuted;
     captureMuteState();
-    // The setVolume rung is session-local: a new native session starts at the
-    // panel's own level, so this backend's remembered mute no longer describes
-    // it. Without the reset a muted scene followed by another looked "already
-    // applied", onPrepared skipped its retry, and the new scene played with
-    // the sound back while the button still said muted. tvaudiocontrol is
-    // panel-wide and survives the new session, so its value stays as it is.
+    // setVolume is session-local: a new session starts at the panel's level, so
+    // the remembered mute no longer describes it, and onPrepared would skip its
+    // retry and leave the new scene audible while the button said muted.
+    // tvaudiocontrol is panel-wide, so its value stays.
     if (muteCapability === 'setVolume') muted = initialMuted;
-    // Apply the sitting's mute now only on the rung that is independent of the
-    // native session: tvaudiocontrol mutes the panel, so it works before
-    // `open()`. A setVolume call made before the session exists cannot belong
-    // to the one about to prepare, so that rung is always left to onPrepared.
+    // Apply the mute now only on the rung independent of the native session:
+    // tvaudiocontrol works before `open()`. A setVolume call before the session
+    // exists cannot belong to it, so that rung waits for onPrepared.
     if (muteCapability === 'tvaudio'
         && desiredMuted != null && desiredMuted !== muted) {
       applyMuted(desiredMuted);
@@ -793,10 +754,9 @@ export function createAvplayBackend({
     wantPlaying = true;
     if (prepared) {
       if (completed) {
-        // Replaying a finished scene is a new sitting. finishEnded() stopped
-        // the poll and left the completion latch set; without clearing both,
-        // play would emit `play` and nothing would ever follow it — no
-        // `playing`, no `timeupdate`, no second `ended`.
+        // Replaying a finished scene is a new sitting. finishEnded() stopped the
+        // poll and left the latch set; without clearing both, play would emit
+        // `play` and nothing would follow — no `playing`, no `ended`.
         completed = false;
         nearEndSince = 0;
         playingLatch = false;
@@ -804,7 +764,7 @@ export function createAvplayBackend({
       }
       if (!playingLatch) startNativePlay();
     }
-    // Before prepare the request is remembered and applied in onPrepared.
+    // Before prepare, the request is remembered and applied in onPrepared.
     return Promise.resolve();
   }
 
@@ -813,9 +773,8 @@ export function createAvplayBackend({
     wantPlaying = false;
     seekAwaitingPlay = false;
     nearEndSince = 0;
-    // A pause ends the seek burst: the user is not waiting for it any more,
-    // and letting it reach its deadline would fall back to the other engine
-    // for a seek nobody asked to finish.
+    // A pause ends the seek burst: letting it reach its deadline would fall
+    // back to the other engine for a seek nobody is waiting for.
     coalescer.cancel();
     try { avplay.pause(); } catch (e) { /* not prepared yet */ }
     if (playingLatch) {
@@ -833,16 +792,16 @@ export function createAvplayBackend({
       return;
     }
     if (completed) {
-      // Seeking back into a finished scene is the other way to replay it. The
-      // latch kept the poll stopped, and the coalescer has to be ticked again
-      // or this seek never settles.
+      // Seeking back into a finished scene is another way to replay it. The
+      // poll is stopped, and the coalescer must be ticked again or this seek
+      // never settles.
       completed = false;
       playingLatch = false;
       schedulePoll(gen);
     }
     nearEndSince = 0;
-    // A new burst is a new verdict: the previous one's "degraded" was about a
-    // target the user has already moved away from.
+    // A new burst is a new verdict: the last "degraded" was about a target the
+    // user has moved away from.
     seekDegraded = false;
     seekAwaitingPlay = true;
     lastPlayReassert = 0;
@@ -857,7 +816,7 @@ export function createAvplayBackend({
       seek: 'coalesced',
     },
     // No DOM element to attach; these exist so the facade can call them
-    // unconditionally when the engine switches.
+    // unconditionally on an engine switch.
     attach() {},
     detach() {},
     open,
@@ -876,12 +835,10 @@ export function createAvplayBackend({
     isSeekDegraded() { return seekDegraded; },
     getLastFailure() { return lastFailure; },
 
-    // Same meaning as HTMLMediaElement's: "someone has asked for playback and
-    // it has not been paused", not "a frame is currently moving". A buffering
-    // element is not paused, and treating it as such would make the play/pause
-    // button start playback it is already waiting on. A seek is not a pause
-    // either — it has its own flag, which the progress reporter uses to refuse
-    // crediting the jump.
+    // Same meaning as HTMLMediaElement's: "asked for playback and not paused",
+    // not "a frame is moving". Treating buffering as paused would make the
+    // play/pause button start playback it is already waiting on. A seek has its
+    // own flag, which the progress reporter uses to refuse crediting the jump.
     get paused() { return suspended || !wantPlaying; },
     get seeking() { return coalescer.isSeeking(); },
     get duration() { return prepared && Number.isFinite(durationSec) ? durationSec : NaN; },

@@ -1,20 +1,18 @@
 /**
  * randomSort — make Stash's `random` sort page-stable.
  *
- * Stash reads `sort: "random"` as "shuffle the result set for this request".
- * Two requests with the same filter therefore return two different orders,
- * so page 2 overlaps page 1, the client dedupes the repeats, and under the
- * no-progress stop a short result set can end early (the review's R8).
+ * Stash reads `sort: "random"` as "shuffle for this request", so page 2
+ * overlaps page 1, the client dedupes repeats, and under the no-progress stop a
+ * short result set can end early.
  *
- * Stash also accepts `random_<seed>`, which permutes once per seed and
- * returns the same order on every page (verified against the live server:
- * `random_123` repeats page 1 exactly and continues the same permutation on
- * page 2). The seed below is derived from the request identity — the entity
- * kind, filter and search text — so every page of one listing shares a
- * permutation, and changing the filter or the search starts a new one.
+ * Stash also accepts `random_<seed>`, which permutes once per seed and returns
+ * the same order on every page (verified: `random_123` repeats page 1 exactly
+ * and continues on page 2). The seed is derived from the request identity —
+ * kind, filter, search text — so every page of a listing shares a permutation
+ * and changing the filter starts a new one.
  *
  * The mock comparator does not know the seeded spelling; `baseSort` maps it
- * back so Test mode keeps shuffling by id as it always did.
+ * back so Test mode keeps shuffling by id.
  */
 
 const SEEDED = /^random_\d+$/;

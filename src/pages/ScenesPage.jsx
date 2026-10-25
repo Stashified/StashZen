@@ -1,15 +1,10 @@
 /**
- * ScenesPage — renders the grid, the carousel or the coverflow.
+ * ScenesPage — the scene listing's grid, list, carousel or coverflow.
  *
- * This was HomePage until 0.15.0, when Home became the showroom and the full
- * scene listing moved to its own tab. The body is unchanged: this is still the
- * one place the scene listing's three view modes are chosen.
- *
- * `mode` arrives as a prop rather than being read off `controls`: it is a
- * per-section preference now, stored in `settings.viewModes[tab]` and owned by
- * App, whereas `controls` is the shared request state (sort, order, cols,
- * filter) that every section keeps its own copy of. Folding the two together
- * is what made the mode global to the app and forgotten on every launch.
+ * `mode` arrives as a prop, not off `controls`: it is a per-section preference
+ * (`settings.viewModes[tab]`, owned by App), whereas `controls` is shared
+ * request state. Folding the two together made the mode global and forgotten
+ * on every launch.
  */
 
 import VideoGrid from '../components/VideoGrid.jsx';

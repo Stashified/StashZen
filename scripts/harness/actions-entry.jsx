@@ -2,30 +2,18 @@
  * Headless driver for the two TV action surfaces — SettingsPanel and
  * ExitPrompt.
  *
- * Written because P1 wants to lift their shared button into
- * `src/components/tvActions.jsx`, and the project's standard for a
- * behaviour-neutral refactor is a differential diff: run the same driver
- * against two revisions and compare the result JSONs. Neither component had
- * any off-device coverage at all, so there was nothing to diff. rail-entry's
- * R8 presses Enter on `nav-settings` and asserts a dialog appeared, which
- * mounts this panel and never touches a button inside it.
- *
- * What this covers is the *observable contract of the button*, not the
- * button: which element holds focus, what a press does, and what the DOM
- * says afterwards. Every assertion below is written so that a button which
- * silently stopped responding fails it — a refactor that swapped the
- * component for a `<div>` would pass "the label is on screen" and fail
- * everything else.
+ * The observable contract of the button: which element holds focus, what a
+ * press does, and what the DOM says afterwards. A button that silently stopped
+ * responding fails; a refactor that swapped the component for a `<div>` would
+ * pass "the label is on screen" and fail everything else.
  *
  * Chosen with `?view=settings` (default) or `?view=exit`.
  */
 
 import { createRoot } from 'react-dom/client';
-// The real theme. Without this every `var(--accent-fill)` in a CSS module is
-// invalid at computed-value time and resolves to transparent, so A5 — the one
-// check here about how a button *looks* — would compare two invisible
-// backgrounds and fail against correct code. rail-entry.jsx was the only
-// entry importing it; the others assert on structure and never noticed.
+// The real theme: without it `var(--accent-fill)` is invalid at computed-value
+// time and resolves to transparent, so A5 would compare two invisible
+// backgrounds and fail against correct code.
 import '../../src/index.css';
 import SettingsPanel from '../../src/components/SettingsPanel.jsx';
 import ExitPrompt from '../../src/components/ExitPrompt.jsx';
@@ -55,10 +43,9 @@ async function waitFor(pred, ms = 2000, step = 25) {
 }
 
 // ── Input ───────────────────────────────────────────────────
-// Dispatched on whatever currently holds focus, the way a remote would. Every
-// button on these two panels fires on keydown (none of them opts into
-// onLongPress, which is the one thing that moves the short action to keyup),
-// so a keydown is the whole gesture.
+// Dispatched on whatever holds focus, as a remote would. Every button here
+// fires on keydown; none opts into onLongPress, which moves the short action
+// to keyup.
 const active = () => document.activeElement || document.body;
 function press(key, keyCode) {
   active().dispatchEvent(new KeyboardEvent('keydown', {
@@ -73,18 +60,16 @@ const enter = async (el) => {
 };
 
 // ── Locating the buttons ────────────────────────────────────
-// By role and label, not by class: the class names are hashed CSS-module
-// names, and one of the things under test is whether the shared component
-// still produces a real <button>.
+// By role and label, not class: CSS-module names are hashed, and part of the
+// contract is that the shared component still produces a real <button>.
 const buttons = () => [...document.querySelectorAll('[role="dialog"] button')];
 const byLabel = (label) => buttons().find(b => b.textContent.trim() === label);
 const labels = () => buttons().map(b => b.textContent.trim());
 const focusedLabel = () => document.activeElement?.textContent?.trim() ?? null;
 
 // ── The PIN pad ─────────────────────────────────────────────
-// PinPad namespaces its ids with useId(), so its digits are addressed by the
-// label they announce. Its dialog is the second one: the panel is already a
-// dialog labelled "Settings".
+// PinPad namespaces ids with useId(), so digits are addressed by their label.
+// Its dialog is the second one; the panel is already labelled "Settings".
 const pad = () => [...document.querySelectorAll('[role="dialog"]')]
   .find(d => /PIN$/.test(d.getAttribute('aria-label') || '')) || null;
 
@@ -126,12 +111,9 @@ async function runSettings() {
   await sleep(700);
 
   // ── A1  Every action is on screen, and is a button ───────
-  // The label list is the point: these six are the panel's whole action
-  // surface, and a shared component that dropped one — or rendered it as a
-  // non-focusable node — shows up here rather than three screens later.
-  // `On` is the fresh-install state of the preview toggle as of 0.22.2; the
-  // profile here is new. The default itself is pinned by preview-entry's P0 —
-  // this check is only about the control existing and being a button.
+  // The label list is the point: a shared component that dropped one — or
+  // rendered a non-focusable node — fails here. The toggle's default is pinned
+  // by preview-entry's P0; this checks only that the control exists.
   const want = [
     'Test connection', 'Run setup again', 'On',
     'Show library stats', 'Check server status',
@@ -141,25 +123,22 @@ async function runSettings() {
     want.every(w => !!byLabel(w)), `found: ${labels().join(' | ')}`);
 
   // ── A2  Enter on the toggle flips aria-pressed ───────────
-  // Chosen as the first press because it is the one action with a
-  // self-contained, synchronous observable: `press` is not passed by every
-  // caller, and the ones that do pass it expect it on the DOM.
+  // The one action with a self-contained synchronous observable: `press` is
+  // not passed by every caller, but those that pass it expect it on the DOM.
   const toggle = byLabel('Off') || byLabel('On');
   const before = toggle?.getAttribute('aria-pressed');
   await enter(toggle);
   const after = (byLabel('Off') || byLabel('On'))?.getAttribute('aria-pressed');
-  // A flip, not a direction. What the default is belongs to preview-entry's
-  // P0; asserting "off → on" here would make this check fail the day the
-  // default changed, for a reason that is not this check's subject.
+  // A flip, not a direction: the default belongs to preview-entry's P0, and
+  // asserting "off → on" would fail on a default change for the wrong reason.
   check('A2 pressing the toggle flips aria-pressed',
     before !== after && ['true', 'false'].includes(before)
       && ['true', 'false'].includes(after),
     `before=${before} after=${after}`);
 
   // ── A3  Enter on Test connection reaches the server ──────
-  // The observable is that a request left and the result was rendered. The
-  // fake server answers `version`, which is what testStashConnection asks
-  // for; a button wired to nothing leaves the row empty.
+  // The request left and the result rendered. The fake answers `version`,
+  // which testStashConnection asks for; a button wired to nothing stays empty.
   await enter(byLabel('Test connection'));
   await sleep(900);
   const resultText = document.querySelector('[role="dialog"]')?.textContent || '';
@@ -168,11 +147,10 @@ async function runSettings() {
     `result row: ${(resultText.match(/[✓✗][^✓✗]{0,40}/) || ['<none>'])[0]}`);
 
   // ── A4  Enter on Cancel asks, and only an answer closes ──
-  // A2 left the draft dirty, so this is the unsaved path. Cancel no longer
-  // closes on its own: it raises the question ("I sometimes forget to go
-  // press save"), and only an answer to it leaves. The store is read either
-  // side: Cancel is a *draft* discard, so a button wired to the wrong handler
-  // saves what the user just refused.
+  // A2 left the draft dirty, so this is the unsaved path: Cancel raises the
+  // question instead of closing, and only an answer leaves. The store is read
+  // either side, so a handler wired to the wrong action saves the refused
+  // draft.
   const urlBefore = getSettings().stashUrl;
   await enter(byLabel('Cancel'));
   const asked = await waitFor(() =>
@@ -184,32 +162,27 @@ async function runSettings() {
   await sleep(200);
   check('A4 Discard asked the panel to close', window.__closed === true,
     `onClose called: ${window.__closed === true}`);
-  // The detail is deliberately port-free on the passing path. It used to
-  // print the URL, and since the driver picks a random port that string
-  // differed on every run — which made this check's *name* the only stable
-  // part of it and put a spurious line in every differential diff. A check
-  // whose detail is run-dependent cannot be diffed, which is the one job
-  // this driver has. The informative form is kept for the failure.
+  // The detail is port-free on the passing path: the port is random, so a
+  // run-dependent detail puts a spurious line in every differential diff. The
+  // informative form is kept for the failure.
   check('A4 Cancel did not commit the draft to the store',
     getSettings().stashUrl === urlBefore,
     getSettings().stashUrl === urlBefore ? 'store unchanged' : `${urlBefore} → ${getSettings().stashUrl}`);
 
   // ── A5  The primary button is marked as such ─────────────
-  // `primary` is the one prop the shared component has to keep passing
-  // through, and it is invisible to every check above. Asserted as "Save
-  // differs from Cancel in its computed background" — a class-name check
-  // would pass on a component that applied a hashed name to the wrong
-  // element, and the point is that the user can see which one it is.
+  // `primary` is the one prop the shared component must pass through, and it
+  // is otherwise invisible. Asserted on computed background, not class: a
+  // hashed name on the wrong element would pass, and the user must see which
+  // action is primary.
   const saveBg = getComputedStyle(byLabel('Save')).backgroundColor;
   const cancelBg = getComputedStyle(byLabel('Cancel')).backgroundColor;
   check('A5 the primary action looks different from the secondary one',
     saveBg !== cancelBg, `Save ${saveBg} vs Cancel ${cancelBg}`);
 
   // ── C: the live connection block belongs to Live mode ───
-  // Test mode used to dim these fields with a class and leave them in the
-  // focus order: the D-pad could select the endpoint, Enter raised the TV
-  // keyboard, and the hint beneath said the opposite. They are now unmounted,
-  // which is also why the result line cannot outlive the mode.
+  // Test mode used to dim these fields and leave them in the focus order — the
+  // D-pad could select the endpoint while the hint said otherwise. They are
+  // now unmounted, so the result line cannot outlive the mode.
   check('C0 the live fields are present in Live mode',
     !!registry.get('settings-url') && !!registry.get('settings-key')
       && !!registry.get('settings-test'),
@@ -229,15 +202,14 @@ async function runSettings() {
   check('C2 flipping back to Live restores them',
     !!registry.get('settings-url') && !!registry.get('settings-test'),
     `url ${!!registry.get('settings-url')}, test ${!!registry.get('settings-test')}`);
-  // A3's ✓ belongs to Live mode. It must not be resurrected by a round trip
+  // A3's ✓ belongs to Live mode and must not come back after a round trip
   // through Test: the fields it was measured against were not on screen.
   check('C2 ...without resurrecting the previous result line',
     !(document.querySelector('[role="dialog"]')?.textContent || '').includes('Connected — Stash'),
     `dialog contains Connected: ${(document.querySelector('[role="dialog"]')?.textContent || '').includes('Connected — Stash')}`);
 
   // ── C3: an answer asked for in Live cannot land in Test ─
-  // The panel stays mounted while the test is in flight, so this is an
-  // ordering problem rather than an unmount one: the mode switch has to
+  // The panel stays mounted while the test is in flight: the mode switch must
   // invalidate the question, not just hide its answer.
   await setMode({ connection: 'slow' });
   await enter(byLabel('Test connection'));
@@ -261,12 +233,9 @@ async function runSettings() {
 
   // ── P: a PIN set in this session is removable in it ─────
   // The Remove button exists only while a PIN does, and this panel mounted
-  // without one. `useFocusable` registers in an effect keyed on the element's
-  // identity, so a hook called unconditionally above saw no element on that
-  // first run and never re-ran when the button appeared — leaving it with no
-  // tabindex, no key handler and no registry entry until the panel was
-  // closed and reopened. The check is the registry entry, because that is
-  // what the D-pad navigates by.
+  // without one. `useFocusable` registers in an effect keyed on element
+  // identity, so a hook above it missed the first run and never re-ran; the
+  // check is the registry entry, which is what the D-pad navigates by.
   clearPin();
   await sleep(150);
 
@@ -342,10 +311,8 @@ async function runExit() {
   check('E1 both actions are rendered as buttons',
     labels().join('|') === 'Cancel|Exit', `found: ${labels().join(' | ')}`);
 
-  // The prompt is the only surface here that autofocuses, and the reason is
-  // that Back opens it: landing on Exit would let a double-tap of Back quit
-  // the app. Asserting the *focused element*, not the attribute that asked
-  // for it.
+  // It autofocuses because Back opens it: landing on Exit would let a double
+  // Back quit the app. Asserted on the focused element, not the attribute.
   check('E1 focus starts on the safe action', focusedLabel() === 'Cancel',
     `focused: ${focusedLabel() ?? '<none>'}`);
 
@@ -359,9 +326,9 @@ const root = document.getElementById('root');
 root.style.cssText = 'height:100vh;display:flex;flex-direction:column;overflow:hidden;';
 document.body.style.margin = '0';
 
-// The panel reads the connection settings to seed its draft, so they have to
-// be in the store before it mounts — not after, or the fields would render
-// the defaults and A4 would compare two identical empty strings.
+// The panel seeds its draft from the connection settings, so they must be in
+// the store before it mounts; otherwise the fields render defaults and A4
+// compares two identical empty strings.
 setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness', onboarded: 'live' });
 
 const onClose = () => { window.__closed = true; };

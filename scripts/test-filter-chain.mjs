@@ -4,19 +4,15 @@
  *
  *   node scripts/test-filter-chain.mjs
  *
- * CriterionRow gives each control in a criterion row an explicit left/right
- * neighbour (`nextId`), because `.rowBody` wraps: once a row takes a second
- * visual line, the geometry reads Left from a wrapped control as "whatever is
- * to the left on the screen", and the answer is a footer button. The chain
- * must list exactly what the editor renders, in DOM order. A chain entry
- * naming a control that was not rendered and a rendered control missing from
- * the chain both fall back to that geometry, so the two mistakes look alike —
- * and only a remote shows either.
+ * CriterionRow gives every control an explicit left/right neighbour (`nextId`)
+ * because `.rowBody` wraps: geometry would otherwise send Left from a wrapped
+ * control to a footer button. The chain must list exactly what the editor
+ * renders, in DOM order; a missing or extra entry silently falls back to that
+ * geometry, and only a remote shows it.
  *
- * Each editor module exports the two descriptions independently: `parts` is
- * what CriterionRow renders, `chainIds` is what it wires. This asserts they
- * agree for every editor kind, with and without an operand, and for the
- * range/non-range pair. No framework, same as test-translate.mjs.
+ * Each editor exports `parts` (rendered) and `chainIds` (wired); this asserts
+ * they agree for every kind, with and without an operand, and for the
+ * range/non-range pair.
  */
 
 import { criteriaFor, EDITOR } from '../src/utils/filterCriteria.js';
@@ -39,9 +35,8 @@ function check(label, pass, detail = '') {
   }
 }
 
-// Real descriptors from the schema the app ships, looked up by field so a
-// schema regeneration that renames one fails loudly here instead of silently
-// testing a different editor.
+// Look descriptors up by field so a schema regeneration that renames one fails
+// here instead of silently testing a different editor.
 const descs = criteriaFor('SceneFilterType');
 const byField = (field) => {
   const d = descs.find(x => x.field === field);

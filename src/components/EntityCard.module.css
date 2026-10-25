@@ -1,16 +1,9 @@
-/* Derived from PerformerCard.module.css rather than shared with it. The two
-   are close but not the same card: this one switches aspect per section, and
-   its cover has no `.sceneCount`-specific rule. Importing PerformerCard's sheet
-   would mean the performer card could not change without changing this one,
-   which is the coupling MarkerGrid→VideoGrid already has and does not
-   particularly want. */
+/* Derived from PerformerCard.module.css rather than shared: this card switches
+   aspect per section and has no `.sceneCount` rule, and sharing would couple
+   the two. */
 
 .card {
-  /* Local paint containment and an inset focus ring — see the note in
-     MarkerCard.module.css. Focusing a card used to make it positioned and
-     z-indexed, which invalidates the paint order of the whole grid; with 6
-     columns and full-size artwork that is what made D-pad movement sluggish
-     in Live mode. */
+  /* Local paint containment and an inset focus ring — see MarkerCard. */
   contain: content;
   display: block;
   background: var(--bg-card);
@@ -33,8 +26,7 @@
   transform: scale(1.02);
 }
 
-/* A single unblurred ring. See the note on the same rule in
-   PerformerCard.module.css for why the wide glow layers were dropped. */
+/* A single unblurred ring; see PerformerCard for why the glow layers went. */
 .card.focused {
   border-color: var(--accent);
   transform: scale(1.05) translateY(-4px);
@@ -43,15 +35,10 @@
   outline-offset: -3px;
 }
 
-/* ── Cover ──────────────────────────────────────────────────
-   Portrait by default — tags are drawn the way performers are. The section
-   that wants landscape says so through the descriptor's `aspect`, which puts
-   `.landscape` on this element.
-
-   This is a design choice, not a measurement: a real library's tag and studio
-   images are whatever the user uploaded, and something has to be chosen for
-   them. Portrait for tags and landscape for studios/galleries/images matches
-   what each kind of picture usually is. */
+/* Portrait by default; a section wanting landscape says so through the
+   descriptor's `aspect`, which adds `.landscape`. This is a design choice, not
+   a measurement: uploaded art varies, and these match what each kind usually
+   is. */
 .cover {
   position: relative;
   width: 100%;

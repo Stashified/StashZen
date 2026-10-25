@@ -4,17 +4,12 @@ import { innerOf } from './common.js';
  * MULTI and HIERARCHICAL: the entity picker button, plus a depth choice for
  * hierarchical fields.
  *
- * Both controls were plain <button>s once, which on the TV means unreachable:
- * spatial nav searches `registry`, and only `useFocusable` puts anything in
- * it. The pick button's focus comes from `useFocusable` in CriterionRow —
- * kept there rather than here so the row's two focusables register in the
- * same order they always have — and the depth choice is a Choice like any
- * other.
+ * The pick button's focusable lives in CriterionRow, so the row's two
+ * focusables keep their registration order; the depth choice is a Choice.
  *
- * `disabled` rather than hidden for a multi-valued field with no entity
- * source: `useFocusable` skips registration when disabled, so the control
- * drops out of the D-pad order instead of being a focus stop that does
- * nothing.
+ * `disabled` rather than hidden when there is no entity source:
+ * `useFocusable` skips registration when disabled, dropping it from the D-pad
+ * order instead of leaving a dead stop.
  */
 export const chainIds = (field, desc) => {
   const ids = [`fb-pick-${field}`];

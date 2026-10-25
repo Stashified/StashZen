@@ -4,13 +4,11 @@
  *
  *   node scripts/test-engine-policy.mjs
  *
- * These rules decide whether a scene is handed to AVPlay, the browser, or a
- * transcode, and in what order. A mistake here is not a cosmetic one: a static
- * deny list would send WMV to the transcoder on an older panel that can decode
- * it natively, and dropping the browser candidate entirely would break the one
- * measured scene (22546, H.264 + pcm_s32le) that only the browser plays.
- *
- * No framework, same as test-play-queue.mjs.
+ * These rules decide whether a scene goes to AVPlay, the browser or a
+ * transcode, and in what order. A static deny list would send WMV to the
+ * transcoder on an older panel that decodes it natively, and dropping the
+ * browser candidate would break the one measured scene (22546, H.264 +
+ * pcm_s32le) that only the browser plays.
  */
 
 import {
@@ -44,10 +42,9 @@ const kinds = (plan) => plan.map((c) => `${c.engine}:${c.kind}`);
 const H264 = { videoCodec: 'h264', audioCodec: 'aac', container: 'mp4' };
 const WMV = { videoCodec: 'wmv2', audioCodec: 'wmav2', container: 'wmv' };
 const PCM = { videoCodec: 'h264', audioCodec: 'pcm_s32le', container: 'mp4' };
-// Scene 24844: MPEG-TS, H.264/AAC. The app's browser allowlist counts mpegts
-// as direct, so `Auto` gives it to the browser first — the one AVPlay-only file
-// in this library that is *not* pre-empted. Kept as a named case because it is
-// the file the TV pass uses for the silent-refusal watchdog.
+// Scene 24844: MPEG-TS, H.264/AAC. The browser allowlist counts mpegts as
+// direct, so `Auto` gives it to the browser first — the one AVPlay-only file
+// here that is *not* pre-empted. It is the TV pass's silent-refusal watchdog.
 const MPEGTS = { videoCodec: 'h264', audioCodec: 'aac', container: 'mpegts' };
 
 // ── The persisted vocabulary ────────────────────────────────

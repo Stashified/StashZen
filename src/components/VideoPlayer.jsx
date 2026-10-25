@@ -1,85 +1,45 @@
 /**
- * VideoPlayer — Full-screen video player overlay
+ * VideoPlayer — full-screen video player overlay.
  *
- * Plays a `queue` — an ordered list of scenes plus the index to start at —
- * rather than a single video. A one-scene queue is the ordinary case: the
- * detail page's Play button and a marker both open one. A longer queue comes
- * from the action menu's Play all / Play from here, and is what the rail's
- * ⏮/⏭ buttons (and the end of a scene) advance through.
+ * Plays a `queue` (`{ items, total, page, startIndex, startSeconds, fetchPage }`,
+ * see usePlayQueue): an ordered list plus the index to start at. A one-scene
+ * queue is the ordinary case; Play all / Play from here make it longer, and the
+ * rail's ⏮/⏭ (and the end of a scene) advance through it. `startSeconds`
+ * applies only to the scene the session opened on (a marker's timestamp).
  *
  * ## Keys
  *
- * The transport rail (PlayerControlsRail) is the on-screen half of these, and
- * the two are deliberately not the same map. The rule that sorts them: a key
- * either does something *to the video* or moves the cursor, and the cursor
- * only exists once the rail is up.
+ * The rail is the on-screen half of these and deliberately not the same map. A
+ * key either does something to the video or moves the cursor, and the cursor
+ * only exists while the rail is up:
  *
- *   OK         open the rail, focused on ⏯ — then activate the focused button
- *   ↓          buttons → next scene in one press. From the seek bar it is the
- *              first press of the ladder: ↓ returns to the buttons and the
- *              second ↓ steps. With the bar hidden, ↓ steps directly.
- *   ↑          the mirror: buttons → seek bar (bar up, ←/→ skim), and the seek
- *              bar's ↑ steps to the previous scene. With the bar hidden, ↑
- *              steps directly.
- *   ← / →      skim −15s / +15s inside the current scene (and reveal the rail);
- *              inside the rail, move between buttons
+ *   OK         open the rail focused on ⏯, then activate the focused button
+ *   ↓ / ↑      next/previous scene; from the seek bar ↓ goes to the buttons
+ *              first, and ↑ from the buttons goes to the seek bar (←/→ skim)
+ *   ← / →      skim −15s / +15s in the scene, and reveal the rail
+ *   Back/Esc   leave the rail if it is up, else close the player
+ *   Space, ⏯   instant transport in every state; the remote's play/pause key
+ *              (10252) toggles, pause (19) and play (415) do only their name
  *
- *   At the ends of a queue, nothing. A one-scene queue has nowhere to step, so
- *   there ↑/↓ raise the rail instead.
- *   Back/Esc   inside the rail, leave it — otherwise close the player
- *   Space, ⏯   instant transport in every state — Space and the remote's
- *              play/pause key (10252) toggle, its pause (19) and play (415)
- *              keys do only what they say; see mediaTransport
+ * A one-scene queue has nowhere to step, so ↑/↓ raise the rail there instead.
+ * With a foreign dialog up (add-marker, resume prompt, detail page) the player
+ * owns no keys — see foreignDialogOpen.
  *
- * Three states, not two: with the rail up the cursor owns the arrows, and with
- * the add-marker form, the resume prompt or the detail page up the player owns
- * nothing at all — see foreignDialogOpen for why that is decided by what is in
- * the document rather than by where the cursor happens to be.
+ * ## Writes
  *
- * ## What gets written back
+ * play_count is `sceneAddPlay`, once per scene per session on the first frame
+ * that actually plays: in Stash a play count is a list of view dates, so an
+ * "increment" appends a row and `sceneSaveActivity` does not touch it at all.
+ * resume_time and play_duration are both `sceneSaveActivity`; the latter is a
+ * delta of seconds watched because the server adds it to a running total. A
+ * failed save is shown, not swallowed (see `syncState`): on a TV a silently
+ * rejected write is indistinguishable from success. Rules live in
+ * progressReporter.js.
  *
- * Three writes, and they are deliberately not one:
- *
- *   play_count     `sceneAddPlay`, once per scene per session, on the first
- *                  frame that actually plays. It cannot come from anything
- *                  periodic: in Stash a play count is the length of a list of
- *                  view dates, so "increment" means "append a row", and
- *                  `sceneSaveActivity` does not touch that table at all.
- *   resume_time    `sceneSaveActivity`, overwritten each save.
- *   play_duration  the same call, as a *delta* of seconds actually watched —
- *                  the server adds it to a running total, so a position would
- *                  be re-counted on every save.
- *
- * A save that fails is shown, not swallowed: see `syncState`. On a TV there is
- * no console, and a silently rejected write is indistinguishable from one that
- * worked, which is exactly how "does progress sync?" became unanswerable from
- * the couch.
- *
- * The detail page is rendered *here*, not by the app, even though the app has
- * its own render site for the same page. The two differ in exactly the two
- * things that matter and in nothing else: this one restores the cursor to the
- * button that opened it and leaves the scene paused, and its Play resumes the
- * scene already loaded rather than starting a new session from zero. Folding
- * them together would mean the app carrying the player's focus and playback
- * state, which is the state the player exists to own.
- *
- * So OK no longer pauses: pausing is OK (open the rail), OK (activate ⏯), and
- * resuming is a third OK. The blank-OK press that used to be a pause is now
- * the entry, which is why the rail opens with the cursor already on ⏯ rather
- * than on the leftmost button.
- *
- * Queue stepping is ↑/↓ and the rail's ⏮/⏭, and the two are not redundant: the
- * buttons are the labelled affordance, the arrows are the blind path a user
- * finds by pressing. Between the scene steps sits the seek bar, which each
- * direction reaches on its way past: ↓ from the buttons steps immediately,
- * ↓ from the seek bar goes to the buttons first; ↑ from the buttons goes to
- * the seek bar, and ↑ from there steps back (2026-10-24 TV report: "controls →
- * down → scene change; controls → up → seek bar → up → scene change"). Back
- * leaves the rail as well, exactly as it leaves everything else here.
- *
- * The queue object is `{ items, total, page, startIndex, startSeconds,
- * fetchPage }` — see usePlayQueue. `startSeconds` applies to the scene the
- * session opened on (a marker's timestamp) and to nothing after it.
+ * The detail page is rendered here, not by the app: its Play resumes the loaded
+ * scene rather than starting from zero, and its cursor returns to the button
+ * that opened it. Folding the two sites together would make the app carry the
+ * player's focus and playback state.
  */
 
 import {
@@ -121,12 +81,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     items, total, index, current: video, goNext, goPrev, hasPrev, hasNext,
   } = usePlayQueue(queue);
 
-  // Report the scene on screen, so the screen underneath can put the cursor
-  // back on *that* scene's card when the player closes — a queue started in
-  // the middle of a listing and then skipped must not return to the scene it
-  // started on. The callback is read through a ref because App rebuilds it
-  // every render, and the report belongs to a scene change, not to each of
-  // the player's own re-renders (the transport writes state every timeupdate).
+  // Report the scene on screen so the screen underneath can restore the cursor
+  // to *that* card, not the one the queue started on. Read through refs: App
+  // rebuilds the callback every render, and the report belongs to a scene
+  // change, not to each transport update.
   const onSceneChangeRef = useRef(onSceneChange);
   onSceneChangeRef.current = onSceneChange;
   const currentVideoRef = useRef(video);
@@ -135,9 +93,9 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     onSceneChangeRef.current?.(currentVideoRef.current ?? null);
   }, [video?.id]);
 
-  // One scene and no neighbours: ↑/↓ have no scene to step to, so they open
-  // the rail instead. Derived from the queue rather than from `items.length`
-  // alone, so a single-scene page of a larger queue is still a step-and-fetch.
+  // One scene and no neighbours: ↑/↓ have nowhere to step, so they raise the
+  // rail. Derived from hasPrev/hasNext rather than items.length so a
+  // single-scene page of a larger queue is still a step-and-fetch.
   const singleScene = !hasPrev && !hasNext;
 
   const startIndex = queue?.startIndex ?? 0;
@@ -145,14 +103,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // marker's timestamp describes that marker, not the scene after it.
   const startSeconds = index === startIndex ? (queue?.startSeconds || 0) : 0;
 
-  // The codec fields, as a set, for the failure message only.
-  //
-  // A memo of primitives rather than the queue object itself: the event-wiring
-  // effect below tracks the scene by `video?.id` on purpose (the <video> node
-  // survives an advance, so anything looser would tear its listeners down and
-  // re-add them mid-playback), and listing `video` there would reintroduce
-  // exactly that churn. These three are read from the same closure, so they
-  // need the same treatment — and for a given scene id they never change.
+  // Codec primitives, not the queue object, for the failure message only. The
+  // event-wiring effect tracks scenes by `video?.id` on purpose (the <video>
+  // node survives an advance, so anything looser would tear its listeners down
+  // mid-playback), and listing `video` would reintroduce that churn.
   const codecs = useMemo(() => ({
     videoCodec: video?.videoCodec,
     audioCodec: video?.audioCodec,
@@ -160,20 +114,18 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   }), [video?.videoCodec, video?.audioCodec, video?.container]);
 
   /**
-   * The media facade — the object every playback hook now talks to.
-   *
-   * It is stable for the life of the player and quacks like the slice of
-   * HTMLMediaElement the hooks use. The backend behind it is the browser's
-   * `<video>` today. Created lazily in a ref rather than in state because the
-   * hooks take a ref-shaped object and must not re-run when it appears.
+   * The media facade every playback hook talks to. Stable for the player's
+   * life and shaped like the slice of HTMLMediaElement the hooks use; the
+   * backend is the browser's `<video>` today. Created lazily in a ref because
+   * the hooks hold it as a ref and must not re-run when it appears.
    */
   const mediaRef = useRef(null);
   if (!mediaRef.current) mediaRef.current = createMediaEngine();
   const media = mediaRef.current;
 
   // Stable callback ref: an inline arrow would detach and re-attach the
-  // facade's element listeners on every render, and the progress clock makes
-  // this component render several times a second.
+  // facade's element listeners every render, and the progress clock makes this
+  // component render several times a second.
   const attachVideo = useCallback((el) => {
     if (el) media.attachVideoElement(el);
     else media.detachVideoElement();
@@ -182,37 +134,31 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const containerRef = useRef(null);
   const railRef = useRef(null);
   const startSeekedRef = useRef(false); // ensure we only auto-seek once
-  // Where to put the playhead after a *fallback* source loads. `{sceneId,
-  // time}` so a source change that belongs to a new scene cannot carry the
-  // outgoing scene's position into it.
+  // `{sceneId, time}` so a source change belonging to a new scene cannot carry
+  // the outgoing scene's position into it.
   const fallbackSeekRef = useRef({ sceneId: null, time: 0 });
 
-  // The write-back subsystem. `progressReporter.js` does the accounting and
-  // has its own tests; this hook owns the page lifecycle around it — the sync
-  // chip, the unmount latch, visibility/pagehide and the periodic save. The
-  // media event handlers below feed it, and `useSceneState` names the scene.
+  // Write-back lifecycle — sync chip, unmount latch, pagehide, periodic save.
+  // Accounting lives in progressReporter.js; the media handlers below feed it
+  // and `useSceneState` names the scene.
   const { progress, syncState } = usePlaybackProgress({ video, mediaRef, onActivityChange });
 
-  // The player's own render state. The timeline the UI draws and the error
-  // overlay are shared by several hooks — the media wiring writes them, the
-  // transport and the overlays read them — so they are declared in the shell
-  // rather than owned by any one of them.
+  // Shared render state: the media wiring writes the timeline and error, the
+  // transport and overlays read them, so the shell owns them.
   const [currentTime, setCurrentTime] = useState(startSeconds);
   const [elementDuration, setElementDuration] = useState(0);
   const [error, setError] = useState(null);
 
-  // Which engine may be used this session. Read when the player opens rather
-  // than subscribed to: Settings is not reachable from the player, and
-  // "applies on the next open" is what the setting says.
+  // Read once at open, not subscribed: Settings is unreachable from the
+  // player, and the setting says "applies on the next open".
   const {
     setting: engineSetting, forcedBrowser, avplay, tvaudiocontrol, ready: engineReady,
   } = usePlayerEngine();
 
-  // What the media object is actually pointed at — the scene's own file, or
-  // one of Stash's transcodes when that file is a codec the engine cannot
-  // decode, and the other of the two if the first one fails. See the hook: the
-  // decision and the fallback both live there, and this component only supplies
-  // the queue item and the element.
+  // What the media is pointed at — the scene's file, or a Stash transcode when
+  // the engine cannot decode it, and the other of the two if the first fails.
+  // The decision and fallback live in usePlaybackSource; this component only
+  // supplies the queue item and the element.
   const {
     src: playbackSrc,
     sourceKind,
@@ -227,25 +173,24 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     ready: engineReady,
   });
 
-  // The identity used to re-arm media wiring. It includes the engine, because
-  // an engine fallback can re-open the *same* URL under the other backend and
-  // a URL-only key would leave the hooks listening to the dead engine.
+  // Re-arm key for the media wiring. Includes the engine: a fallback can
+  // re-open the *same* URL on the other backend, and a URL-only key would leave
+  // the hooks listening to the dead one.
   const mediaKey = sourceKey(engine, playbackSrc);
 
   /**
-   * Point the facade at the engine the resolver chose, and put the page into —
-   * or out of — AVPlay plane mode in the same commit.
+   * Point the facade at the resolved engine and enter/leave AVPlay plane mode
+   * in the same commit.
    *
-   * A layout effect, because both halves have to be true before the browser
-   * paints: a transparent page with the shell still drawn flashes the listing
-   * through the video, and the reverse hides the picture behind an opaque
-   * page. React has also already attached or detached the `<video>` by the
-   * time this runs, which is the ordering the "no <video> while AVPlay is
-   * open" invariant needs.
+   * A layout effect because both halves must be true before paint: a
+   * transparent page with the shell still drawn flashes the listing through,
+   * and the reverse hides the picture. React has also attached or detached the
+   * `<video>` by now, which the "no <video> while AVPlay is open" invariant
+   * needs.
    *
-   * The attribute has exactly one owner: this effect. Its cleanup removes it
-   * on every engine change and on unmount, so closing the player from AVPlay
-   * cannot leave the shell hidden.
+   * This effect is the attribute's only owner: its cleanup removes it on every
+   * engine change and unmount, so closing from AVPlay cannot leave the shell
+   * hidden.
    */
   useLayoutEffect(() => {
     media.setEngine(engine === 'avplay' ? 'avplay' : 'html5', { avplay, tvaudiocontrol });
@@ -255,31 +200,27 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     return () => { root.removeAttribute('data-avplay-plane'); };
   }, [media, engine, avplay, tvaudiocontrol]);
 
-  // Where this scene actually got to, the watch time owed, the completion
-  // latch, the play-count latch and the save queue all live behind
-  // `progress` — see progressReporter.js, which explains each rule. Everything
-  // here reads the reporter, never the live element, for the teardown save:
-  // React points `src` at the next scene before it runs the previous effect's
-  // cleanup, and assigning `src` resets currentTime to 0.
+  // Saved position, owed watch time, completion/play-count latches and the
+  // save queue live behind `progress` (see progressReporter.js). The teardown
+  // save reads the reporter, never the element: React points `src` at the next
+  // scene before the old effect's cleanup runs, and assigning `src` resets
+  // currentTime to 0.
 
-  // The current `src` has not reported metadata yet, so its timeline is not
-  // yet the user's. Setting `src` runs the media load algorithm, which resets
-  // `currentTime` to 0 — and some engines announce that with a `timeupdate`
-  // *before* the new source has loaded. Taking it would overwrite the saved
-  // playhead with 0 mid-fallback, losing the position both for the resume
-  // seek and for the teardown save. Set on every source change, cleared by
+  // The current src has not reported metadata, so its timeline is not the
+  // user's yet. Assigning `src` resets currentTime to 0 and some engines
+  // announce that with a `timeupdate` before the new source loads; taking it
+  // would overwrite the saved playhead with 0 mid-fallback. Cleared by
   // `loadedmetadata`.
   const sourceFreshRef = useRef(false);
 
-  // A resume position the element would not seek to yet (no metadata), kept
-  // for `loadedmetadata` to apply. Without it the live value arriving before
-  // the file does was simply lost: the seek threw, and the later load had no
-  // other way to learn about it.
+  // A resume position the element cannot seek to yet (no metadata), applied on
+  // `loadedmetadata`. Without it the position is lost: the seek throws and the
+  // later load has no other way to learn about it.
   const pendingLiveResumeRef = useRef(0);
 
-  // What Stash knows about the scene on screen: the live resume point, the
-  // markers, and the answer to the resume prompt. The per-scene reset and
-  // fetch live here too — one commit, one reset.
+  // What Stash knows about the scene: live resume point, markers, resume-prompt
+  // answer. The per-scene reset and fetch live here too — one commit, one
+  // reset.
   const {
     liveResumeTime, markers, addMarkers, resumeChoice, setResumeChoice,
   } = useSceneState({
@@ -296,8 +237,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     hideControls,
   } = useControlsVisibility({ railRef });
 
-  // Where a scene starts: the prompt, the policy, and the seek latches the
-  // media wiring below shares with it.
+  // Where a scene starts: the prompt, the policy, and the seek latches shared
+  // with the media wiring below.
   const {
     resumeTime, askingToResume, effectiveStart, chooseResume,
   } = useResumeSeek({
@@ -313,30 +254,24 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   });
 
   /**
-   * Open the native session, for AVPlay only.
+   * Open the native AVPlay session — its load path, since AVPlay has no
+   * element (the browser's is the `<video>`'s `src`, set in the same commit).
+   * The resume prompt owns whether playback may start; the transport starts it
+   * once the prompt is gone.
    *
-   * The browser's load path is the `<video>`'s `src`, which React sets in the
-   * same commit. AVPlay has no element, so this is its load: the URL, the
-   * resume position, and whether playback may start yet (the resume prompt
-   * owns that answer, and the transport's play effect starts it once the
-   * prompt is gone).
+   * Keyed on the source identity, not `effectiveStart`/`askingToResume`:
+   * re-opening to change a start position would restart the stream, and a seek
+   * is what those two need. The options are read through a ref so the effect
+   * need not depend on them.
    *
-   * Keyed on the source identity, not on `effectiveStart`/`askingToResume`:
-   * re-opening the session to change a start position would restart the
-   * stream, and a seek is what those two actually need. The options are read
-   * through a ref so the effect need not depend on them.
-   *
-   * Deliberately no cleanup on a source change: `open()` already tears the
-   * previous native session down (and `setEngine` closes it on an engine
-   * switch). `close()` restores a TV mute this app applied, and a queue
-   * advance is not the end of the sitting — closing per scene would unmute
-   * between two scenes the user is watching muted. The unmount effect below
-   * is the one that closes.
+   * No cleanup on a source change: `open()` already tears the previous session
+   * down (`setEngine` closes it on an engine switch). `close()` restores a TV
+   * mute this app applied, so closing per scene would unmute between two
+   * scenes of a muted sitting; the unmount effect below closes.
    */
-  // The user's mute choice for this sitting, shared with the transport (which
-  // owns the button) and read below when a source is opened. AVPlay captures
-  // the TV's mute state at open, so a queue advance would otherwise un-mute a
-  // muted sitting between two scenes.
+  // The sitting's mute choice, owned by the transport button and read when a
+  // source opens. AVPlay captures the TV mute state at open, so a queue advance
+  // would otherwise unmute a muted sitting between two scenes.
   const muteIntentRef = useRef(null);
 
   const openOptionsRef = useRef({ startSeconds: 0, autoplay: true });
@@ -350,13 +285,12 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     media.open(playbackSrc, openOptionsRef.current);
   }, [media, engine, playbackSrc, mediaKey]);
 
-  // The sitting's end: stop the native session and restore the panel. Runs
-  // after the plane attribute's own cleanup, so the shell is never left hidden.
+  // The sitting's end: close the native session and restore the panel. Runs
+  // after the plane attribute's cleanup, so the shell is never left hidden.
   useEffect(() => () => media.close(), [media]);
 
-  // The element's listeners, its autoplay decision and its source-change
-  // re-arm. Consumes the resume decision above; nothing consumes it except
-  // the render.
+  // The element's listeners, autoplay decision and source-change re-arm;
+  // consumes the resume decision above.
   const { playing, buffering } = usePlayerMedia({
     video,
     mediaRef,
@@ -379,17 +313,17 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   });
 
   /**
-   * The poster above the AVPlay plane, until the engine has a picture.
+   * The poster above the AVPlay plane until the engine has a picture.
    *
    * AVPlay draws behind the page, so between `open()` and the first decoded
-   * frame the page is transparent over black — and a scene's thumbnail reads
-   * far better there than nothing. An `<img>`, never a `<video>`: a second
-   * decoder would compete with the engine this is covering for.
+   * frame the page is transparent over black — a thumbnail reads better than
+   * nothing. An `<img>`, never a `<video>`: a second decoder would compete with
+   * the engine it is covering for.
    *
-   * Set by the `playing` event itself rather than derived from `playing`
-   * state: on the render where a new scene is chosen, the previous scene's
-   * `playing` may still be true, and the poster would vanish before the new
-   * one had a frame. Keyed per source so an engine fallback shows it again.
+   * Set by the `playing` event rather than derived from state: on the render
+   * that picks a new scene the old `playing` may still be true, and the poster
+   * would vanish before the new one had a frame. Keyed per source so an engine
+   * fallback shows it again.
    */
   const [posterKey, setPosterKey] = useState(null);
   useEffect(() => {
@@ -400,17 +334,15 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const showPoster = engine === 'avplay' && posterKey !== mediaKey && !!video?.thumbnail;
 
   /**
-   * The timeline the UI draws — which is *not* always the element's duration.
+   * The timeline the UI draws — not always the element's duration.
    *
-   * `v.duration` is the truth whenever there is one: it is the range the
-   * transport can actually reach, and for a direct file or an HLS playlist it
-   * matches the source exactly. A Stash **MP4 transcode** has none to give
-   * (see playbackSource.js), and that is where "timeline only shows first 10
-   * secs" came from.
+   * `v.duration` is the truth whenever it exists: it is the range the transport
+   * can reach, and matches a direct file or HLS playlist exactly. A Stash MP4
+   * transcode has none, which is what made the timeline show only the first
+   * 10 seconds.
    *
-   * The rule itself lives in `timelineDuration` rather than here, because it
-   * is the one part of that report that no off-device run can reproduce — see
-   * its comment. This component only reads the answer.
+   * The rule lives in `timelineDuration` because no off-device run reproduces
+   * it; this component only reads the answer.
    */
   const duration = timelineDuration(elementDuration, video?.durationSeconds || 0);
 
@@ -444,8 +376,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     playFromDetails, playAtFromDetails,
   } = useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime });
 
-  // Last, because it only dispatches into the callbacks above: the key map is
-  // pure and lives in keyRouting.js, and this hook installs the listener.
+  // Installed last: the key map is pure (keyRouting.js) and only dispatches
+  // into the callbacks above.
   usePlayerKeys({
     onClose,
     containerRef,
@@ -469,9 +401,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   if (!video) return null;
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
-  // What the controls bar says about the source. `null` while the resolver is
-  // still choosing: the spinner is the honest state then, and a chip that
-  // guessed would have to change again a moment later.
+  // What the controls bar says about the source; null while the resolver is
+  // still choosing — the spinner is the honest state then.
   const sourceLabel = sourceKind === 'transcode' ? 'Transcoded'
     : sourceKind === 'direct' ? 'Direct play'
       : null;
@@ -485,12 +416,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
       aria-label={`Now playing: ${video.title}`}
       onMouseMove={showControls}
     >
-      {/* No `autoPlay`: playback is started by the effect above, which is held
-          back while the resume prompt is up. See it for why.
-          `src` is the resolver's, not the scene's: it is the file itself
-          unless the TV cannot decode it, in which case it is Stash's
-          transcode — and it changes mid-scene if the first choice fails.
-          See usePlaybackSource. */}
+      {/* No `autoPlay`: the effect above starts playback and holds back while
+          the resume prompt is up. `src` is the resolver's, not the scene's —
+          the file itself, or Stash's transcode when the TV cannot decode it,
+          and it can change mid-scene if the first choice fails. */}
       {engine !== 'avplay' && (
         <video
           ref={attachVideo}
@@ -501,9 +430,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         />
       )}
 
-      {/* Under the controls and over the transparent plane. The black underlay
-          is the class's background, so a slow thumbnail cannot expose the page
-          underneath it. */}
+      {/* Under the controls, over the transparent plane. The class's black
+          background stops a slow thumbnail exposing the page underneath. */}
       {showPoster && (
         <img className={styles.poster} src={withApiKey(video.thumbnail)} alt="" />
       )}
@@ -553,12 +481,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             muteAvailable={muteAvailable}
             onPlayPause={togglePlay}
             onSkim={skim}
-            // Null at the ends of the queue, which the rail renders as a
-            // dimmed, un-navigable button. A one-scene queue is the ordinary
-            // case — the detail page's Play, a marker — so without this the
-            // two scene buttons ship enabled and inert on the common path.
-            // `goNext` itself is still passed to the `ended` handler above,
-            // where being callable at the end is the point.
+            // Null at the ends of the queue, which the rail dims and makes
+            // un-navigable — otherwise both scene buttons ship enabled and
+            // inert on the common one-scene path. `goNext` is still passed to
+            // the `ended` handler above, where callable-at-the-end is the point.
             onPrevScene={hasPrev ? goPrev : null}
             onNextScene={hasNext ? goNext : null}
             onPrevMarker={jumpToMarker(-1)}
@@ -572,10 +498,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         </div>
       </div>
 
-      {/* Outside `.controls` for the same reason as the toast: the readout is
-          something the user turned on, so it must not disappear when the rail
-          times itself out. It owns its own live-updating state — see the
-          component. */}
+      {/* Outside `.controls`: the user turned the readout on, so it must not
+          vanish when the rail times out. It owns its own live state. */}
       {statsOpen && (
         <PlaybackInfoPanel
           media={media}
@@ -587,18 +511,16 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         />
       )}
 
-      {/* Outside `.controls`, so the confirmation survives the rail hiding
-          itself — the two are timed independently and the notice is the only
-          evidence that a write landed. */}
+      {/* Outside `.controls` so the confirmation survives the rail hiding — the
+          notice is the only evidence that a write landed. */}
       {markerNotice && (
         <p className={styles.toast} role="status" aria-live="polite">{markerNotice}</p>
       )}
 
-      {/* Last in the overlay, so it draws over the controls and the rail. It
-          carries `role="dialog"`, which is what makes the player yield every
-          key while it is up — see ResumePrompt's header. Hidden on an error:
-          there is nothing to resume into, and the error state already tells the
-          user to press Back. */}
+      {/* Last, so it draws over the controls and rail. `role="dialog"` makes
+          the player yield every key while it is up (see ResumePrompt). Hidden
+          on error: there is nothing to resume into, and the error already says
+          Back. */}
       {askingToResume && !error && (
         <ResumePrompt
           sceneTitle={video.title}
@@ -620,15 +542,11 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
       )}
 
       {/*
-        Keyed on the scene id for the same reason the app's own render site is:
-        an instance that outlived its scene would carry the previous scene's
-        optimistic rating and organised state into the next one — and here the
-        next one can arrive without the page ever closing, since the queue
-        advances underneath it.
-
-        It paints over the rail despite the lower z-index in its own stylesheet:
-        the player's overlay is a stacking context, so the page's 900 is
-        compared against the rail's, not against the overlay's 1000.
+        Keyed on the scene id: an instance outliving its scene would carry the
+        previous optimistic rating and organised state into the next one, which
+        can arrive without the page closing. It paints over the rail despite its
+        lower z-index because the player's overlay is a stacking context, so its
+        900 is compared against the rail's, not the overlay's 1000.
       */}
       {detailsOpen && (
         <SceneDetailPage

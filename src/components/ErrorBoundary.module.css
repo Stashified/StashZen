@@ -1,9 +1,5 @@
-/* ErrorBoundary — the last-resort screen.
- *
- * Solid fill for the same reason LockScreen uses one: by construction there
- * is nothing behind this panel, so a translucent backdrop would only suggest
- * an app that is still there.
- */
+/* Solid fill, as on LockScreen: there is nothing behind this panel, and a
+ * translucent backdrop would only suggest an app that is still there. */
 
 .cover {
   position: fixed;

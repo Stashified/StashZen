@@ -1,12 +1,9 @@
 import { EDITOR, NULLARY } from '../../utils/filterCriteria.js';
 
-// ── Envelope construction ─────────────────────────────────
-//
-// The one place that knows the four stored shapes. `nullary` modifiers take no
-// operand, so their value is an empty object rather than an empty string —
-// measured: `{value: {}}` translates to a criterion carrying only its
-// modifier, while `{value: {value: ''}}` carries the empty string through to
-// the server. Both validate; only one is clean.
+// The one place that knows the four stored shapes. Nullary modifiers take no
+// operand, so their value is `{}` rather than `''`: measured, `{value: {}}`
+// translates to a bare modifier while `{value: {value: ''}}` sends the empty
+// string through. Both validate; only one is clean.
 export function blankCriterion(desc) {
   const modifier = desc.modifierOptions[0] || null;
 
@@ -18,10 +15,9 @@ export function blankCriterion(desc) {
     case EDITOR.HIERARCHICAL:
       return { modifier: 'INCLUDES', value: { items: [], excluded: [] } };
     case EDITOR.ENUM:
-      // One enum criterion — `circumcised` — declares `value` as a *list*,
-      // which is why `listValued` comes off the schema rather than off a list
-      // of field names. Getting this wrong sends a scalar where a list is
-      // expected and the server rejects the whole filter.
+      // One enum field declares a list value, hence `listValued` from the
+      // schema rather than a field-name list. Getting this wrong sends a
+      // scalar where a list is expected and the server rejects the filter.
       return { modifier, value: { value: desc.listValued ? [] : '' } };
     default:
       return { modifier, value: {} };
@@ -36,18 +32,14 @@ export function hasOperand(c) {
 const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * The builder reads and writes Stash's *stored* envelope, but it is seeded
- * from the request side, where a tag/studio/gallery activation and Continue
- * Watching hand over the *GraphQL* shape (`{value: [id]}`,
- * `{value: 0}`). `translateFilter` treats the two alike on the way out, so
- * the request path never noticed; the rows and `effective` below do not, and
- * an un-converted working filter rendered empty and was then dropped on
- * Apply — the visible filter row said "Choose…" while a filter was patently
- * applied. Convert on the way in.
+ * The builder writes Stash's stored envelope but is seeded from the request
+ * side, where tag/studio/gallery activation and Continue Watching hand over
+ * the *GraphQL* shape (`{value: [id]}`, `{value: 0}`). `translateFilter`
+ * accepts both, but the rows do not: an unconverted filter rendered empty and
+ * was dropped on Apply. Convert on the way in.
  *
- * A stored criterion is recognisable without the editor: every stored operand
- * is an object (booleans and nullary criteria included — see
- * `blankCriterion`). Anything else came from the request side.
+ * A stored operand is always an object (booleans and nullary included); any
+ * other shape came from the request side.
  */
 export function seedCriterion(desc, c) {
   if (!c || typeof c !== 'object') return c;
@@ -94,7 +86,6 @@ export function seedCriterion(desc, c) {
   }
 }
 
-// ── Helpers shared with CriterionRow ──────────────────────
 export const MODIFIER_LABELS = {
   EQUALS: 'is', NOT_EQUALS: 'is not',
   INCLUDES: 'includes', EXCLUDES: 'excludes', INCLUDES_ALL: 'includes all',
@@ -122,9 +113,8 @@ export const choiceOf = (v, listValued) => (listValued ? (Array.isArray(v) ? v[0
 export const asStoredEnum = (v, listValued) => (listValued ? (v ? [v] : []) : v);
 
 /**
- * Would this criterion translate to something? Only fields that would go out
- * are counted, so a criterion left at its blank state — an empty text box —
- * does not inflate the "3 criteria" count.
+ * Would this criterion translate to something? Blank criteria are not counted,
+ * so they do not inflate the "3 criteria" count.
  */
 export function isEffective(desc, c) {
   if (!c) return false;
@@ -133,11 +123,8 @@ export function isEffective(desc, c) {
   const items = Array.isArray(inner.items) ? inner.items : [];
   const isMulti = [EDITOR.MULTI, EDITOR.HIERARCHICAL].includes(desc.editor);
   const isListValuedEnum = desc.editor === EDITOR.ENUM && desc.listValued;
-  // BOOLEAN/TRI keep their operand at `criterion.value` as a string (the
-  // stored shape), and STASH_ID/STASH_IDS put theirs under a named key.
-  // Testing only `inner.value` dropped all three from every filter — an
-  // "Organized — Yes" criterion could be added, counted as 0, and never
-  // leave the builder.
+  // BOOLEAN/TRI keep their operand at `criterion.value`; STASH_ID/STASH_IDS
+  // use a named key. Testing only `inner.value` drops all three silently.
   const isBoolean = desc.editor === EDITOR.BOOLEAN || desc.editor === EDITOR.TRI;
   const isStashId = desc.editor === EDITOR.STASH_ID || desc.editor === EDITOR.STASH_IDS;
 

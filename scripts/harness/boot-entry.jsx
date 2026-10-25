@@ -1,39 +1,23 @@
 /**
- * Headless driver for the one thing every other driver cannot see: **module
- * init**.
+ * Headless driver for the one thing every other driver cannot see: module
+ * init.
  *
- * 0.10.0 shipped a blank screen. `settings.js` does `let state =
- * loadFromStorage()` at module scope, and `loadFromStorage` validates the
- * saved `viewModes` through `readViewModes`, which reads `const VIEW_MODES` —
- * declared *below* that call. A `const` is in the temporal dead zone until its
- * own line runs, so the validation threw
- * `ReferenceError: Cannot access 'VIEW_MODES' before initialization`.
+ * `settings.js` runs `let state = loadFromStorage()` at module scope, and
+ * `loadFromStorage` validated saved `viewModes` through `readViewModes`, which
+ * read a `const VIEW_MODES` declared below that call — a temporal dead zone
+ * `ReferenceError`. The throw only fired when a `viewModes` map existed to
+ * iterate (`readViewModes` early-returns for undefined/null/string/array), and
+ * the module threw during import, so the launch rendered nothing: no grid, no
+ * first-run, no PIN, before React had a component to mount.
  *
- * **The throw only happened when a `viewModes` map existed to iterate.**
- * `readViewModes` returns early for undefined/null/a string/an array, so a
- * device that had never touched the Mode control loaded fine. Only a user who
- * had actually set a per-section mode armed it — and for them the module threw
- * during import, so the launch rendered *nothing*: no grid, no first-run, no
- * PIN prompt. The whole tree was gone before React had a component to mount.
+ * Every other entry imports settings.js statically and seeds through
+ * `setSettings` after init, so `VIEW_MODES` is long initialised and the
+ * ordering is never exercised. A relaunch writes localStorage then loads the
+ * module, so this driver writes storage first and imports dynamically;
+ * `App.jsx` is dynamic for the same reason.
  *
- * **Why no other driver caught it, which is the point of this file.** Every
- * other entry imports `settings.js` statically and seeds through `setSettings`
- * *after* the module has initialised — `views-entry.jsx` even says in its
- * header that a pre-mount `setSettings` write "is the same observable thing as
- * a saved value". That claim is false, and this bug is exactly the distance
- * between them: `setSettings` reaches `readViewModes` long after `VIEW_MODES`
- * has been initialised, so the ordering is never exercised. A relaunch does
- * not go through `setSettings` at all. It writes localStorage and *then* loads
- * the module.
- *
- * So this driver writes storage first and imports second, dynamically, so that
- * module evaluation happens after the fixture is in place. `App.jsx` is
- * imported dynamically for the same reason — a static import would pull
- * `settings.js` in at the top of the bundle and evaluate it before the first
- * line here runs, which is the trap this file exists to avoid.
- *
- * It asserts on the *load*, not on the feature: that the module evaluates, and
- * that the app mounts. The feature itself is `views-entry.jsx`'s job.
+ * Asserts on the load, not the feature (that is views-entry.jsx's job): the
+ * module evaluates and the app mounts.
  */
 
 import '../../src/index.css';
@@ -68,8 +52,8 @@ const seed = (obj) => {
   localStorage.setItem(LS_KEY, JSON.stringify(obj));
 };
 
-// A saved state that exercises every field `loadFromStorage` validates, with
-// `viewModes` present and non-empty — the condition that made 0.10.0 throw.
+// Exercises every field `loadFromStorage` validates, with `viewModes` present
+// and non-empty — the condition that made init throw.
 const SAVED = {
   stashUrl: `http://127.0.0.1:${PORT}`,
   stashKey: 'harness',
@@ -79,25 +63,14 @@ const SAVED = {
 };
 
 /**
- * Load `settings.js` the way a relaunch does: storage already written, module
- * evaluated second.
+ * Load `settings.js` the way a relaunch does: storage written, module second.
  *
- * **There is exactly one shot at this per page, and that is a property of the
- * language, not a limitation of the harness.** An ES module evaluates once per
- * realm, so a second `import()` of the same specifier returns the cached
- * namespace and module scope does not re-run. A cache-busting query does not
- * help — the lib build emits no such file, and the import fails outright.
- *
- * So the interesting fixture gets the one real observation, and everything
- * else is asked of `readViewModes` directly on the module that came back. That
- * is faithful rather than a compromise: `loadFromStorage` calls exactly
- * `readViewModes(saved.viewModes)`, so a pure call with the same argument is
- * the same computation. The *timing* is the only thing the pure call cannot
- * reproduce — and timing is precisely what the one dynamic import is here to
- * cover.
- *
- * The fixture is deliberately the one that broke: `viewModes` present and
- * non-empty, which is the only shape that reaches the line that threw.
+ * One shot per page: an ES module evaluates once per realm, so a second
+ * `import()` returns the cached namespace and module scope does not re-run (a
+ * cache-busting query fails, as the lib build emits no such file). The
+ * interesting fixture therefore gets the one real observation; other shapes
+ * are asked of `readViewModes` directly, which `loadFromStorage` calls with
+ * exactly that argument. Only the timing needs the dynamic import.
  */
 async function loadSettings() {
   return import('../../src/utils/settings.js');
@@ -126,9 +99,8 @@ async function run() {
     `onboarded=${mod.getSettings().onboarded} useMock=${mod.getSettings().useMock}`);
 
   // ── 2. What the validator does with the other shapes ──
-  // The same function the module init called, asked about the inputs that were
-  // never at risk: these all take the early return and never reach the line
-  // that threw, which is why they cannot serve as the regression check.
+  // These take the early return and never reach the throwing line, which is
+  // why they cannot serve as the regression check.
   check('B2 an unrecognised mode is dropped, keeping the valid one',
     JSON.stringify(mod.readViewModes({ home: 'hologram', performers: 'carousel' }))
       === JSON.stringify({ performers: 'carousel' }),
@@ -146,10 +118,9 @@ async function run() {
     shapeOut.join(' '));
 
   // ── 3. And the app itself mounts from that same storage ──
-  // Necessary and not sufficient on its own — the app is imported dynamically
-  // so its static import of settings.js is evaluated *after* the seed above,
-  // which is the whole point of this file. 0.10.0's symptom was a blank
-  // screen, so the claim a user cares about is that a tree renders.
+  // App is imported dynamically so its static settings.js import evaluates
+  // after the seed. The user-facing symptom was a blank screen; a tree renders
+  // is the claim.
   const { createRoot } = await import('react-dom/client');
   const { default: App } = await import('../../src/App.jsx');
   const { registry } = await import('../../src/hooks/useFocusable.js');
@@ -163,9 +134,8 @@ async function run() {
     !!document.querySelector('nav[aria-label="Main navigation"]'),
     `nav=${!!document.querySelector('nav[aria-label="Main navigation"]')}`);
 
-  // The mount must not have rewritten the store out from under the mode. This
-  // is the one claim the earlier checks cannot make: they read the module, and
-  // this reads what mounting the app did to what is persisted.
+  // The mount must not rewrite the store out from under the mode; the earlier
+  // checks read the module, this reads what mounting persisted.
   let after = null;
   try { after = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { /* stays null */ }
   check('B3 and the stored mode is still there after the app mounted',

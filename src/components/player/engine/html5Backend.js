@@ -2,15 +2,12 @@
  * html5Backend — the <video> element behind the media facade.
  *
  * Deliberately thin: it owns the element attachment and the re-dispatch of a
- * fixed set of events, and delegates every property to the element. The
- * browser path must stay behaviourally identical to the pre-facade player, so
- * nothing here adds state of its own. Anything that looks like policy (stall
- * watches, seeks, mute capability) belongs to the player or the other backend.
+ * fixed set of events, delegating every property. Policy (stall watches, seeks,
+ * mute capability) belongs to the player or the other backend.
  *
- * Events are re-dispatched rather than exposed as the element's own because
- * `usePlayerMedia` guards on `e.target !== v`: it has to be the facade. That
- * guard is what keeps a poster-subresource error from painting a failure over
- * a healthy scene, so changing it is not an option.
+ * Events are re-dispatched so `e.target` is the facade, which `usePlayerMedia`
+ * guards on: that guard is what keeps a poster-subresource error from painting
+ * a failure over a healthy scene.
  */
 
 import { MEDIA_EVENTS, emptyTimeRanges } from './contracts.js';

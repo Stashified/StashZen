@@ -1,8 +1,8 @@
 /**
  * useTabNavigation — which section is showing, and the two ways it moves.
  *
- * Extracted from App unchanged. Both `activeTab` and `tabEpoch` are part of
- * the page's remount key, and `changeTab` is the only writer of either.
+ * `activeTab` and `tabEpoch` are both part of the page's remount key;
+ * `changeTab` is the only writer of either.
  */
 
 import { useState } from 'react';
@@ -15,21 +15,13 @@ export function useTabNavigation(initial = 'home') {
   // bump remounts the page the same way a tab change does.
   const [tabEpoch, setTabEpoch] = useState(0);
 
-  // Every tab switch goes through here, so leaving a tab is also when its
-  // module-scoped page caches are dropped (see listCache.js).
+  // Every tab switch drops the tab's module-scoped page caches (listCache.js)
+  // so the remount actually re-reads instead of being served the old rows.
+  // Switching tab is a TV's pull-to-refresh; pressing the current row does it
+  // in place.
   //
-  // A tab change remounts the tab's page, and before this the remount's
-  // "fetch" was a cache hit: the page looked like it reloaded and showed
-  // exactly the rows it had before. A scene added or removed on the Stash
-  // server therefore stayed invisible for as long as the app ran — the
-  // reported workaround was closing and relaunching it. Switching tab is
-  // what a TV has instead of pull-to-refresh; it has to mean "read again".
-  // Pressing the current row does exactly that in place; it is the one
-  // gesture that refreshes without leaving the tab.
-  //
-  // Clears before the state moves, not in an effect: effects run child-first
-  // after the commit, so the arriving page would already have asked (and been
-  // served the old page) by the time a parent effect cleared anything.
+  // Cleared before the state moves: effects run child-first after the commit,
+  // so the arriving page would already have been served the old page.
   const changeTab = (tab) => {
     clearAllListCaches();
     if (tab === activeTab) setTabEpoch(n => n + 1);

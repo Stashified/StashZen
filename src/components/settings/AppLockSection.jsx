@@ -7,22 +7,14 @@ import PinPad from '../PinPad.jsx';
 import { useAppLock, setPin, clearPin, PIN_LENGTH } from '../../utils/appLock.js';
 import styles from '../SettingsPanel.module.css';
 
-// ActionButton moved to tvActions.jsx — SettingsPanel and ExitPrompt carried
-// byte-identical copies of it. The two raw buttons in AppLockSection below
-// still use its class names directly, for the reason given there.
+// The two raw buttons here use tvActions' class names directly rather than
+// ActionButton, for the reason given there.
 
-// ── App lock ─────────────────────────────────────────────
 /**
  * The Remove action, as its own component because it mounts conditionally.
- *
- * `useFocusable` registers in an effect whose dependencies are `[id, zone,
- * …]`, and it reads `ref.current` when that effect runs. Called unconditionally
- * in the section, the effect ran once while there was no PIN and therefore no
- * button — `ref.current` was null, it returned early, and it never re-ran when
- * a PIN set *in this session* mounted the button. The result was a button with
- * no tabindex, no key handler and no registry entry: a dead D-pad stop until
- * the panel was closed and reopened. A child that mounts with the button gives
- * the hook the mount it is written to expect.
+ * `useFocusable` registers once and reads `ref.current` then; called
+ * unconditionally while no PIN existed, it saw null and never re-ran, leaving
+ * a dead D-pad stop. A child mounting with the button gives it that mount.
  */
 function RemovePinButton({ confirming, onPress }) {
   const { ref, focused } = useFocusable({
@@ -42,14 +34,11 @@ function RemovePinButton({ confirming, onPress }) {
 }
 
 /**
- * Optional PIN gate. Owns a nested PinPad, in one of three states:
- *
- *   pinFlow === null       — just the row of actions
- *   pinFlow === 'set'      — choosing a PIN
- *   pinFlow === 'confirm'  — re-entering the same PIN
+ * Optional PIN gate. Owns a nested PinPad: `pinFlow` is null (actions only),
+ * 'set' (choosing a PIN) or 'confirm' (re-entering it).
  *
  * `pinFlowRef` is a channel back to SettingsPanel: while a flow is open the
- * panel must not act on Back itself (see the guard there).
+ * panel must not act on Back itself.
  */
 export function AppLockSection({ pinFlowRef }) {
   const lockSet = useAppLock();
@@ -80,24 +69,21 @@ export function AppLockSection({ pinFlowRef }) {
   function closeFlow() {
     setPinFlow(null);
     setPendingPin(null);
-    // The keypad had focus and is about to unmount; without this, focus
-    // falls to <body> and the next D-pad press navigates from the middle
-    // of the screen.
+    // The keypad is about to unmount; without this, focus falls to <body> and
+    // the D-pad navigates from the middle of the screen.
     primaryBtn.focus();
   }
 
   function handleRemove() {
     runRemove(() => {
       // clearPin reports whether storage was actually written; on failure the
-      // lock is still set, so saying "PIN removed" would be a lie the next
-      // launch contradicts. Focus stays on the (still mounted) Remove button.
+      // lock is still set, so "PIN removed" would be a lie.
       if (!clearPin()) {
         flash('Could not remove the PIN on this device');
         return;
       }
-      // The button that was focused is about to unmount with `lockSet`. Move
-      // focus first: otherwise it falls to <body> and the next D-pad press
-      // navigates from the middle of the screen.
+      // The Remove button is about to unmount with `lockSet`; move focus
+      // before it falls to <body>.
       primaryBtn.focus();
       flash('PIN removed');
     });
@@ -110,17 +96,15 @@ export function AppLockSection({ pinFlowRef }) {
       return true;
     }
 
-    // Confirm phase. A mismatch returns to the first phase rather than
-    // staying here: if the user mistyped the *first* entry, re-confirming
-    // against it would loop forever.
+    // A mismatch restarts at the first phase: if the *first* entry was
+    // mistyped, re-confirming against it would loop forever.
     if (pin !== pendingPin) {
       setPendingPin(null);
       setPinFlow('set');
       return 'PINs did not match — start again';
     }
 
-    // setPin reports whether the write actually landed. Don't claim
-    // success on a storage failure.
+    // setPin reports whether the write landed; don't claim success otherwise.
     if (!setPin(pin)) {
       setPendingPin(null);
       setPinFlow('set');

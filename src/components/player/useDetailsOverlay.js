@@ -3,20 +3,18 @@
  * readout, and the two ways the page hands playback back.
  *
  * Unlike the marker form, closing the page does not resume what it
- * interrupted. The form is a detour; the page is a destination the user chose
- * to stop at, so closing restores the state they left and starting again is
- * their press to make — the page's own Play.
+ * interrupted: the page is a destination the user chose to stop at, so playing
+ * again is their press — the page's own Play.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime }) {
-  // A boolean rather than an object because there is nothing per-open to
-  // remember: it always describes the scene currently loaded, which is the
-  // video element's own state.
+  // A boolean: there is nothing per-open to remember — it always describes the
+  // scene currently loaded, i.e. the element's own state.
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // The stream readout. Off on open and kept across a queue advance, because
-  // it describes whatever is playing rather than the session that started it.
+  // The stream readout. Off on open, kept across a queue advance: it describes
+  // whatever is playing, not the session that started it.
   const [statsOpen, setStatsOpen] = useState(false);
   const detailsOpenerRef = useRef(null);
   const detailsRestoreTimerRef = useRef(null);
@@ -24,14 +22,9 @@ export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrent
   /**
    * The ⓘ button: the detail page for whatever is playing, over the top of it.
    *
-   * Paused for as long as it is up, and **not** resumed on close — unlike the
-   * marker form, which resumes what it interrupted. The difference is what the
-   * overlay is for. The form is a detour: it takes a timestamp, hands the scene
-   * straight back, and nobody wants to have missed a minute of it. The detail
-   * page is a destination the user chose to stop at, and it is full of controls
-   * that write to the scene — so closing it restores the state they left, and
-   * starting the scene again is their press to make. The page's own Play is
-   * that press.
+   * Paused while up and **not** resumed on close, unlike the marker form: the
+   * page is a destination full of controls that write to the scene, so closing
+   * restores the state the user left and the page's own Play restarts it.
    */
   const openDetails = useCallback(() => {
     const v = mediaRef.current;
@@ -46,9 +39,8 @@ export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrent
 
   const closeDetails = useCallback(() => {
     setDetailsOpen(false);
-    // Deferred for the same reason the form's is: the page's own controls are
-    // still mounted at this point, and their unmount is what would take the
-    // focus back off whatever this restores it to.
+    // Deferred because the page's controls are still mounted here; their
+    // unmount would steal the focus back.
     clearTimeout(detailsRestoreTimerRef.current);
     detailsRestoreTimerRef.current = window.setTimeout(() => {
       const opener = detailsOpenerRef.current;
@@ -58,11 +50,9 @@ export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrent
   }, [showControls]);
 
   /**
-   * The playback-info readout, toggled from the rail.
-   *
-   * The cursor stays on the button, so keeping the rail up is all this has to
-   * do: the panel has no controls, and looking at it is not a reason to throw
-   * the user back onto a bare video.
+   * The playback-info readout, toggled from the rail. The cursor stays on the
+   * button, so keeping the rail up is all this must do: the panel has no
+   * controls, and looking at it need not dim the video.
    */
   const toggleStats = useCallback(() => {
     setStatsOpen(open => !open);
@@ -70,12 +60,10 @@ export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrent
   }, [showControls]);
 
   /**
-   * The page's Play, while the page is over the player.
-   *
-   * Resumes the scene already loaded rather than opening a new one. Going
-   * through the app's own Play would rebuild the queue as a single scene and
-   * restart from zero — throwing away both the position the user paused at and
-   * the listing the queue was walking.
+   * The page's Play, while the page is over the player. Resumes the loaded
+   * scene rather than opening a new one: the app's own Play would rebuild the
+   * queue as a single scene and restart from zero, losing the position and the
+   * listing.
    */
   const playFromDetails = useCallback(() => {
     closeDetails();
@@ -84,27 +72,20 @@ export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrent
   }, [mediaRef, closeDetails]);
 
   /**
-   * A marker chip, while the page is over the player.
+   * A marker chip, while the page is over the player: seek there and play, on
+   * the loaded element, so the queue and current scene survive. The overlay
+   * opened from a pause, so resuming is part of the gesture.
    *
-   * The same gesture as a marker on the app-level detail page — seek there
-   * and play — but on the element already loaded, so the queue and the
-   * current scene survive. Without this handler the chips were focus stops
-   * that consumed OK and did nothing: the row rendered, the ring moved, and
-   * the playhead stayed put. The overlay is opened from a pause
-   * (`openDetails` pauses), so resuming is part of the gesture.
-   *
-   * The reporter's clock moves with the jump. `timeupdate` credits watch time
-   * from the delta between ticks, and leaving it behind would bill the
-   * whole seek as playback on the save that follows.
+   * The reporter's clock moves with the jump; otherwise the next save would
+   * bill the whole seek as watch time.
    */
   const playAtFromDetails = useCallback((seconds) => {
     closeDetails();
     const v = mediaRef.current;
     if (!v) return;
-    // The clock records where the *element* actually is, so it moves only
-    // when the seek took. A non-seekable stream must not have a position
-    // written for it that the element never reached — `timeupdate` will report
-    // the real one, and the save must not bill the difference as watched.
+    // The clock records where the *element* actually is, so it moves only when
+    // the seek took: a non-seekable stream must not be given a position it
+    // never reached, and the save must not bill the gap.
     let moved = true;
     try { v.currentTime = seconds; } catch (e) { moved = false; }
     if (moved) {

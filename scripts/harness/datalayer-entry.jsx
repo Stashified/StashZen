@@ -1,41 +1,26 @@
 /**
- * Headless driver for 0.23.0's data-layer fixes.
+ * Headless driver for the data-layer fixes; the observable is not a screen,
+ * and each bug left the UI looking fine.
  *
- * These are cases where the *observable* is not a screen: a comparator's
- * ordering, a cache's in-flight slot, a cache-key's identity, a hook's
- * behaviour at a page boundary. Each one shipped because something quietly
- * did the wrong thing and the UI looked fine:
- *
- *   D1–D5  Test mode's sorts. Several sort values named a field the mock
- *          rows did not carry (`duration` vs `durationSeconds`), so
- *          `a[field] - b[field]` compared `undefined` with `undefined`, the
- *          comparator returned 0 for every pair, and the list stayed in its
- *          original order. A control that appears to work and does nothing.
- *          `random` had the same shape of problem in reverse: a real random
- *          comparator reorders on every call, so paging duplicates and drops
- *          rows.
- *
+ *   D1–D5  Test mode's sorts. Fields the mock rows lacked (`duration` vs
+ *          `durationSeconds`) made `a[field] - b[field]` compare undefined, so
+ *          the comparator returned 0 and the list kept its order — a control
+ *          that appears to work. `random` had the reverse: a real random
+ *          comparator reorders per call, so paging duplicates and drops rows.
  *   D6     `usePlayQueue` at a page boundary. Stash's ordering can shift
- *          between requests, so the "next" page can repeat rows the queue
- *          already holds. Returning false there stranded playback on the
- *          boundary with scenes still in the listing.
- *
- *   D7     `listCache`'s in-flight slot after a clear(): the old request's
- *          settle must delete *its own* promise, not whatever is under the
- *          key now.
- *
- *   D8     `dataSourceKey` must change when the API key changes (a
- *          regenerated token otherwise left every module cache holding the
- *          previous credential's answers) and must not contain the secret.
- *
- *   D9     The folder picker: galleries' `parent_folder` criterion is a
- *          folder id, and `findFolders` is a root the fake now answers so the
- *          label logic can be checked against real path shapes.
- *
+ *          between requests, so the next page can repeat rows the queue holds;
+ *          returning false stranded playback there.
+ *   D7     `listCache`'s in-flight slot after clear(): the old request's settle
+ *          must delete its own promise, not whatever is under the key now.
+ *   D8     `dataSourceKey` must change with the API key (a regenerated token
+ *          otherwise left every module cache with the old credential's
+ *          answers) and must not contain the secret.
+ *   D9     The folder picker: galleries' `parent_folder` is a folder id, and
+ *          the fake answers `findFolders` so labels can be checked against
+ *          real path shapes.
  *   D10    A studio's `parents` are studios, not tags.
  *
- * Mounted as its own entry because none of it needs App or a page; the
- * services and hooks are the shipped modules.
+ * Needs no App or page; the services and hooks are the shipped modules.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -88,15 +73,12 @@ async function runMockSorts() {
       && heights[0] === Math.max(...heights),
     heights.slice(0, 6).join(', '));
 
-  // `random` must be a *stable* permutation: paging asks for a different
-  // slice of the same ordering, and a comparator that re-ranks per call
-  // duplicates and drops rows across the boundary.
+  // `random` must be a *stable* permutation: paging takes slices of one
+  // ordering, and a per-call re-rank duplicates and drops rows at the boundary.
   //
-  // The comparator is called directly rather than through two fetches: the
-  // same request twice is a listCache hit, so the second answer would be the
-  // first one regardless of what the comparator does — the check would pass on
-  // a `Math.random()` implementation. The rows come from a real test-mode
-  // fetch, so the ids are the ones the listing would sort.
+  // Called directly, not through two fetches: the same request twice is a
+  // listCache hit and would pass on a `Math.random()` implementation. The rows
+  // come from a real test-mode fetch, so the ids are the listing's.
   const { videos: naturalRows } = await fetchVideos({ sort: 'created_at', order: 'desc', limit: 48 });
   const rank = mockComparator('random', 'desc');
   const ids1 = [...naturalRows].sort(rank).map(v => v.id).join(',');
@@ -112,9 +94,8 @@ async function runMockSorts() {
     cm.length > 1 && nonIncreasing(cm) && cm[0] === Math.max(...cm),
     cm.slice(0, 6).join(', '));
 
-  // Markers sort on raw fields the normalised row does not carry, so the
-  // observable is the id order: a comparator that no-ops leaves the fixture
-  // order untouched.
+  // Markers sort on raw fields the normalised row lacks, so the observable is
+  // id order; a no-op comparator leaves the fixture order untouched.
   const { markers: mDur, total: mTotal } = await fetchMarkers({ sort: 'duration', order: 'desc', limit: 60 });
   const { markers: mNat } = await fetchMarkers({ sort: 'title', order: 'asc', limit: 60 });
   check('D5 Test mode sorts markers by duration (the mock rows carry it at all)',
@@ -142,16 +123,13 @@ function QueueProbe() {
     startIndex: 1,
     fetchPage: async (page) => {
       callsRef.current++;
-      // Delayed so the mount-time extension is still in flight when `goNext`
-      // is asked to advance — that is the report's shape. A scene ends while
-      // the prefetch is still arriving, so `ended` joins *that* extension.
-      // Waiting for it to settle first would let `goNext` start a second
-      // extension, which asks for the page after the duplicate one and would
-      // advance even on the shipped bug.
+      // Delayed so the mount-time extension is in flight when `goNext`
+      // advances — the report's shape. Waiting first would let `goNext` start
+      // a second extension asking the page after the duplicate, which advances
+      // even on the shipped bug.
       await sleep(200);
-      // Page 2 is the whole page the queue already holds: Stash's ordering
-      // shifted between the grid's request and this one. Page 3 is the one
-      // with new rows; page 4 ends the five-item listing.
+      // Page 2 repeats the rows the queue holds (Stash's ordering shifted);
+      // page 3 has new rows, page 4 ends the five-item listing.
       if (page === 2) return { items: [{ id: 'a' }, { id: 'b' }], total: 5 };
       if (page === 3) return { items: [{ id: 'c' }, { id: 'd' }], total: 5 };
       if (page === 4) return { items: [{ id: 'e' }], total: 5 };
@@ -167,8 +145,8 @@ function QueueProbe() {
       return { moved, calls: callsRef.current };
     };
     window.__queueIds = () => latest.current.items.map(i => i.id).join(',');
-    // Read after a render, not from the render that called goNext: `current`
-    // is `items[index]`, so the calling closure still holds the old index.
+    // Read after a render: `current` is `items[index]`, so the calling closure
+    // still holds the old index.
     window.__queueNow = () => latest.current.current?.id;
     window.__queueCalls = () => callsRef.current;
   }, []);
@@ -180,9 +158,8 @@ async function runQueue() {
   document.body.appendChild(host);
   const root = createRoot(host);
   root.render(<QueueProbe />);
-  // The cursor sits one row from the end of the loaded page, so the mount
-  // effect asks for page 2 on its own. `goNext` then joins that in-flight
-  // extension rather than starting another one.
+  // The cursor sits one row from the page end, so the mount effect asks for
+  // page 2 itself; `goNext` joins that in-flight extension.
   await sleep(60);
   const before = window.__queueCalls();
   const out = await window.__queueGo();
@@ -219,9 +196,8 @@ async function runListCache() {
   await old;
   await sleep(0);
 
-  // A third caller arriving while the new request is still in flight must
-  // join it. With the old unconditional delete, the *old* promise's settle
-  // had just removed the new request's slot, so this starts a fourth request.
+  // A third caller while the new request is in flight must join it. An
+  // unconditional delete had the old promise's settle remove the new slot.
   let thirdCalls = 0;
   const third = cache.get('same-key', () => {
     thirdCalls++;

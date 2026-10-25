@@ -1,41 +1,30 @@
 /**
  * filterService.js — Fetch user-saved filters from Stash.
  *
- * Stash exposes `findSavedFilters(mode)` returning a list of filters
- * the user has saved in the Stash UI. Each saved filter holds:
+ * `findSavedFilters(mode)` returns filters the user saved in the Stash UI:
  *   - find_filter   (q/sort/direction/per_page — pagination & sort)
- *   - object_filter (the typed filter that goes into scene_filter
- *                    / performer_filter / scene_marker_filter)
+ *   - object_filter (the typed filter for scene_filter / performer_filter / …)
  *
- * We use only `object_filter` here — sort & paging come from our
- * own ControlsPanel.
+ * Only `object_filter` is used here — sort and paging come from our own
+ * ControlsPanel. Stash returns it as an already-parsed **object** in its
+ * *frontend* shape, which its GraphQL API does not accept; `filterTranslate.js`
+ * converts at query time in the service loaders.
  *
- * `object_filter` is returned by Stash as an already-parsed **object**, not a
- * JSON string (this comment claimed otherwise; `parseObjectFilter` below was
- * written to defend against both and does). The object is in Stash's *frontend*
- * shape, which its GraphQL API does not accept — `filterTranslate.js` converts
- * it at query time, in the three service loaders.
- *
- * Results are cached in module scope, keyed by source *and* mode.
- * Switching tabs doesn't re-fetch; switching Stash instance (or
- * Test↔Live) does. A saved filter belongs to exactly one server, so
- * serving the previous source's list would offer filter IDs that
- * don't exist there. `source` is the `version` App.jsx threads
- * through useSavedFilters.
+ * Results are cached in module scope, keyed by source *and* mode. Switching
+ * tabs doesn't re-fetch; switching instance (or Test↔Live) does, because a
+ * saved filter belongs to one server and serving another's would offer ids
+ * that don't exist there. `source` is the `version` App.jsx threads through
+ * useSavedFilters.
  */
 
 import { getSettings } from './settings.js';
 import { runQuery } from './stashQuery.js';
 
-// SavedFilter modes — must match Stash's FilterMode enum exactly.
-//
-// Checked against the live enum rather than extended by guesswork: Stash 0.31.1
+// SavedFilter modes — must match Stash's FilterMode enum exactly. Stash 0.31.1
 // declares SCENES, PERFORMERS, STUDIOS, GALLERIES, SCENE_MARKERS, MOVIES,
-// GROUPS, TAGS, IMAGES. This app names seven of the nine, and the two it omits
-// are omitted because it has no section for them — a mode the app cannot browse
-// has no saved filters to offer. (FilterMode is also what decides which saved
-// filters the dropdown lists, so a wrong string here shows an empty list rather
-// than an error.)
+// GROUPS, TAGS, IMAGES; this app omits the two with no section (a mode it
+// cannot browse has no filters to offer). A wrong string shows an empty list,
+// not an error.
 export const FILTER_MODE = {
   scenes:     'SCENES',
   markers:    'SCENE_MARKERS',
@@ -70,6 +59,9 @@ function parseObjectFilter(raw) {
 // ── Cache ────────────────────────────────────────────────
 const cache = new Map();   // key → [{ id, name, objectFilter }]
 const inflight = new Map();// key → Promise
+// Bumped by `clearSavedFiltersCache`: a fetch in flight at that moment must
+// not cache its stale result. Same guard as `listCache.js`.
+let generation = 0;
 // NUL-separated: NUL can occur in neither a FilterMode enum nor a Stash
 // URL, so (source, mode) pairs can't collide.
 const keyOf = (mode, source) => `${source}\u0000${mode}`;
@@ -83,6 +75,12 @@ export async function fetchSavedFilters(mode, source = '') {
   if (cache.has(key)) return cache.get(key);
   if (inflight.has(key)) return inflight.get(key);
 
+  const gen = generation;
+  // Delete our own promise, not whatever holds the key: after a clear, a newer
+  // request may already have taken the slot.
+  const settle = () => {
+    if (inflight.get(key) === p) inflight.delete(key);
+  };
   const p = runQuery(FIND_SAVED_FILTERS_QUERY, { mode })
     .then(data => {
       const list = (data?.findSavedFilters || []).map(f => ({
@@ -93,12 +91,12 @@ export async function fetchSavedFilters(mode, source = '') {
         // do their actual work via `q` (search) rather than typed criteria.
         findFilter: f.find_filter || null,
       }));
-      cache.set(key, list);
-      inflight.delete(key);
+      settle();
+      if (gen === generation) cache.set(key, list);
       return list;
     })
     .catch(err => {
-      inflight.delete(key);
+      settle();
       throw err;
     });
 
@@ -111,17 +109,15 @@ export function getCachedSavedFilters(mode, source = '') {
 }
 
 export function clearSavedFiltersCache() {
+  generation++;
   cache.clear();
   inflight.clear();
 }
 
 // ── Writing filters back ─────────────────────────────────
 //
-// Until the builder existed the app could only *read* saved filters; the
-// half that creates them has been on the server all along. Both mutations
-// live here rather than in the builder so that this file stays the single
-// place that names `findSavedFilters` / `saveFilter` / `destroySavedFilter` —
-// the same reason the read path is here.
+// Both mutations live here so this file stays the single place naming
+// `findSavedFilters` / `saveFilter` / `destroySavedFilter`.
 
 const SAVE_FILTER_MUTATION = `
   mutation SaveFilter($input: SaveFilterInput!) {
@@ -143,18 +139,16 @@ const DESTROY_FILTER_MUTATION = `
 /**
  * Create or update a saved filter.
  *
- * `id` present means update — Stash's own UI does the same thing through the
- * same mutation, which is why editing a filter the user made in Stash works
- * and does not fork it into a duplicate.
+ * `id` present means update — the same mutation Stash's own UI uses, so
+ * editing a user-made filter works and does not fork it into a duplicate.
  *
  * `objectFilter` is written in Stash's *stored* envelope (the shape
- * `filterCriteria.js` builds), NOT the GraphQL shape: `object_filter` is the
- * same field the read path parses, so writing GraphQL shape here would produce
- * a filter that Stash's web UI cannot open. `translateFilter` converts on the
- * way out at query time, as it always has.
+ * `filterCriteria.js` builds), NOT the GraphQL shape: it is the same field the
+ * read path parses, so writing GraphQL shape would produce a filter Stash's
+ * web UI cannot open. `translateFilter` converts on the way out.
  *
- * The whole list cache is cleared rather than the one key: a save can create,
- * rename, or reorder, and `saveFilter` returns no position. One extra fetch on
+ * The whole list cache is cleared rather than one key: a save can create,
+ * rename or reorder, and `saveFilter` returns no position. One extra fetch on
  * a deliberate user action is cheaper than a stale list.
  */
 export async function saveFilter({ id, mode, name, objectFilter, findFilter }) {
@@ -168,12 +162,9 @@ export async function saveFilter({ id, mode, name, objectFilter, findFilter }) {
   return data?.saveFilter || null;
 }
 
-/**
- * Delete a saved filter. Stash returns a Boolean; a `false` is a real
- * failure (the id no longer exists, or the token lacks permission) and is
- * surfaced rather than swallowed, because the caller has just told the user
- * it worked.
- */
+/** Delete a saved filter. A `false` return (id gone, or token lacks
+ *  permission) is surfaced, not swallowed — the caller has just told the user
+ *  it worked. */
 export async function destroySavedFilter(id) {
   const data = await runQuery(DESTROY_FILTER_MUTATION, { input: { id: String(id) } });
   const ok = data?.destroySavedFilter === true;

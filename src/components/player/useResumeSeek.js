@@ -2,11 +2,9 @@
  * useResumeSeek — where a scene starts: the prompt, the policy, and the seek
  * that has to be retried until the element can take it.
  *
- * Kept together because they are one decision seen from four sides: whether
- * to ask (`askingToResume`), what to do with the answer (`chooseResume`), where
- * the first `loadedmetadata` should seek (`effectiveStart`), and what to do
- * with a live value that arrives after playback has begun. Splitting them
- * would leave each half re-deriving the policy from the other's state.
+ * One decision from four sides: whether to ask (`askingToResume`), what the
+ * answer does (`chooseResume`), where the first `loadedmetadata` seeks
+ * (`effectiveStart`), and a live value arriving after playback began.
  */
 
 import { useCallback, useEffect } from 'react';
@@ -23,14 +21,13 @@ export function useResumeSeek({
   pendingLiveResumeRef,
   setCurrentTime,
 }) {
-  // Prefer the freshly-fetched value over whatever the grid had cached. Falls
-  // back to the prop value while the fetch is in flight.
+  // Prefer the freshly-fetched value; fall back to the prop while it is in
+  // flight.
   const resumeTime = liveResumeTime != null ? liveResumeTime : (video?.resume_time || 0);
   const duration_s = video?.durationSeconds || 0;
 
-  // A saved position is only worth acting on when it is somewhere in the
-  // middle: too near the start and the user barely watched, too near the end
-  // and the scene is effectively finished.
+  // A saved position counts only mid-scene: near the start barely anything was
+  // watched, near the end the scene is effectively finished.
   const usableResume = useCallback((t) =>
     t > RESUME_SKIP_THRESHOLD_S && (!duration_s || t < duration_s - RESUME_END_THRESHOLD_S),
   [duration_s]);
@@ -40,13 +37,10 @@ export function useResumeSeek({
   /**
    * Whether to ask before playing.
    *
-   * Decided from the **prop**, not from `resumeTime`. The prop is the value the
-   * grid already holds, so opening a scene never waits on a request before it
-   * can start; the live fetch still wins for the seek target further down. The
-   * two agree in practice, because every save drops the page cache — but the
-   * difference decides whether a slow or unreachable server delays playback,
-   * and it must not. A marker's timestamp is never asked about: the user just
-   * named a position, so there is nothing to check with them.
+   * Decided from the **prop**, not `resumeTime`: the grid already holds it, so
+   * opening never waits on a request — a slow or unreachable server must not
+   * delay playback. The live fetch still wins for the seek target. A marker's
+   * timestamp is never asked about; the user just named a position.
    */
   const propResume = video?.resume_time || 0;
   const askingToResume =
@@ -54,8 +48,8 @@ export function useResumeSeek({
     resumeChoice == null &&
     usableResume(propResume);
 
-  // Marker activation wins; otherwise the saved position applies only once the
-  // user has said so.
+  // Marker activation wins; otherwise the saved position applies only on an
+  // explicit "resume".
   const effectiveStart = startSeconds > 0
     ? startSeconds
     : (resumeChoice === 'resume' && isUsefulResume ? resumeTime : 0);
@@ -63,20 +57,17 @@ export function useResumeSeek({
   /**
    * Answer the resume prompt.
    *
-   * The seek is applied here rather than left to `effectiveStart`, because
-   * `loadedmetadata` has already fired by the time the prompt is answered — the
-   * element loaded its metadata while the question was on screen — so the
-   * handler that seeks on that event will not run again. Setting
-   * `startSeekedRef` is what tells the late-arriving live value that a seek has
-   * happened, so it does not re-seek to the position the user just declined.
+   * The seek happens here rather than through `effectiveStart`, because
+   * `loadedmetadata` already fired while the question was on screen.
+   * `startSeekedRef` tells a late live value that a seek happened, so it does
+   * not re-seek to the position the user just declined.
    */
   const chooseResume = useCallback((choice) => {
     setResumeChoice(choice);
     if (choice !== 'resume') return;
     const v = mediaRef.current;
-    // The prompt was decided from the prop, so the live value it would seek to
-    // can be one the policy rejects (finished, or barely started). Honour the
-    // policy on the answer as well as on the question.
+    // The prompt was decided from the prop, so the live value can be one the
+    // policy rejects (finished, barely started): check it on the answer too.
     if (!v || !usableResume(resumeTime)) return;
     try {
       v.currentTime = resumeTime;
@@ -91,13 +82,9 @@ export function useResumeSeek({
    * Withdraw the resume question when the server's fresher answer says it
    * should not have been asked.
    *
-   * The prompt is decided from the cached prop so it can appear without
-   * waiting on a request (see `askingToResume`). That prop can be stale in
-   * either direction: the scene may have been finished, or cleared, since the
-   * grid was fetched. Answering "resume" then seeks to a position the policy
-   * rejects — and leaving the question on screen for a value the app will
-   * refuse to use is worse than simply starting, which is what the server has
-   * told us the right answer is.
+   * The cached prop can be stale (the scene finished or was cleared since the
+   * grid was fetched), and "resume" would then seek to a rejected position.
+   * Leaving the question for a value the app will refuse is worse than starting.
    */
   useEffect(() => {
     if (!askingToResume || liveResumeTime == null) return;
@@ -105,31 +92,29 @@ export function useResumeSeek({
     setResumeChoice('start');
   }, [askingToResume, liveResumeTime, usableResume, setResumeChoice]);
 
-  // If the live resume value arrives after metadata has already loaded
-  // at a different (cached) value, seek again to the correct position.
+  // If the live resume value arrives after metadata loaded at a different
+  // (cached) value, seek again to the correct position.
   useEffect(() => {
     if (liveResumeTime == null) return;
     const v = mediaRef.current;
     if (!v) return;
     // Don't override an explicit marker activation
     if (startSeconds > 0) return;
-    // Nor while the question is still on screen, nor when the answer was
-    // "start from the beginning". This effect exists to apply a resume *without*
-    // asking — which, now that there is a prompt, is only the case when the prop
-    // had nothing usable and the server's fresher value turned out to.
+    // Nor while the question is up, nor after "start from the beginning". This
+    // applies a resume *without* asking: the case where the prop had nothing
+    // usable and the server's fresher value turned out to.
     if (askingToResume || resumeChoice === 'start') return;
     // If the seek already happened with the right value, no-op
     if (startSeekedRef.current && Math.abs(v.currentTime - liveResumeTime) < 1) return;
-    // The same policy the prompt uses. Checking only the start threshold let a
-    // scene paused in its last 30 s open at 0 and then jump to the end.
+    // The prompt's policy. Checking only the start threshold let a scene paused
+    // in its last 30 s open at 0 and then jump to the end.
     if (!usableResume(liveResumeTime)) return;
     try {
       v.currentTime = liveResumeTime;
       startSeekedRef.current = true;
     } catch (e) {
-      // No metadata yet. Keep it for `onLoadedMd` — the seek that throws is
-      // exactly the one that used to be lost, because the latch was set
-      // regardless and nothing else knew the value.
+      // No metadata yet: keep it for `onLoadedMd`. A throwing seek must not be
+      // lost — the latch alone would hide the value from every other path.
       pendingLiveResumeRef.current = liveResumeTime;
     }
   }, [

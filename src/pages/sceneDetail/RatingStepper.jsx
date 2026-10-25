@@ -1,10 +1,9 @@
 import { useFocusable } from '../../hooks/useFocusable.js';
 import defaultStyles from '../SceneDetailPage.module.css';
 
-// ── Rating stepper ──────────────────────────────────────────
-// Shared by the scene detail page and the performer detail page. The id
-// prefix must be unique per page — the focus registry is global — and the
-// zone and CSS module follow the same rule as ActionButton.
+// Shared by the scene and performer detail pages. The id prefix must be unique
+// per page because the focus registry is global; zone and CSS module follow
+// ActionButton's rule.
 export function RatingStepper({
   rating100, disabled, onChange,
   idPrefix = 'scene-rating', zone = 'scene-detail', styles = defaultStyles,
@@ -21,13 +20,11 @@ export function RatingStepper({
     onEnter: () => onChange(Math.min(10, stars + 1)),
   });
 
-  // At a bound, the button is inert but still focusable — `aria-disabled`
-  // rather than the native attribute. A native `disabled` button cannot hold
-  // focus, so pressing "−" down to zero removed the button from under the
-  // focused element: the ring vanished, focus fell to <body>, and the D-pad
-  // had no zone. The page-level `disabled` (nothing may be edited yet) is a
-  // different thing and stays a real one — nothing is going to become
-  // focusable there without a reload of the page state.
+  // At a bound the button is inert but still focusable, hence `aria-disabled`
+  // rather than native `disabled`: a natively disabled button cannot hold
+  // focus, so pressing "−" to zero would drop the ring, focus to <body>, and
+  // the D-pad's zone. The page-level `disabled` is different — nothing becomes
+  // focusable there without a reload of page state, so a real one is safe.
   const atFloor = stars <= 0;
   const atCeiling = stars >= 10;
 

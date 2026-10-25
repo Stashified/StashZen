@@ -7,27 +7,17 @@
  *   node scripts/contact-sheet.mjs --seed tag- --count 24 --out /tmp/tags.png
  *   node scripts/contact-sheet.mjs --only warm     # one regime only
  *
- * `verify-mockart.mjs` proves the *decisions* — that every regime is reachable,
- * that `dark` is dark, that the same seed always draws the same picture. It
- * cannot tell you whether the result reads as a library rather than as a
- * different set of abstract shapes, because that is not a property of the
- * numbers. This is the other half, and it is meant to be looked at: it writes a
- * PNG, and the point is to open it.
+ * `verify-mockart.mjs` proves the decisions (regime reachability, darkness,
+ * seed stability) but not whether the result reads as a library. This writes a
+ * PNG meant to be opened.
  *
- * How it works, and why this way. A cover is an SVG data URI, and the obvious
- * thing — inline forty-eight of them into one big SVG — is wrong: every cover
- * names its gradient `id="g"`, which is harmless when each is its own document
- * and a collision the moment they share one, so every tile after the first
- * would silently take the first tile's colours. Each tile is therefore
- * rasterised on its own and montaged, which also means **every cover is parsed
- * by a real XML parser**: rsvg-convert refuses a malformed document, so a
- * generator that emitted broken markup fails here loudly instead of producing a
- * sheet with a blank tile in it.
+ * Every cover names its gradient `id="g"`, so inlining them into one SVG would
+ * make every tile take the first tile's colours. Tiles are rasterised one at a
+ * time and montaged; rsvg-convert also rejects malformed SVG, so a broken
+ * generator fails loudly instead of producing a blank tile.
  *
- * The labels are the filename, which is built from the plan: `07_warm-recline`
- * is seed seven, the warm regime, the recline motif. That is the whole reason
- * `artPlan` is exported — a sheet you cannot read the decisions off is a
- * decoration.
+ * Labels encode the plan: `07_warm-recline` is seed seven, the warm regime, the
+ * recline motif. That is why `artPlan` is exported.
  *
  * Needs `rsvg-convert` (librsvg) and `magick` (ImageMagick 7) on PATH.
  */
@@ -59,7 +49,7 @@ function parseArgs(argv) {
       process.exit(2);
     }
   }
-  // A portrait sheet is 2:3, so the same column count would make it enormous.
+  // A portrait tile is 2:3, so the same column count would make it enormous.
   if (argv.includes('--portrait') && !argv.includes('--cols')) opts.cols = 8;
   return opts;
 }
@@ -71,10 +61,9 @@ const WORK = '/tmp/contact-sheet';
 rmSync(WORK, { recursive: true, force: true });
 mkdirSync(WORK, { recursive: true });
 
-// Regimes are ~5% each, so a 48-tile sheet shows two or three of each at most
-// and may miss one entirely. `--only` is how a hard case gets a sheet of its
-// own rather than being hunted for; the seed range is walked further so there
-// is enough of them to fill a row.
+// Regimes are ~5% each, so a 48-tile sheet shows two or three of each and may
+// miss one. `--only` gives a hard case its own sheet; walk further so there are
+// enough tiles to fill a row.
 const wanted = opts.only ? Math.ceil(opts.count / 0.05) + 200 : opts.count;
 const tiles = [];
 for (let i = 0; ; i += 1) {
@@ -100,8 +89,6 @@ for (const [i, tile] of tiles.entries()) {
   try {
     execFileSync('rsvg-convert', ['-o', pngPath, svgPath], { stdio: 'pipe' });
   } catch (e) {
-    // The parser is the point: a cover that is not well-formed XML fails here
-    // rather than appearing as a blank tile in a sheet somebody is reading.
     console.error(`rsvg-convert refused ${label}.svg — the cover is not valid SVG:`);
     console.error(String(e.stderr || e.message).trim());
     process.exit(1);
@@ -119,8 +106,8 @@ execFileSync('magick', [
   ...files,
   '-tile', `${opts.cols}x`,
   '-geometry', `${tileW}x${tileH}+5+5`,
-  '-background', '#202b33',   // --bg-base, so the sheet is read against the
-  '-fill', '#f5f8fa',         // real page colour and the real text colour
+  '-background', '#202b33',   // --bg-base: read tiles against the real page
+  '-fill', '#f5f8fa',         // colour and the real text colour
   '-pointsize', '12',
   '-font', 'DejaVu-Sans',
   opts.out,

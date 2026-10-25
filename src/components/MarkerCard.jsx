@@ -1,24 +1,15 @@
 /**
  * MarkerCard — Marker thumbnail.
  *
- * Activating (Enter) plays the parent scene's full stream from the marker's
- * own `seconds` (handled in App's onSelect).
+ * Enter plays the parent scene's full stream from the marker's `seconds`
+ * (handled in App's onSelect). There is no focus preview video: those files
+ * 404 here too (/scene/{id}/scene_marker/{id}/stream).
  *
- * This card also used to fade in a preview video on focus — the marker's own
- * `stream`, i.e. Stash's generated marker-preview file. Dropped for the same
- * reason as VideoCard's: those files 404 here too
- * (/scene/{id}/scene_marker/{id}/stream), so the element never painted a frame.
- * It was less visible than the scene-card case because this card keeps its
- * screenshot rendered underneath rather than hiding it, but it was still an
- * empty <video> mounted over every focused marker.
+ * Takes its record as `item`, like every card, so one container can render any
+ * of them (`Carousel` does).
  *
- * Takes its record as `item`, like every other card in the tree — the shared
- * name is what lets one container render any of them (`Carousel` does; see its
- * header). The marker-specific field names are unchanged.
- *
- * The long press takes the same three arguments VideoCard's does —
- * `(item, list, index)` — because the menu it opens is built from the listing
- * the marker was found in ("Play all", "Play from here"). See actionMenus.js.
+ * The long press takes `(item, list, index)` like VideoCard's, because its menu
+ * is built from the listing the marker was found in. See actionMenus.js.
  */
 
 import { useState } from 'react';
@@ -33,8 +24,8 @@ export default function MarkerCard({ item, index, list, onSelect, onLongPress })
     id: `marker-${item.id}`,
     zone: 'grid',
     onEnter: () => onSelect?.(item),
-    // Opt-in, like VideoCard's: without a handler the press stays a plain
-    // tap and its short action runs on keydown as it always has.
+    // Opt-in, like VideoCard's: without a handler the press stays a plain tap
+    // and its short action runs on keydown.
     onLongPress: onLongPress ? () => onLongPress(item, list, index) : undefined,
     autoFocus: index === 0,
     autoFocusWhenIdle: true,

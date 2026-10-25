@@ -1,22 +1,15 @@
 /**
- * Headless driver for the app-lock retry backoff.
+ * Headless driver for the app-lock retry backoff. A 4-digit PIN is 10⁴
+ * combinations, minutes of D-pad work if each press is free.
  *
- * The lock itself is covered elsewhere (firstrun/actions set, change and
- * remove a PIN). This driver is about the thing a remote makes possible:
- * unlimited guesses. A 4-digit PIN is 10⁴ combinations, which is minutes of
- * D-pad work if each press is free.
+ * Asserts three layers: `attemptPin` (the counter, escalating delay, and that
+ * a correct PIN during the delay is not even checked); LockScreen's messages
+ * for a wrong and a blocked attempt, and unlock once the delay expires; and
+ * LockScreen's Back, which opens the exit confirmation rather than dismissing
+ * the lock, with cancel restoring focus.
  *
- * Three layers are asserted:
- *   1. `attemptPin` — the counter, the escalating delay, and the fact that a
- *      correct PIN submitted during the delay is not even checked.
- *   2. LockScreen — the message a user actually sees for a wrong PIN, for a
- *      blocked attempt, and that unlock happens once the delay expires.
- *   3. LockScreen's Back — it opens the exit confirmation instead of
- *      dismissing the lock (or doing nothing), and cancelling it returns the
- *      keypad with focus restored.
- *
- * The 30 s step is not exercised (three 5 s waits to reach it would dominate
- * the sweep); the 1 s and 5 s steps prove the ladder is wired.
+ * The 30 s step is skipped (three 5 s waits would dominate the sweep); 1 s and
+ * 5 s prove the ladder is wired.
  */
 
 import '../../src/index.css';
@@ -65,8 +58,8 @@ async function run() {
   const a1 = attemptPin('0000');
   const a2 = attemptPin('0001');
   const a3 = attemptPin('0002');
-  // `retryAfterMs` is the delay the *next* attempt faces, not time this one
-  // waited — so the third miss is still checked, and then arms the wait.
+  // `retryAfterMs` is the delay the next attempt faces, so the third miss is
+  // still checked and then arms the wait.
   check('P2 the first three misses are each checked immediately',
     !a1.ok && !a1.blocked && !a2.ok && !a2.blocked && !a3.ok && !a3.blocked,
     `blocked=${[a1, a2, a3].map(r => r.blocked).join(',')}`);
@@ -125,11 +118,9 @@ async function run() {
   host.remove();
 
   // ── 3. Back on the lock screen ───────────────────────────
-  // Back must not dismiss the lock — a PIN you can Back out of is not a
-  // lock — but it must answer: a dead key reads as a broken remote. It opens
-  // the same exit confirmation the main screen uses, and the keypad is
-  // unmounted underneath it (so digits cannot reach it and focus lands back
-  // on "1" when it closes).
+  // Back must not dismiss the lock, but must answer: it opens the exit
+  // confirmation with the keypad unmounted underneath, so digits cannot reach
+  // it and focus lands back on "1" on close.
   setPin('1234');   // resets the failure counter from section 2
   let backUnlockCount = 0;
   const backHost = document.createElement('div');
@@ -152,8 +143,8 @@ async function run() {
     !!exitDialog() && !padDialog() && backUnlockCount === 0,
     `exit=${!!exitDialog()} pad=${!!padDialog()}`);
 
-  // If the pad were still mounted this would unlock (the PIN is 1234) as
-  // well as being consumed by the dialog's own layer.
+  // With the pad still mounted this would unlock (PIN 1234), not merely feed
+  // the dialog's layer.
   await typePin('1234');
   check('B2 digits do not reach the keypad behind the prompt',
     backUnlockCount === 0 && !!exitDialog(),
@@ -167,8 +158,7 @@ async function run() {
     document.activeElement?.getAttribute('aria-label') === '1',
     `focus=${document.activeElement?.getAttribute('aria-label')}`);
 
-  // Tizen's hardware Back is the key that matters on the TV; Escape is the
-  // desktop spelling of it.
+  // Tizen's hardware Back (10009); Escape is its desktop spelling.
   await pressBack('', 10009);
   check('B5 Tizen Back also reaches the exit prompt', !!exitDialog());
   backRoot.unmount();
@@ -188,15 +178,11 @@ async function run() {
     `fourth=${fourth.retryAfterMs} fifth=${fifth.retryAfterMs}`);
 
   // ── 5. A resume must not paint the app before the keypad ─
-  // The reported defect: restarting the app showed the library for about
-  // half a second before the PIN was asked. A resumed Tizen app repaints
-  // its last frame before a state update from the visibility handler can
-  // commit, so the fix is two halves — a raw-DOM cover applied while hidden
-  // (so the restored frame is the themed background), and a synchronous
-  // commit of the keypad on return (so the uncovered frame is already it).
-  //
-  // Mounted into #root, not a host div: the cover rule targets the app's
-  // real container, which is the thing that must not be painted.
+  // A resumed Tizen app repaints its last frame before a state update from
+  // the visibility handler can commit, so the fix has two halves: a raw-DOM
+  // cover applied while hidden (the restored frame is the themed background),
+  // and a synchronous keypad commit on return (the uncovered frame is already
+  // it). Mounted into #root because the cover rule targets that container.
   {
     setPin('1234');   // also resets the failure counter from section 3
     const host = document.getElementById('root');
@@ -221,8 +207,8 @@ async function run() {
       `child=${!!document.getElementById('app-lock-child')}`
       + ` err=${JSON.stringify(errorText())}`);
 
-    // Simulate the Tizen lifecycle. visibilityState is read-only, so it is
-    // overridden for this section and restored afterwards.
+    // Simulate the Tizen lifecycle: visibilityState is read-only, so it is
+    // overridden and restored.
     let visibility = 'visible';
     Object.defineProperty(document, 'visibilityState', {
       configurable: true, get: () => visibility,
@@ -261,8 +247,8 @@ async function run() {
         && !document.getElementById('app-lock-child'),
       `pad=${!!document.querySelector('[role="dialog"]')}`
       + ` child=${!!document.getElementById('app-lock-child')}`);
-    // If this lagged the commit by even one frame, the uncovered paint
-    // would be the library — the defect itself.
+    // One frame behind the commit and the uncovered paint would be the
+    // library — the defect itself.
     check('P15 the cover is gone in the same task that commits the keypad',
       !document.documentElement.hasAttribute('data-lock-cover'),
       `attr=${document.documentElement.getAttribute('data-lock-cover')}`);

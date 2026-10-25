@@ -1,19 +1,15 @@
 /**
- * ActionMenu — the long-press menu on a scene card
+ * ActionMenu — the long-press menu on a scene card.
  *
- * Items are passed in rather than hardcoded so the menu stays a plain
- * overlay: App decides what a scene card can do (Play, Play all, Play from
- * here, Details) and this file only knows how to draw a focusable list and
- * how to get out of the way.
+ * Items are passed in so App decides what a card can do and this file only
+ * draws a focusable list.
  *
- * Focus trapping is free: `modalScopeOf` / `focusScopeOf` in useKeyHandler
- * walk up to the nearest `role="dialog"`, so the D-pad cannot step from a
- * row onto the grid behind it. Back and Escape close the menu rather than
- * reaching App's onBack — which is what stops the exit prompt opening
- * *behind* an overlay the user is still looking at.
+ * Focus trapping is free: `focusScopeOf` walks up to the nearest
+ * `role="dialog"`, so the D-pad cannot step onto the grid behind. Back and
+ * Escape close the menu rather than reaching App's onBack, which stops the
+ * exit prompt opening behind it.
  *
- * It has no backdrop-scrim dismissal on purpose. On a TV there is no click
- * outside; Back is the only way out and it is always available.
+ * No backdrop-scrim dismissal on purpose: on a TV there is no click outside.
  */
 
 import { useEffect, useState } from 'react';
@@ -21,10 +17,9 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import { useBackKey } from '../hooks/useBackKey.js';
 import styles from './ActionMenu.module.css';
 
-// How long the keydowns have to stop before the press counts as over. A
-// remote auto-repeats at roughly 30Hz while a key is held, so ~5 repeat
-// intervals of silence is unambiguous without adding a noticeable delay
-// before the rows become focusable.
+// How long keydowns must stop before the press counts as over. A remote
+// auto-repeats at ~30Hz, so ~5 intervals is unambiguous without a noticeable
+// delay before the rows become focusable.
 const PRESS_END_MS = 150;
 
 function MenuItem({ id, label, hint, onSelect, autoFocus }) {
@@ -48,25 +43,16 @@ function MenuItem({ id, label, hint, onSelect, autoFocus }) {
 }
 
 export default function ActionMenu({ title, subtitle, items = [], onClose }) {
-  // Capture phase, so Back/Esc closes the menu even though the grid's own
-  // focus is what the key would otherwise reach. The hook registers once and
-  // holds the handler in a ref, so `onClose` changing does not move this
-  // listener relative to the other window-capture handlers.
+  // Capture phase, so Back/Esc closes the menu rather than reaching the grid.
+  // The hook registers once and holds the handler in a ref, so a changing
+  // `onClose` does not reorder window-capture listeners.
   useBackKey(onClose);
 
-  // ── Take focus only once the press that opened this is over ──
-  // The menu mounts mid-press: the user is still holding OK. Focus is what
-  // decides where that press's auto-repeats go, so grabbing it here aims them
-  // straight at the first row — holding OK on a card played the scene instead
-  // of showing the menu. Left where it is, the card keeps swallowing them
-  // through its own long-press guard, and the D-pad still reaches the menu
-  // meanwhile because focusScopeOf falls back to the open dialog.
-  //
-  // The end of the press is measured rather than observed. A keyup is the
-  // direct signal, but a remote is not obliged to send one — and the keydowns
-  // simply stopping is just as conclusive, which also covers a remote that
-  // repeats without setting `e.repeat`, where a repeat is indistinguishable
-  // from a fresh press.
+  // Take focus only after the press that opened the menu ends: it mounts
+  // mid-press, and grabbing focus would aim the auto-repeats at the first row
+  // (holding OK on a card played the scene). The press end is measured, not
+  // observed — a remote need not send keyup, and keydowns simply stopping also
+  // covers remotes that repeat without setting `e.repeat`.
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (armed) return undefined;

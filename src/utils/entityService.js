@@ -2,28 +2,22 @@
  * entityService.js — one loader for the four browse-only sections.
  *
  * Tags, Studios, Galleries and Images differ in exactly four things: the
- * GraphQL root, the `*_filter` argument's name, the field the list comes back
- * under, and how a row is normalised. Everything else — the list cache, the
- * `translateFilter` call, the FindFilterType variables, the Test-mode sort and
- * paginate — is the same code four times, which is what this file exists to
- * stop being written four times.
+ * GraphQL root, the `*_filter` argument name, the result field, and row
+ * normalisation. The list cache, `translateFilter`, FindFilterType variables
+ * and Test-mode sort/paginate are identical, which is what this factory exists
+ * to stop writing four times.
  *
- * **`performerService.js` and `markerService.js` are deliberately NOT moved onto
- * this.** They were TV-verified in their current form, and routing them through
- * a new shared loader is a behaviour-neutral refactor that would need its own
- * differential before it could be called safe — a separate change with a
- * separate control experiment, not something to fold into the phase that adds
- * four sections. The factory below was written to reproduce their observable
- * behaviour rather than to improve on it: same cache key shape, same variables,
- * same mock ordering, same `{ total, page }` return.
+ * **`performerService.js` and `markerService.js` are deliberately NOT moved
+ * onto this.** They were TV-verified as they are, and routing them through a
+ * new loader would need its own differential before it could be called safe.
+ * The factory reproduces their observable behaviour: same cache key shape,
+ * variables, mock ordering and `{ total, page }` return.
  *
- * THE ONE PLACE IT DIVERGES, stated because it is a real difference: the mock
- * branch here honours `q`, and the three older services' does not. A search box
- * that silently does nothing in Test mode is worth the inconsistency, and the
- * honest fix is to move those two onto this factory later — not to make four
- * new sections worse in order to match them. `filter` is still ignored in Test
- * mode by all of them, because a stored filter is a server-side query and there
- * is no server; that one is a limitation rather than an oversight.
+ * THE ONE DIVERGENCE: the mock branch here honours `q`; the older services'
+ * does not. A search box that does nothing in Test mode is worth fixing by
+ * migrating those two later, not by making four new sections worse. `filter`
+ * is ignored in Test mode everywhere — a stored filter is a server query and
+ * there is no server.
  */
 
 import { getSettings } from './settings.js';
@@ -33,30 +27,19 @@ import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
 
-// The mock comparator now lives in mockSort.js, shared with the three older
-// services: its `alias` argument is the same rule described there, and it
-// adds the stable-rank handling of the `random` sort that four of the five
-// listings offer and none of the mocks used to honour.
-
 /**
  * Build a list service.
  *
- * `kind` and `itemsKey` are usually equal (`tags`/`tags`) and are separate
- * because they are separate things: `kind` namespaces the cache key, `itemsKey`
- * is the field the GraphQL result nests the list under. `filterArg` has to be
- * passed rather than derived — it is `tag_filter` for `findTags` but
- * `image_filter` for `findImages`, and there is no reliable rule.
+ * `kind` and `itemsKey` are usually equal (`tags`/`tags`) but separate: `kind`
+ * namespaces the cache key, `itemsKey` is the field the GraphQL result nests
+ * the list under. `filterArg` must be passed — `tag_filter` for `findTags` but
+ * `image_filter` for `findImages`; there is no reliable rule.
  *
- * `searchFields` are the fields the Test-mode `q` is matched against. A real
- * search is the server's; this is only so the box does something.
- *
- * `heroQuery` is an optional heavier variant of `query`, used only when the
- * caller asks for it (`fetch({ hero: true })`). The tag description and the
- * studio details are free text that can run to paragraphs, and only the
- * Carousel hero renders them; grids and list rows would pay for every row on
- * every page. A service without a `heroQuery` ignores the flag. Anything that
- * *is* shown elsewhere — a tag's aliases, a studio's parent — stays in the
- * base query, because the list rows render the hero meta model too.
+ * `searchFields` are what Test-mode `q` matches. `heroQuery` is an optional
+ * heavier `query` used only for `fetch({ hero: true })`: tag descriptions and
+ * studio details are paragraphs rendered only by the Carousel hero, so grids
+ * and list rows would pay for every row on every page. Fields shown elsewhere
+ * (aliases, parent) stay in the base query because list rows render them.
  */
 export function createEntityService({
   kind,
@@ -122,24 +105,21 @@ export function createEntityService({
       const {
         sort = 'created_at', order = 'desc', filter = null,
         q = '', page = 1, limit = 40, hero = false,
-        // `cache: false` is for a background loop that would otherwise evict
-        // the pages the user can actually see (the gallery slideshow fetches
-        // up to 100 pages). The request is identical; only the memo is skipped.
+        // `cache: false` for background loops that would evict visible pages
+        // (the gallery slideshow fetches up to 100). Same request, no memo.
         cache: useCache = true,
       } = opts;
 
-      // The two variants answer different documents, so they must not share a
-      // cache entry — a base page served to the carousel would leave its blurb
-      // empty, and a hero page served to a grid would carry the weight the
-      // base query exists to avoid.
+      // The variants answer different documents, so they must not share a
+      // cache entry: a base page would leave the carousel's blurb empty, and a
+      // hero page would make grids pay for fields they never draw.
       const useHeroQuery = hero && !!heroQuery;
 
-      // `random` is re-shuffled by the server on every request, so a listing
-      // would overlap its own pages and the no-progress stop could end a short
-      // list early (the review's R8). Seeding it from the request identity
-      // makes one listing one permutation across all its pages; see
-      // randomSort.js. The `:hero` suffix is deliberately not part of the
-      // identity — the two variants are the same listing.
+      // `random` is re-shuffled per request, so a listing would overlap its
+      // own pages and the no-progress stop could end a short list early.
+      // Seeding it from the request identity makes one listing one
+      // permutation; see randomSort.js. The `:hero` suffix is excluded — both
+      // variants are the same listing.
       const requestSort = stableSort(sort, kind, filter, q);
 
       const loader = () => load({

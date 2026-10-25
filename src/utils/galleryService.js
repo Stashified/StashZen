@@ -4,15 +4,13 @@
  * The loader is `entityService.js`; what is specific to galleries is here.
  *
  * A Gallery is a *container* of images — a folder — where an Image is one file.
- * The distinction shows up in the schema rather than only in the prose: Gallery
- * has `folder`, `image_count` and a nested `cover: Image`, and Image has none
- * of those. `paths.cover` is what the card draws; the nested `cover` object
- * exists but would pull a whole Image per row for a field the paths object
- * already answers.
+ * Gallery has `folder`, `image_count` and a nested `cover: Image`; Image has
+ * none. `paths.cover` is what the card draws; the nested `cover` would pull a
+ * whole Image per row for a field the paths object already answers.
  *
  * Note the sort spelling: galleries take `images_count` (plural) but
- * `performer_count` and `tag_count` (singular). Stash is not consistent about
- * this across entities, so each menu was probed against its own resolver.
+ * `performer_count` and `tag_count` (singular). Stash is not consistent, so
+ * each menu was probed against its own resolver.
  */
 
 import { withApiKey } from './stashUrl.js';

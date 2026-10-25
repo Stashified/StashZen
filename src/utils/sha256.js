@@ -1,24 +1,21 @@
 /**
  * sha256.js — dependency-free SHA-256 (FIPS 180-4)
  *
- * Why hand-rolled rather than `crypto.subtle`: the widget is packaged as a
- * Tizen .wgt and loaded over `file://`, where a secure context is not
- * guaranteed — and `crypto.subtle` is undefined outside one. The only
- * consumer is the optional app-lock PIN (see appLock.js), and that has to
- * work on the TV regardless of how the widget was loaded.
+ * Hand-rolled rather than `crypto.subtle`: the widget is a Tizen .wgt loaded
+ * over `file://`, where a secure context is not guaranteed and `crypto.subtle`
+ * is undefined. Its only consumer is the optional app-lock PIN (see
+ * appLock.js), which must work however the widget was loaded.
  *
- * What this is NOT: a password KDF. There is no iteration stretching, no
- * per-attempt cost. The PIN is four digits — 10⁴ combinations — so a
- * digest buys nothing against an attacker who already has the blob. Its
- * single job is to keep the PIN from sitting in localStorage in plaintext.
+ * NOT a password KDF: no stretching, no per-attempt cost. Four digits is 10⁴
+ * combinations, so against an attacker holding the blob the digest buys
+ * nothing; it only keeps the PIN out of localStorage in plaintext.
  *
- * It does NOT protect the Stash API key beside it. That key is written to
- * localStorage unencrypted by settings.js, and anyone who can read the app's
- * storage has it whatever this module does. The README says so.
+ * It does NOT protect the Stash API key written unencrypted beside it — anyone
+ * who can read the app's storage has that key whatever this does. The README
+ * says so.
  *
- * Output is lowercase hex. Input is a JS string, encoded UTF-8. The input
- * in this app is always ASCII digits, but a real encoder is used so the
- * function is safe to reuse for anything else.
+ * Output is lowercase hex; input is a JS string encoded UTF-8. The app's input
+ * is always ASCII digits, but a real encoder keeps it safe to reuse.
  */
 
 // First 32 bits of the fractional parts of the cube roots of the first 64

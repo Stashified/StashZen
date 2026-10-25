@@ -4,35 +4,26 @@
  *
  *   node scripts/verify-mockart.mjs
  *
- * P6 changed `mockArt.js` from one palette and a handful of geometric marks to
- * a table of *regimes* with a few human-form motifs, and it is easy to write
- * that in a way where a regime is listed and never chosen, or a palette is
- * named `dark` and is not dark. Neither shows up in a casual look at the code,
- * and one of them — a regime nothing reaches — is invisible in a render too.
+ * It is easy to write the regime table so a regime is listed and never chosen,
+ * or a palette is named `dark` and is not dark; neither shows up in the code,
+ * and an unreachable regime is invisible in a render too. This checks the
+ * *plan*, not the picture:
  *
- * So this checks the *plan*, not the picture:
+ *   1. `coverArt(seed)` is pure: twice in one process, and again against a
+ *      freshly evaluated module (what a reload is). Module-level state passes
+ *      the first and fails the second.
+ *   2. `Math.random` and `Date.now` are stubbed to throw, then `coverArt` runs.
+ *      A source grep would false-positive on comments and miss indirect calls.
+ *   3. No two of 200 seeds collide on either canvas: no two cards should be
+ *      mistakable for one another.
+ *   4. Every regime and motif is reachable, and the weights have the shape the
+ *      header claims: sweep majority, warm a real minority, hard regimes rare.
+ *   5. The adversarial regimes are adversarial against the app's own background
+ *      value, not a round number.
  *
- *   1. `coverArt(seed)` is a pure function of its seed, proved two ways — twice
- *      in one process, and again against a freshly evaluated copy of the module,
- *      which is what a reload actually is. Module-level state would pass the
- *      first and fail the second.
- *   2. Nothing reaches for `Math.random` or `Date.now`. This is checked
- *      behaviourally: both are stubbed to throw, and `coverArt` is then called.
- *      A grep over the source would false-positive on the comments that discuss
- *      `Math.random()`, and would not catch an indirect call.
- *   3. No two of 200 seeds collide, on either canvas. The whole point of a Test
- *      cover is that no two cards are mistakable for one another.
- *   4. Every regime and every motif is *reachable*, and the weights have the
- *      shape the header claims: sweep the majority, warm a real minority, the
- *      three hard regimes present but rare.
- *   5. The adversarial regimes are actually adversarial — checked against the
- *      app's own background value, not against a round number.
- *
- * What this cannot check is whether any of it *looks* like a library. That is
- * `scripts/contact-sheet.mjs`, which renders one and also proves each cover is
- * well-formed XML, since rsvg-convert refuses to rasterise one that is not.
- *
- * Exits non-zero on the first failure, like the other verify scripts.
+ * Whether it *looks* like a library is `scripts/contact-sheet.mjs`, which
+ * renders a sheet and proves each cover is well-formed XML (rsvg-convert
+ * refuses a malformed one). Exits non-zero on the first failure.
  */
 
 import { readFileSync } from 'node:fs';
@@ -62,19 +53,18 @@ function eq(label, actual, expected) {
 }
 
 // ── Hue and lightness out of an `hsl(H S% L%)` triple ─────
-// The palettes return CSS colour strings, so the only way to assert that
-// "dark" is dark is to read the number back out. Deliberately strict about the
-// format: a palette that started emitting `rgb()` should fail here rather than
-// silently make every check below vacuous.
+// The palettes return CSS colour strings, so "dark" is only checkable by reading
+// the number back out. Strict about the format: a palette emitting `rgb()` must
+// fail here rather than make every check below vacuous.
 function parseHsl(color) {
   const m = /^hsl\((\d+) ([\d.]+)% ([\d.]+)%\)$/.exec(color);
   if (!m) throw new Error(`not an hsl(H S% L%) triple: ${color}`);
   return { h: Number(m[1]), s: Number(m[2]), l: Number(m[3]) };
 }
 
-// The app's own page background, from src/index.css. `--bg-base: #202b33` is
-// 16% lightness; the card surface `#30404d` is 24%. A cover is adversarial
-// exactly when its ground has nothing to separate it from those.
+// The app's page background, from src/index.css: `--bg-base: #202b33` is 16%
+// lightness, the card surface `#30404d` is 24%. A cover is adversarial when its
+// ground has nothing to separate it from those.
 const BG_BASE_LIGHTNESS = 16;
 
 // ── 1. Purity ─────────────────────────────────────────────
@@ -85,9 +75,9 @@ const SEEDS = Array.from({ length: 200 }, (_, i) => `scene-${i}`);
 const first = SEEDS.map(s => coverArt(s));
 eq('two calls in one process agree', coverArt('scene-0'), first[0]);
 
-// A query string on the specifier makes Node evaluate the module again rather
-// than hand back the cached one. That is the reload: any module-level counter,
-// memo or lazily-built table shows up here and nowhere else.
+// A query string makes Node evaluate the module again rather than return the
+// cached copy — a reload. Any module-level counter, memo or lazy table shows up
+// here and nowhere else.
 const fresh = await import('../src/utils/mockArt.js?reload=1');
 eq('a freshly evaluated module agrees', fresh.coverArt('scene-0'), first[0]);
 eq('…including for a portrait cover',
@@ -156,8 +146,8 @@ const EXPECTED_PORTRAIT = ['bands', 'figure', 'rings', 'torso', 'waves', 'wedge'
 eq('every landscape motif is reachable', LANDSCAPE_MOTIF_NAMES.join(','), EXPECTED_LANDSCAPE.join(','));
 eq('every portrait motif is reachable', PORTRAIT_MOTIF_NAMES.join(','), EXPECTED_PORTRAIT.join(','));
 
-// The human forms, on each canvas — P6's actual ask, and the one thing a
-// "listed but never chosen" bug would quietly undo.
+// The human forms on each canvas: the thing a "listed but never chosen" bug
+// would quietly undo.
 ok('a landscape cover can read as a person',
   ['bust', 'pair'].every(m => LANDSCAPE_MOTIF_NAMES.includes(m)));
 ok('a portrait cover can read as a person',
@@ -171,9 +161,8 @@ for (const name of ['sweep', 'warm', 'dark', 'blown', 'clutter']) {
 }
 eq('and nothing else is', [...regimesSeen].sort().join(','), 'blown,clutter,dark,sweep,warm');
 
-// The shape, not the numbers. The weights are the author's claim about what a
-// library looks like and are meant to be tunable; what must not drift is that
-// the ordinary case dominates and the hard cases stay rare.
+// The shape, not the numbers. The weights are tunable; what must not drift is
+// that the ordinary case dominates and the hard cases stay rare.
 console.log('\nWeights (share of 4000 seeds)');
 for (const name of ['sweep', 'warm', 'dark', 'blown', 'clutter']) {
   console.log(`  ${name.padEnd(8)} ${(share(name) * 100).toFixed(1)}%`);
@@ -259,10 +248,9 @@ console.log('\nThe emitted document');
 }
 
 // ── 7. The source has not grown new vocabulary ────────────
-// A cheap guard against a palette or motif being added as a local helper and
-// never being wired into REGIMES or the motif arrays — which is the failure
-// mode this whole file exists for, and the only one the checks above cannot
-// see directly.
+// A cheap guard against a palette or motif added as a local helper but never
+// wired into REGIMES or the motif arrays — the failure mode the checks above
+// cannot see directly.
 {
   const src = readFileSync(SOURCE, 'utf8');
   const declared = [...src.matchAll(/^function ([a-zA-Z]+)\(/gm)].map(m => m[1]);

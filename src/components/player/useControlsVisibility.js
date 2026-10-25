@@ -2,11 +2,9 @@
  * useControlsVisibility — whether the rail is up, and the timer that puts it
  * away.
  *
- * One timer and one rule: the controls hide when it expires, unless the rail
- * still holds the cursor. Everything that counts as activity calls
- * `showControls`; everything that is a deliberate exit calls `leaveRail`, which
- * blurs first and hides the bar outright, or `hideControls` when the cursor is
- * already out of it (Back with the rail down).
+ * One timer, one rule: the controls hide when it expires unless the rail still
+ * holds the cursor. Activity calls `showControls`; a deliberate exit calls
+ * `leaveRail` (blur, then hide) or `hideControls` (cursor already out).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,33 +18,27 @@ export function useControlsVisibility({ railRef }) {
     setControlsVisible(true);
     clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      // ...but never out from under the cursor. A focus ring that disappears
-      // on its own reads as a dropped keypress, and the press after it would
-      // land on <body> with nothing to receive it. Leaving the rail re-arms
-      // this, so the rail still goes away once nobody is on it.
+      // ...but never out from under the cursor: a focus ring that vanishes on
+      // its own reads as a dropped keypress, and the next press would land on
+      // <body>. Leaving the rail re-arms this.
       if (railRef.current?.holdsFocus()) return;
       setControlsVisible(false);
     }, CONTROLS_HIDE_DELAY);
   }, [railRef]);
 
-  // Opening the rail. `showControls` first so the container is on its way to
-  // `opacity: 1` before the cursor lands in it, then focus ⏯ — the cursor
-  // radiates out from the middle of the row, and the button the user is most
-  // likely to want is the one they pressed OK for.
-  //
-  // Focusing a rail that is still at `opacity: 0` would work (the elements are
-  // rendered, not `display: none`), but the ring would arrive before the
-  // controls did.
+  // Opening the rail. `showControls` first, so the container is on its way to
+  // `opacity: 1` before the cursor lands: focusing a rail at opacity 0 works,
+  // but the ring would arrive before the controls did. Focus ⏯ because the
+  // cursor radiates from the middle and that is the likely intent.
   const revealRail = useCallback(() => {
     showControls();
     railRef.current?.focusPlayPause();
   }, [showControls, railRef]);
 
-  // Hiding it outright, with the cursor already behind it. Back is the caller
-  // when the rail is down and the bar is on screen: the bar goes on that press
-  // and the player closes on the next one. The warning above still applies —
-  // never pull the bar out from under the cursor — so this refuses while the
-  // rail holds focus; Back inside the rail goes through `leaveRail`.
+  // Hiding it outright with the cursor already out. Back calls this when the
+  // rail is down and the bar is up: the bar goes on that press, the player on
+  // the next. It refuses while the rail holds focus — never pull the bar from
+  // under the cursor; Back inside the rail goes through `leaveRail`.
   const hideControls = useCallback(() => {
     clearTimeout(hideTimerRef.current);
     hideTimerRef.current = null;
@@ -54,17 +46,13 @@ export function useControlsVisibility({ railRef }) {
     setControlsVisible(false);
   }, [railRef]);
 
-  // Leaving it. Blur to <body> rather than focusing the player container, and
-  // that is not a detail: focusing the container would resolve
-  // `focusScopeOf` to the player's *own* dialog, so the player would go on
-  // yielding the arrows — skim would be dead, with nothing on screen to
-  // explain why.
+  // Leaving it. Blur to <body> rather than focusing the player container:
+  // that would resolve `focusScopeOf` to the player's *own* dialog, so the
+  // player would keep yielding the arrows and skim would be silently dead.
   //
-  // The bar goes with the cursor rather than lingering for the auto-hide
-  // timer: Back is "one level up" in both directions now — it leaves the rail
-  // *and* dismisses the bar, and the press after it closes the player. Hiding
-  // outright is also what makes the two Back presses predictable; a bar that
-  // stayed up for three more seconds read as a press that did nothing.
+  // The bar goes with the cursor rather than lingering: Back is "one level up"
+  // in both directions, and a bar that stayed up would read as a press that did
+  // nothing.
   const leaveRail = useCallback(() => {
     document.activeElement?.blur?.();
     clearTimeout(hideTimerRef.current);
@@ -72,12 +60,9 @@ export function useControlsVisibility({ railRef }) {
     setControlsVisible(false);
   }, []);
 
-  // ↑ from the rail is the seek mode, not a dismissal: the cursor leaves the
-  // buttons and the bar stays up, so ←/→ skim a timeline the user can see.
-  // Hiding everything here was reported on 2026-10-24 as "it closes the bar,
-  // doesn't move to the seek bar". The auto-hide timer is re-armed, exactly as
-  // for any other activity, and runs out as usual once the viewer stops
-  // pressing.
+  // ↑ from the rail is seek mode, not a dismissal: the cursor leaves the
+  // buttons and the bar stays up, so ←/→ skim a visible timeline. The auto-hide
+  // timer is re-armed as for any other activity.
   const leaveRailToSeek = useCallback(() => {
     document.activeElement?.blur?.();
     showControls();

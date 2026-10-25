@@ -4,12 +4,10 @@
  *
  *   node scripts/test-volume-mapping.mjs
  *
- * Measured facts this pins down: this panel has no `avplay.setVolume` and a
- * working `tizen.tvaudiocontrol`; some panels have the reverse; some have
- * neither. TV mute is system-wide, so a mute the app did not create must be
- * left alone — restoring it on close would undo a choice made with the remote.
- *
- * No framework.
+ * Measured on this panel: no `avplay.setVolume` and a working
+ * `tizen.tvaudiocontrol`; some panels have the reverse, some neither. TV mute is
+ * system-wide, so a mute the app did not create must be left alone — restoring
+ * it on close would undo a choice made with the remote.
  */
 
 import {

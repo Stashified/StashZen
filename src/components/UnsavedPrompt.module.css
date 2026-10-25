@@ -1,9 +1,7 @@
 /*
- * UnsavedPrompt — see UnsavedPrompt.jsx.
- *
- * A scrim over the Settings panel, smaller than the panel itself (640px), so
- * it reads as a question rather than a second page. The flat scrim follows the
- * note in SettingsPanel.module.css: nothing here may blur a live grid.
+ * A scrim over the Settings panel, smaller than the panel (640px), so it reads
+ * as a question rather than a second page. Flat, not blurred — see
+ * SettingsPanel.module.css.
  */
 
 .overlay {

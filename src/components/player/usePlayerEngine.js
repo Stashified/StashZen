@@ -1,25 +1,19 @@
 /**
  * usePlayerEngine — whether this session can use the TV's player, and the
- * objects needed to drive it.
+ * objects needed to drive it. Three inputs, checked in this order:
  *
- * Three inputs decide it, and they are checked in this order:
- *
- *   Browser       the Settings lever: today's player, and the rollback path.
- *                 `Auto` and `TV player` both allow AVPlay — they differ only
- *                 in which engine the candidate plan puts first.
- *   forced        build-level `__FORCE_BROWSER_ENGINE__`, for a release that
- *                 has to disable AVPlay entirely without a settings migration
+ *   Browser       the Settings lever, and the rollback path. `Auto` and
+ *                 `TV player` both allow AVPlay; they differ only in which
+ *                 engine the candidate plan puts first.
+ *   forced        build-level `__FORCE_BROWSER_ENGINE__`, to disable AVPlay
+ *                 without a settings migration
  *   availability  AVPlay is present, or the WebAPI script loads in time
  *
- * Availability is asynchronous only when the panel does not already expose
- * `window.webapis.avplay`. The source resolver waits for `ready` before it
- * builds a plan, so the first scene never starts on the browser and then
- * switches engines under the user. The wait is bounded by ensureAvplay's 1.5 s
- * timeout, and on a Tizen widget the script is local.
- *
- * The setting is read when the player opens rather than subscribed to: a
- * mid-scene Settings change does not exist — Settings is not reachable from the
- * player — and "applies on the next open" is what the setting's own hint says.
+ * The resolver waits for `ready` before building a plan, so the first scene
+ * never starts on the browser and then switches under the user. The wait is
+ * bounded by ensureAvplay's 1.5 s timeout; on a Tizen widget the script is
+ * local. The setting is read at open, not subscribed to — it cannot change
+ * mid-scene, and its hint says "applies on the next open".
  */
 
 import { useEffect, useState } from 'react';

@@ -1,12 +1,8 @@
 /**
  * Headless verification driver for SceneDetailPage.
  *
- * Mounts the real component with the real hooks, and points the real service
- * layer at a fake GraphQL endpoint on the same origin. So the query text,
- * `runQuery`, `normalizeSceneDetail` and the mutation wrappers are all the
- * shipped code — only the server is a stand-in.
- *
- * The page is its own test driver: it runs the assertions and POSTs results.
+ * Mounts the real component and hooks against a fake GraphQL endpoint, so only
+ * the server is a stand-in. The page runs the assertions and POSTs results.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -25,10 +21,8 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// The card the user "pressed Enter on". Its rating is the display string the
-// grid would carry, so the page paints 5 stars from this before the server
-// answers 7 — which is what makes T1 a real assertion rather than a
-// tautology.
+// The card Enter was pressed on. Its rating is the display string the grid
+// would carry (5), while the server answers 7 — which makes T1 real.
 const SCENE = {
   id: '4242',
   title: 'VERIFY — detail page harness',
@@ -44,27 +38,20 @@ const SCENE = {
 
 let closedCount = 0;
 let playedCount = 0;
-// Every `onPlayAt` the page reports, in order. A marker press is only useful
-// if the *timestamp* reaches App; "the player opened" would pass for 0.
+// Every `onPlayAt` timestamp, in order: a marker press must deliver its own
+// timestamp, not just "the player opened".
 const playedAt = [];
-// Every `onActivityChange` the page reports. The resume reset is the only one
-// App acts on, so this is where "the page told Home to prune the card" is
-// observable from a driver that mounts the page on its own.
+// Every `onActivityChange`. The resume reset is the only one App acts on, so
+// this is where "the page told Home to prune the card" is observable.
 const activityEvents = [];
-// Every gallery the page hands to App through the chip row. The hand-off is
-// the whole feature: the chip must pass the gallery row, not a scene or a
-// timestamp, and the tab change that follows is App's business.
+// Every gallery handed to App through the chip row: the chip must pass the
+// gallery row, not a scene or timestamp; the tab change is App's business.
 const gallerySelections = [];
 
 /**
- * Focusables living OUTSIDE the overlay. They are the control for the trap
- * test: they are registered in the same spatial-nav registry the detail page
- * uses, so "focus never lands on them" is evidence of a trap rather than of
- * there being nothing out there to find.
- *
- * They are in normal flow rather than `position: fixed` on purpose —
- * `findBestCandidate` skips any candidate with a null `offsetParent`, and a
- * fixed element has one.
+ * Focusables outside the overlay, in the same spatial-nav registry, so "focus
+ * never lands on them" shows a trap rather than nothing to find. Normal flow,
+ * not `position: fixed`: `findBestCandidate` skips a null `offsetParent`.
  */
 function Outside() {
   const a = useFocusable({ id: 'outside-top', zone: 'outside' });
@@ -118,18 +105,9 @@ const byText = (text, exact = false) =>
     const t = b.textContent.trim();
     return exact ? t === text : t.includes(text);
   });
-// Read the count off the button itself rather than off body text, which would
-// happily match the same word anywhere on the page. A bare label with no digits
-// means zero — the count is dropped from the label at 0.
-//
-// `includes`, not `startsWith`: ActionButton renders its icon span first, so
-// the textContent is "💦o-count 3" and a prefix match finds nothing.
-//
-// The label is "o-count". It was "Like" once and this selector was left behind
-// — and a `find` that returns undefined is not an error here, so every T4 check
-// quietly read `null` and failed (or, where a detail string dereferenced it,
-// took the whole run down with it) until the label was rewritten. Match on a
-// string the button actually renders.
+// Read the count off the button, not body text which may match elsewhere; a
+// bare label means zero. `includes`, not `startsWith`: the icon span comes
+// first ("💦o-count 3"). A stale label selector silently reads null.
 const likeBtn = () => [...document.querySelectorAll('button')]
   .find(b => b.textContent.includes('o-count'));
 // ActionButtons carry no aria-label; the stepper's two do.
@@ -155,14 +133,9 @@ const keyEvent = (type) => new KeyboardEvent(type, {
 });
 
 /**
- * Press and *hold* Enter, then release it.
- *
- * The whole difference between a tap and a hold lives in the duration between
- * the two events — `useFocusable` starts a timer on keydown and only calls
- * `onLongPress` when it expires — so a check for the long-press path cannot be
- * faked with a bare keydown. The keyup matters as much as the wait: it is what
- * the hook uses to decide the hold is over, and what stops a stray keydown
- * looking like a still-running press on the next check.
+ * Press and hold Enter, then release. A tap and a hold differ only in the
+ * duration: `useFocusable` arms a timer on keydown and `onLongPress` fires when
+ * it expires, so the long-press path cannot be faked with a bare keydown.
  */
 async function hold(el, ms = 900) {
   el.dispatchEvent(keyEvent('keydown'));
@@ -171,19 +144,9 @@ async function hold(el, ms = 900) {
 }
 
 /**
- * A short press: keydown, then keyup well inside the long-press window.
- *
- * `press()` above sends keydown alone, which is enough for every button that
- * does *not* opt into long-pressing — the hook calls `onEnter` straight from
- * keydown. The o-count button is the first one that opts in, and opting in
- * moves that button's short action to keyup so one press cannot both increment
- * and clear it. So a keydown-only "press" here is not a press at all: it starts
- * a timer, the harness moves on, and the count reads 0 forever — which is
- * exactly how the first run of these checks failed, with every read at 0 and an
- * empty server log rather than a wrong number.
- *
- * The keyup is load-bearing, not cosmetic: the hook only treats the release as
- * a completed tap if it saw the keydown.
+ * A short press: keydown, then keyup inside the long-press window. The
+ * o-count button opts into long-pressing, so its short action fires on keyup;
+ * a keydown-only "press" just arms a timer and reads 0 forever.
  */
 async function tap(el, ms = 60) {
   el.dispatchEvent(keyEvent('keydown'));
@@ -200,11 +163,9 @@ async function setServerMode(mode) {
 }
 
 /**
- * Patch any server behaviour, not just sceneUpdate.
- *
- * `oSeed` is a *setup* call on the server as well as a mode: it sets the
- * o-counter's starting value and clears its call log, so the presses that follow
- * are the only ones a check will read.
+ * Patch any server behaviour. `oSeed` is also setup: it sets the o-counter's
+ * starting value and clears its call log, so later presses are the only ones
+ * a check reads.
  */
 async function setServer(patch) {
   await fetch('/mode', {
@@ -229,15 +190,13 @@ async function resetCalls() {
   return r.json();
 }
 
-// The hero's resume bar is a div carrying an inline width. Nothing else on
-// the page has an inline size, so this finds it without depending on a CSS
-// module's hashed class name.
+// The hero's resume bar is a div carrying an inline width; nothing else on
+// the page has one, so this avoids a hashed CSS-module class name.
 const resumeBar = () => [...document.querySelectorAll('[role="dialog"] div[style]')]
   .find(el => (el.getAttribute('style') || '').includes('width:')) || null;
 
 // The stats line's first figure. `plays?` and not `play`: the button says
-// "Mark played", and the notice says "Marked played (…)"; only the stat line
-// reads "N plays".
+// "Mark played" and the notice "Marked played (…)"; only the stat reads "N plays".
 const playsShown = () => {
   const m = document.body.textContent.match(/(\d+) plays?\b/);
   return m ? Number(m[1]) : null;
@@ -266,7 +225,7 @@ async function run() {
     `activeElement="${(document.activeElement?.textContent || '').slice(0, 24)}"`);
 
   // ── T1: the detail fetch replaced the card's guess ──────
-  // The card said 5.0. The fake server says 70. A page still showing the
+  // The card said 5.0; the fake server says 70. A page still showing the
   // card-derived value would read 5 here.
   check('T1 server rating replaced the card-derived one',
     ratingStars() === 7, `stepper reads ${ratingStars()} (card said 5, server says 70)`);
@@ -279,11 +238,8 @@ async function run() {
     byLabel('Increase rating') && !byLabel('Increase rating').disabled);
 
   // ── T13: marker row ─────────────────────────────────────
-  //
-  // The fixture's markers arrive out of order (1905, 125, 640) and carry
-  // different titles and tags. Asserting the whole aria-label list makes the
-  // ordering, the timestamp formatting (padMinutes, so 125 reads 02:05) and
-  // the label source visible in one deterministic string.
+  // Fixture markers arrive out of order (1905, 125, 640); asserting the whole
+  // aria-label list shows ordering, `padMinutes` (125 → 02:05) and label source.
   const markerGroup = document.querySelector('[role="group"][aria-label="Markers"]');
   const markerChips = markerGroup ? [...markerGroup.querySelectorAll('button')] : [];
   const markerLabels = markerChips.map(c => c.getAttribute('aria-label'));
@@ -311,11 +267,8 @@ async function run() {
     'no screenshot/preview/stream in the scene_markers selection');
 
   // ── T16: the gallery hand-off ───────────────────────────
-  // A scene's galleries arrive with the detail query (two in the fixture, with
-  // ids distinct from the Galleries tab's listing). Enter on one is a tab
-  // change in App, not a close: this driver supplies the callback and proves
-  // the row it carries, while `closedCount` proves the chip did not reach for
-  // onClose itself.
+  // Galleries arrive with the detail query (two, ids distinct from the Galleries
+  // tab); Enter is a tab change in App, so no onClose and no timestamp.
   const galleryGroup = document.querySelector('[role="group"][aria-label="Galleries"]');
   const galleryChips = galleryGroup ? [...galleryGroup.querySelectorAll('button')] : [];
   check('T16 each gallery in the scene draws one focusable chip',
@@ -342,9 +295,8 @@ async function run() {
     + `playAt=${playedAt.length - playedBeforeGallery} closes=${closedCount}`);
 
   // ── T2: optimistic update ───────────────────────────────
-  // sceneUpdate is delayed 1200 ms server-side. Reading the new value well
-  // before that reply arrives is the proof that the change is optimistic
-  // rather than "await the server, then update".
+  // sceneUpdate is delayed 1200 ms; the new value before the reply proves the
+  // change is optimistic rather than await-then-update.
   await setServerMode('slow');
   press(byLabel('Increase rating'));
   await sleep(60);
@@ -360,8 +312,8 @@ async function run() {
   await sleep(60);
   check('T3 optimistic value is visible before the failure lands',
     ratingStars() === 9, `at t≈60ms stepper reads ${ratingStars()}`);
-  // Must outlast the server's 1200ms delay-then-fail. Reading at 900ms here
-  // was reading before the failure had even been sent.
+  // Must outlast the server's 1200 ms delay-then-fail; reading at 900 ms was
+  // reading before the failure was even sent.
   await sleep(1700);
   check('T3 value rolled back after the failure',
     ratingStars() === 8, `stepper reads ${ratingStars()}`);
@@ -370,19 +322,8 @@ async function run() {
   await setServerMode('ok');
 
   // ── T4: the o-count is a tally, not a toggle ────────────
-  //
-  // Two separate claims, and they need different evidence.
-  //
-  // "Each press adds one" is about what the *screen* does across presses:
-  // 0 → 1 → 2, where a toggle would have gone 0 → 1 → 0. "It is an increment on
-  // the server" is about which mutations were sent, and only the log can say —
-  // a toggle and a tally draw the same screen from a press made at zero, and
-  // diverge only on the second press.
-  //
-  // Seeding the server's tally to 5 while the page's own data says 0 keeps the
-  // old check's property too: the first response (6) is a number no client-side
-  // guess could produce, so the figure on screen is only explainable as the one
-  // the response carried.
+  // Screen across presses (0 → 1 → 2; a toggle returns to 0) and the mutation
+  // log (add vs delete). Seeding 5 makes the first answer (6) no client guess.
   await setServer({ oSeed: 5 });
   check('T4 the page opens on its own data, not the server\'s',
     likes() === 0, `reads ${likes()} (the detail fetch reports 0; the server's tally is 5)`);
@@ -405,11 +346,8 @@ async function run() {
     'would have sent add then delete');
 
   // ── T4b: holding OK clears it ───────────────────────────
-  //
-  // A tally needs a way back to zero that is not "press it N times", and the
-  // hold is the gesture the remote already has for that. It is also opt-in per
-  // element, which is the reason the short action of *this* button fires on
-  // keyup — see the ActionButton comment.
+  // A tally needs a way back to zero; hold is opt-in per element, so this
+  // button's short action fires on keyup (see the ActionButton comment).
   await hold(likeBtn());
   await sleep(500);
   check('T4b holding OK clears the count to zero', likes() === 0, `reads ${likes()}`);
@@ -432,12 +370,8 @@ async function run() {
     likes() === 1, `reads ${likes()} (the server's tally was zeroed, so this is a fresh 1)`);
 
   // ── T4c: two presses answered out of order ──────────────
-  //
-  // The server increments in call order and answers each call with its own
-  // total, but the first reply is held back so it lands *after* the second.
-  // Without an attempt token the stale 1 is drawn over the fresh 2, and the
-  // user's last press looks ignored. The same token is what stops a late
-  // increment from bringing a count back after T4b's hold cleared it.
+  // The first reply is held back to land after the second; without an attempt
+  // token the stale 1 overwrites 2, and it also blocks reviving a cleared count.
   await setServer({ oSeed: 0, sceneAddO: 'slow-first' });
   await tap(likeBtn());          // keeps the reply carrying 1 for ~1.2 s
   await sleep(150);
@@ -452,12 +386,8 @@ async function run() {
   await setServer({ sceneAddO: 'ok' });
 
   // ── T11: clear progress ─────────────────────────────────
-  //
-  // The card says resume 0; the detail fetch says 1800. So the bar appearing,
-  // and the action being enabled, are both evidence that the fetched value is
-  // what the page is operating on. The failure case runs first: it proves the
-  // rollback without needing a second page instance to re-seed the resume
-  // point.
+  // The card says resume 0, the detail fetch 1800; the bar and enabled action
+  // prove the fetched value. Failure runs first to prove rollback.
   const clearBtn = () => byText('Clear progress', true);
   check('T11 the page offers Clear progress, enabled by the fetched resume point',
     !!clearBtn() && !clearBtn().disabled && !!resumeBar(),
@@ -482,10 +412,9 @@ async function run() {
   check('T11 the retry clears optimistically too', !resumeBar(), `bar=${!!resumeBar()}`);
   await sleep(500);
   const resets = await resetCalls();
-  // Two entries: the refused attempt is logged *before* the fake fails, the
-  // same record-then-fail rule the save log uses, so a check can tell an
-  // attempted-and-rejected write from one never sent. Both must ask for the
-  // same thing.
+  // Two entries: the refused attempt is logged before the fake fails, the
+  // same record-then-fail rule as the save log, so an attempted-and-rejected
+  // write is distinguishable from one never sent.
   check('T11 resets ask for the resume point only',
     resets.length === 2 && resets.every(r => r.reset_resume === true
       && r.reset_duration === false),
@@ -500,11 +429,8 @@ async function run() {
     clearBtn()?.disabled === true, `disabled=${clearBtn()?.disabled}`);
 
   // ── T12: mark played ────────────────────────────────────
-  //
-  // Same two claims as the o-count: the screen is optimistic (2 → 3 at 60 ms)
-  // and the write is one `sceneAddPlay` with one explicit timestamp. The
-  // server answers 7, a number the client's guess cannot produce, so "the
-  // figure on screen came from the response" is observable.
+  // Optimistic (2 → 3 at 60 ms) and one `sceneAddPlay` with one explicit
+  // timestamp; the server answers 7, which no client guess produces.
   const markBtn = () => byText('Mark played', true);
   check('T12 the page offers Mark played, enabled in Live mode',
     !!markBtn() && !markBtn().disabled, `disabled=${markBtn()?.disabled}`);
@@ -523,8 +449,8 @@ async function run() {
     document.body.textContent.match(/Not marked[^—]*/i)?.[0] || '(no notice)');
 
   // `slow`, not `ok`: an instant answer would land within the read below, so
-  // the optimistic 3 would be indistinguishable from a page that just waited
-  // for the server and drew 7.
+  // the optimistic 3 would be indistinguishable from a page that waited and
+  // drew 7.
   await setServer({ sceneAddPlay: 'slow' });
   const addsBefore = (await playAdds()).length;
   press(markBtn());
@@ -546,19 +472,8 @@ async function run() {
   const play = byText('Play', false);
 
   // ── T8: the action row is traversable ───────────────────
-  //
-  // Reported from the TV: Play took focus and Enter worked, but no arrow key
-  // moved off it. The cause was that the stepper's "−" was DOM-disabled while
-  // a scene was unrated, and it sits immediately right of Play.
-  //
-  // The fix is the state the button is in, not a nav special case: at a bound
-  // it stays native-enabled and carries `aria-disabled` plus the muted style,
-  // so it can hold focus and its Enter handler simply does nothing. What is
-  // asserted is the property that removed the wall: Right from Play lands on
-  // the inert "−", and Right again leaves it.
-  //
-  // Drive the rating down to 0 first, because that is the state the TV was
-  // in: with stars > 0 the "−" is editable and the bug hides.
+  // At zero stars "−" was DOM-disabled and trapped focus on Play; it is now
+  // native-enabled with `aria-disabled` and an inert Enter, driven to 0 here.
   for (let i = 0; i < 9; i++) {
     const d = byLabel('Decrease rating');
     if (!d || d.getAttribute('aria-disabled') === 'true') break;
@@ -597,17 +512,8 @@ async function run() {
     path.includes('Back'), `path: ${path.join(' → ')}`);
 
   // ── T13: a sideways press walks its own line first ──────
-  // The action row wraps at this viewport: Play / "−" / "+" / Organised /
-  // o-count on the first line, then the disabled Clear progress, Mark played
-  // and Back on the second. The second line starts almost directly under the
-  // rating's "+", so a nearest-centre score used to prefer it (dx 17, dy 52)
-  // over "Organised" on the same line (dx 98) — Right skipped the rest of the
-  // row, jumped down, and came back up at the end. What is asserted is the
-  // order of the first four hops, not merely that Back is reachable (T10's
-  // claim).
-  //
-  // "−" is in the line even though it is inert: the button is focusable by
-  // design (see T8), and Clear progress is not, because it is native-disabled.
+  // The row wraps; a nearest-centre score jumped to the second line (dx 17,
+  // dy 52) instead of "Organised" on the same line (dx 98). First four hops.
   play.focus();
   const rowPath = [];
   for (let i = 0; i < 7; i++) {
@@ -621,9 +527,8 @@ async function run() {
     `path: ${rowPath.join(' → ')}`);
 
   // ── T15: the wrap is reversible ─────────────────────────
-  // Reading order in reverse: Left out of the second line enters the first
-  // line at its *right* edge. A nearest-centre score would instead climb to
-  // whichever control happens to be left of the current one.
+  // Left out of line two enters line one at its right edge; a nearest-centre
+  // score would instead climb to whatever sits left of the current control.
   const backPath = [];
   for (let i = 0; i < 3; i++) {
     press(document.activeElement, 'ArrowLeft', 37);
@@ -635,12 +540,8 @@ async function run() {
     `path: ${backPath.join(' → ')}`);
 
   // ── T9: control for T8 ──────────────────────────────────
-  // Same DOM, same registry, one attribute added: the native `disabled` the
-  // app used to put on "−" at zero stars. The candidate search skips a
-  // native-disabled control, so Right now lands on "+". That is the exact
-  // behaviour T8 asserts away, and it makes the two attributes the only
-  // difference — T8's landing on "−" is `aria-disabled` doing its job, not a
-  // layout accident.
+  // Same DOM and registry plus the native `disabled` the app used to set at
+  // zero stars: a native-disabled control is skipped, so Right lands on "+".
   byLabel('Decrease rating').setAttribute('disabled', '');
   play.focus();
   press(document.activeElement, 'ArrowRight', 39);
@@ -648,9 +549,8 @@ async function run() {
   check('T9 CONTROL: a native-disabled "−" is skipped; aria-disabled is what makes it reachable',
     document.activeElement === byLabel('Increase rating'),
     `landed on "${labelOf(document.activeElement)}"`);
-  // Leave the DOM as found: React still believes this button is enabled, and
-  // a later re-render would restore it — but the trap tests below should not
-  // run against a state the app never produces.
+  // Leave the DOM as found: React still believes this button is enabled, but
+  // the trap tests below should not run against a state the app never produces.
   byLabel('Decrease rating').removeAttribute('disabled');
 
   // ── T5: focus trap, with a control ──────────────────────
@@ -667,9 +567,9 @@ async function run() {
     !!overlay() && overlay().contains(document.activeElement),
     `activeElement="${document.activeElement?.id || (document.activeElement?.textContent || '').slice(0, 20)}"`);
 
-  // Control: strip the attribute that creates the trap and repeat the exact
-  // same input. If focus now escapes, the trap is what was holding it —
-  // same DOM, same registry, one attribute different.
+  // Control: strip the attribute that creates the trap and repeat the same
+  // input. If focus escapes, the trap was holding it — same DOM, one attribute
+  // different.
   const ov = overlay();
   ov.removeAttribute('role');
   play.focus();
@@ -688,12 +588,8 @@ async function run() {
   check('T6 Play button calls onPlay', playedCount === 1, `fired ${playedCount}×`);
 
   // ── T6b: Play carries the fetched resume point ─────────
-  // The card says 0; FindSceneDetail says 1800. App builds the player's queue
-  // from the scene object this page hands it, and the player decides whether
-  // to ask "resume or start over" from that item. A listing that stays mounted
-  // after playback is not refetched, so its card is stale; without this value
-  // the scene replays without asking. A fresh mount because T11 above cleared
-  // this page's resume point.
+  // The card says 0, the detail fetch 1800; a stale mounted listing would
+  // replay without prompting. Fresh mount: T11 cleared this page's resume.
   let playSeed = null;
   const seedHost = document.createElement('div');
   document.body.appendChild(seedHost);
@@ -730,8 +626,8 @@ async function run() {
   check('T7 overlay is gone after close', !overlay());
 
   // ── T13b: a scene with no markers draws no row ──────────
-  // A second mount, because the mode is read by the detail fetch, and the
-  // first page fetched its markers before this mode existed.
+  // A second mount, because the mode is read by the detail fetch and the
+  // first page already fetched its markers.
   await fetch('/mode', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -757,9 +653,8 @@ async function run() {
   emptyHost.remove();
 
   // ── T14: duration rounding at the minute boundary ───────
-  // A third mount, because the duration comes from the detail fetch. 3599.6 s
-  // is one second short of an hour and rounds to 3600: the formatter must
-  // carry that into the hour rather than print "59m 60s".
+  // A third mount: duration comes from the detail fetch. 3599.6 s rounds to
+  // 3600; the formatter must carry into the hour, not print "59m 60s".
   await fetch('/mode', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -792,7 +687,7 @@ async function run() {
 
   // ── T13c: Test mode has its own markers ─────────────────
   // `mockDetail` answers per-open with no server row, so the row must come
-  // from the mock rather than from the fetch that Test mode skips.
+  // from the mock, not from the fetch Test mode skips.
   await fetch('/mode', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

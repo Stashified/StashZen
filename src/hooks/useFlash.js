@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
- * A transient status line: `flash(message)` shows it, and it clears itself
- * after `timeoutMs`.
+ * A transient status line: `flash(message)` shows it and clears itself after
+ * `timeoutMs`. A second flash restarts the clock, so the visible message is
+ * always the current one.
  *
- * The timer is held in a ref and cleared on unmount, not left to fire into a
- * page or panel that is already gone. A second `flash` restarts the clock, so
- * the message the user is reading is always the one that is still on screen.
- *
- * The notice starts as '' rather than null because every caller renders it
- * unconditionally into an `aria-live` line; an empty string is the quiet state.
+ * The timer is cleared on unmount rather than left to fire into a gone page;
+ * `notice` starts as '' because callers render it unconditionally into an
+ * `aria-live` line.
  */
 export function useFlash(timeoutMs = 4000) {
   const [notice, setNotice] = useState('');

@@ -1,20 +1,15 @@
 /**
- * LockScreen — the gate shown while the app is locked
+ * LockScreen — the gate shown while the app is locked.
  *
- * A thin wrapper over PinPad: the keypad, the verification, and the one
- * piece of app-level wiring the lock screen would otherwise lose by
- * replacing <App /> — the global arrow-key navigator.
+ * A thin wrapper over PinPad, plus the global arrow-key navigator the app tree
+ * would otherwise take with it.
  *
- * The backdrop is solid rather than translucent on purpose. This is the one
- * screen where nothing is behind the panel by construction — AppLock
- * unmounts the app tree rather than drawing over it — so there is nothing
- * to blur, and a solid fill makes that explicit.
+ * The backdrop is solid because nothing is behind the panel by construction:
+ * AppLock unmounts the app tree rather than drawing over it.
  *
- * Back asks whether to close the app. It must not dismiss the lock — that
- * would make the PIN a suggestion — but a Back that does nothing at all
- * reads as a broken remote, which is what a viewer on the lock screen
- * reported on 2026-10-24. The confirmation is the same component the main
- * screen uses, so "Back → Exit app?" behaves identically everywhere.
+ * Back asks whether to exit; it must not dismiss the lock, which would make
+ * the PIN a suggestion. A Back that did nothing read as a broken remote, so
+ * the same ExitPrompt as the main screen is used.
  */
 
 import { useCallback, useState } from 'react';
@@ -25,33 +20,23 @@ import { attemptPin } from '../utils/appLock.js';
 import styles from './LockScreen.module.css';
 
 export default function LockScreen({ onUnlock }) {
-  // The lock screen replaces <App />, and App is where the global arrow-key
-  // navigator lives (App.jsx:247). Without this, nothing moves focus: the
-  // keypad auto-focuses "1" and the D-pad then does nothing, because
-  // useFocusable only binds Enter per element. Every other key is covered
-  // elsewhere — PinPad's capture-phase handler consumes digits, Backspace,
-  // Escape and Tizen Back before they could reach this bubble-phase
-  // listener, so only the arrows actually arrive here.
-  //
-  // No `onBack`: Back is PinPad's `onCancel` below, and while the exit
-  // prompt is up it is ExitPrompt's own handler. This listener never sees
-  // either.
+  // App owns the global arrow-key navigator and has unmounted, so without this
+  // the D-pad is dead (useFocusable only binds Enter per element). PinPad's
+  // capture-phase handler consumes digits and Back first, so only arrows reach
+  // here; no `onBack`, since Back is PinPad's or ExitPrompt's.
   useKeyHandler({});
 
   const [exitPromptOpen, setExitPromptOpen] = useState(false);
 
-  // Back (Escape / Tizen Back) from the keypad. Opening the prompt unmounts
-  // the pad rather than stacking over it, and that is deliberate on three
-  // counts: the pad's overlay sits above ExitPrompt's, the pad's
-  // window-capture listener would otherwise go on swallowing digits and
-  // Backspace behind the dialog, and remounting the pad puts the cursor
-  // back on "1" when the prompt closes.
+  // Opening the prompt unmounts the pad rather than stacking: the pad's
+  // overlay would sit above ExitPrompt's, and its capture listener would keep
+  // swallowing keys behind the dialog. Remounting also resets the cursor to 1.
   const handleCancel = useCallback(() => setExitPromptOpen(true), []);
   const closeExitPrompt = useCallback(() => setExitPromptOpen(false), []);
 
   const handleSubmit = useCallback((pin) => {
-    // attemptPin, not verifyPin: it owns the wrong-PIN backoff. PinPad
-    // renders the returned string as the error and clears the entry.
+    // attemptPin, not verifyPin: it owns the wrong-PIN backoff. PinPad shows
+    // the returned string as the error and clears the entry.
     const result = attemptPin(pin);
     if (result.ok) {
       onUnlock?.();

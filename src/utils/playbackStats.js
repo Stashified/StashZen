@@ -1,31 +1,26 @@
 /**
  * playbackStats — the rows behind the player's "Playback info" panel.
  *
- * A readout for the one class of problem this app cannot otherwise explain
- * from the sofa: a scene that starts slowly, stutters, cannot be skimmed, or
- * shows a timeline that disagrees with its length. Every one of those is a
- * property of the stream — direct file or transcode, container, resolution,
- * how far ahead the buffer runs, whether the source is seekable — and none of
- * it is visible anywhere in the UI.
+ * A readout for problems otherwise invisible from the sofa: slow start,
+ * stutter, unskippable seeks, a timeline disagreeing with the scene's length.
+ * Each is a property of the stream — direct or transcode, container,
+ * resolution, buffer, seekability — and none is visible elsewhere in the UI.
  *
- * Two rules govern what goes in a row.
+ * Two rules govern the rows.
  *
- * **The URL is shown by path only.** A direct stream and every transcode
- * arrive carrying `?apikey=…` (see playbackSource.js), so the full URL is a
- * credential, and a panel designed to be photographed for a bug report is the
- * last place to put one. `pathOf` strips the query and fragment, and the
- * checks pin that down.
+ * **The URL is shown by path only.** Direct and transcoded streams carry
+ * `?apikey=…` (see playbackSource.js), so the full URL is a credential and
+ * this panel is meant to be photographed for bug reports. `pathOf` strips the
+ * query and fragment.
  *
- * **A value the element cannot supply is shown as `—`, not as a plausible
- * default.** `duration` is `NaN` or `Infinity` for exactly the streams this
- * panel exists to diagnose, and `videoWidth` is 0 for audio, so coercing
- * either to 0 or to the scene's metadata would hide the discrepancy rather
- * than report it. The scene's own duration is a separate row for the same
- * reason: when the two disagree, that disagreement *is* the finding.
+ * **A value the element cannot supply is shown as `—`, not a plausible
+ * default.** `duration` is NaN/Infinity for exactly the streams this panel
+ * diagnoses, and `videoWidth` is 0 for audio; coercing either would hide the
+ * discrepancy. The scene's own duration is a separate row because disagreement
+ * *is* the finding.
  *
- * The rows are built as data rather than rendered directly so that the rules
- * — and especially the credential-stripping rule — are testable without a
- * media element.
+ * Rows are data so the rules — especially credential-stripping — are testable
+ * without a media element.
  */
 
 import { formatTime } from './format.js';
@@ -45,10 +40,9 @@ const finite = (n) => (Number.isFinite(Number(n)) ? Number(n) : null);
 /**
  * The path of a media URL, with the query and fragment removed.
  *
- * **This is the function that keeps the API key out of the panel.** Stash
- * hands transcodes over with `?apikey=…` already attached, and a relative
- * `/scene/1/stream` has no origin to discard; both cases come back as the
- * path alone.
+ * **This is what keeps the API key out of the panel.** Stash attaches
+ * `?apikey=…` to transcodes, and a relative `/scene/1/stream` has no origin to
+ * discard; both come back as the path alone.
  */
 export function pathOf(src) {
   const s = String(src || '');
@@ -61,10 +55,9 @@ export function pathOf(src) {
 }
 
 /**
- * Which of the shapes this is, from its path. `MP4` here means Stash's
- * streamed MP4 transcode; the scene's own file is served from `/stream` with
- * no extension unless it has been remuxed, which is the ordinary direct case
- * and reads as `file`.
+ * Which of the shapes this is, from its path. `MP4` means Stash's streamed MP4
+ * transcode; the scene's own file is served from `/stream` with no extension
+ * unless remuxed — the ordinary direct case, read as `file`.
  */
 export function sourceFormat(src) {
   const path = pathOf(src).toLowerCase();
@@ -107,10 +100,10 @@ export function seekableRange(el) {
 /**
  * Decoded and dropped frame counts.
  *
- * Two spellings, because the Tizen engine and modern Chromium disagree:
- * `getVideoPlaybackQuality()` is the standard one and `webkitDecodedFrameCount`
- * is what Chromium 56 on this TV exposes. Either is worth reporting; a dropped
- * count on a stuttering scene is the whole diagnosis.
+ * Two spellings, because Tizen's engine and modern Chromium disagree:
+ * `getVideoPlaybackQuality()` is standard, `webkitDecodedFrameCount` is what
+ * Chromium 56 on this TV exposes. A dropped count on a stuttering scene is the
+ * whole diagnosis.
  */
 export function frameCounts(el) {
   try {
@@ -130,10 +123,10 @@ export function frameCounts(el) {
 /**
  * The panel's rows, as `[label, value]` pairs.
  *
- * `sourceKind` is the resolver's answer, not an inference from the URL: only
- * the candidate that produced the source knows whether the server is
- * re-encoding. `codecs` describes the scene's *file*, which is worth keeping
- * separate from what the element is playing when a transcode has replaced it.
+ * `sourceKind` is the resolver's answer, not inferred from the URL: only the
+ * candidate that produced the source knows whether the server is re-encoding.
+ * `codecs` describes the scene's *file*, worth keeping separate from what the
+ * element plays when a transcode has replaced it.
  */
 export function playbackStats(el, {
   sceneId, sourceKind, src, sceneDuration, codecs = {},
@@ -152,9 +145,9 @@ export function playbackStats(el, {
   add('Source', `${kind} · ${sourceFormat(src)}`);
   if (sceneId != null) add('Scene', String(sceneId));
 
-  // Which engine is actually playing, and — under Auto — why it is not the
-  // one the setting asks for (AVPlay unavailable, content refused, or the
-  // session kill switch). The caller derives the note; this row reports it.
+  // Which engine plays, and under Auto why it is not the requested one
+  // (AVPlay unavailable, content refused, session kill switch). The caller
+  // derives the note; this row reports it.
   add('Player', `${reduced ? 'AVPlay' : 'Browser'}${engineNote ? ` · ${engineNote}` : ''}`);
 
   // The AVPlay backend has no answer for these, and a placeholder would read
@@ -173,9 +166,8 @@ export function playbackStats(el, {
 
   add('Position', time(finite(el.currentTime) ?? 0));
 
-  // A seek that keeps throwing is survivable — the coalescer degrades rather
-  // than failing the scene — but "skims do nothing" is otherwise unreadable
-  // from the sofa. Only shown while it is actually happening.
+  // A seek that keeps throwing is survivable (the coalescer degrades), but
+  // "skims do nothing" is otherwise unreadable. Only shown while happening.
   if (el.seekDegraded) add('Seek', 'degraded — seeks are failing');
 
   if (!reduced) {
@@ -195,12 +187,10 @@ export function playbackStats(el, {
 
   const volume = Math.round((finite(el.volume) ?? 0) * 100);
   const rate = finite(el.playbackRate);
-  // TV-level mute is system-wide and may not be readable as a level; the
-  // facade reports the requested state and `—` for a level it cannot know.
-  // A panel with neither `tvaudiocontrol` nor `setVolume` has no mute at all,
-  // and the button is disabled — say so here rather than claiming "not muted".
-  // An object that does not advertise a capability predates this panel's
-  // rule; report what it does rather than inventing a disability.
+  // TV mute is system-wide and has no readable level; the facade reports the
+  // requested state. A panel with neither `tvaudiocontrol` nor `setVolume` has
+  // no mute at all, so say "unavailable" rather than "not muted". An object
+  // not advertising a capability predates this rule — report what it does.
   const muteCapability = el.getMuteCapability?.() ?? 'property';
   add('Volume', muteCapability === 'none'
     ? 'unavailable'

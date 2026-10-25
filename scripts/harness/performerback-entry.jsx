@@ -1,33 +1,23 @@
 /**
- * Headless driver for Back while the player is open over the performer page.
+ * Headless driver for Back while the player is open over the performer page:
+ * the page and the player both acted on the same press, returning to the full
+ * Performers listing instead of the performer.
  *
- * The report (2026-10-20): "backing out from playing a scene, selected from
- * the performer page, returns back to full performer listing (not the
- * performer we were at)". Which is to say the *page* and the *player* both
- * acted on the same Back press.
+ * PerformerDetailPage and the player each install a window capture listener,
+ * so they run in registration order (the page first) and `stopPropagation`
+ * cannot suppress a sibling on the same target. The page's guard asks whether
+ * *focus* is inside a dialog, but while the player is open focus is on <body>
+ * (the detail page unmounted with Play; the player never focuses its own
+ * container — see useControlsVisibility's leaveRail), so the page closed
+ * underneath it.
  *
- * Two independent listeners claim Back here. PerformerDetailPage installs one
- * on mount with `isBackKey(e) && !focusScopeOf(document.activeElement)` as its
- * guard; the player installs one when it mounts. Both are window capture
- * listeners, so they run in registration order — the page first, because it
- * was there first — and `stopPropagation` cannot suppress a sibling listener
- * on the same target. The page's guard asks whether *focus* is inside a
- * dialog, and while the player is open focus is on <body> (the detail page
- * unmounted with the Play press and the player deliberately never focuses its
- * own container — see useControlsVisibility's leaveRail), so the guard sees
- * nothing and the page closes itself underneath the player.
+ * The first Back is the player's controls-bar press and must not touch the
+ * page; the second closes the player and lands back on the performer, focused
+ * on the card that was played. Mounts the real App against the fake GraphQL
+ * endpoint.
  *
- * The assertions are ordered so the difference is visible rather than just
- * red: the first Back is the player's controls-bar press, and it must not
- * touch the page. The second closes the player and must land back on the
- * performer, with focus on the card that was played.
- *
- * Mounts the real App against the fake GraphQL endpoint, like menu-entry.
- *
- * What this cannot tell you: whether the TV's remote sends the same keydown
- * this driver does. Nothing here is timing-sensitive in that way (the keys
- * are real events through the real hooks), but the remote itself is the TV
- * pass.
+ * A headless driver cannot prove the TV's remote sends the same keydown; that
+ * is the TV pass.
  */
 
 import '../../src/index.css';
@@ -82,14 +72,13 @@ async function waitFor(fn, ms = 6000) {
   return false;
 }
 
-// The player's own overlay, by the label it announces rather than by class —
-// the CSS-module name is hashed, and the check is about which layers are up.
+// The player's overlay by its announced label, not class (CSS-module names
+// are hashed); the check is about which layers are up.
 const playerDialog = () => [...document.querySelectorAll('[role="dialog"]')]
   .find(d => (d.getAttribute('aria-label') || '').startsWith('Now playing:')) || null;
 
-// Only the performer page has this button; the Performers grid (the wrong
-// destination) has no such label, so it is also the assertion that the page
-// underneath survived rather than being replaced by the listing.
+// Only the performer page has this button, so it also proves the page survived
+// rather than being replaced by the Performers grid.
 const performerPageOpen = () => !!document.querySelector('button[aria-label="Back to performers"]');
 
 async function run() {
@@ -99,26 +88,21 @@ async function run() {
   focus('nav-performers');
   await sleep(120);
   await tapEnter();
-  // The grid itself, not merely a card with the same id: Home's showroom
-  // carries a performer shelf whose cards use the same `performer-<id>`
-  // registry ids, so "performer-3 exists" is true on Home too — and taking
-  // that card opens the page through the *showroom* origin, which returns to
-  // Home by id. That is a different path from the one this driver is about.
+  // The grid itself, not a card with the same id: Home's showroom shelf uses
+  // the same `performer-<id>` registry ids, but opens the page through the
+  // showroom origin, a different back path.
   const onGrid = await waitFor(
     () => !!document.querySelector('[aria-label="Performer grid"]'), 4000);
   check('P-1 the Performers grid is the surface under test', onGrid,
     onGrid ? 'performer grid present' : 'still on Home (grid missing)');
 
   // ── Back from a performer page must return to *that* card ──
-  // The Performers grid is swapped out for the detail page (TabContent), so
-  // the card's element is detached while the page is up; the restored focus
-  // has to be by id, after the grid has remounted and fetched again. The TV
-  // report was "backing out ... returns to full performer listing (not the
-  // performer we were at)".
+  // The grid is swapped out for the detail page (TabContent), so the card is
+  // detached while the page is up; focus is restored by id after the grid
+  // remounts and refetches.
   //
-  // Not performer-1: the first card is where the *fallback* lands — a card
-  // autofocuses when nothing else has the cursor — so asserting it would pass
-  // on the broken build. performer-3 is mounted in the same first page, which
+  // Not performer-1: the first card is where the fallback lands, so asserting
+  // it would pass on the broken build. performer-3 is on the same page, which
   // makes the two answers distinguishable.
   await waitFor(() => registry.has('performer-3'));
   focus('performer-3');
@@ -126,11 +110,10 @@ async function run() {
   await tapEnter();
   await waitFor(() => performerPageOpen());
   press('Escape', 27);
-  // The assertion is against the *document's* focus, not `getCurrentFocusId`:
-  // that module variable is only cleared when the unmount effect runs, so a
+  // Asserted against the *document's* focus, not `getCurrentFocusId`: that
+  // module variable is only cleared when the unmount effect runs, so a
   // detached card can leave it naming the right performer while the browser
-  // is actually focused on <body>. The element must be live and it must be
-  // the active one.
+  // is on <body>. The element must be live and active.
   const onCard = () => {
     const el = registry.get('performer-3')?.el;
     return !!el && document.contains(el) && document.activeElement === el;
@@ -143,15 +126,10 @@ async function run() {
       + `${Date.now() - t0} ms`);
 
   // ── P0b  a card from the third page comes back too ────────
-  // TV report, 2026-10-20: after scrolling to a performer past 200 and backing
-  // out, "it won't go the one we were on. Performers count also stays at 40
-  // and cannot be browsed past first 40." The count moving from "40 of 1,892"
-  // to "40 performers" is the listing's no-progress stop having fired, and the
-  // cause was two next-page triggers in one tick (the sentinel plus this
-  // restore) both fetching the same page — see pagedlist-entry.jsx, which
-  // reproduces that directly.
-  //
-  // The fake listing has 100 rows, 40 per page, so page 3 is the deep case.
+  // Two next-page triggers in one tick (the sentinel plus this restore)
+  // fetched the same page, leaving "40 performers" and no further browsing.
+  // See pagedlist-entry.jsx, which reproduces that directly. The fake listing
+  // has 100 rows, 40 per page, so page 3 is the deep case.
   const performerGrid = () => document.querySelector('[aria-label="Performer grid"]');
   const gridScroller = () => performerGrid()?.parentElement;
   const statsText = () => document.querySelector('[data-list-stats]')?.textContent || '';
@@ -184,8 +162,8 @@ async function run() {
     check('P0b Back returns to a performer from the third page',
       deepBack,
       `focus ${getCurrentFocusId() ?? '<none>'}, ${Date.now() - tDeep} ms`);
-    // The listing, not just the focus: the bug left the grid stuck at the rows
-    // it had when the duplicate page arrived, with the server's total lost.
+    // The listing, not just the focus: the bug stranded the grid at the rows
+    // it had, losing the server's total.
     check('P0b …and the count line still reports the whole library',
       statsText() === '100 performers',
       `stats "${statsText()}"`);
@@ -207,9 +185,8 @@ async function run() {
     `back button ${performerPageOpen()}, video-1 ${registry.has('video-1')}`);
 
   // ── Open the scene's detail page, then play from it ───────
-  // The ordinary path: Enter on a card opens the page, Play starts it. The
-  // page is what App closes when playback starts, so the only page left
-  // underneath the player is the performer page.
+  // Enter opens the page, Play starts it. App closes the scene page on
+  // playback, leaving only the performer page under the player.
   focus('video-1');
   await sleep(120);
   await tapEnter();
@@ -225,9 +202,8 @@ async function run() {
     `player ${!!playerDialog()}, performer page ${performerPageOpen()}`);
 
   // ── Back #1: the controls bar ─────────────────────────────
-  // The player layers Back: with its bar up, the first press puts the bar
-  // away. The performer page must observe that and do nothing — it is not the
-  // top layer.
+  // With the bar up the first press puts it away; the performer page must do
+  // nothing — it is not the top layer.
   await sleep(200);
   press('Escape', 27);
   await sleep(350);
@@ -236,8 +212,7 @@ async function run() {
     `performer page ${performerPageOpen()}`);
 
   // ── Back #2: the player ───────────────────────────────────
-  // And when the player does close, what is revealed is the performer page,
-  // with the cursor back on the card that was played.
+  // Closing reveals the performer page, cursor on the card that was played.
   press('Escape', 27);
   await sleep(450);
   const closed = !playerDialog();

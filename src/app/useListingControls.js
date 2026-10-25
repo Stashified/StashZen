@@ -2,15 +2,13 @@
  * useListingControls — the controls bar's state, and the rules that arrive
  * with it.
  *
- * `controls` is one shared object for every section, so most of what this
- * hook does is deciding what survives a tab change or a data-source change.
- * Both rules are render-phase updates, not effects: the arriving page mounts
- * its grid in the same commit, and its first fetch must already carry the
- * new tab's sort, order and filter.
+ * `controls` is one shared object for every section, so most of this hook is
+ * deciding what survives a tab change or a data-source change. Both rules are
+ * render-phase updates, not effects: the arriving page mounts its grid in the
+ * same commit, and its first fetch must already carry the new tab's controls.
  *
- * The view mode and grid column count are per-tab but live in the settings
- * store rather than in `controls`, so they survive a launch; the accessors
- * here are the per-tab views of those maps.
+ * View mode and grid columns are per-tab but live in the settings store, so
+ * they survive a launch.
  */
 
 import { useState } from 'react';
@@ -22,14 +20,12 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   const [controls, setControls] = useState(DEFAULT_CONTROLS);
 
   // ── View mode, per section ───────────────────────────────
-  // Absent means 'classic' — see readViewModes in settings.js. Stored rather
-  // than held in `controls` so it survives a launch, and keyed by tab so
+  // Absent means 'classic' — see readViewModes in settings.js. Keyed by tab so
   // setting Performers to Carousel leaves Scenes alone.
   //
-  // The whole map is written on every change rather than merged into the
-  // stored copy here: `setSettings` spreads a patch over the current state, so
-  // the spread below is what keeps the *other* tabs' modes. Writing only
-  // `{ [activeTab]: v }` would silently reset every other section to classic.
+  // The whole map is written on every change because `setSettings` spreads a
+  // patch over the current state; writing only `{ [activeTab]: v }` would
+  // silently reset every other section to classic.
   const viewModes = settings.viewModes;
   const activeMode = viewModes[activeTab] ?? 'classic';
   const setActiveMode = (mode) => {
@@ -37,42 +33,29 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   };
 
   // ── Grid columns, per section ────────────────────────────
-  // Same shape and same reasoning as viewModes above: stored in the settings
-  // store rather than in `controls` so the choice survives a launch, keyed by
-  // tab so changing one section leaves the others alone, and the whole map is
-  // written on every change because `setSettings` replaces the field wholesale.
+  // Same shape and reasoning as viewModes: stored, per-tab, and the whole map
+  // written every change because `setSettings` replaces the field wholesale.
   //
-  // The defaults differ because the art does: scenes, markers and the entity
-  // grids are landscape at 4, while performer cards are 3:4 portrait — at 4
-  // they fill the same cell with nearly 2.4× the height and read as oversized
-  // on a TV. 6 is the measured choice, not arithmetic. Reported from the TV,
-  // 2026-10-17: "around 6 looked alright".
+  // The defaults differ because the art does: scenes, markers and entity grids
+  // are landscape at 4, while performer cards are 3:4 portrait — at 4 they read
+  // as oversized on a TV. 6 is the measured choice.
   const gridCols = settings.gridCols;
   const gridColsFor = (tab) => gridCols[tab] ?? (tab === 'performers' ? 6 : 4);
 
   // ── A data-source change is an arrival too ───────────────
   //
-  // Switching between Live and Test, or pointing the app at another server,
-  // remounts `<main>` through its key — the pages, their fetches and their
-  // rows are discarded. App's own state is not: the selected filter id, an
-  // open performer or scene detail, the origin a filtered listing came from.
-  // A saved-filter id names a row on the *old* server. Kept across the
-  // switch it either names nothing — so the listing silently runs unfiltered
-  // while the bar shows a filter — or names a different filter entirely. The
-  // detail pages hold an id and a record from the old library. Cleared in
-  // render, not in an effect, for the same reason the tab rule below is: the
-  // new source's first fetch must not go out under the old source's filter
-  // or hold a detail the new listing cannot back up.
+  // Switching between Live and Test, or pointing at another server, remounts
+  // `<main>` through its key, but App's state is not: a saved-filter id names a
+  // row on the *old* server, and kept across the switch it either names nothing
+  // — so the listing runs unfiltered while the bar shows a filter — or a
+  // different filter. The detail pages hold ids from the old library too.
   //
-  // The ticker is the source, so this runs once per source; the tab rule
-  // below runs once per tab. They are independent because a source change
-  // keeps the tab and a tab change keeps the source.
+  // Cleared in render, not an effect: the new source's first fetch must not go
+  // out under the old filter. The ticker is the source, so this runs once per
+  // source; the tab rule below is independent of it.
   //
-  // The detail and origin state this used to clear in the same pass belongs
-  // to useDetailSelection and useFilteredNavigation now; each resets its own
-  // with its own source ticker. All of those updates happen in the same
-  // render and batch into one re-render, which is why the rules can live
-  // apart without changing what the user sees.
+  // The detail and origin state each reset their own with their own ticker;
+  // all these updates batch into one re-render.
   const [controlsForSource, setControlsForSource] = useState(null);
   if (controlsForSource !== dataKey) {
     setControlsForSource(dataKey);
@@ -91,45 +74,25 @@ export function useListingControls({ activeTab, dataKey, settings }) {
 
   // ── Arriving at a tab adopts its defaults ────────────────
   //
-  // When switching tabs, adopt the tab's default sort — with one exception.
+  // Arriving at a section adopts its declared `defaultSort`/`defaultOrder`
+  // (Tags and Studios by name ascending, the rest newest first), replacing the
+  // carried value even when it is valid for the new tab — a default that only
+  // applies sometimes is not a default.
   //
-  // Arriving at a section means arriving at its declared `defaultSort` (Tags
-  // and Studios by Name, Galleries and Images newest first) and at its
-  // `defaultOrder` — Tags ascending, everything without a declaration
-  // descending. The old rule only
-  // coerced the sort when the carried value was *invalid* for the new tab,
-  // which left `created_at` — valid everywhere — leaking onto Tags. A default
-  // that only applies sometimes is not a default.
+  // The exception is a See-all hand-off: `openShowroomListing` stages the
+  // shelf's sort and names the destination tab in the same batch, and
+  // `sortForTab` tells this rule the arrival was deliberate. It is still
+  // validated against the target's vocabulary, so an unsupported sort falls
+  // back rather than landing on a control that renders a raw value. The marker
+  // is cleared on every run in the same updater, or a leftover would silently
+  // disable the default rule on the next arrival.
   //
-  // The exception is a See-all hand-off. The showroom tile knows which sort
-  // its shelf was drawn with (`date` for released scenes and galleries,
-  // `last_played_at` for Continue Watching), and `openShowroomListing` stages
-  // that sort and names the destination tab in the same batch as the tab
-  // switch. `sortForTab` is what tells this arrival rule
-  // "this arrival was deliberate, keep the staged sort". It is validated
-  // against the target's vocabulary all the same, so a row whose sort is not
-  // offered in its destination falls back to the default instead of landing
-  // on a control that renders a raw value.
-  //
-  // The marker is cleared on every run, in the same updater that reads it: a
-  // leftover would let the *next* arrival at that tab keep whatever sort was
-  // current then, silently disabling the default rule. Cleared even for a tab
-  // with no sort groups, so it can never survive an unexpected destination.
-  //
-  // This runs *during render*, not in an effect, and that is the point.
-  // Effects fire child-first: on arrival at Markers its grid was already
-  // mounted and its `usePagedList` reset effect had fired, so it fetched page
-  // 1 with the sort carried over from Scenes (`created_at`), and only then did
-  // this component's effect adopt the tab default (`title`) and make the grid
-  // fetch page 1 again. Measured on the harness fake: two `FindSceneMarkers`
-  // page-1 requests per arrival, the first answer thrown away — the "small
-  // delay switching to Markers" reported from the TV. A render-phase update
-  // re-renders this component before anything commits, so the grid mounts
-  // already carrying its tab's controls and fetches once.
-  //
-  // `controlsForTab` is the ticker that keeps that update from running on
-  // every render. It is separate from `controls` so `updateControls` does not
-  // have to know to leave it alone.
+  // Render-phase, not an effect: effects fire child-first, so the arriving
+  // grid would already have fetched page 1 with the previous tab's sort and
+  // then refetch — the "small delay switching to Markers" seen on the TV. A
+  // render-phase update re-renders before anything commits, so the grid mounts
+  // already carrying its tab's controls and fetches once. `controlsForTab` is
+  // the ticker that keeps this from running every render.
   const [controlsForTab, setControlsForTab] = useState(null);
   if (controlsForTab !== activeTab) {
     setControlsForTab(activeTab);
@@ -137,51 +100,38 @@ export function useListingControls({ activeTab, dataKey, settings }) {
     const flat = flattenSortGroups(config?.sortGroups);
 
     setControls(prev => {
-      // Columns follow the section, not the session. `controls` is one shared
-      // object, so without this the number of columns chosen on Performers
-      // would be carried onto Scenes — exactly the bug the per-section store
-      // exists to prevent. Written unconditionally: arriving at a tab always
-      // adopts that tab's count, stored or default.
+      // Columns follow the section, not the session: `controls` is shared, so
+      // without this the Performers count would carry onto Scenes. Written
+      // unconditionally — arrival always adopts the tab's count, stored or
+      // default.
       //
-      // The search text goes too, for the same reason it is one object: a
-      // term is a query against the listing you are leaving, and carried onto
-      // another section it silently narrows a listing the user never searched.
-      // Sort and filter already reset here; search was the one survivor until
-      // it was reported from the TV (2026-10-20: "search term 'kitty' ...
-      // was saved/kept as active search when moving between tabs"). The
-      // See-all hand-off clears it explicitly for exactly this reason — this
-      // is the general rule that makes that clear redundant but keeps the
-      // hand-off correct even if it is ever staged differently. Pressing the
-      // current rail row does not come through here (`tabEpoch` reload), so
-      // an in-place reload keeps the query.
+      // Search goes too for the same reason: a term narrows the listing it was
+      // typed against, and carried onto another section it silently narrows a
+      // listing the user never searched. The See-all hand-off clears it
+      // explicitly; pressing the current rail row reloads in place (`tabEpoch`)
+      // and keeps the query.
       const patch = { cols: gridColsFor(activeTab), sortForTab: null, search: '' };
       if (flat.length) {
         const validValues = flat.map(o => o.value);
         const handoff = prev.sortForTab === activeTab && validValues.includes(prev.sort);
         if (!handoff && config.defaultSort) {
-          // Sort and order travel together: a declaration that names a sort
-          // but inherits the previous tab's direction can open Tags on
-          // "Name, Descending". Adopt both, and reset the ones with no
-          // declaration to the global default so Tags' asc cannot leak into
-          // a date-sorted tab. A hand-off keeps the shelf's staged pair.
+          // Sort and order travel together: a declaration naming a sort but
+          // inheriting the previous direction opens Tags on "Name,
+          // Descending". A hand-off keeps the shelf's staged pair.
           patch.sort = config.defaultSort;
           patch.order = config.defaultOrder || 'desc';
         }
       }
       // ── The filter, and why this rule is not the problem it looks like ──
       //
-      // Activating a tag sets `workingFilter` and switches to Scenes in the same
-      // batch, so this run sees a filter that was applied *by* the tab
-      // change it is reacting to. Clearing unconditionally — which is what it
-      // used to do — would wipe the filter in the act of applying it.
+      // Activating a tag sets `workingFilter` and switches to Scenes in the
+      // same batch, so this run sees a filter applied *by* the change it is
+      // reacting to; clearing unconditionally would wipe it in the act.
       //
-      // `workingFilterFor` is what separates arrival from departure: the filter
-      // names the tab it was applied for, so this run can tell "the user just
-      // arrived here under a filter" (equal, leave it) from "the user left the
-      // tab that filter belonged to" (not equal, drop it). It is a field rather
-      // than a consume-once ref because it has to survive re-running — a ref
-      // would be spent by the first run and a second run (StrictMode, a
-      // remount) would then clear the filter it was guarding.
+      // `workingFilterFor` separates arrival from departure: "arrived here
+      // under this filter" (equal, leave it) vs "left the tab that filter
+      // belonged to" (drop it). A field rather than a consume-once ref, which
+      // a second run (StrictMode, a remount) would find already spent.
       const filterIsForThisTab = prev.workingFilter && prev.workingFilterFor === activeTab;
 
       if (prev.workingFilter && !filterIsForThisTab) {
@@ -190,12 +140,11 @@ export function useListingControls({ activeTab, dataKey, settings }) {
         patch.workingFilterLabel = null;
       }
 
-      // Saved-filter ids belong to a specific saved-filter mode, so switching
-      // tabs (and thus mode) invalidates whatever was selected. The working
-      // marker is the exception while the filter it stands for is staying: it
-      // is not a server id at all, and clearing it would deselect the dropdown
-      // entry for the filter that caused this tab change. Every other case —
-      // including the marker on a filter that has just been dropped — clears.
+      // Saved-filter ids belong to a mode, so a tab change (and thus mode
+      // change) invalidates the selection. The working marker is the exception
+      // while its filter is staying: it is not a server id, and clearing it
+      // would deselect the dropdown entry for the filter that caused this
+      // change. Every other case — including a dropped filter's marker — clears.
       if (prev.filterId && !(prev.filterId === WORKING_FILTER_ID && filterIsForThisTab)) {
         patch.filterId = null;
       }
@@ -205,27 +154,23 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   }
 
   const updateControls = (patch, savedFilters) => {
-    // A column change is a preference, not just view state: it goes to the
-    // settings store so this section reopens at the same count next launch,
-    // and so the tab-change effect above can hand it back. Done here and not
-    // inside the updater below — an updater can run twice under StrictMode,
-    // and writing storage from one would double-persist.
+    // A column change is a preference: persist it so the section reopens at the
+    // same count. Done outside the updater below, which StrictMode can run
+    // twice — writing storage from one would double-persist.
     if (patch.cols !== undefined) {
       setSettings({ gridCols: { ...gridCols, [activeTab]: patch.cols } });
     }
     setControls(prev => {
       // Moving the dropdown off the in-memory filter discards it. Checked
-      // against the *raw* patch value, not the truthiness the branch below
-      // uses: "All" is `''`, and that is a move away just as much as picking a
-      // saved filter is. Without this, choosing All would leave the built
-      // filter silently applied.
+      // against the raw patch value: "All" is `''`, a move away just like
+      // picking a saved filter. Without this, choosing All would silently leave
+      // the built filter applied.
       if (patch.filterId !== undefined && patch.filterId !== prev.filterId
           && patch.filterId !== WORKING_FILTER_ID && prev.workingFilter) {
         patch.workingFilter = null;
-        // The label and the tab marker go with it. Leaving the label would
-        // have the dropdown name a filter that is no longer applied the next
-        // time one is; leaving the marker would tell the tab-change effect that
-        // a filter it no longer has belongs to this tab.
+        // The label and tab marker go with it: leaving the label names a
+        // filter no longer applied, and the marker would tell the tab-change
+        // effect a filter it no longer has belongs to this tab.
         patch.workingFilterLabel = null;
         patch.workingFilterFor = null;
       }

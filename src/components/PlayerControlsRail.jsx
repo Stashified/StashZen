@@ -1,36 +1,31 @@
 /**
  * PlayerControlsRail — the transport rail at the bottom of the video player.
  *
- * On-screen transport for the same actions the remote already has, plus the
- * ones that only exist here (mute, details, marker creation, the playback-info
- * toggle). The arrow-skim keys are kept — see VideoPlayer's key table — so
- * this is additive.
+ * On-screen transport for actions the remote already has, plus mute, details,
+ * marker creation and the playback-info toggle. The arrow-skim keys remain —
+ * see VideoPlayer's key table — so this is additive.
  *
  * ## Focus
  *
- * The rail is a single horizontal row in one zone, so ←/→ walk it. ↑ leaves
- * it, dropping the cursor back on the bare player where ←/→ skim the timeline;
- * Back leaves it as well. ↓ steps to the next scene. None of the vertical keys
- * are the rail's — they appear nowhere in this file, because the player
- * consumes them before they reach a focused button. Leaving is the player's job too, not this
- * component's: it blurs to `document.body` rather than focusing anything,
- * because focusing the player's own container would resolve `focusScopeOf` to
- * the player's dialog and the player would go on yielding the arrows, which
+ * A single horizontal row in one zone, so ←/→ walk it. ↑ leaves it for the bare
+ * player (where ←/→ skim), Back leaves it, ↓ steps scene. No vertical key is
+ * the rail's: the player consumes them before they reach a focused button.
+ * Leaving is the player's job too: it blurs to `document.body` rather than
+ * focusing anything, because focusing the player's container would resolve
+ * `focusScopeOf` to the player's dialog, which keeps yielding the arrows and
  * kills skim with no visible cause.
  *
- * **The entry target is play/pause, not the leftmost button.** ←/→ radiate
- * outward from a focused control, and landing on a rewind because it happens to
- * be first would put the cursor on the wrong thing when the user pressed OK to
- * interact. `focusPlayPause` below is that entry point.
+ * **Entry target is play/pause, not the leftmost button:** ←/→ radiate outward
+ * from the focused control, so landing on rewind would put the cursor on the
+ * wrong thing when the user pressed OK. `focusPlayPause` is that entry point.
  *
- * ## Why the play/pause button is one element
+ * ## Why play/pause is one element
  *
- * The icon swaps with playback state, and the *button* must not. React reuses a
- * DOM node only while its type and position are stable, so swapping the child
- * SVG keeps the node — and therefore focus — while rendering the two states as
- * different components or keying the button on `playing` would remount it,
- * drop focus to `<body>`, and make the next OK press re-focus instead of
- * resuming. The third press is the one that would go missing.
+ * The icon swaps with playback state; the *button* must not. React reuses a DOM
+ * node only while type and position are stable, so swapping the child SVG keeps
+ * the node and its focus — rendering two components or keying the button on
+ * `playing` would remount it, drop focus to `<body>`, and make the next OK
+ * press re-focus instead of resuming.
  */
 
 import { forwardRef, useImperativeHandle, useRef } from 'react';
@@ -58,7 +53,6 @@ function Svg({ children, stroke = true }) {
   );
 }
 
-/* Filled glyphs — transport. */
 const RewindIcon = () => (
   <Svg stroke={false}><path d="M11 12 19 6v12zM3 12l8-6v12z" /></Svg>
 );
@@ -78,11 +72,8 @@ const NextSceneIcon = () => (
   <Svg stroke={false}><path d="M15.5 5H18v14h-2.5zM5 5.5 14.5 12 5 18.5z" /></Svg>
 );
 
-/*
- * Marker glyphs are a bookmark rather than a transport triangle, so the two
- * marker buttons cannot be mistaken for the two scene buttons sitting next to
- * them. The chevron carries the direction.
- */
+/* A bookmark, not a transport triangle, so the marker buttons cannot be
+   mistaken for the scene buttons beside them; the chevron carries direction. */
 const MarkerPrevIcon = () => (
   <Svg>
     <path d="M14 4H7a1 1 0 0 0-1 1v15l5-4 5 4V5a1 1 0 0 0-1-1Z" />
@@ -130,15 +121,11 @@ const StatsIcon = () => (
 
 /**
  * One rail button. `disabled` reaches both the DOM and the D-pad: a DOM-disabled
- * element is skipped as a navigation candidate (see findBestCandidate), which is
- * what stops a dimmed button from becoming an absorbing wall the cursor cannot
- * pass. That fix is recent, so the marker buttons are the first controls in the
- * app to rely on it.
+ * element is skipped as a navigation candidate (see findBestCandidate), so a
+ * dimmed button cannot become an absorbing wall the cursor cannot pass.
  *
- * A missing handler disables the button too. That is for the caller's benefit,
- * not the user's: it keeps the rail from being handed a button that would do
- * nothing, so an action that has not been built yet cannot ship as a
- * dead-looking control.
+ * A missing handler disables the button too, so an unbuilt action cannot ship
+ * as a dead-looking control.
  */
 function RailButton({ id, label, disabled = false, active = false, onEnter, children }) {
   const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter });
@@ -177,9 +164,8 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   statsOpen,
   onToggleStats,
 }, ref) {
-  // Held so the rail can be entered at play/pause specifically. The hook's
-  // `focus` callback is stable across renders, so the handle below is built
-  // once and never needs to be rebuilt.
+  // So the rail can be entered at play/pause specifically. The hook's `focus`
+  // is stable, so the handle below is built once.
   const playPause = useFocusable({
     id: 'player-rail-playpause',
     zone: ZONE,
@@ -191,12 +177,9 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   useImperativeHandle(ref, () => ({
     focusPlayPause: playPause.focus,
     /**
-     * True while the cursor is anywhere on the rail.
-     *
-     * The player needs this to refuse to auto-hide the controls out from
-     * under the user, and the alternative — the player reaching in for this
-     * element itself — would mean the player knowing the rail's DOM. The rail
-     * answers for itself instead.
+     * True while the cursor is anywhere on the rail. The player uses it to
+     * refuse to auto-hide the controls; asking the rail beats the player
+     * knowing its DOM.
      */
     holdsFocus: () => !!railElRef.current?.contains(document.activeElement),
   }), [playPause.focus]);
@@ -208,8 +191,8 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
       </RailButton>
 
       {/*
-        One button, two icons. See the header — this element's identity is what
-        the three-press pause/resume sequence depends on.
+        One button, two icons: this element's identity is what the pause/resume
+        sequence depends on. See the header.
       */}
       <button
         ref={playPause.ref}
@@ -258,10 +241,10 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
 
       <span className={styles.sep} aria-hidden="true" />
 
-      {/* Disabled on a panel with no mute path at all: `tvaudiocontrol` and
-          `avplay.setVolume` are both missing (the measured case on this TV's
-          peer generation). A button that silently does nothing is worse than
-          one that says it cannot. The stats panel reports the same reason. */}
+      {/* Disabled when there is no mute path at all — `tvaudiocontrol` and
+          `avplay.setVolume` both missing (measured on this TV's peer
+          generation). A silent no-op is worse than a button saying it cannot.
+          The stats panel reports the same reason. */}
       <RailButton
         id="player-rail-mute"
         label={muted ? 'Unmute' : 'Mute'}
@@ -274,8 +257,8 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
       <RailButton id="player-rail-details" label="Details" onEnter={onDetails}>
         <DetailsIcon />
       </RailButton>
-      {/* Toggle, not a one-shot: the panel stays up until it is turned off,
-          so the button carries the state it is in. */}
+      {/* Toggle: the panel stays up until turned off, so the button carries
+          its state. */}
       <RailButton
         id="player-rail-stats"
         label="Playback info"

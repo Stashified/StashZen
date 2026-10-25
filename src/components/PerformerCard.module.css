@@ -23,17 +23,9 @@
   transform: scale(1.02);
 }
 
-/* `box-shadow` used to be declared twice in this rule — first the shared
-   `--focus-ring` plus a 24px glow, then a custom three-layer glow. The
-   duplicate was missed when VideoCard and MarkerCard were cleaned up, and
-   because the earlier declaration contains a `var()` Lightning CSS emitted
-   BOTH (see the note in vite.config.js), so the file was shipping bytes
-   that could never render.
-
-   Now a single unblurred, inset ring. The wide blur layers were re-rastered
-   on every focus change and every scroll frame; the ring and the scale carry
-   the same signal for none of the cost. Inset and without a stacking change
-   for the reason in MarkerCard.module.css. */
+/* A single unblurred, inset ring: the wide blur layers were re-rastered on
+   every focus and scroll frame for no extra signal. Inset and without a
+   stacking change for the reason in MarkerCard.module.css. */
 .card.focused {
   border-color: var(--accent);
   transform: scale(1.05) translateY(-4px);
@@ -41,7 +33,6 @@
   outline-offset: -3px;
 }
 
-/* ── Cover (3:4 portrait, matches Stash performer images) ── */
 .cover {
   position: relative;
   width: 100%;

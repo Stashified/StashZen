@@ -7,7 +7,6 @@ import { useSectionLoader } from '../../hooks/useSectionLoader.js';
 import { ServerJobRow } from './ServerJobRow.jsx';
 import styles from '../SettingsPanel.module.css';
 
-// ── Server status ─────────────────────────────────────────
 const SERVER_STATUS_LABELS = {
   OK: 'OK',
   NEEDS_MIGRATION: 'Needs migration',
@@ -22,14 +21,13 @@ export function ServerStatusSection() {
   });
 
   // Starting a scan is its own phase: it must not borrow the status button's
-  // label, and a failed scan must not wipe a snapshot that is already open.
+  // label, and a failed scan must not wipe an open snapshot.
   const [scanPhase, setScanPhase] = useState('idle'); // idle | starting | started | error
   const [scanMessage, setScanMessage] = useState('');
   const scanRef = useRef(0);
 
-  // Stopping is a third phase, separate from the scan's: the two can be in
-  // flight at once and neither message should overwrite the other. `id` says
-  // which row the in-flight request belongs to, so the other rows stay live.
+  // A third phase, separate from the scan's: both can be in flight and neither
+  // message should overwrite the other. `id` keeps the other rows live.
   const [stopState, setStopState] = useState({ phase: 'idle', id: null, message: '' });
   const stopRef = useRef(0);
 
@@ -37,8 +35,8 @@ export function ServerStatusSection() {
 
   const handleClick = () => {
     if (phase === 'loading') return;
-    // Refresh is the point of this section: once a snapshot is on screen,
-    // pressing again takes a new one rather than hiding it.
+    // Once a snapshot is on screen, pressing again takes a new one rather than
+    // hiding it.
     if (phase === 'ready' || phase === 'error') { load(); return; }
     if (status) { show(); return; }
     load();
@@ -49,10 +47,9 @@ export function ServerStatusSection() {
     : phase === 'ready' ? 'Refresh'
     : 'Try again';
 
-  // Starting a scan is one press that does two things: it enqueues the job,
-  // then takes a fresh snapshot so the job and its progress appear without
-  // the user having to find Refresh. The snapshot is read after the mutation
-  // resolves, so Stash has already enqueued by the time it asks.
+  // One press enqueues the job, then takes a fresh snapshot so its progress
+  // appears without hunting for Refresh. Reading after the mutation resolves
+  // guarantees Stash has enqueued.
   const handleScan = async () => {
     if (scanPhase === 'starting') return;
     const token = ++scanRef.current;
@@ -73,10 +70,8 @@ export function ServerStatusSection() {
     }
   };
 
-  // Stopping removes the row on the next snapshot, and the row is where focus
-  // currently sits. Move focus *before* load(): the refresh unmounts the job
-  // body, and a focused element that is removed leaves the D-pad with nowhere
-  // to start from.
+  // Stopping removes the row that holds focus. Move focus *before* load(): the
+  // refresh unmounts the job body, leaving the D-pad with nowhere to start.
   const handleStop = async (job) => {
     if (stopState.phase === 'stopping') return;
     const token = ++stopRef.current;
@@ -95,8 +90,8 @@ export function ServerStatusSection() {
       load();
     } catch (e) {
       if (token !== stopRef.current) return;
-      // The row stays where it is and keeps focus: the user is one press from
-      // trying again, and nothing was stopped.
+      // The row keeps its place and focus: the user is one press from retrying,
+      // and nothing was stopped.
       setStopState({ phase: 'error', id: job.id, message: e.message });
     }
   };

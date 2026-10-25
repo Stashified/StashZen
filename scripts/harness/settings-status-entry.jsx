@@ -1,16 +1,15 @@
 /**
- * Headless driver for the Settings panels added in 0.20.0/0.21.0: Library
- * stats (#87), Server status (#88) and the Scan library action on it.
+ * Headless driver for the Settings panels: Library stats (#87), Server status
+ * (#88) and the Scan library action on it.
  *
- * Mounts the real SettingsPanel against the fake GraphQL endpoint, the way
- * actions-entry.jsx does. Each phase remounts with a fresh key so the
- * section's local state (closed / loading / ready / error) starts where the
- * phase needs it, and the fake's `/clear` resets the per-feature fetch log so
- * "exactly one fetch" is a count a check can make.
+ * Mounts the real SettingsPanel against the fake GraphQL endpoint, as
+ * actions-entry.jsx does. Each phase remounts with a fresh key so the section's
+ * local state (closed / loading / ready / error) starts where the phase needs
+ * it, and the fake's `/clear` resets the fetch log so "exactly one fetch" is
+ * countable.
  *
- * What this does not cover: whether a real Stash server answers these fields
- * (the fake can only prove the client asks and renders), and anything about
- * how the sections look on a TV panel. Those are the TV pass's job.
+ * It cannot show whether a real Stash answers these fields, or how the sections
+ * look on a TV panel; those are the TV pass.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -63,9 +62,9 @@ async function enterLabel(label) {
   await sleep(180);
 }
 
-// Enter on a button by its focus-registry id. The job rows have no DOM id and
-// their labels change between presses, so the registry is the stable handle —
-// and going through it also proves the row really registered the button.
+// Enter by focus-registry id. The job rows have no DOM id and their labels
+// change between presses, so the registry is the stable handle — and using it
+// also proves the row registered the button.
 async function enterFocusId(id) {
   const entry = registry.get(id);
   if (!entry) throw new Error(`no focusable "${id}" (have: ${[...registry.keys()].join(' | ')})`);
@@ -87,9 +86,9 @@ const clearLogs = async () => {
   uncaught.length = 0;
 };
 
-// Anything the panels failed to catch. The error checks assert this is empty,
-// because a caught error and an unhandled rejection can both leave the same
-// warning on screen while the latter also breaks the session.
+// Any error the panels failed to catch. A caught error and an unhandled
+// rejection can leave the same warning on screen, but the latter also breaks
+// the session.
 const uncaught = [];
 window.addEventListener('unhandledrejection', e => uncaught.push(String(e.reason)));
 window.addEventListener('error', e => uncaught.push(String(e.message)));
@@ -104,8 +103,8 @@ async function mount({ mock }) {
     : { useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness', onboarded: 'live' });
   mountKey += 1;
   root.render(<SettingsPanel key={mountKey} onClose={() => {}} />);
-  // Long enough for useFocusable to register the section's button and for the
-  // panel's own effects (which focus the URL field in Live mode) to settle.
+  // Long enough for useFocusable to register the section's button and the
+  // panel's effects (which focus the URL field in Live mode) to settle.
   await sleep(500);
 }
 
@@ -152,8 +151,8 @@ async function runStats() {
     `1,234=${text.includes('1,234')} 98,765=${text.includes('98,765')} 4,321=${text.includes('4,321')}`);
 
   // ── S4  Storage is both byte sums ───────────────────────
-  // 1.5 GiB + 1 GiB. Showing either field alone ("1.5 GiB") or the raw sum
-  // is a different string, so this cannot pass by accident.
+  // 1.5 GiB + 1 GiB. Showing either field alone ("1.5 GiB") or the raw sum is a
+  // different string, so this cannot pass by accident.
   check('S4 storage is the sum of scene and image sizes',
     text.includes('2.5 GiB') && !text.includes('1.5 GiB'),
     `2.5 GiB=${text.includes('2.5 GiB')} 1.5 GiB=${text.includes('1.5 GiB')}`);
@@ -229,8 +228,8 @@ async function runStats() {
     `values=${mockText.includes('1,245')}/${mockText.includes('5 GiB')} fetches=${mockFetches}`);
 
   // ── S12 Inert tiles ─────────────────────────────────────
-  // Twelve tiles must add zero D-pad stops. Checked against both the DOM
-  // (nothing focusable) and the real focus registry (nothing registered).
+  // Twelve tiles must add zero D-pad stops: nothing focusable in the DOM and
+  // nothing in the focus registry.
   const focusableInGrid = mockGrid
     ? mockGrid.querySelectorAll('button, a, [tabindex], [role="button"], [role="link"]').length
     : -1;
@@ -279,8 +278,8 @@ async function runServer() {
     snapText.slice(0, 120));
 
   // ── V3  Only active jobs ────────────────────────────────
-  // The fixture's second job is FINISHED. Showing it is the mistake this
-  // checks for, and the description is deliberately unique.
+  // The fixture's second job is FINISHED. Showing it is the mistake, and its
+  // description is deliberately unique.
   check('V3 finished jobs are filtered out of the run list',
     snapText.includes('VERIFY scan running')
       && snapText.includes('42%')
@@ -288,8 +287,8 @@ async function runServer() {
     `running=${snapText.includes('VERIFY scan running')} finished=${snapText.includes('VERIFY finished job')}`);
 
   // ── V3b Subtasks, start time and the failure reason ─────
-  // The fixture's running job has four subtasks; the row shows three. The
-  // fourth's absence is the cap, not a coincidence of the fixture.
+  // The running job has four subtasks; the row shows three. The fourth's
+  // absence is the cap, not a fixture coincidence.
   check('V3b a job row lists at most three subtasks',
     snapText.includes('VERIFY subtask one · VERIFY subtask two · VERIFY subtask three')
       && !snapText.includes('VERIFY subtask four'),
@@ -315,9 +314,9 @@ async function runServer() {
     + `buttons=${snapshot.querySelectorAll('button').length}`);
 
   // ── V4  One query, all three roots ──────────────────────
-  // The shadowing trap lives here: the fake's anonymous connection-test arm
-  // matches `version {`, so a status handler placed below it would answer
-  // this query with version alone. V2 is what goes red in that case.
+  // The shadowing trap: the fake's anonymous connection-test arm matches
+  // `version {`, so a status handler below it would answer this query with
+  // version alone. V2 goes red in that case.
   const statusFetches = await getJSON('/statusfetches');
   const statusOps = (await getJSON('/graphqlcalls')).filter(n => n === 'ServerStatus');
   const statusQuery = statusFetches[0] || '';
@@ -354,8 +353,8 @@ async function runServer() {
     `healthy=${!!healthy} fetches=${retryCalls}`);
 
   // ── V8  Refresh ─────────────────────────────────────────
-  // Run here, while a snapshot is already on screen: the fetch count is a
-  // delta, so an extra mount-time call could not make this pass.
+  // While a snapshot is already on screen: the fetch count is a delta, so an
+  // extra mount-time call could not make this pass.
   const beforeRefresh = (await getJSON('/statusfetches')).length;
   await postMode({ serverStatus: 'ok' });
   await enterLabel('Refresh');
@@ -369,9 +368,8 @@ async function runServer() {
     `fetches ${beforeRefresh} → ${afterRefresh}`);
 
   // ── V7  The rows' only D-pad stop is Stop ───────────────
-  // The old version of this check asserted the rows were inert. They are not
-  // any more: a stoppable job carries exactly one focusable button, the
-  // FAILED job none. Anything else (a focusable status line, a second stop
+  // Rows are not inert: a stoppable job carries exactly one focusable button,
+  // the FAILED job none. Anything else (a focusable status line, a second stop
   // per row) would change what the D-pad walks through.
   const refreshedButtons = refreshed
     ? refreshed.querySelectorAll('button, a, [tabindex], [role="button"], [role="link"]').length
@@ -421,7 +419,7 @@ async function runScan() {
 
   // ── W2  Slow mutation, then note + snapshot ─────────────
   // The slow arm holds the mutation for 1.2 s, so "Starting…" and the absence
-  // of any status fetch before the server confirms are both observable.
+  // of a status fetch before the server confirms are both observable.
   await postMode({ scan: 'slow', scanDefaults: 'ok' });
   await enterLabel('Scan library');
   check('W2a a pending scan shows Starting… and neither a note nor a snapshot fetch',
@@ -442,14 +440,13 @@ async function runScan() {
       && (await getJSON('/statusfetches')).length === 1,
     `note="${scanNote()}" snapshot=${!!scanSnapshot} fetches=${(await getJSON('/statusfetches')).length}`);
 
-  // The saved options, written out here rather than imported from the fake
-  // server. If the mutation's input and the server's answer were the same
-  // constant, "the client copies the options" would be true by construction.
-  // Key order is not part of the contract, so compare sorted keys.
+  // Written out, not imported: if the mutation's input and the server's answer
+  // were one constant, "the client copies the options" would be true by
+  // construction. Key order is not contractual, so compare sorted keys.
   const sorted = o => JSON.stringify(Object.fromEntries(
     Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))));
   // `ui.taskDefaults.scan` — the block Stash's own scan page writes when the
-  // user changes a checkbox. This is the answer the scan must use.
+  // user changes a checkbox; the answer the scan must use.
   const UI_DEFAULTS = {
     rescan: true,
     scanGenerateCovers: false,
@@ -462,8 +459,8 @@ async function runScan() {
     scanGenerateClipPreviews: false,
   };
   // `configuration.defaults.scan` — the legacy system block, deliberately
-  // different in every field. 0.22.0 sent *this* while the UI showed
-  // UI_DEFAULTS; landing on these values is the reported bug.
+  // different in every field. Sending this while the UI shows UI_DEFAULTS is
+  // the reported bug.
   const SYSTEM_DEFAULTS = {
     rescan: false,
     scanGenerateCovers: true,
@@ -493,8 +490,8 @@ async function runScan() {
       + `readsUi=${defaultsQuery.includes('ui')}`);
 
   // ── W2d  Read at press time, not memorised ──────────────
-  // A client that hardcoded the set above would still pass W2c. Changing the
-  // server's saved options between two presses is what tells the two apart.
+  // A client that hardcoded the set above would still pass W2c; changing the
+  // server's saved options between presses tells the two apart.
   const ALT_DEFAULTS = {
     rescan: false,
     scanGenerateCovers: true,
@@ -553,9 +550,9 @@ async function runScan() {
     `snapshot=${!!scanRetried} note="${scanNote()}" fetches=${(await getJSON('/scanfetches')).length}`);
 
   // ── W3c  A failed defaults read is not "scan anyway" ────
-  // Falling back to an empty input here would reproduce the original bug in
-  // the one situation where it is easiest to miss: Stash answers the mutation,
-  // the panel says the scan started, and no artwork is generated.
+  // Falling back to an empty input here would reproduce the original bug where
+  // it is easiest to miss: Stash answers the mutation, the panel says the scan
+  // started, and no artwork is generated.
   await mount({ mock: false });
   await clearLogs();
   await postMode({ scan: 'ok', scanDefaults: 'fail' });
@@ -572,7 +569,7 @@ async function runScan() {
 
   // ── W4  Scan with a snapshot already open ───────────────
   // The delta matters: the section must not refetch on mount, so the only
-  // status fetch after /clear is the one the scan itself asks for.
+  // status fetch after /clear is the one the scan asks for.
   await mount({ mock: false });
   await clearLogs();
   await postMode({ scan: 'ok', scanDefaults: 'ok', serverStatus: 'ok' });
@@ -646,8 +643,8 @@ async function runStop() {
     !!removed && !removed.textContent.includes('VERIFY scan running')
       && dialogText().includes('Stopping "VERIFY scan running"'),
     `removed=${!!removed} note=${dialogText().includes('Stopping "VERIFY scan running"')}`);
-  // The refresh unmounts the job body, so the focused Stop element is gone.
-  // Focus must already be somewhere the D-pad can move from.
+  // The refresh unmounts the job body, so the focused Stop element is gone;
+  // focus must already be somewhere the D-pad can move from.
   check('R4 focus lands on the status button before the row unmounts',
     focusIdOf(document.activeElement) === 'settings-server',
     `focus=<${document.activeElement?.tagName?.toLowerCase()}> `
@@ -686,8 +683,8 @@ async function runStop() {
   check('R6a a stop in flight says Stopping…',
     slowEntry.el.textContent.trim() === 'Stopping…',
     `label="${slowEntry.el.textContent.trim()}"`);
-  // Press again while the mutation is held. The row is still on screen; this
-  // must neither re-arm nor send a second request.
+  // Press again while the mutation is held: the row is still on screen, and
+  // this must neither re-arm nor send a second request.
   slowEntry.el.focus();
   press('Enter', 13);
   await sleep(200);

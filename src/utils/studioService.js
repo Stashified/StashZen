@@ -3,15 +3,13 @@
  *
  * The loader is `entityService.js`; what is specific to studios is here.
  *
- * Studio is the richest of the four: it has `rating100`, `organized` and
- * `o_counter`, and it is the only one with a `parent_studio`. It also has the
- * fewest valid sorts of the four — `performers_count` and `groups_count` are
- * both rejected by the resolver even though comparable values work on Tags,
- * which is why these menus were probed rather than copied across sections.
+ * Studio is the richest of the four: `rating100`, `organized`, `o_counter`, and
+ * the only `parent_studio`. It also has the fewest valid sorts — the resolver
+ * rejects `performers_count` and `groups_count` though comparable values work
+ * on Tags, which is why these menus were probed rather than copied.
  *
- * The mock list is the same six studios `generateMockVideos` already uses as
- * scene categories, rather than six new invented names. Test mode is more
- * legible when a studio you can browse is a studio the scenes belong to.
+ * The mock list is the same six studios `generateMockVideos` uses as scene
+ * categories, so a studio you can browse is one the scenes belong to.
  */
 
 import { withApiKey } from './stashUrl.js';

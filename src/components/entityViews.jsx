@@ -1,49 +1,41 @@
 /**
  * entityViews.jsx — what each of the four browse-only sections shows.
  *
- * The same idea as carouselViews.js, and for the same reason: `EntityGrid` and
- * `Carousel` are each one component that draws any of the four, and these
- * descriptors are the part that cannot generalize. Kept together so the
- * differences are visible side by side rather than scattered across four pages
- * — and so that "a Tag has no rating" is a line you can read rather than a
- * clause you have to remember.
+ * `EntityGrid` and `Carousel` each draw any of the four; these descriptors are
+ * the part that cannot generalize. Kept together so the differences sit side
+ * by side.
  *
  * ## What a descriptor provides
  *
  *   key, service, itemsKey, noun   the listing and where its rows live
- *   focusPrefix                    the cards' registry-id prefix. Also the id
- *                                  scheme the Carousel matches on, so the card
- *                                  and the strip must agree on it — that is the
- *                                  silent failure mode where the hero freezes
- *                                  on row 1 and nothing throws.
+ *   focusPrefix                    the cards' registry-id prefix, which the
+ *                                  Carousel also matches on — card and strip
+ *                                  must agree or the hero silently freezes on
+ *                                  row 1 with nothing thrown.
  *   aspect                         'portrait' | 'landscape' — the one thing
  *                                  that changes the card's *shape*
- *   slotWidth                      Carousel only, and only for portrait art.
- *                                  See the note on `--slot-w` in
- *                                  Carousel.module.css for the arithmetic.
- *   getImage / getTitle /          the four fields the card asks for. `getImage`
- *   getSubtitle / getBadge /       returns a URL already passed through
- *   isFavorite / label             `withApiKey()` by the service — the card
- *                                  never touches it.
+ *   slotWidth                      Carousel only, portrait art only. See
+ *                                  `--slot-w` in Carousel.module.css.
+ *   getImage / getTitle /          the fields the card asks for. `getImage`
+ *   getSubtitle / getBadge /       returns a URL the service already put
+ *   isFavorite / label             through `withApiKey()`; the card never
+ *                                  touches it.
  *   hero                           `(item) => ({title, meta, blurb})`, fields
- *                                  not markup. The Carousel hero and the list
- *                                  rows render title/meta; only the Carousel
- *                                  renders the blurb, which is why the
- *                                  services' description/details live in a
+ *                                  not markup. Only the Carousel renders the
+ *                                  blurb, so description/details live in the
  *                                  heavier query the Carousel asks for.
  *
- * ## Two things that are true of all four and worth stating once
+ * Two things true of all four:
  *
- * `image_path` is a non-empty string for every tag and studio in this library,
- * which does **not** mean a picture is there — Stash serves a generated-asset
- * URL whether or not Generate has ever run, so a 200 proves nothing. The card's
- * monogram fallback is therefore reached by `onError`, never by an absent
- * field, which is why the fallback is in EntityCard rather than in a getter.
+ * `image_path` is non-empty for every tag and studio in this library, which
+ * does **not** mean a picture is there — Stash serves a generated-asset URL
+ * whether or not Generate has run, so a 200 proves nothing. The monogram
+ * fallback is therefore reached by `onError`, never an absent field, which is
+ * why EntityCard owns it rather than a getter.
  *
  * `longPress` opts a section into the card's long-press menu. Images and
- * Galleries set it — their menu opens the viewer, with slideshow entries —
- * while Tags and Studios leave it off: their press stays a plain tap, which
- * is also what keeps Enter firing on keydown for them.
+ * Galleries set it (their menu opens the viewer); Tags and Studios leave it
+ * off, which keeps their Enter firing on keydown.
  */
 
 import EntityCard from './EntityCard.jsx';
@@ -53,7 +45,7 @@ import { fetchStudios } from '../utils/studioService.js';
 import { fetchGalleries } from '../utils/galleryService.js';
 import { fetchImages } from '../utils/imageService.js';
 
-/** Plurals that are not just `noun + 's'` are spelled out rather than derived. */
+/** Plurals that are not `noun + 's'` are spelled out, not derived. */
 function scenes(n) {
   return `${n} scene${n === 1 ? '' : 's'}`;
 }
@@ -63,9 +55,8 @@ function year(date) {
 }
 
 /**
- * Alias lists are unbounded, and the hero is one line of meta. Three names
- * plus a count is the cap; a longer string would turn the row into a
- * paragraph and push the strip down.
+ * Alias lists are unbounded but the hero meta is one line: cap at three names
+ * plus a count, or the row becomes a paragraph and pushes the strip down.
  */
 function aliasesText(list = [], max = 3) {
   if (!list.length) return null;
@@ -74,10 +65,9 @@ function aliasesText(list = [], max = 3) {
 }
 
 /**
- * Bind a descriptor to the one card component, so `Carousel` can render it
- * through the same `{ item, index, list, onSelect, onLongPress }` contract every
- * other card in the tree takes. The card still reads `view.focusPrefix` for its
- * id, so a strip and its cards cannot disagree about the prefix.
+ * Bind a descriptor to the card component so `Carousel` can render it through
+ * the shared `{ item, index, list, onSelect, onLongPress }` contract. The card
+ * still reads `view.focusPrefix`, so strip and cards cannot disagree.
  */
 function bind(view) {
   const Bound = (props) => <EntityCard {...props} view={view} />;
@@ -85,23 +75,19 @@ function bind(view) {
   return {
     ...view,
     Card: Bound,
-    // EntityCard's select signature is `(item, index, list?.items)` — three
-    // arguments because the Images viewer needs to know where in the listing
-    // the press happened. A list row has to hand up the same three, or the
-    // viewer would open on the wrong image.
+    // EntityCard selects with `(item, index, list?.items)`; the Images viewer
+    // needs the position, so a list row must hand up the same three.
     rowSelect: (item, index, list, onSelect) => onSelect?.(item, index, list?.items),
-    // And the menu takes the listing itself when the section opted in — it
-    // reports the position from the listing's total.
+    // The menu takes the listing itself when the section opted in — it reports
+    // the position from the listing's total.
     rowLongPress: view.longPress
       ? (item, index, list, onLongPress) => onLongPress?.(item, index, list)
       : undefined,
   };
 }
 
-// ── Tags ───────────────────────────────────────────────────
-// Portrait. Tag has no `rating100` at all, so there is no badge to show —
-// which is the clearest of the four differences and the reason this is a
-// descriptor rather than a colour of the same card.
+// Portrait. Tag has no `rating100`, so no badge — the clearest of the four
+// differences and why this is a descriptor rather than a colour of one card.
 export const TAG_VIEW = bind({
   key: 'tags',
   service: fetchTags,
@@ -130,8 +116,7 @@ export const TAG_VIEW = bind({
   }),
 });
 
-// ── Studios ────────────────────────────────────────────────
-// Landscape, and the only one of the four that can be a favourite *and* rated.
+// Landscape; the only one of the four that can be a favourite *and* rated.
 export const STUDIO_VIEW = bind({
   key: 'studios',
   service: fetchStudios,
@@ -160,10 +145,8 @@ export const STUDIO_VIEW = bind({
   }),
 });
 
-// ── Galleries ──────────────────────────────────────────────
-// Landscape covers. No `paths.cover` case is handled here — the service has
-// already put the URL through withApiKey, and a gallery with no cover is a
-// `null` that the card's fallback catches.
+// Landscape covers. No `paths.cover` case here — the service already applied
+// withApiKey, and a gallery with no cover is `null`, caught by the fallback.
 export const GALLERY_VIEW = bind({
   key: 'galleries',
   service: fetchGalleries,
@@ -176,8 +159,8 @@ export const GALLERY_VIEW = bind({
   longPress: true,
   getImage: (g) => g.image_path,
   getTitle: (g) => g.title,
-  // Studio is the ideal second line, but it is rare on a real library; the
-  // folder is the field that is almost always there, so it is the fallback.
+  // Studio is the ideal second line but rare on a real library; folder is
+  // almost always there, so it is the fallback.
   getSubtitle: (g) => {
     const count = `${g.image_count} image${g.image_count === 1 ? '' : 's'}`;
     const where = g.studio?.name || g.folder;
@@ -198,11 +181,9 @@ export const GALLERY_VIEW = bind({
   }),
 });
 
-// ── Images ─────────────────────────────────────────────────
-// `image_path` is the *thumbnail*; `full` is the full-resolution file and is
-// what the viewer opens. They are separate fields on purpose — pulling
-// full-resolution art for every tile on screen is the one thing that would make
-// this section slow, and this library holds 31,251 of them.
+// `image_path` is the thumbnail; `full` is the full-resolution file the viewer
+// opens. Keeping them separate matters: full-resolution art for every tile is
+// the one thing that would make this section slow, and there are 31,251 images.
 export const IMAGE_VIEW = bind({
   key: 'images',
   service: fetchImages,

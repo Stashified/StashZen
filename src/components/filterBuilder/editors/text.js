@@ -2,9 +2,8 @@ import { EDITOR } from '../../../utils/filterCriteria.js';
 import { innerOf } from './common.js';
 
 /**
- * TEXT and PHASH. PHASH is the same single text box with a different
- * placeholder: the hash itself is plain text, and its distance travels in
- * the criterion's other fields (see `criterionDraft`'s phash handling).
+ * TEXT and PHASH — one text box each. PHASH is plain text too; its distance
+ * travels in the criterion's other fields (see criterionDraft).
  */
 export const chainIds = (field) => [`fb-val-${field}`];
 

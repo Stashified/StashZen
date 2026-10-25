@@ -2,48 +2,24 @@ import { useEffect, useRef } from 'react';
 import { TIZEN_BACK, isTextInput, focusScopeOf } from '../../utils/input.js';
 
 /**
- * FilterBuilder's Back guard — THE GUARD IS LOAD-BEARING, and the reason is
- * ordering rather than taste.
+ * FilterBuilder's Back guard. Load-bearing, and for ordering reasons.
  *
- * Every layer here listens for Back on `window` in the capture phase, and
- * capture listeners on the same target run in *registration* order. The
- * builder mounts before any picker opens, so its listener is registered first
- * and therefore runs first — a Back inside an open picker reaches this handler
- * before the picker's own. `stopPropagation` does not help: it suppresses the
- * rest of the propagation path, not a sibling listener on the same target,
- * which only `stopImmediatePropagation` would. Without this guard one Back
- * closes the picker *and* the builder behind it.
+ * Every layer listens for Back on `window` in the capture phase, and siblings
+ * on one target run in registration order. The builder mounts first, so its
+ * handler runs first — without this guard one Back closes the picker *and* the
+ * builder. `stopPropagation` cannot help; only `stopImmediatePropagation`
+ * would suppress a sibling.
  *
- * Call it at the same point in the component it was written at: before the
- * focusables, and never behind a condition. Re-registering on each change
- * would move this listener to the end of the order, which is the opposite of
- * what is wanted and would make the bug intermittent.
+ * Call it before the focusables and never behind a condition: re-registering
+ * would move the listener to the end and make the bug intermittent. `open` and
+ * `onClose` go through refs (written in an effect) for the same reason, and
+ * `open` must mirror what is rendered down to `pickingDesc?.entity`, or Back
+ * stands down with nothing on screen. No shipped tab has such a field today,
+ * but the conditions should stay identical.
  *
- * `open` must mirror what is actually rendered, deliberately down to the
- * `picking && pickingDesc?.entity` check at the call site. `picking` alone is
- * not enough: a multi-valued criterion with no entity source renders no
- * picker at all, so a guard armed on `picking` alone would stand Back down
- * with nothing on screen — a dead Back button, reached by clicking a button
- * that appears to do nothing. No shipped tab has such a field today (the
- * three that do are File and Folder, which nothing builds filters for); that
- * is a reason to keep the conditions identical rather than a reason to skip
- * the check.
- *
- * The `open` snapshot goes through a ref rather than the dependency list, so
- * the listener is registered once — and so does `onClose`, for the same
- * ordering reason: the caller recreates it on every render, and re-registering
- * would move this listener behind the pickers' and break the guard. A ref
- * written in an effect, not during render: a render-phase ref write is not
- * safe under a discarded or replayed render, and there is nothing to gain —
- * the values are only ever read from a key event, which is always after
- * commit.
- *
- * Returns the ref for the builder's own dialog element. The guard uses it to
- * tell "focus is in this builder" from "focus is in something layered over
- * it": the overlay flag can lag by a commit, the DOM cannot. The same guard
- * also covers the layers that are not tracked by the flag — most importantly
- * an open Choice menu, whose `data-focus-trap` closes on its own Back
- * handler. Without it, Back closed the dropdown *and* the builder.
+ * The returned ref lets the guard tell "focus is in this builder" from "focus
+ * is in a layer over it" — the DOM does not lag a commit the way a flag can.
+ * It also covers the Choice menu, which closes on its own Back handler.
  */
 export function useBuilderBack({ open, onClose }) {
   const overlayOpenRef = useRef(false);

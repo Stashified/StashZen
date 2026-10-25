@@ -10,25 +10,14 @@ import * as stashId from './stashId.js';
 /**
  * The criterion editor registry.
  *
- * Every editor module exports two descriptions of the same controls, written
- * side by side in the same file:
+ * Each editor exports two descriptions of the same controls, side by side:
+ * `chainIds` (D-pad order, DOM order) and `parts` (what CriterionRow renders).
+ * They are independent because `.rowBody` wraps, so wrapped controls fall back
+ * to screen geometry — a footer button. A wrong chain and a missing entry look
+ * alike there, and only a remote shows either; `scripts/test-filter-chain.mjs`
+ * compares them and the harness's F10 checks press the keys.
  *
- *   - `chainIds(field, desc, criterion)` — the D-pad order CriterionRow hands
- *     to `nextId`, in DOM order.
- *   - `parts(field, desc, criterion)` — the controls themselves, which
- *     CriterionRow's one dispatcher renders.
- *
- * The two are written independently on purpose. `.rowBody` is `flex-wrap:
- * wrap`, so a wrapped control's Left is read as "whatever is to the left on
- * screen" — a footer button — unless the row declares its own order. A chain
- * entry naming a control that is not rendered and a rendered control missing
- * from the chain both fall back to that geometry, so the two mistakes look
- * alike, and only a remote shows either. `scripts/test-filter-chain.mjs`
- * compares the two for every editor, with and without an operand and for the
- * range pair; the harness's F10 checks press the keys.
- *
- * Keep a new editor's `chainIds` in the same module as its `parts`, and add
- * the module here.
+ * Keep a new editor's `chainIds` beside its `parts`, and add the module here.
  */
 export const EDITORS = {
   [EDITOR.TEXT]: text,

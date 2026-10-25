@@ -1,28 +1,22 @@
 /**
  * stashUrl.js — Attach the API key to Stash media URLs.
  *
- * GraphQL requests authenticate with an `ApiKey` header. Media gets no such
- * luxury: `<img>`, `<video poster>`, a CSS `background-image` and the browser's
- * own fetch of the sprite VTT cannot send headers, so the key has to travel in
- * the URL itself.
+ * GraphQL requests send an `ApiKey` header. Media cannot: `<img>`, `<video
+ * poster>`, CSS `background-image` and the browser's fetch of the sprite VTT
+ * send no headers, so the key travels in the URL.
  *
  * Stash only does that for `paths.stream`, because that endpoint is meant for
  * external players. Every other path comes back bare — `screenshot`,
- * `preview`, `sprite`, `vtt`, and a performer's `image_path` — and an
- * unauthenticated request is answered with `302 → /login?returnURL=…`. The
- * browser then tries to decode Stash's login page as a JPEG and renders
- * nothing at all.
+ * `preview`, `sprite`, `vtt`, a performer's `image_path` — and an
+ * unauthenticated request gets a `302 → /login?returnURL=…`; the browser then
+ * tries to decode the login page as a JPEG and renders nothing.
  *
- * That is why Live mode can show no thumbnails at all while Test mode looks
- * perfectly fine — and the reason is worth stating precisely, because this
- * sentence spent several releases describing the opposite of the truth. It
- * used to say Test mode "points at external placeholder URLs"; Test-mode
- * covers have been inline SVG data URIs since `mockArt.js` (0.7.5). They never
- * reach the network, so they never meet this problem: Test mode is not a case
- * of the rewrite working, it is a case of there being nothing to rewrite.
+ * That is why Live mode can show no thumbnails while Test mode looks fine:
+ * Test-mode covers are inline SVG data URIs (`mockArt.js`), so they never reach
+ * the network and there is nothing to rewrite.
  *
- * Only URLs on the configured Stash host are rewritten, so mock data and any
- * genuinely external asset pass through untouched.
+ * Only URLs on the configured Stash host are rewritten; mock and genuinely
+ * external assets pass through untouched.
  */
 
 import { getSettings } from './settings.js';

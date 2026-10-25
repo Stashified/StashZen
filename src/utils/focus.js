@@ -3,41 +3,28 @@ import { beginRestore, endRestore } from './restorePending.js';
 
 /** Focus a card by id, waiting for it to exist.
  *
- * Needed because "Back out of a filtered listing returns you where you were"
- * crosses a tab switch, which unmounts the grid the card lived in and remounts
- * it on the way back. The element therefore does not exist at the moment the
- * tab is restored — and the listing behind it may still be fetching. Retried
- * rather than deferred by a guessed interval, because the guess is a race and
- * this is one function.
+ * Back out of a filtered listing crosses a tab switch that unmounts the grid,
+ * and the listing may still be fetching — so the element does not exist when
+ * the tab returns. Retried rather than deferred by a guessed interval, because
+ * the guess is a race.
  *
- * `document.contains` is not paranoia: the registry is keyed by id and a card
- * that unmounted may still be in it, in which case the entry points at a
- * detached node that `.focus()` would silently ignore.
+ * `document.contains` matters: unmounted cards can remain in the registry,
+ * pointing at a detached node `.focus()` silently ignores.
  *
- * **A remounted listing only holds its first page.** The listings page 40 at a
- * time, and the arriving grid fetches page 1 — so a card the user had scrolled
- * to on page 3 does not exist and no amount of waiting makes it appear. That
- * is why listings can be registered here (see `registerFocusListing`): while a
- * restore is searching, it asks the listing that owns the id for one more
- * page at a time, and focuses the card as soon as it lands. The user's
- * position is the card, not the page number — paging forward to it and
- * letting `scrollIntoView` bring it into view is the same place they left.
+ * **A remounted listing only holds page 1** (listings page 40 at a time), so a
+ * card from page 3 needs paging. Listings register a driver
+ * (`registerFocusListing`); the restore asks the owning listing for one more
+ * page at a time and focuses the card as it lands — the position is the card,
+ * not the page number.
  *
- * Two bounds keep that honest: 8 s overall (a TV's real answer for a large
- * page, where the old 3 s budget gave up and left the first card focused), and
- * at most 12 extra pages, so a card that no longer exists cannot walk a
- * 10 000-row listing down to the end. If either bound is reached the search
- * leaves the cursor wherever the listing's own autofocus put it — the top of
- * the origin section, which is a place the user recognises. A caller that has
- * a better answer than that can pass `fallback` (the player uses it to fall
- * back to the card the playback was opened from).
+ * Bounds: 8 s and 12 extra pages, so a deleted card cannot walk a 10 000-row
+ * listing to the end. At either bound the cursor stays where autofocus put it;
+ * `fallback` gives a caller a better answer (the player uses the origin card).
  */
 
-// prefix → { loadMore: () => unknown, canLoad: () => boolean, pending?: boolean }
-//
-// Registered by `usePagedList` for the sections that can be an origin. The
-// object comes from the mounted listing, so the lookup can never drive a grid
-// that is not on screen: an unmounted grid unregisters in its effect cleanup.
+// prefix → { loadMore, canLoad, pending? }, registered by `usePagedList`. It
+// comes from the mounted listing, which unregisters in its effect cleanup, so
+// the lookup can never drive a grid that is not on screen.
 const listings = new Map();
 
 /** Let `focusByIdWhenReady` page this listing forward while it looks for a
@@ -50,17 +37,16 @@ export function registerFocusListing(prefix, driver) {
   };
 }
 
-// Short enough that landing feels like one movement rather than a first card
-// followed by a jump: each attempt is a Map lookup plus `document.contains`,
-// so a fast poll costs nothing. The 8 s budget is unchanged.
+// Short enough that landing feels like one movement, not a first card then a
+// jump: an attempt is a Map lookup plus `document.contains`.
 const RETRY_MS = 50;
 const MAX_RESTORE_MS = 8000;
 const MAX_EXTRA_PAGES = 12;
 
-// Cards are `<prefix>-<id>`, and the prefixes in use contain no dash.
-// The showroom shelves are the exception (`showroom-recent-scenes-video-…`):
-// they are not paged listings and register no driver, so a restore that names
-// one still succeeds through the registry lookup and simply skips `loadMore`.
+// Cards are `<prefix>-<id>`; prefixes contain no dash. Showroom shelves
+// (`showroom-recent-scenes-video-…`) are not paged listings and register no
+// driver, so a restore naming one still lands via the registry, skipping
+// `loadMore`.
 const prefixOf = (id) => {
   const at = String(id).indexOf('-');
   return at > 0 ? String(id).slice(0, at) : null;
@@ -99,17 +85,15 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
     window.removeEventListener('keydown', onUserKey, true);
     endRestore();
   };
-  // The user outranks a restore. A card that only exists on page 4 can take
-  // several seconds; without this, a D-pad press during the wait would move
-  // the cursor and then be yanked back when the page landed (the review's
-  // R2). The listener is added after Back's own keydown has finished
-  // dispatching, so it never cancels the restore it was caused by.
+  // The user outranks a restore: a page-4 card can take seconds, and without
+  // this a D-pad press during the wait would be yanked back when it lands. The
+  // listener is added after Back's keydown has dispatched, so it never cancels
+  // the restore it caused.
   const onUserKey = () => settle();
   window.addEventListener('keydown', onUserKey, true);
 
-  // One timer at a time. The old code ran a 50 ms poll chain *and* scheduled
-  // an extra `attempt` after every settled page, so up to thirteen chains
-  // overlapped near the deadline.
+  // One timer at a time; overlapping poll chains would pile up near the
+  // deadline.
   const schedule = (ms) => {
     clearTimer();
     timer = setTimeout(attempt, ms);
@@ -143,10 +127,9 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
       .then((started) => {
         driver.pending = false;
         if (settled) return;
-        // Only a fetch that actually started spends the budget (the review's
-        // R3). `loadMore` resolves `false` when its guards turn it into a
-        // no-op; counting those consumed all twelve pages in milliseconds and
-        // then waited out the deadline.
+        // Only a fetch that actually started spends the budget: `loadMore`
+        // resolves `false` when its guards make it a no-op, and counting those
+        // used all twelve pages in milliseconds.
         if (started) pages += 1;
         // A started page gets looked at immediately after React commits it;
         // a no-op waits for the ordinary poll.

@@ -1,12 +1,7 @@
 /**
- * PerformerDetailPage — Hero header + filtered video grid
- *
- * Shown when a performer is selected from the Performers grid.
- * Owns its own controls state (independent of the app-level Home
- * controls). Filters videos to scenes featuring this performer
- * via Stash's standard scene filter shape.
- *
- * Backspace / Tizen Back returns to the performer grid.
+ * PerformerDetailPage — hero header plus a video grid filtered to this
+ * performer via Stash's standard scene filter shape. Owns its own controls
+ * state, independent of the app's. Backspace / Tizen Back returns to the grid.
  */
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
@@ -25,16 +20,13 @@ import {
 } from './performerDetail/format.js';
 import styles from './PerformerDetailPage.module.css';
 
-// Alias lists can be long (Stash stores every name a performer has worked
-// under). Four chips plus a count keeps the hero from growing without bound.
-// Tags and links get the same treatment: these are all free-text lists whose
-// length is up to the library, and the hero must not push the grid off-screen.
+// Chips are capped: aliases, tags and links are free-text lists whose length is
+// up to the library, and the hero must not push the grid off-screen.
 const MAX_ALIAS_CHIPS = 4;
 const MAX_TAG_CHIPS = 5;
 const MAX_LINK_CHIPS = 3;
 
-// Scene sort groups for the inner video grid — same set as Home, but
-// kept local so we don't have to thread them down from App.
+// Scene sort groups for the inner grid — kept local rather than threaded from App.
 const SCENE_SORT_GROUPS = [
   {
     group: 'General',
@@ -74,7 +66,7 @@ const DEFAULT_DETAIL_CONTROLS = {
   search: '',
 };
 
-// ── Back button — focusable so mouse/click users have a path ─
+// Back button: focusable so mouse/click users have a path too.
 function BackButton({ onClick }) {
   const { ref, focused } = useFocusable({
     id: 'detail-back',
@@ -97,20 +89,17 @@ function BackButton({ onClick }) {
   );
 }
 
-// ── Main component ──────────────────────────────────────
 export default function PerformerDetailPage({
   performer, onBack, onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
 }) {
   const [controls, setControls] = useState(DEFAULT_DETAIL_CONTROLS);
-  // The card the page was opened from already carries everything the hero's
-  // first paint needs. The profile fields arrive from one small query and are
-  // layered on top; until then — and if it fails — the card stays on screen.
+  // The card already carries what the hero's first paint needs; the profile
+  // query layers on top, and the card stays on screen until it lands or fails.
   const [profile, setProfile] = useState(null);
   const [profileStatus, setProfileStatus] = useState('loading');
   const [profileError, setProfileError] = useState(null);
 
-  // Filter scenes to those including this performer. Memoised so we
-  // don't trigger downstream re-fetches when other state changes.
+  // Memoised so unrelated state changes do not re-trigger the grid fetch.
   const objectFilter = useMemo(() => ({
     performers: { value: [String(performer.id)], modifier: 'INCLUDES' },
   }), [performer.id]);
@@ -119,7 +108,6 @@ export default function PerformerDetailPage({
     setControls(prev => ({ ...prev, ...patch }));
   };
 
-  // ── Profile fields (one query, layered onto the card) ──────
   useEffect(() => {
     let cancelled = false;
     setProfile(null);
@@ -146,10 +134,9 @@ export default function PerformerDetailPage({
     return () => { cancelled = true; };
   }, [performer]);
 
-  // ── Rating and favourite (the two writes this page offers) ─
-  // Seeded from the card so the hero is right on the first paint, then
-  // replaced by the detail answer. The card's `rating` is a display string;
-  // every write below uses the detail query's `rating100`.
+  // Rating and favourite — the two writes this page offers. Seeded from the
+  // card so the hero is right on first paint, then replaced by the detail
+  // answer. The card's `rating` is a display string; writes use `rating100`.
   const [edits, setEdits] = useState(() => ({
     rating100: ratingFromCard(performer),
     favorite: !!performer.favorite,
@@ -157,15 +144,12 @@ export default function PerformerDetailPage({
   const [notice, flash] = useFlash();
   const ratingAttempt = useRef(0);
   const favoriteAttempt = useRef(0);
-  // The last value the *server* acknowledged. Reverting a failed write to the
-  // optimistic value instead would leave the hero showing a number that was
-  // never stored — press + twice, have both fail, and the page settled on the
-  // middle value.
+  // The last value the *server* acknowledged. Reverting to the optimistic value
+  // instead would leave the hero showing a number Stash never stored.
   const ratingConfirmed = useRef(ratingFromCard(performer));
   const favoriteConfirmed = useRef(!!performer.favorite);
-  // Writes are serialised through these chains. Overlapping requests could
-  // otherwise reach the server out of order and leave the stored value one
-  // press behind the screen, whatever the client does about stale answers.
+  // Writes are serialised so overlapping requests cannot reach the server out
+  // of order and leave the stored value a press behind the screen.
   const ratingQueue = useRef(Promise.resolve());
   const favoriteQueue = useRef(Promise.resolve());
 
@@ -186,9 +170,8 @@ export default function PerformerDetailPage({
 
   useEffect(() => {
     if (!profile) return;
-    // The detail answer is authoritative: in a live library the card's
-    // rounded display value and the stored value can differ, and a write
-    // must start from what Stash actually has.
+    // The detail answer is authoritative: the card's rounded display value and
+    // the stored value can differ, and a write must start from what Stash has.
     setEdits(prev => ({
       rating100: profile.rating100 ?? prev.rating100,
       favorite: profile.favorite ?? prev.favorite,
@@ -199,8 +182,8 @@ export default function PerformerDetailPage({
     favoriteAttempt.current += 1;
   }, [profile]);
 
-  // Editable only once the real values are on screen, and never in Test mode
-  // where the ids belong to generated data with no row behind them.
+  // Editable only once the real values are on screen, and never in Test mode,
+  // where the ids are generated data with no row behind them.
   const canEdit = profileStatus === 'ready' && profile?.writable !== false;
 
   const setRating = (stars) => {
@@ -218,9 +201,8 @@ export default function PerformerDetailPage({
           }
         }
       } catch (e) {
-        // Only the newest press owns the screen. An older failure is already
-        // superseded by a later optimistic value, and reverting it would undo
-        // a press the user made afterwards.
+        // Only the newest press owns the screen: an older failure is already
+        // superseded, and reverting it would undo a later press.
         if (attempt !== ratingAttempt.current) return;
         setEdits(prev => ({ ...prev, rating100: ratingConfirmed.current }));
         flash(`Rating not saved — ${e.message}`);
@@ -250,28 +232,12 @@ export default function PerformerDetailPage({
     });
   };
 
-  // Page-level Back handler — capture phase so the global Back doesn't fire
-  // its tab-switching behaviour first.
-  //
-  // The predicate carries the two yields the hand-written handler had. Only
-  // Backspace belongs to the search field (`isBackKey` does that test; this
-  // guard once returned for *every* key while a text field had focus, which
-  // swallowed the remote's Back entirely). A nested layer owns Back while it
-  // is open — an open sort/filter dropdown (`data-focus-trap`) or the
-  // long-press action menu (`role="dialog"`) — and this listener is
-  // registered when the page mounts, so it runs before theirs on the shared
-  // window capture target. Doing the scope test in the predicate rather than
-  // in the handler also means this listener does not preventDefault a key the
-  // nested layer handles.
-  //
-  // `dialogOpen` is the yield `focusScopeOf` alone cannot make. The player is
-  // a dialog over this page that deliberately leaves focus on <body> when its
-  // rail is closed, so a focus-only guard saw nothing and closed the page on
-  // the same press the player used to put its controls bar away — reported
-  // from the TV on 2026-10-20 as backing out of a played scene landing on the
-  // Performers grid. Dialogs win by presence, not by where the cursor is;
-  // dropdowns are the one layer that still needs the focus test, and they
-  // take focus.
+  // Capture phase so the global handler does not tab-switch first. The
+  // predicate, not the handler, carries the yields: only Backspace belongs to
+  // the search field, and a nested layer (dropdown, action menu) owns Back —
+  // testing here avoids preventDefaulting a key it handles. `dialogOpen` is the
+  // yield focus cannot make: the player leaves focus on <body>, so a
+  // focus-only guard would close the page when dismissing its controls.
   const pageIsBack = useCallback(
     (e) => isBackKey(e) && !dialogOpen() && !focusScopeOf(document.activeElement),
     [],
@@ -279,12 +245,12 @@ export default function PerformerDetailPage({
   useBackKey(() => onBack?.(), { isBack: pageIsBack });
 
   // Measured to the death date once the profile supplies one; the card alone
-  // has no death date, so the first paint still uses today.
+  // has none, so the first paint uses today.
   const age = ageFromBirthdate(performer.birthdate, profile?.deathDate);
   const height = formatHeight(performer.height_cm);
 
-  // The card's gender is available on the first paint; the detail answer is
-  // preferred once it lands, and an empty detail value falls back to the card.
+  // The card's gender is available on first paint; the detail answer wins once
+  // it lands, and an empty detail value falls back to the card.
   const gender = formatGender(profile?.gender ?? performer.gender);
   const aliases = profile?.aliases || [];
   const career = profile ? formatCareer(profile) : null;
@@ -308,7 +274,7 @@ export default function PerformerDetailPage({
 
   return (
     <div className={styles.page}>
-      {/* ── Hero header ─────────────────────────────────── */}
+
       <header className={styles.hero}>
         <div className={styles.heroLeft}>
           <BackButton onClick={onBack} />
@@ -447,7 +413,7 @@ export default function PerformerDetailPage({
         </div>
       </header>
 
-      {/* ── Controls panel for the inner grid ───────────── */}
+
       <ControlsPanel
         controls={controls}
         onChange={updateControls}
@@ -461,7 +427,7 @@ export default function PerformerDetailPage({
         onMuteToggle={onMuteToggle}
       />
 
-      {/* ── Video grid filtered to this performer ───────── */}
+
       <VideoGrid
         controls={controls}
         objectFilter={objectFilter}

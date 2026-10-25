@@ -32,9 +32,9 @@
   background: var(--bg-card-hover);
 }
 
-/* Selected, not yet being edited: deliberately quieter than the real focus
-   ring, so "ready to type" doesn't read the same as "typing". Same
-   specificity as the editing rule below, so source order decides. */
+/* Selected, not yet editing: quieter than the real ring, so "ready to type"
+   does not read as "typing". Matches the editing rule's specificity, so
+   source order decides. */
 .inputWrap.focused {
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
@@ -43,9 +43,8 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Rendered whether or not it is visible, and with fixed text: the controls
-   panel is a wrapping horizontal bar, so a hint that appeared on focus
-   would reflow the whole row. */
+/* Always rendered, with fixed text: the controls panel is a wrapping bar, so
+   a hint that appeared on focus would reflow the row. */
 .hint {
   font-size: 11px;
   color: var(--text-muted);
@@ -63,9 +62,7 @@
   transition: color 0.15s ease-out;
 }
 
-/* The wrapper has the .focused class when the input is focused
-   (set by useFocusable). Pulse the icon while typing-in-focus to
-   signal "search in progress" during the debounce window. */
+/* useFocusable puts `.focused` on the wrapper while the input has focus. */
 .inputWrap.focused .icon {
   color: var(--accent);
 }

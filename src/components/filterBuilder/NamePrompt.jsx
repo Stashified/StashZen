@@ -4,11 +4,8 @@ import { useBackKey } from '../../hooks/useBackKey.js';
 import { isHardBackKey } from '../../utils/input.js';
 import styles from '../FilterBuilder.module.css';
 
-// ── Save prompt ───────────────────────────────────────────
 export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error }) {
-  // Takes focus on open, like the other dialogs: the name is the thing this
-  // dialog exists to ask for. The wrapper, not the input, so the TV keyboard
-  // still waits for Enter.
+  // Focus the wrapper, not the input, so the TV keyboard still waits for Enter.
   const { setWrapperRef, inputRef, selected, editing, inputHandlers } = useEditableField({
     id: 'fb-name',
     zone: 'fb-name-prompt',

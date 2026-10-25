@@ -1,20 +1,16 @@
 /**
  * ServerJobRow — one job in the Settings → Server snapshot.
  *
- * Extracted from ServerStatusSection because Stop needs state of its own: a
- * two-step confirm must belong to a row, not to the list, or arming one job
- * would arm the button on another. The row also keeps its own in-flight flag
- * from the section (`stopping`), because the section is the one holding the
- * request and its token.
+ * Its own component because Stop needs per-row state: a two-step confirm on
+ * the list would arm every row. The row also receives `stopping` from the
+ * section, which holds the request and its token.
  *
- * What a job says, in the order it matters: what it is, how far along, what
- * it is doing right now (the first few subtasks), when it started, and — for a
- * FAILED job — why. Stash's `subTasks` are already user-facing prose; they are
- * joined on one line and ellipsised, because a scan can report a long list and
- * the row must not grow with it.
+ * A job shows what it is, its progress, the first few subtasks, its start and,
+ * for FAILED, why. `subTasks` are joined and ellipsised so a long scan does
+ * not grow the row.
  *
- * Only RUNNING and READY get a Stop button. STOPPING is already on its way
- * out, and FAILED has nothing left to stop.
+ * Only RUNNING and READY get a Stop button; STOPPING is on its way out and
+ * FAILED has nothing to stop.
  */
 
 import { useArmedConfirm } from '../../hooks/useArmedConfirm.js';
@@ -40,9 +36,8 @@ export function ServerJobRow({ job, stopping, onStop, styles }) {
   const start = formatJobStart(job.startTime);
   const subTasks = job.subTasks.slice(0, MAX_SUBTASKS);
 
-  // A press while the request is in flight neither arms nor commits. The row
-  // is still on screen until the refresh lands, and the label says why it is
-  // ignoring the press.
+  // A press while the request is in flight neither arms nor commits; the row
+  // survives until the refresh lands, and its label says so.
   const handleStop = () => {
     if (stopping) return;
     runStop(() => onStop(job));

@@ -1,17 +1,13 @@
 import { useFocusable } from '../../hooks/useFocusable.js';
 import styles from '../SceneDetailPage.module.css';
 
-// ── Gallery chip ────────────────────────────────────────────
+// A hand-off, not an overlay: Enter opens the Galleries tab focused on this
+// gallery. The parent must *not* also close the scene page — the tab change
+// already unmounts it, and closing here would race that effect and restore
+// focus onto a card on the tab being replaced.
 //
-// A hand-off, not an overlay: Enter leaves this scene and opens the Galleries
-// tab focused on this gallery. The parent deliberately does *not* close the
-// scene detail page as well — switching tabs already unmounts it through
-// useDetailSelection's tab-change effect, and closing it here too would race
-// that effect and restore focus to a card on the tab being replaced.
-//
-// Same focusable-chip pattern as MarkerChip, including the shared marker
-// styling: from the D-pad a chip is a chip, and a second visual language for
-// this row would only be noise.
+// Same focusable-chip pattern and marker styling as MarkerChip: from the D-pad
+// a chip is a chip.
 export function GalleryChip({ gallery, onGallerySelect }) {
   const { ref, focused } = useFocusable({
     id: `scene-gallery-${gallery.id}`,

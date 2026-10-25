@@ -1,14 +1,12 @@
-/* FirstRun — the connection setup screen.
-   The field and button rules are the same visual language as SettingsPanel, so
-   the two screens that both ask for a URL and a key look like one app. They are
-   restated rather than shared because the layouts differ (a centred card with
-   its own spacing, not a row inside the settings body); the interaction they
-   encode lives in useEditableField and useFocusable, which *are* shared. */
+/* FirstRun — the connection setup screen. Its field and button rules restate
+   SettingsPanel's so both URL-and-key screens look like one app; the layouts
+   differ, so only the tokens are shared. The interaction lives in
+   useEditableField and useFocusable, which are genuinely shared. */
 
 .cover {
   position: fixed;
   inset: 0;
-  z-index: 900;              /* under LockScreen's 940 — the two never coexist */
+  z-index: 900;              /* under LockScreen's 940; they never coexist */
   background: var(--bg-base);
   display: flex;
   align-items: center;
@@ -35,11 +33,8 @@
   gap: 10px;
 }
 
-/* ── The brand lockup ───────────────────────────────────────
-   The name and the tagline, on the one screen a new user sees before the app.
-   Restated in SettingsPanel.module.css rather than shared, for the same reason
-   the field and button rules are: the two panels are separate visual contexts
-   and the shared part is the token set, not the rule. */
+/* The brand lockup, on the one screen seen before the app. Restated in
+   SettingsPanel rather than shared: separate visual contexts, shared tokens. */
 .brand {
   display: flex;
   align-items: baseline;
@@ -76,7 +71,6 @@
   max-width: 56ch;
 }
 
-/* ── Fields ─────────────────────────────────────────────── */
 .fields {
   display: flex;
   flex-direction: column;
@@ -118,9 +112,9 @@
   border-color: var(--border-strong);
 }
 
-/* Focus lives on the wrapper, not the input — see useEditableField — so these
-   style the input from the field's own state. `.input:focus` stays because
-   while editing the input really is the focused element. */
+/* Focus lives on the wrapper (see useEditableField), so these style the input
+   from the field's state. `.input:focus` stays because while editing the input
+   really is the focused element. */
 .field.focused .input,
 .field.editing .input,
 .input:focus {
@@ -128,8 +122,8 @@
   border-color: var(--accent);
 }
 
-/* Selected but not yet editing: quieter than the real ring, so "ready to type"
-   does not read the same as "typing". */
+/* Selected, not yet editing: quieter than the real ring, so "ready to type"
+   does not read as "typing". */
 .field.focused .input {
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
@@ -140,7 +134,7 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Always rendered, only shown on focus: a hint that appeared and disappeared
+/* Always rendered, only shown on focus: a hint that appeared and vanished
    would shove the buttons below it up and down on every selection. */
 .fieldHint {
   font-size: 11px;
@@ -155,7 +149,6 @@
   visibility: visible;
 }
 
-/* ── Test row ───────────────────────────────────────────── */
 .testRow {
   display: flex;
   align-items: center;
@@ -176,7 +169,6 @@
   color: var(--red);
 }
 
-/* ── Actions ────────────────────────────────────────────── */
 .actions {
   display: flex;
   gap: 12px;
@@ -222,7 +214,6 @@
   box-shadow: var(--focus-ring);
 }
 
-/* ── Footnote ───────────────────────────────────────────── */
 .hint {
   font-size: 13px;
   line-height: 1.55;

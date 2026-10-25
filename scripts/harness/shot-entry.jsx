@@ -1,22 +1,19 @@
 /**
  * Screenshot driver for the README.
  *
- * Mounts the real `App` in Test mode and navigates it with the same synthetic
- * remote other drivers use, then POSTs `/shot-ready`. `run.sh` in SCREENSHOT
- * mode puts a hidden `<img src="/hold.png">` in the parsed HTML; the fake
- * server holds that response until this POST, so Firefox's `--headless
- * --screenshot` (which captures on the load event) fires only after the
- * screen is actually built. Without the hold the capture is a race against
- * the first fetch and usually wins with an empty stage.
+ * Mounts the real `App` in Test mode, navigates with the synthetic remote,
+ * then POSTs `/shot-ready`. run.sh's SCREENSHOT mode puts a hidden
+ * `<img src="/hold.png">` in the HTML; the fake server holds that response
+ * until the POST, so Firefox's `--screenshot` (on the load event) fires only
+ * once the screen is built, rather than racing the first fetch to an empty
+ * stage.
  *
- * Test mode is the point: the mock generators give a deterministic library,
- * so the images in the README are the app's own demo content rather than the
- * user's private scenes. No live server is contacted.
+ * Test mode gives a deterministic mock library, so the images are demo content
+ * rather than the user's scenes; no live server is contacted.
  *
  * Usage: `?screen=home|performers|performer-detail|scene-detail|settings-stats|settings-server`
- * A screen that never becomes ready posts `/shot-ready` after the timeout
- * anyway and exits 1, which shoot.sh reports — a wrong screenshot is worse
- * than a failed one.
+ * A screen that never readies still posts after the timeout and exits 1: a
+ * wrong screenshot is worse than a failed one.
  */
 
 import '../../src/index.css';
@@ -61,8 +58,8 @@ const liveIds = (prefix) => [...registry.entries()]
   .filter(([id, entry]) => id.startsWith(`${prefix}-`) && document.contains(entry.el))
   .map(([id]) => id);
 
-/** First live registry id with this prefix — card ids are generated, and a
- *  screenshot driver should not hard-code a mock fixture's numbering. */
+/** First live registry id with this prefix — card ids are generated, so a
+ *  screenshot driver must not hard-code mock fixture numbering. */
 const firstId = (prefix) => liveIds(prefix)[0] || null;
 
 const railActive = () => [...document.querySelectorAll(
@@ -72,13 +69,11 @@ const railActive = () => [...document.querySelectorAll(
 /**
  * Switch tabs, and *confirm* it happened.
  *
- * Two races make the obvious version lie. The rail mounts before the shelf
- * fetches finish, and the showroom's own autofocus lands on its first card
- * when they do — after a `focus('nav-performers')` issued too early, so the
- * Enter went to a card. And a callback fired on the wrong screen still
- * produces a perfectly valid PNG. Hence: retry the press until the rail's
- * `aria-current` row is the tab we asked for, and let the caller's ready
- * predicate re-assert the surface too.
+ * Two races lie: the showroom's autofocus lands on its first card after a too
+ * early `focus('nav-performers')`, so the Enter hits a card; and a callback on
+ * the wrong screen still yields a valid PNG. So retry until the rail's
+ * `aria-current` row is the wanted tab, and let the caller's ready predicate
+ * re-assert the surface.
  */
 async function pressBack() {
   active().dispatchEvent(new KeyboardEvent('keydown', {
@@ -95,9 +90,8 @@ async function focusAndEnter(id) {
   if (!entry) return false;
   entry.el.focus();
   await sleep(100);
-  // Compare the DOM, not getCurrentFocusId: that value is only written by a
-  // focus *event*, and calling focus() on the already-focused element fires
-  // none — which made this guard refuse to press and read as "focus lost".
+  // Compare the DOM, not getCurrentFocusId: that is only written by a focus
+  // event, and focus() on the already-focused element fires none.
   if (document.activeElement !== entry.el) return false;
   await tapEnter();
   return true;
@@ -108,9 +102,8 @@ async function openTab(tab) {
   if (!await waitFor(() => registry.has(`nav-${tab}`), 6000)) return false;
   for (let attempt = 0; attempt < 8; attempt++) {
     if (railActive() === want) return true;
-    // A press that landed on a card instead leaves an overlay in front of the
-    // rail. Back out of it before the next attempt rather than pressing into
-    // it.
+    // A press that landed on a card leaves an overlay in front of the rail;
+    // back out before the next attempt.
     if (document.querySelector('[role="dialog"]')) await pressBack();
     if (!await focusAndEnter(`nav-${tab}`)) continue;
     if (await waitFor(() => railActive() === want, 1200)) return true;
@@ -118,10 +111,10 @@ async function openTab(tab) {
   return false;
 }
 
-/** Settings is a modal, not a tab: its rail row never takes `aria-current`,
- *  so openTab's confirmation can never pass for it. The panel's own
- *  `settings-cancel` registry entry is the confirmation — `[role="dialog"]`
- *  is not, because the scene detail overlay uses the same role. */
+/** Settings is a modal, so its rail row never takes `aria-current` and
+ *  openTab can never confirm it. Its `settings-cancel` entry is the
+ *  confirmation; `[role="dialog"]` is not, as the scene detail overlay shares
+ *  that role. */
 const settingsOpen = () => registry.has('settings-cancel');
 const trace = [];
 
@@ -149,8 +142,8 @@ const SCREENS = {
   performers: {
     async go() {
       if (!await openTab('performers')) return false;
-      // Home's own Recently Added Performers shelf uses the same card ids, so
-      // the card alone cannot tell the two surfaces apart. The rail can.
+      // Home's performer shelf uses the same card ids, so only the rail tells
+      // the two surfaces apart.
       return waitFor(() => firstId('performer-perf') !== null);
     },
     ready: () => railActive() === 'Performers' && firstId('performer-perf') !== null,
@@ -175,9 +168,8 @@ const SCREENS = {
       focus(firstId('video'));
       await sleep(150);
       await tapEnter();
-      // The marker row is the feature this screenshot is for; a scene that
-      // somehow had none would still be a valid screenshot, but the detail
-      // page itself has to be up.
+      // The marker row is the feature; a scene without one is still a valid
+      // screenshot, but the detail page must be up.
       return waitFor(
         () => registry.has('scene-play') && liveIds('scene-marker').length > 0, 6000);
     },
@@ -221,12 +213,11 @@ const SCREENS = {
   const screen = SCREENS[SCREEN];
   let ok = false;
   if (screen) ok = await screen.go();
-  // Fonts and the focus ring settle a frame or two after the fetch lands; a
-  // capture mid-transition shows a half-drawn card.
+  // Fonts and the focus ring settle a frame or two after the fetch.
   await sleep(500);
   ok = ok && screen.ready();
-  // Diagnostics for shoot.sh when a screen fails. Cheap, and the alternative
-  // is inferring the tab from a PNG whose whole point is that it looked fine.
+  // Diagnostics for shoot.sh when a screen fails, rather than inferring the
+  // tab from a PNG that looks fine.
   await fetch(`http://127.0.0.1:${PORT}/result`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -242,16 +233,14 @@ const SCREENS = {
     }),
   });
 
-  // The flag matters: releasing the hold on a failed screen would capture
-  // Home and still produce a plausible-looking image. run.sh refuses the
-  // capture when this file exists without ok=1.
+  // Releasing the hold on a failed screen would capture a plausible-looking
+  // Home; run.sh refuses the capture unless ok=1.
   await fetch(`http://127.0.0.1:${PORT}/shot-ready${ok ? '?ok=1' : ''}`, {
     method: 'POST',
   });
   if (ok) {
-    // The load event follows the release of /hold.png; the screenshot is
-    // taken by Firefox after it. Nothing else to do — exit code comes from
-    // run.sh, which treats a not-ready flag or a missing file as failure.
+    // Firefox screenshots after the load event released by /hold.png. Exit
+    // code comes from run.sh, which fails on a not-ready flag or missing file.
     console.log(`shot ready: ${SCREEN}`);
   } else {
     console.error(`screen never became ready: ${SCREEN}`);

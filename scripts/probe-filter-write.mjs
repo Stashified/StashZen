@@ -4,32 +4,27 @@
  *
  *   node scripts/probe-filter-write.mjs
  *
- * P2 adds the app's first *write* to Stash. Everything else it does is a read,
- * so this is the one place a mistake touches the user's library rather than
- * just showing them the wrong grid. Two things have to be true, and neither
- * can be settled by reading the schema:
+ * The app's first *write* to Stash, so the one place a mistake touches the
+ * user's library. Two things, neither settled by reading the schema:
  *
  *   1. `SaveFilterInput.object_filter` is a `Map` scalar. Whether it accepts
- *      the *stored* envelope `filterCriteria.js` builds — rather than the
- *      GraphQL shape, which is what the translator produces at query time —
- *      is a question only the server answers.
- *   2. Whatever it accepts, it must return it unchanged. A filter the app
- *      saves and cannot reopen is worse than no filter at all, and the
- *      failure would be silent: it would appear in the dropdown and load
- *      empty.
+ *      the *stored* envelope `filterCriteria.js` builds (rather than the
+ *      GraphQL shape the translator produces) only the server answers.
+ *   2. It must return that envelope unchanged. A filter the app saves and
+ *      cannot reopen is worse than none, and the failure is silent: it appears
+ *      in the dropdown and loads empty.
  *
- * THIS WRITES TO THE REAL SERVER, then deletes what it wrote. The probe filter
- * is named so that it is obvious in Stash's UI, and the delete runs in a
- * `finally` so a failure mid-probe still cleans up. If the delete itself
- * fails the script says so loudly rather than exiting quietly.
+ * THIS WRITES TO THE REAL SERVER, then deletes what it wrote. The probe name is
+ * obvious in Stash's UI, and the delete runs in a `finally` so a mid-probe
+ * failure still cleans up; a failed delete says so loudly.
  *
- * Credentials come from the environment or .env.production, as the schema
- * generator does. Nothing is printed.
+ * Credentials come from the environment or .env.production. Nothing is printed.
  */
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { parseDotenv } from './parse-dotenv.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -37,11 +32,12 @@ function loadEnv() {
   const env = { ...process.env };
   if (env.VITE_STASH_URL && env.VITE_STASH_API_KEY) return env;
   try {
-    for (const line of readFileSync(resolve(HERE, '../.env.production'), 'utf8').split('\n')) {
-      const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=(.*)$/.exec(line);
-      if (m && !env[m[1]]) env[m[1]] = m[2].trim();
+    for (const [k, v] of Object.entries(
+      parseDotenv(readFileSync(resolve(HERE, '../.env.production'), 'utf8')),
+    )) {
+      if (!env[k]) env[k] = v;   // an explicit environment variable wins
     }
-  } catch { /* the explicit-env path is the only option */ }
+  } catch { /* explicit env only */ }
   return env;
 }
 
@@ -70,9 +66,9 @@ async function gql(query, variables) {
 
 const NAME = 'StashZen probe — safe to delete';
 
-// The envelope the builder writes, covering each shape `criteriaFor` can
-// produce. If only one shape round-tripped, a filter mixing them would still
-// be broken, so all of them go in at once.
+// The envelope the builder writes, covering every shape `criteriaFor` produces.
+// A filter mixing shapes would still be broken if only one round-tripped, so
+// all go in at once.
 const STORED = {
   title: { modifier: 'INCLUDES', value: { value: 'probe' } },
   rating100: { modifier: 'GREATER_THAN', value: { value: 70 } },
@@ -86,12 +82,10 @@ const STORED = {
 /**
  * Deep-compare that ignores key order.
  *
- * `object_filter` is a `Map` scalar and the server serialises it with keys
- * sorted, so a multi-select written `{items, excluded}` reads back
- * `{excluded, items}`. That is not a difference in the filter — it is the same
- * object — but `JSON.stringify` compares key order, so the first run of this
- * probe reported two failures that were entirely its own. Comparing
- * canonically is the fix, and it is the same one `test-translate.mjs` uses.
+ * `object_filter` is a `Map` scalar serialised with keys sorted, so a
+ * multi-select written `{items, excluded}` reads back `{excluded, items}`. Same
+ * object, but `JSON.stringify` compares key order, so the compare must be
+ * canonical — as in `test-translate.mjs`.
  */
 function canonical(v) {
   if (Array.isArray(v)) return v.map(canonical);
@@ -119,7 +113,6 @@ try {
     for (const s of stale) await gql('mutation($id:ID!){destroySavedFilter(input:{id:$id})}', { id: s.id });
   }
 
-  // 1. Create.
   const saved = await gql(
     `mutation($input: SaveFilterInput!) { saveFilter(input: $input) { id name object_filter } }`,
     { input: { mode: 'SCENES', name: NAME, object_filter: STORED, find_filter: { sort: 'created_at', direction: 'DESC' } } },
@@ -128,29 +121,26 @@ try {
   ok('saveFilter returned an id', !!createdId, `got ${JSON.stringify(saved)}`);
   if (!createdId) throw new Error('no id — cannot continue');
 
-  // 2. Read back through the same query the app uses.
+  // Read back through the same query the app uses.
   const after = await gql('{ findSavedFilters(mode: SCENES) { id name object_filter find_filter { q page per_page sort direction } } }');
   const mine = (after.findSavedFilters || []).find(f => String(f.id) === String(createdId));
   ok('the filter is listed after saving', !!mine);
   if (!mine) throw new Error('not listed — cannot continue');
 
-  // `object_filter` is a Map scalar: it may arrive as an object or as a JSON
-  // string, which is exactly what filterService.parseObjectFilter defends
-  // against. Normalise the same way before comparing.
+  // `object_filter` is a Map scalar: it may arrive as an object or a JSON
+  // string (what filterService.parseObjectFilter defends against). Normalise
+  // the same way before comparing.
   const back = typeof mine.object_filter === 'string' ? JSON.parse(mine.object_filter) : mine.object_filter;
 
-  // 3. THE ONE THAT MATTERS. Byte-for-byte, so a dropped or rewritten key
-  //    shows up. Compared key by key to name what broke.
+  // The one that matters: key by key, so a dropped or rewritten key shows up
+  // and is named.
   for (const key of Object.keys(STORED)) {
     ok(`  ${key} round-trips unchanged`,
       same(back?.[key], STORED[key]),
       `wrote ${JSON.stringify(STORED[key])}\n        read  ${JSON.stringify(back?.[key])}`);
   }
-  // The key SET, not its order. `canonical` sorts object keys but not array
-  // elements — array order is data — so the two `Object.keys` lists being
-  // differently ordered is expected here, and comparing them raw (with a
-  // message that sorted both before printing) made this check fail on a
-  // difference it then declined to show.
+  // The key SET, not its order: both lists are sorted, since comparing them raw
+  // failed on a difference the message then declined to show.
   const wroteKeys = Object.keys(STORED).sort();
   const readKeys = Object.keys(back || {}).sort();
   ok('the same key set came back',
@@ -161,7 +151,7 @@ try {
   ok('find_filter round-trips', mine.find_filter?.sort === 'created_at',
     JSON.stringify(mine.find_filter));
 
-  // 4. Update in place — the id must be honoured rather than forking a copy.
+  // Update in place: the id must be honoured rather than forking a copy.
   const renamed = await gql(
     `mutation($input: SaveFilterInput!) { saveFilter(input: $input) { id name } }`,
     { input: { id: createdId, mode: 'SCENES', name: NAME, object_filter: { title: { modifier: 'EQUALS', value: { value: 'two' } } } } },

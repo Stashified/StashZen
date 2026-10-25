@@ -1,16 +1,14 @@
 /**
  * avplayAvailability — is the TV's own player there, and load it if not.
  *
- * On a Tizen app `window.webapis` is normally present; on some firmware the
- * media APIs only appear after the WebAPI script has been pulled in. The probe
- * used `$WEBAPIS/webapis/webapis.js`, which Tizen rewrites to a local path
- * when the widget is installed, so it costs nothing on-device and cannot be
- * fetched from the network.
+ * `window.webapis` is normally present; on some firmware the media APIs only
+ * appear after the WebAPI script is pulled in. `$WEBAPIS/webapis/webapis.js`
+ * is rewritten by Tizen to a local path on install, so it costs nothing and
+ * cannot hit the network.
  *
- * The load is attempted once per session and the promise is shared: a scene
- * that opens while the script is still loading waits for the same attempt
- * rather than injecting a second one. Failure is a normal answer — the caller
- * falls back to the browser — not an error to propagate.
+ * The load is attempted once per session and the promise shared, so concurrent
+ * scenes wait on one attempt. Failure is a normal answer — the caller falls
+ * back to the browser — not something to propagate.
  */
 
 const WEBAPIS_SRC = '$WEBAPIS/webapis/webapis.js';

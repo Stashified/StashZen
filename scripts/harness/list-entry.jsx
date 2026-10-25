@@ -1,39 +1,16 @@
 /**
  * Headless driver for the paginated list views.
  *
- * Written to answer one question: after the pagination was extracted into
- * usePagedList, do these components still page the way they used to? So it
- * asserts on the *observable contract* — which pages get asked for, with
- * which variables, and what the user ends up looking at — rather than on any
- * internal of the hook.
- *
- * Run it against two revisions and diff the result JSONs; identical output
- * is the evidence that the extraction was behaviour-neutral. The recipe and
- * what it taught are in PLAN.md under "Verification".
- *
+ * Asserts the observable contract — which pages are requested, with which
+ * variables, and what the user sees — not any internal of `usePagedList`.
  * Chosen with `?view=grid` (default), `markers`, `performers`, `carousel`,
- * `coverflow` or `list` — the two distinct trigger families: the grid (and
- * List) watch an IntersectionObserver sentinel, the other two watch how near
- * the focused index is to the end of the loaded rows. Coverflow shares the
- * carousel's driver.
+ * `coverflow` or `list`: the grids and List watch an IntersectionObserver
+ * sentinel; the strips watch how near the focused index is to the loaded end.
  *
- * **This driver mounts the listing components directly, not a page.** It can
- * therefore see `ItemList` render and page, but it cannot see whether a page
- * dispatches to it at all: removing the list branch from `ScenesPage` leaves
- * every check here green. That hand-off is `views-entry.jsx`'s, which mounts
- * `App` and changes modes through the real control — control experiment 3 in
- * PLAN.md's P12 section is the worked example.
- *
- * `markers` and `performers` were added when those two grids were migrated
- * onto usePagedList: they are the same trigger family as `grid`, and the
- * whole point of the exercise was to diff their behaviour before and after,
- * which needs a driver that can render them. They differ from `grid` in
- * exactly three strings — the noun in the count line and end marker, and the
- * prefix of the focus-registry key — so `VIEWS` below holds those and one
- * `runGrid` serves all three. Adding a fourth grid should mean adding a row.
- *
- * The view named `random` went with RandomPage in 0.7.0 — it drove the Reels
- * feed's keypress-indexed paging, and the feed is gone.
+ * It mounts the listing components directly, so it cannot see whether a page
+ * dispatches to them — `views-entry.jsx` mounts App for that. The three grids
+ * differ only in the count noun and the focus-id prefix, so `VIEWS` holds
+ * those and one `runGrid` serves them.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -60,48 +37,30 @@ function check(name, pass, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // The fake listing is 100 rows at a page size of 40 — see SCENE_COUNT,
-// MARKER_COUNT and PERFORMER_COUNT in server.py, all 100 for this reason.
+// MARKER_COUNT and PERFORMER_COUNT in server.py.
 const TOTAL = 100;
 const PAGE_SIZE = 40;
 
-// Which grid is under test, and the three things that differ between them.
-// `noun` appears in the count line and the end marker; `focus` is the prefix
-// of the focus-registry key (`video-7`, `marker-7`, `performer-7`). Everything
-// else about these three grids is the same shape — which is the finding that
-// made the migration worth doing.
-//
-// `focus` is not optional, including for the two strips. Both of them render
-// VideoCard — the carousel directly, coverflow behind its reflection — so both
-// register `video-<id>` and both need the prefix here. Leaving it off does not
-// fail loudly: `focusCard` builds the key `"undefined1"`, finds nothing, and
-// returns false for every card, so the walk lands zero and the paging checks
-// cascade red. They were declared that way until 2026-10-16, and the fourteen
-// checks below had therefore never once run. `V.focus` is asserted below rather
-// than trusted to the reader, because the failure is silent by construction.
-//
-// `mode` is pushed to the fake server before the first render. Only markers
-// needs one: its default reply is the Markers tab's two deliberate rows (the
-// markerfix fixture), so the paginated listing has to be asked for by name.
+// The grid under test: `noun` in the count line/end marker; `focus` is the
+// registry prefix (absent → "undefined1" and every walk check red). `mode` is
+// pushed before the first render; markers needs it for the two-row fixture.
 const VIEWS = {
   grid:       { kind: 'grid',  t: 'G', noun: 'videos',     focus: 'video-' },
   markers:    { kind: 'grid',  t: 'M', noun: 'markers',    focus: 'marker-',
                 mode: { markers: 'paged' } },
   performers: { kind: 'grid',  t: 'P', noun: 'performers', focus: 'performer-' },
-  // The one-column List mode. It deliberately keeps the grid's contract —
-  // `[role="grid"]`, one focus id per row, the same sentinel/end marker — so
-  // the same `runGrid` applies; the layout check below is the only thing that
-  // knows it is a list.
+  // One-column List keeps the grid's contract — `[role="grid"]`, one focus id
+  // per row, sentinel and end marker — so `runGrid` applies; only the layout
+  // check knows it is a list.
   list:       { kind: 'grid',  t: 'L', noun: 'videos',     focus: 'video-' },
   carousel:   { kind: 'strip', t: 'C', noun: 'videos',     focus: 'video-' },
   coverflow:  { kind: 'strip', t: 'F', noun: 'videos',     focus: 'video-' },
 };
 const V = VIEWS[VIEW] || VIEWS.grid;
 
-// Stated as a check rather than left to the reader, because the failure it
-// guards is silent: an absent or misspelled prefix does not throw, it makes
-// `focusCard` look up a key no card has. This is the one line that would have
-// said so, at the top of the run, instead of fourteen red lines at the bottom
-// all phrased as though the app were at fault.
+// Asserted rather than left to the reader: an absent prefix does not throw, it
+// makes `focusCard` look up a key no card has. This line replaces fourteen
+// cascading failures phrased as though the app were at fault.
 check(`${V.t}0 the view declares a focus prefix the walk can resolve`,
   !!V.focus, `focus = ${JSON.stringify(V.focus)}`);
 
@@ -110,9 +69,8 @@ const DEFAULT_CONTROLS = {
 };
 
 // ── Server-side request log ─────────────────────────────────
-// The rendered row count alone cannot tell "asked for page 2" from "asked
-// for page 2 twice", and the double-request is exactly the failure mode a
-// hook with a mis-wired in-flight guard produces.
+// The row count cannot tell "asked for page 2" from "asked twice" — the failure
+// mode a mis-wired in-flight guard produces.
 const log = () => fetch('/requests').then(r => r.json());
 const clearLog = () => fetch('/clear', { method: 'POST' });
 const setMode = (patch) => fetch('/mode', {
@@ -125,29 +83,19 @@ const setMode = (patch) => fetch('/mode', {
 const pagesOf = (rows) => rows.map(r => `${r.page}@${r.per_page}:${r.sort}:${r.direction}${r.q ? `:q=${r.q}` : ''}`);
 
 // ── Layout helpers ──────────────────────────────────────────
-// The grid's scroll container is `.gridWrapper { flex: 1; overflow-y: auto }`,
-// so it only scrolls if its parent is a height-constrained flex column. The
-// harness page has no app shell, so the driver supplies one.
+// `.gridWrapper { flex: 1; overflow-y: auto }` needs a height-constrained flex
+// column above it; the harness page has no app shell, so the driver supplies one.
 const scrollRoot = () => document.querySelector('[role="grid"]')?.parentElement;
 const rowCount = () => document.querySelector('[role="grid"]')?.children.length ?? -1;
-// The wrapper holds exactly the grid plus one tail element, and which tail
-// element it is *is* the end-of-list state: a sentinel while there may be
-// more, an end marker once every row is loaded. Counting children avoids
-// keying off CSS-module class names, which are hashed.
+// The wrapper holds the grid plus one tail element, and which tail it is is
+// the end-of-list state: a sentinel while more may exist, an end marker once
+// every row is loaded. Counting children avoids hashed class names.
 const tailIsSentinel = () => scrollRoot()?.children.length === 2 && !endMarkerShown();
 const endMarkerShown = () =>
   (scrollRoot()?.textContent || '').includes(`${TOTAL} ${V.noun} loaded`);
-// The count line (ListStats) is a *sibling* of the scroller, not a child of it,
-// so it is reached from the grid through scrollRoot().parentElement; it is
-// selected by its `data-list-stats` attribute because its class name is hashed.
-// It renders nothing at all when `total` is missing — that null is the silent
-// failure this check exists to catch, since a count line that never appears
-// looks exactly like a screen that was never meant to have one.
-//
-// `?? ''` and not a fallback selector: an earlier version queried the first
-// `<p>` under the page, which with the line absent matched the first card's
-// title — so the check reported "VERIFY scene 1" and only failed because that
-// string is not a count. A control experiment is what surfaced it.
+// The count line (ListStats) is a sibling of the scroller, reached via
+// `data-list-stats` (class names are hashed). It renders nothing without
+// `total`; a fallback selector once matched a card title, so `?? ''` is deliberate.
 const countLineText = () =>
   scrollRoot()?.parentElement?.querySelector('[data-list-stats]')?.textContent ?? '';
 
@@ -181,9 +129,8 @@ function Harness() {
 
   const common = { controls, objectFilter: null, searchQuery: search };
 
-  // The scene descriptor, i.e. the one ScenesPage hands the carousel for real —
-  // so these checks exercise the same `view` the app passes rather than a
-  // fixture built to suit the driver.
+  // The scene descriptor ScenesPage really hands the carousel, so these checks
+  // exercise the app's `view` rather than a fixture built to suit the driver.
   if (VIEW === 'carousel')   return <Carousel {...common} view={SCENE_VIEW} />;
   if (VIEW === 'coverflow')  return <VideoCoverflow {...common} />;
   if (VIEW === 'list')       return <ItemList {...common} view={SCENE_VIEW} onSelect={() => {}} />;
@@ -215,11 +162,9 @@ async function runGrid() {
     first[0]?.page === 1 && first[0]?.sort === 'created_at' && first[0]?.direction === 'DESC',
     JSON.stringify(first[0]));
 
-  // Only the list can answer these: the grid is 4 columns, so its rows sit
-  // beside each other. What is being tested is that the mode actually changed
-  // the *shape* rather than rendering the cards one per line by accident, and
-  // that the rows are the full width of the scroller rather than shrink-wrapped
-  // to their content.
+  // Only List can answer these: the grid is four columns. The mode must change
+  // the shape (rows stacked, full width), not render one card per line by
+  // accident or shrink-wrap each row.
   if (VIEW === 'list') {
     const rows = [...document.querySelectorAll('[role="grid"] > button')];
     const a = rows[0]?.getBoundingClientRect();
@@ -282,17 +227,8 @@ async function runGrid() {
   check(`${t}5 the list was replaced, not appended to`, rowCount() === PAGE_SIZE, `${rowCount()} rows`);
 
   // ── G9  a reset must not steal focus from where the user is ──
-  // The first card autofocuses so a freshly opened screen has a cursor. On a
-  // *reset* — a search keystroke, a sort, a filter — that is wrong when the
-  // user is somewhere else: it pulls the ring out of the search field (which
-  // closes the TV keyboard) or off the controls trigger they just used. Any
-  // non-<body> focus stands in for those here; the hook only asks whether the
-  // active element is <body>.
-  //
-  // A search is what makes the reset real: it replaces the rows, so the first
-  // card is a new component instance and its autofocus latch is unset. A sort
-  // alone can reuse the same card node, in which case nothing would try to
-  // take focus and the check would pass for no reason.
+  // A fresh screen autofocuses the first card, but a reset (search, sort,
+  // filter) must not steal it from the search field or controls trigger.
   const bystander = document.createElement('button');
   bystander.textContent = 'search stand-in';
   bystander.setAttribute('tabindex', '0');
@@ -319,24 +255,12 @@ async function runGrid() {
   await sleep(500);
 
   // ── A page that lands after a reset is dropped ──────────
-  // This is the requestId guard. Without it the old list's page 2 is
-  // appended to the new list, and the user sees 80 rows of two different
-  // orderings spliced together.
+  // Without the requestId guard the old list's page 2 splices into the new
+  // list. Only page 2 is delayed: a slow replacement would land last and hide it.
   //
-  // Only page 2 is delayed, and deliberately so: if the *replacement* list
-  // were slow too, its own reply would land last and overwrite the bad
-  // append, leaving a final row count that looks correct either way. The
-  // first version of this test did exactly that and passed against a hook
-  // with the guard deleted. Delay the stale reply, not the fresh one.
-  //
-  // Scenes only: `slow-page-2` is a mode on the findScenes handler, and the
-  // marker and performer handlers do not implement it — deliberately, since
-  // the guard being exercised here lives in usePagedList, which all three
-  // grids share by this point. Asking for a delay the server cannot give
-  // would make this check quietly vacuous on those two views, so it is
-  // skipped and *said* to be skipped rather than run and pass for nothing.
-  // `list` is a scene listing too, so the server's delay applies to it and the
-  // guard is exercised there rather than skipped.
+  // Scenes and List only: `slow-page-2` is a findScenes mode the marker and
+  // performer handlers lack, so those views say they skipped rather than run
+  // vacuously.
   if (VIEW !== 'grid' && VIEW !== 'list') {
     check(`${t}6 the late-page race is scene-only`, true,
       `skipped on ${VIEW}: the server delays findScenes only`);
@@ -357,12 +281,8 @@ async function runGrid() {
     rowCount() === PAGE_SIZE, `${rowCount()} rows (80 would mean it was appended)`);
 
   // ── G7  the reset must not wedge paging ──────────────────
-  // The reset clears items/page/loading but used to leave `loadingMore`
-  // alone. The in-flight page that the race above discarded reached its
-  // `finally` with a stale id and skipped `setLoadingMore(false)`, so the
-  // flag stayed true and every later `loadMore` returned at the guard —
-  // infinite scroll dead, spinner up, until the view remounted. The page
-  // that arrives here is the first one *after* the wedging reset.
+  // A reset used to leave `loadingMore` set, so the discarded page's `finally`
+  // skipped it with a stale id and every later loadMore hit the guard.
   await toBottom();
   await sleep(800);
   const afterRaceMore = await log();
@@ -371,17 +291,8 @@ async function runGrid() {
     `${rowCount()} rows; ${pagesOf(afterRaceMore)}`);
 
   // ── G8  a failed load-more is retried, then reported ─────
-  // The failure used to be invisible while rows existed (the error line only
-  // renders at zero rows), and `setLoadingMore(false)` re-armed the observer,
-  // which asked again immediately — one page-2 request after another, with
-  // nothing on screen to say why. The page is now retried automatically on a
-  // bounded budget — MAX_PAGE_ATTEMPTS (3) at RETRY_DELAY_MS (3000) apart —
-  // and the list stops there with the error visible. Asking again is a
-  // sort/filter change, i.e. a new request identity.
-  // A sort these earlier checks have not used yet. listService caches pages
-  // by request identity, and 'title' and 'rating' both have both pages in
-  // that cache by now — reusing either would load page 2 without a request
-  // and prove nothing about a *failed* request.
+  // MAX_PAGE_ATTEMPTS (3) at RETRY_DELAY_MS (3000) apart, then the list stops
+  // with the error visible; only a new sort asks again (pages are cached).
   scrollRoot().scrollTop = 0;
   window.__setSort('duration');
   await sleep(700);
@@ -403,14 +314,8 @@ async function runGrid() {
   await setMode({ findScenes: 'ok' });
 
   // ── B1  a page that adds no rows ends the list ───────────
-  // Stash's count and its rows can disagree — a scan in progress, a library
-  // shrinking under the user — and a page that returned none of the rows it
-  // promised used to advance the page counter anyway. The sentinel stayed on
-  // screen, so the observer asked for the next page, and the next: a listing
-  // that never fills and keeps requesting. The list must stop at the first
-  // page that adds nothing.
-  // 'updated_at' is a sort this driver has not used, so no cached page can
-  // stand in for the request.
+  // A page that added none of its promised rows used to advance the counter, so
+  // the observer asked forever; stop there. 'updated_at' keeps cache out.
   scrollRoot().scrollTop = 0;
   window.__setSort('updated_at');
   await sleep(700);
@@ -434,9 +339,8 @@ async function runGrid() {
 }
 
 // ── The carousel / coverflow: focus-proximity paging ───────
-// One driver for both: they page identically, and the difference between
-// them (coverflow also tracks whether focus is inside the rail at all) is
-// presentation.
+// One driver for both: they page identically; coverflow's extra focus-in-rail
+// tracking is presentation.
 async function runFocusWalk() {
   const t = V.t;
   await sleep(600);
@@ -444,11 +348,9 @@ async function runFocusWalk() {
   check(`${t}1 the hero shows the first row`,
     document.body.textContent.includes('VERIFY scene 1'));
 
-  // Walk the focus one card at a time toward the end. Stepping (rather than
-  // jumping) is required: only cards within 4 of the focused index are
-  // mounted, so the next card has to exist before it can be focused. The
-  // trigger fires when the focused index comes within LOAD_MORE_THRESHOLD
-  // (8) of the 40 loaded rows.
+  // Step one card at a time: only cards within 4 of the focused index are
+  // mounted, so the next must exist before it can be focused. The trigger
+  // fires within LOAD_MORE_THRESHOLD (8) of the 40 loaded rows.
   let landed = 0;
   for (let i = 0; i < 36; i++) {
     if (focusCard(String(i + 1))) landed++;
@@ -469,12 +371,8 @@ async function runFocusWalk() {
     JSON.stringify(rows[1]));
 
   // ── Walking to the very end must not page again ─────────
-  // The grid gets this for free — it unmounts its sentinel once the last
-  // short page lands, so there is nothing left to intersect. These views
-  // have no sentinel: the trigger re-runs on every focus change and can
-  // only be refused by the stop condition itself. That is why this check
-  // lives here and not on the grid (and why it stayed green when the stop
-  // was deleted and only the grid was tested).
+  // The grid unmounts its sentinel; the strip has none, so only the stop
+  // condition can refuse the trigger that re-runs on every focus change.
   for (let i = 36; i < 95; i++) {
     focusCard(String(i + 1));
     await sleep(35);
@@ -499,15 +397,8 @@ async function runFocusWalk() {
     document.body.textContent.includes('VERIFY scene 1'));
 
   // ── C6  a refused page is retried on a budget, not per focus step ─
-  // This is the strip's version of the grid's G8, and it is the one that
-  // bites: the trigger here is not an observer that has to notice a change,
-  // it is an effect that runs on every focus move and calls `loadMore`
-  // whenever the cursor is near the end. Without a failure budget, one
-  // refused page became one request per focus step, with nothing on screen
-  // to say why. The retry is scheduled from the hook's own timer — the focus
-  // churn in between must not re-fire it — so the request count is the
-  // budget, not the number of focus steps.
-  // A fresh sort ensures page 2 is not in listService's cache.
+  // The trigger is an effect on every focus move, so without a budget a refusal
+  // became one request per step. A fresh sort keeps page 2 out of the cache.
   await clearLog();
   window.__setSort('duration');
   await sleep(600);
@@ -540,16 +431,14 @@ document.body.style.margin = '0';
 const run = V.kind === 'strip' ? runFocusWalk : runGrid;
 
 (async () => {
-  // Before the render, so the first fetch already sees the fake endpoint —
-  // `runQuery` reads the settings store per request, but the request goes out
-  // from the mount effect, which React may flush before the next line.
+  // Before the render, so the first fetch sees the fake endpoint: `runQuery`
+  // reads settings per request, but the request leaves from the mount effect,
+  // which React may flush before the next line.
   setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
 
-  // Also before the render, and awaited. A view whose fixture is selected by
-  // server mode would otherwise race its own first request: the fetch leaves
-  // from the mount effect, and a `/mode` still in flight would land after it,
-  // so the driver would assert against the default reply while believing it
-  // had asked for the other one.
+  // Also before the render, and awaited: otherwise the mount effect's fetch
+  // races an in-flight `/mode` and the driver asserts against the default reply
+  // while believing it asked for the other one.
   if (V.mode) await setMode(V.mode);
 
   createRoot(root).render(<Harness />);

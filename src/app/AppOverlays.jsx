@@ -3,12 +3,10 @@
  *
  * Every overlay is a sibling of the content column, not a child of the page
  * that opened it, because each is opened from several pages and must outlive
- * the listing underneath. The order of the siblings is the stacking order,
- * and the comments below record why it is that order rather than another.
+ * the listing underneath. The sibling order is the stacking order; the
+ * comments below record why.
  *
- * Each prop group is `{ open/record, ...handlers }` — the state comes from
- * App's hooks, the handlers from the same places, and nothing is decided
- * here.
+ * Each prop group is `{ open/record, ...handlers }`; nothing is decided here.
  */
 
 import SceneDetailPage from '../pages/SceneDetailPage.jsx';
@@ -30,9 +28,8 @@ export default function AppOverlays({
   settings,
   exitPrompt,
 }) {
-  // Every long-press menu goes through one builder: scenes, markers, images
-  // and galleries differ in their rows but not in how they are drawn. See
-  // actionMenus.js for which rows each kind has.
+  // Every long-press menu goes through one builder; see actionMenus.js for
+  // which rows each kind has.
   const action = actionMenu.menu
     ? buildActionMenu(actionMenu.menu, {
       openPlayer: actionMenu.openPlayer,
@@ -45,9 +42,8 @@ export default function AppOverlays({
 
   return (
     <>
-      {/* Keyed on the scene id so opening a different scene remounts the
-          page instead of reusing the instance — otherwise its optimistic
-          detail state would carry over from the previous scene. */}
+      {/* Keyed on the scene id so opening a different scene remounts the page
+          instead of carrying over its optimistic detail state. */}
       {sceneDetail.scene && (
         <SceneDetailPage
           key={sceneDetail.scene.id}
@@ -71,10 +67,9 @@ export default function AppOverlays({
         />
       )}
 
-      {/* The image viewer, above the grid and below the player. It cannot be
-          open while a video plays — it is opened from the Images tab and the
-          player's action lives on a scene — so the order between these two is
-          a statement about intent rather than a case that arises. */}
+      {/* Above the grid, below the player. It cannot be open while a video
+          plays, so the order is a statement about intent, not a case that
+          arises. */}
       {imageViewer.viewer && (
         <ImageViewer
           items={imageViewer.viewer.items}
@@ -101,17 +96,15 @@ export default function AppOverlays({
         </PlayerErrorBoundary>
       )}
 
-      {/* The builder sits below Settings and the exit prompt in the tree so
-          that, should both ever be open, the more recent intent is on top.
-          It cannot open over a playing video — the action that opens it lives
-          in the controls bar, which the player covers. */}
+      {/* Below Settings and the exit prompt so a more recent intent is on
+          top. It cannot open over a playing video — the action that opens it
+          lives in the controls bar, which the player covers. */}
       {builder.open && (
         <FilterBuilder
           filterType={builder.filterType}
           title={`Filter ${builder.tab}`}
           // Seeded from whatever is applied now, so "edit the current filter"
-          // and "start from nothing" are the same gesture: the rows are there
-          // if there were any, and empty if there were not.
+          // and "start from nothing" are the same gesture.
           initial={builder.initial}
           initialName={builder.initialName}
           onApply={builder.onApply}

@@ -4,14 +4,10 @@ import styles from '../VideoPlayer.module.css';
  * The overlay-level status feedback: the skim flash, the buffering spinner and
  * the error state.
  *
- * Returns a fragment on purpose. These three are absolutely positioned against
- * the overlay and must sit *outside* `.controls` — that element fades to
- * opacity 0 when the rail hides itself, which would take the spinner and the
- * error message with it.
- *
- * The big ▶ is not here: it is the flexible middle of `.controls`, a layout
- * element rather than a status line, and moving it would change the nesting
- * its CSS depends on.
+ * Returns a fragment because these are positioned against the overlay and must
+ * sit *outside* `.controls`, which fades to opacity 0 when the rail hides and
+ * would take the spinner and error with it. The big ▶ is not here: it is the
+ * flexible middle of `.controls`, and moving it would change the CSS nesting.
  */
 export function PlayerStatus({ skimFlash, buffering, error, skipSeconds }) {
   return (

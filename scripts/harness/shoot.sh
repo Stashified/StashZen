@@ -10,9 +10,8 @@
 # app's own demo content, so no frame of this script touches a real library.
 #
 # Every image is validated after capture. A screenshot that silently came out
-# 1366x682 or blank is the failure mode this script exists to catch — the
-# first version of the harness measured the wrong viewport for weeks and every
-# check still passed.
+# 1366x682 or blank is the failure mode this script exists to catch — a
+# wrong-sized viewport passes every check without this guard.
 #
 # Usage: bash scripts/harness/shoot.sh [screen…]
 set -u

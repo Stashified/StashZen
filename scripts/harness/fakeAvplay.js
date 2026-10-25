@@ -2,23 +2,19 @@
  * fakeAvplay — a stand-in for `window.webapis.avplay` (and the TV audio API)
  * in the headless harness.
  *
- * The harness can prove structure — that no `<video>` exists when AVPlay opens,
- * that a refusal falls back and keeps its position, that a hide suspends and a
- * return restores — but it cannot decode anything, and the real engine only
- * exists on the TV. So the contract the backend code depends on is written
- * down here, in the same calls the Phase 0 probe measured, and the driver
- * asserts what the app did with them.
- *
- * What is deliberately faithful:
- *   - `getCurrentTime`/`getDuration` are milliseconds, `getState` is a string.
+ * The harness proves structure (no `<video>` when AVPlay opens, a refusal
+ * falls back and keeps its position, a hide suspends and a return restores),
+ * not decoding — the real engine only exists on the TV. The contract here
+ * mirrors the Phase 0 probe:
+ *   - `getCurrentTime`/`getDuration` are milliseconds, `getState` a string.
  *   - `prepareAsync` answers through callbacks, never a promise.
- *   - `restore()` is no-args; the three-argument form throws, exactly as this
+ *   - `restore()` takes no args; the three-argument form throws, as this
  *     panel's WebIDL did.
  *   - A refused codec arrives as `PLAYER_ERROR_CONNECTION_FAILED` after a
  *     short delay — the ambiguity the error classifier exists for.
  *
- * The clock is advanced by a real interval *and* by `advance(ms)`, so a test
- * can be deterministic without sleeping for a scene's length.
+ * The clock runs on a real interval and on `advance(ms)`, so tests are
+ * deterministic without sleeping for a scene's length.
  */
 
 const PLAYER_ERROR = {
@@ -45,9 +41,8 @@ export function installFakeAvplay({
   let listener = null;
   let timer = null;
   let lastTick = 0;
-  // While a `slowSeek` is running the engine is decoding the new position:
-  // the clock is frozen, exactly as the TV's is. It is what the coalescer
-  // must wait for instead of re-issuing the seek.
+  // During a `slowSeek` the engine decodes the new position and the clock is
+  // frozen, as on the TV; the coalescer must wait rather than re-issue.
   let seekHoldUntil = 0;
   let openUrl = '';
 
@@ -76,17 +71,15 @@ export function installFakeAvplay({
 
   function tick() {
     if (state !== 'PLAYING' || completed) {
-      // A paused or suspended engine's clock is stopped, so the wait must not
-      // be credited to the next playing tick. The probe measured this: the
-      // position does not advance while hidden (and `restore()` can even drift
-      // it, which is why the backend re-asserts the cached position).
+      // A paused or suspended clock is stopped, so the wait is not credited to
+      // the next playing tick: the position does not advance while hidden, and
+      // `restore()` can drift it — hence the backend re-asserts its cache.
       lastTick = 0;
       return;
     }
     const t = Date.now();
     if (t < seekHoldUntil) {
-      // A seek in progress: the position does not move until it lands, and
-      // the held time must not be credited to the next playing tick.
+      // Seek in progress: the position is frozen until it lands.
       lastTick = t;
       return;
     }
@@ -111,9 +104,8 @@ export function installFakeAvplay({
     getVersion: () => 'fake-7.0',
 
     open(url) {
-      // An attempt that throws is still an attempt: the failure modes assert on
-      // how many times the app asked, which is not the same as how many
-      // sessions were opened.
+      // An attempt that throws is still an attempt: openAttempts counts asks,
+      // which differs from sessions actually opened.
       calls.openAttempts.push(String(url));
       calls.videoPresentAtOpen.push(!!(typeof document !== 'undefined'
         && document.querySelector('video')));
@@ -136,9 +128,8 @@ export function installFakeAvplay({
       calls.prepareCalls += 1;
       state = 'PREPARING';
       setTimeout(() => {
-        // `failDirect` is the panel-generation case: the original file is
-        // refused, the HLS transcode is not. Models an older TV that plays
-        // fewer containers than the panel the probe measured.
+        // `failDirect`: the original file is refused, the HLS transcode is not
+        // — an older TV playing fewer containers than the probe's panel.
         const directRefused = mode.has('failPrepare')
           || (mode.has('failDirect') && !/\.(m3u8|mp4|webm)(\?|$)/i.test(openUrl));
         if (directRefused) {
@@ -191,8 +182,8 @@ export function installFakeAvplay({
       }
       const target = Math.max(0, Math.round(ms));
       if (mode.has('slowSeek')) {
-        // The seek takes longer than one settle window while the clock stays
-        // frozen. The player must wait for it, not re-issue it every window.
+        // The seek outlasts one settle window with the clock frozen; the
+        // player must wait, not re-issue every window.
         const wait = Number(win.__fakeSlowSeekMs) || 3000;
         seekHoldUntil = Date.now() + wait;
         setTimeout(() => {
@@ -204,9 +195,9 @@ export function installFakeAvplay({
         return;
       }
       if (mode.has('pauseOnSeek')) {
-        // The engine pauses to rebuffer a seek: the position has landed, but
-        // nothing plays again until play() is called. A player that reads
-        // PAUSED as a user pause never asks, and the scene stays frozen.
+        // The engine pauses to rebuffer a seek: the position lands, but nothing
+        // plays until play(). A player reading PAUSED as a user pause never
+        // asks and the scene stays frozen.
         positionMs = target;
         state = 'PAUSED';
         lastTick = 0;
@@ -214,8 +205,8 @@ export function installFakeAvplay({
         return;
       }
       if (mode.has('stuckSeek')) {
-        // Accepted and never finished: the clock freezes where it was and no
-        // callback ever fires. The player has to decide what to do about it.
+        // Accepted, never finished: the clock freezes and no callback fires;
+        // the player decides what to do.
         seekHoldUntil = Infinity;
         return;
       }

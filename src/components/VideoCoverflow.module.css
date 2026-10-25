@@ -1,7 +1,3 @@
-/* =========================================================
-   VideoCoverflow — 3D coverflow layout
-   ========================================================= */
-
 .wrapper {
   flex: 1;
   display: flex;
@@ -19,7 +15,6 @@
   --slot-w: 460px;
 }
 
-/* ── Hero ───────────────────────────────────────────────── */
 .hero {
   padding: 0 48px 16px;
   display: grid;
@@ -100,26 +95,24 @@
   color: var(--text-secondary);
 }
 
-/* ── Stage (3D viewport) ────────────────────────────────── */
 .stage {
   position: relative;
   flex: 1;
   width: 100%;
-  /* No overflow: hidden — would clip the video. The 3D cards fade
-     out naturally as they rotate; if they don't, clip a parent. */
+  /* No `overflow: hidden` — it would clip the video. The cards fade out as
+     they rotate; if they do not, clip a parent instead. */
 }
 
 .scene {
   position: absolute;
   inset: 0;
   perspective: 1400px;
-  transform-style: preserve-3d; /*flat is an option for better perf, but less accurate transforms*/
+  transform-style: preserve-3d; /* `flat` is faster but less accurate */
 }
 
-/* Each slot is anchored at the horizontal+vertical centre of the
-   stage. The inline transform composes: translateY(-50%) for
-   vertical centring, then translate3d for X/Z, then rotateY/scale
-   for the visual effect. */
+/* Anchored at the stage's centre. The inline transform composes:
+   translateY(-50%) for vertical centring, then translate3d for X/Z, then
+   rotateY/scale for the effect. */
 .slot {
   position: absolute;
   top: 38%;
@@ -133,25 +126,21 @@
   will-change: transform, opacity;
 }
 
-/* A box-shadow rather than `filter: drop-shadow()`. The two look the same
-   here — the card is an opaque rectangle, so there is no alpha shape for
-   drop-shadow to trace — but `filter` forces the element onto its own render
-   surface and runs a blur pass, and this one is re-done every frame while the
-   coverflow animates. It was the most expensive declaration in the file.
-
-   The shadow lands on the slot's own box, so it sits under the card and not
-   under `.reflection`, which is positioned outside it. */
+/* A box-shadow rather than `filter: drop-shadow()`: the card is an opaque
+   rectangle, so they look the same, but `filter` forces a render surface and a
+   blur pass re-run every frame while the coverflow animates — the most
+   expensive declaration in this file. It lands on the slot's own box, so it
+   sits under the card rather than under the out-of-flow `.reflection`. */
 .slotFocused {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
 }
 
-/* ── Reflection — mirrored thumbnail beneath the card ──── */
 .reflection {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  height: 56.25%;       /* 16:9 — matches card thumb area */
+  height: 56.25%;       /* 16:9, matching the card thumb */
   background-size: cover;
   background-position: center;
   transform: scaleY(-1);
@@ -169,7 +158,6 @@
   border-radius: 8px;
 }
 
-/* ── Floor gradient (sells the depth) ───────────────────── */
 .floor {
   position: absolute;
   bottom: 0;
@@ -186,7 +174,6 @@
   z-index: 1;
 }
 
-/* ── Loading more ───────────────────────────────────────── */
 .loadingMore {
   position: absolute;
   bottom: 16px;
@@ -212,7 +199,6 @@
   animation: spin 0.8s linear infinite;
 }
 
-/* ── State (loading / error / empty) ────────────────────── */
 .state {
   flex: 1;
   display: flex;

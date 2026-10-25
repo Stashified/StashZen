@@ -2,7 +2,6 @@ import styles from '../SceneDetailPage.module.css';
 
 const MAX_CHIPS = 8;
 
-// ── Chips ───────────────────────────────────────────────────
 export function Chips({ items, className }) {
   if (!items.length) return null;
   const shown = items.slice(0, MAX_CHIPS);

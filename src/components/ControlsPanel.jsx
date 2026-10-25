@@ -1,46 +1,29 @@
 /**
- * ControlsPanel — Configurable controls bar
+ * ControlsPanel — configurable controls bar.
  *
- * Sort dropdown supports BOTH legacy flat sortOptions AND new grouped
- * sortGroups. If sortGroups is provided, it takes precedence.
+ * Sort accepts legacy flat `sortOptions` or grouped `sortGroups` (which wins):
+ * `[{ group: 'Title', options: [{ value, label }] }]`.
  *
- * sortGroups shape: [{ group: 'Title', options: [{ value, label }] }]
+ * ## Zone: 'controls', with `crossZone` to open the way up
  *
- * ## Zone: 'controls' — kept, with `crossZone` to open the way up
+ * A zone is what Left/Right move within, so 'controls' keeps the bar's controls
+ * walkable in a row and the grid from stepping sideways into them — without it,
+ * Right from video-2 went to the mute toggle, 21px right and 166px up, beating
+ * video-3.
  *
- * The bar keeps a zone of its own, for the reason it always had one: a zone is
- * a set of elements Left/Right move within, so 'controls' keeps the bar's
- * controls walkable in a row while nothing in the grid can step sideways into
- * them. In the 4-column grid, with nothing guarding it, Right from video-2
- * went to the mute toggle, 21px to its right and 166px up (score
- * 21 + 1.5×166 = 269), beating video-3 at 276px right (276 + 1.5×4 = 282).
+ * The zone also made the bar unreachable from below: useKeyHandler adds
+ * CROSS_ZONE_PENALTY (100000) to any Up/Down candidate from another zone, so Up
+ * out of the first card row always landed on the nav rail. Every control here
+ * therefore passes `crossZone: true`, read off both candidate and mover — the
+ * mover half is not optional because a zone is symmetric, and Left from the
+ * Filter dropdown would do nothing otherwise.
  *
- * What that zone also did was make the bar unreachable from below: useKeyHandler
- * adds CROSS_ZONE_PENALTY (100000) to any Up/Down candidate from another zone,
- * so from the first card row the rail row above always won, however much
- * nearer the filter looked. Up out of the cards landed on the nav instead of
- * on the control it appears to point at, which is the thing the user asked to
- * have fixed.
+ * The directions that stay shut are the wrong ones: Right from a card goes to
+ * the next card, and from a rail row into the cards, not into the bar. The
+ * rail's mirror is `verticalOnly` (see useFocusable, NavRail.jsx).
  *
- * Every control here therefore passes `crossZone: true`. It is read off the
- * *candidate*, which waives that penalty and lets Up out of the first card row
- * reach the Filter dropdown (score 136, against 502 for the rail row nearest
- * above it). It is also read off the *mover*, and that half is not optional:
- * a zone is symmetric, so keeping the grid out of the bar sideways is the same
- * rule as keeping the bar out of the rail sideways, and Left from the Filter
- * dropdown would do nothing at all without it.
- *
- * The two directions that remain shut are the ones that are actually wrong.
- * Right from a card goes to the next card along, not to the mute toggle 166px
- * above it; Right from a rail row goes into the cards, not into the bar.
- *
- * The rail's mirror of this is `verticalOnly` — a different flag, because it
- * is a different fact. See useFocusable for both, and NavRail.jsx for the rail.
- *
- * The dropdown options keep a zone of their own (`dropdown-${parentId}`) and
- * carry neither flag. That one is unrelated and load-bearing for the same
- * reason it always was: an open menu is a closed set. `data-focus-trap`
- * confines it too, but the zone keeps Left/Right inside the list either way.
+ * Dropdown options keep their own zone (`dropdown-${parentId}`) with neither
+ * flag: an open menu is a closed set, and the zone keeps Left/Right inside it.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -53,15 +36,10 @@ import { flattenSortGroups } from '../utils/sortGroups.js';
 
 // ── Dropdown state + remote handling, shared by both dropdowns ──
 //
-// While a dropdown is open it owns the D-pad. The wrapper carries
-// `data-focus-trap`, which confines spatial navigation to it (useKeyHandler's
-// `focusScopeOf`). Before that, Down on the last option looked for a
-// candidate ahead, found none in this zone, and took one from the grid
-// instead — moving the user onto the scene cards while the menu sat open
-// over them.
-//
-// Back closes the dropdown rather than reaching App, where it would raise the
-// exit prompt behind an open menu.
+// While open a dropdown owns the D-pad: the wrapper's `data-focus-trap`
+// confines spatial nav to it (useKeyHandler's `focusScopeOf`). Without it, Down
+// on the last option took a candidate from the grid. Back closes the dropdown
+// rather than reaching App, which would raise the exit prompt behind it.
 function useDropdown(id) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -72,10 +50,9 @@ function useDropdown(id) {
     onEnter: () => setOpen(o => !o),
   });
 
-  // Closing unmounts whichever option held focus, so the browser drops focus
-  // to <body> — where useKeyHandler has neither a current element nor a zone,
-  // and horizontal nav matches nothing at all. Put focus back on the trigger.
-  // Guarded on a real open→closed transition so mounting doesn't steal it.
+  // Closing unmounts the focused option, dropping focus to <body> where
+  // useKeyHandler has no element or zone and horizontal nav matches nothing.
+  // Restore it to the trigger, guarded on a real open→closed transition.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (wasOpenRef.current && !open) triggerRef.current?.focus();
@@ -87,9 +64,9 @@ function useDropdown(id) {
     const el = wrapperRef.current;
     if (!el) return;
 
-    // Capture phase on the wrapper: stopping the event here prevents it
-    // reaching the target and bubbling back up to useKeyHandler's window
-    // listener, so App never sees this Back.
+    // Capture phase on the wrapper: stopping here prevents the event reaching
+    // the target and bubbling to useKeyHandler's window listener, so App never
+    // sees this Back.
     const handler = (e) => {
       if (e.key === 'Escape' || e.keyCode === TIZEN_BACK ||
           (e.key === 'Backspace' && !isTextInput(document.activeElement))) {
@@ -105,7 +82,6 @@ function useDropdown(id) {
   return { open, setOpen, triggerRef, focused, wrapperRef };
 }
 
-// ── Generic Mode dropdown (still flat, only a few options) ─
 function SelectControl({ id, label, options, value, onChange }) {
   const { open, setOpen, triggerRef, focused, wrapperRef } = useDropdown(id);
 
@@ -147,7 +123,6 @@ function SelectControl({ id, label, options, value, onChange }) {
   );
 }
 
-// ── Grouped Sort dropdown ─────────────────────────────────
 function SortGroupedControl({ id, label, groups, value, onChange }) {
   const { open, setOpen, triggerRef, focused, wrapperRef } = useDropdown(id);
 
@@ -217,7 +192,6 @@ function DropdownOption({ opt, selected, onSelect, parentId }) {
   );
 }
 
-// ── Toggle ─────────────────────────────────────────────────
 function ToggleBtn({ id, label, active, onClick }) {
   const { ref, focused } = useFocusable({
     id,
@@ -238,10 +212,9 @@ function ToggleBtn({ id, label, active, onClick }) {
   );
 }
 
-// A push button in the bar. Deliberately not `ToggleBtn` with `active={false}`:
-// that carries `aria-pressed`, which announces a toggle that can be un-pressed.
-// Opening the builder is an action, and the only thing it has in common with a
-// toggle is the styling.
+// Deliberately not `ToggleBtn` with `active={false}`: that carries
+// `aria-pressed`, announcing a toggle that can be un-pressed. Opening the
+// builder is an action and shares only the styling.
 function PanelButton({ id, label, onClick }) {
   const { ref, focused } = useFocusable({
     id,
@@ -261,7 +234,6 @@ function PanelButton({ id, label, onClick }) {
   );
 }
 
-// ── Stepper ────────────────────────────────────────────────
 function NumberStepper({ id, value, min, max, onChange }) {
   const { ref: decRef, focused: decFocused } = useFocusable({
     id: `${id}-dec`,
@@ -297,20 +269,18 @@ function NumberStepper({ id, value, min, max, onChange }) {
   );
 }
 
-// ── Main ───────────────────────────────────────────────────
 export default function ControlsPanel({
   controls,
   onChange,
   modeOptions = null,
-  // The view mode is per section and lives in the settings store, not in
-  // `controls` — so it arrives as its own value/onChange pair. Both fall back
-  // to the old `controls.mode` / `onChange({ mode })` when absent, which is
-  // what keeps the panels that were not part of that move (the performer
-  // detail page's scoped copy, and the harness drivers) working unchanged.
+  // View mode is per section and lives in the settings store, not `controls`,
+  // so it arrives as its own pair. Both fall back to `controls.mode` /
+  // `onChange({ mode })` when absent — that keeps the performer detail page's
+  // scoped copy and the harness drivers working unchanged.
   mode = null,
   onModeChange = null,
-  sortOptions = [],       // legacy flat list (still supported)
-  sortGroups = null,      // new grouped sort option
+  sortOptions = [],       // legacy flat list
+  sortGroups = null,      // grouped sort, takes precedence
   showOrder = true,
   showGridSize = true,
   filterOptions = null,    // [{ value, label }] or null to hide
@@ -324,7 +294,6 @@ export default function ControlsPanel({
   const changeMode = onModeChange ?? (v => onChange({ mode: v }));
   const showDivider = (a, b) => a && b;
 
-  // Use grouped if provided, else fall back to flat
   const hasSort = (sortGroups && sortGroups.length) || sortOptions.length;
 
   return (
@@ -399,10 +368,9 @@ export default function ControlsPanel({
             value={controls.filterId || ''}
             onChange={v => onChange({ filterId: v || null })}
           />
-          {/* Beside the dropdown, because it is the other half of the same
-              job: the dropdown picks a filter someone else made, this makes
-              one. Hidden on tabs with no filter mode rather than disabled —
-              there is nothing on those tabs for it to build. */}
+          {/* Beside the dropdown: that picks a saved filter, this makes one.
+              Hidden, not disabled, on tabs with no filter mode — there is
+              nothing there for it to build. */}
           {onBuildFilter && (
             <PanelButton id="ctrl-build-filter" label="Build…" onClick={onBuildFilter} />
           )}

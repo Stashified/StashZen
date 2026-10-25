@@ -1,15 +1,12 @@
 /**
- * SearchInput — Debounced text input for the controls panel.
+ * SearchInput — debounced text input for the controls panel.
  *
- * The input value reflects what the user is typing (snappy feedback),
- * but onChange fires only after a debounce window so we don't refetch
- * on every keystroke.
+ * The draft updates per keystroke for feedback; onChange fires after a
+ * debounce so the listing is not refetched on every key.
  *
- * The field is selected before it can be typed in — the D-pad lands on the
- * wrapper and Enter moves focus onto the input, which is what raises the
- * TV's on-screen keyboard. So Left/Right move the caret only once the field
- * is being edited; before that they navigate, as they do on any other
- * control. See useEditableField.
+ * The D-pad lands on the wrapper and Enter moves onto the input, raising the
+ * TV's keyboard, so Left/Right move the caret only while editing. See
+ * useEditableField.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -22,9 +19,8 @@ export default function SearchInput({ value, onChange, placeholder = 'Search…'
   const [draft, setDraft] = useState(value || '');
   const debounceRef = useRef(null);
 
-  // External value resets (e.g. tab change) should reset the draft — and the
-  // pending debounce with it. Left running, the timer fired the old tab's
-  // text once the new tab was up, searching the wrong listing for it.
+  // An external reset (a tab change) must clear the pending debounce too, or
+  // the timer fires the old tab's text into the new listing.
   useEffect(() => {
     clearTimeout(debounceRef.current);
     setDraft(value || '');
@@ -39,10 +35,8 @@ export default function SearchInput({ value, onChange, placeholder = 'Search…'
     id: 'ctrl-search',
     zone: 'controls',
     crossZone: true,
-    // Enter while editing flushes the pending search before the keyboard
-    // closes. Nothing waits on Enter any more — the field is debounce-driven
-    // and Enter's only job was shortcutting the 300ms window — so this just
-    // makes "search now" and "I'm done typing" the same gesture.
+    // Enter flushes the pending search before the keyboard closes, making
+    // "search now" and "I'm done typing" one gesture.
     onCommit: commit,
   });
 

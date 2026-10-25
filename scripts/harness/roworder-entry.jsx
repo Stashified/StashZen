@@ -1,57 +1,37 @@
 /**
  * roworder-entry.jsx — the D-pad row-order audit of every screen.
  *
- * The claim is narrow and geometric: on every screen, Left and Right move
- * focus through the items of one visual line, in the order the line is read.
- * It does not test Up/Down, which is about *between* rows (and is already
- * covered by the rail's declared edges in rail-entry) — it tests that a row,
- * once entered, is a row.
+ * The claim is geometric: Left and Right move focus through the items of one
+ * visual line, in reading order. Up/Down (between rows) belongs to the rail's
+ * declared edges in rail-entry.
  *
- * Why this needs a driver and not reading. The navigator scores candidates
- * from rectangles, so row order is usually correct *by construction* — and
- * usually is exactly the word that hides the exceptions. A control that is
- * visually in a row but registered in another zone is skipped sideways; a
- * wrapped action row's second line is to the left of where the first ends; a
- * card that is `verticalOnly` is an invisible hole in a row. None of those
- * throws, and each looks fine on a static screen. Walking the rows is the only
- * way to see them.
+ * A driver is needed because the navigator scores rectangles, so row order is
+ * usually correct by construction — and "usually" hides the exceptions: a
+ * control registered in another zone is skipped sideways, a wrapped row's
+ * second line sits left of where the first ends, and a `verticalOnly` card is
+ * an invisible hole. None throws, and each looks fine on a static screen.
  *
- * How a line is found. Visible registry entries (the navigator skips
- * `offsetParent === null` and disabled elements, so this does too) are
- * clustered by vertical overlap: two entries share a line when their rects
- * overlap by more than half the shorter one. That is deliberately not "same
- * top", because a chip and a button on one row can have different heights and
- * still be one line to the eye.
+ * A line is visible registry entries clustered by vertical overlap (more than
+ * half the shorter rect), not "same top": a chip and a button on one row can
+ * differ in height. The navigator skips `offsetParent === null` and disabled
+ * elements, and so does this.
  *
- * The exceptions the audit knows about, and why they are not failures:
+ * The known exceptions, none of them failures:
+ *  - A declared edge (`nextId[direction]`) replaces the geometric search; the
+ *    rail's Settings row is the case. The walk expects the declared target, so
+ *    a broken declaration still fails. A self-reference means blocked.
+ *  - A wrapped flex row is one logical line: at the end of a physical line,
+ *    Right continues at the next line's leftmost item. Grids stop at the edge.
+ *  - `verticalOnly` entries are left out rather than counted as holes.
+ *  - Lines with fewer than two participants are not rows to walk.
  *
- *  - A declared edge (`nextId[direction]`) replaces the geometric search by
- *    design. The rail's Settings row is the case: it is six hundred pixels
- *    below the tabs and the geometry confidently picks a grid card. The walk
- *    expects the declared target, so a *broken* declaration still fails.
- *  - A self-referencing declaration is a blocked direction (Down on Settings);
- *    focus must not move.
- *  - A wrapped flex row is one logical line rendered as several physical
- *    lines, and Right at the end of one continues at the left edge of the
- *    next. Expected order here is reading order: the next physical line's
- *    leftmost item. Grids are not wrapped rows and deliberately stop at the
- *    edge of their line.
- *  - Entries that are `verticalOnly` cannot be entered sideways; they are
- *    left out of the participant list rather than counted as holes.
- *  - Lines with fewer than two participants are not rows to walk. That is the
- *    rail (one item per line), a heading with a single button, and any
- *    section that has only one focusable.
+ * It cannot tell you whether a row *should* be in another order: if the layout
+ * is wrong, the D-pad agrees and the walk passes.
  *
- * What this cannot tell you: whether a row *should* have a different order.
- * It verifies the D-pad against the layout on screen; if the layout itself is
- * wrong (a card in the wrong column), both agree and the walk passes.
- *
- * Scope: the classic listings' first visible lines, the showroom shelves, both
- * detail pages, Settings and the exit prompt. Carousel and list modes are not
- * walked — a carousel is a single line by construction, and a list's rows have
- * one focusable each — and neither are dropdowns or the filter builder, whose
- * items are one column inside a dialog. Those were triaged, not forgotten;
- * see the notes below.
+ * Scope: classic listings' first visible lines, showroom shelves, both detail
+ * pages, Settings and the exit prompt. Carousel and list modes are single-line
+ * or one-focusable-per-row by construction, and dropdowns and the filter
+ * builder are one column inside a dialog.
  */
 
 import '../../src/index.css';
@@ -86,9 +66,9 @@ async function waitFor(pred, ms = 6000, step = 25) {
   return false;
 }
 
-// The navigator throttles held keys to 90 ms; a driver that outpaces it drops
-// presses and reads a stationary focus as a wrong answer. 150 ms is that
-// throttle plus room for the focus event to land.
+// The navigator throttles held keys to 90 ms; 150 ms is that throttle plus
+// room for the focus event to land. Outpacing it reads a dropped press as a
+// wrong answer.
 async function press(key) {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
@@ -112,9 +92,8 @@ const focus = (id) => {
 };
 
 // ── Reading the screen ─────────────────────────────────────
-// The navigator confines itself to the nearest dialog when one is open, so the
-// audit must too — otherwise a settings row would be compared against cards
-// behind the panel.
+// The navigator confines itself to the nearest dialog, so the audit must too —
+// otherwise a settings row is compared against cards behind the panel.
 function activeScope() {
   return document.querySelector('[role="dialog"]') || document.querySelector('[data-focus-trap]');
 }
@@ -133,10 +112,9 @@ function snapshot() {
   return items;
 }
 
-// Vertical-overlap clustering. Greedy over top-sorted entries, extending the
-// line's union as it goes: two entries join when they overlap by more than
-// half of the shorter one, which is "same line to the eye" rather than "same
-// top to the pixel".
+// Greedy vertical-overlap clustering over top-sorted entries: two join when
+// they overlap by more than half the shorter one — "same line to the eye",
+// not "same top to the pixel".
 function linesOf(items) {
   const sorted = [...items].sort((a, b) => a.r.top - b.r.top);
   const lines = [];
@@ -178,10 +156,9 @@ function declaredNext(cur, dir) {
   return target?.el && target.el.offsetParent && !target.el.disabled ? forced : undefined;
 }
 
-// Reading order inside a wrapped row: the next *physical* line's leftmost (or,
-// going left, rightmost) item. Derived from the visual lines rather than from
-// the navigator's score, so the driver is checking the layout and not checking
-// the algorithm against itself.
+// Reading order in a wrapped row: the next physical line's leftmost (or, going
+// left, rightmost) item. Derived from the visual lines, not the navigator's
+// score, so the driver checks the layout rather than itself.
 function wrapNext(cur, dir, items) {
   const container = wrapContainerOf(cur.el);
   if (!container) return null;
@@ -212,10 +189,8 @@ async function walkLine(pts, key, fails, items) {
     const want = pts[i + 1].id;
     const declared = declaredNext(cur, dir);
     // Reading-order continuation applies only at the END of a physical line.
-    // Asking for it mid-line is how the first version of this check reported
-    // the scene detail's perfectly good action row as broken: from Play it
-    // expected the second line's first item instead of the rating stepper
-    // beside it.
+    // Mid-line it would expect the next line instead of the neighbour beside
+    // it, reporting a good action row as broken.
     let expected = want;
     if (declared === null) expected = cur.id;
     else if (typeof declared === 'string') expected = declared;
@@ -235,30 +210,25 @@ async function walkLine(pts, key, fails, items) {
         return p ? `${i}@(${Math.round(p.r.left)},${Math.round(p.r.top)},${Math.round(p.r.width)}x${Math.round(p.r.height)})` : i;
       };
       fails.push(`${box(cur.id)} ${dir}→ ${got ?? 'nothing'} (expected ${box(expected)}; order ${pts.map(p => p.id).join(',')})`);
-      // Resynchronise on the expected item so one break does not paint the
-      // rest of the row as a cascade of failures.
+      // Resynchronise on the expected item so one break does not cascade.
       focus(expected);
     }
   }
 }
 
-// Walk at most this many visible lines per screen: the audit is about the
-// shape of a row, and the first few rows carry every card family and control
-// type on a listing. The cap keeps the whole driver inside the runner's
-// 100-second DONE window.
+// At most this many visible lines per screen: the first few rows carry every
+// card family and control type, and the cap keeps the driver inside the
+// runner's 100-second DONE window.
 const MAX_LINES = 4;
 
-// Every walkable row on screen: a visual line's members of one zone, left to
-// right, with single-item lines dropped *before* the cap below. The rail is
-// nine single-item lines down the left edge, and letting them spend the cap
-// would leave the shelf beside them unaudited — which is exactly what the
-// first run of this driver did.
+// Walkable rows: one zone's members of a visual line, left to right, with
+// single-item lines dropped before the cap. The rail is nine single-item lines
+// down the left edge and would otherwise spend the whole cap.
 function rowGroups(lines) {
   const groups = [];
   for (const line of lines) {
-    // A line can span zones only where a cross-zone element was placed there
-    // deliberately; the navigator refuses sideways moves across zones, so walk
-    // one zone's members at a time.
+    // The navigator refuses sideways moves across zones, so walk one zone's
+    // members at a time.
     const byZone = new Map();
     for (const it of line.items) {
       const zone = it.entry.zone ?? '(none)';

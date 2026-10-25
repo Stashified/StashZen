@@ -6,12 +6,9 @@ import { Choice } from './Choice.jsx';
 import { TextValue } from './TextValue.jsx';
 import styles from '../FilterBuilder.module.css';
 
-// ── One criterion row ─────────────────────────────────────
-//
 // The row head and remove button, the modifier, and the editor's controls.
-// What each editor renders is described by the registry (see editors/index.js)
-// and drawn by `renderPart` below; the row owns the D-pad chain that ties the
-// controls together.
+// What each editor renders comes from the registry (editors/index.js); the row
+// owns the D-pad chain that ties the controls together.
 export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntities }) {
   const { field, label } = desc;
 
@@ -29,48 +26,27 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
 
   const setInner = (patch) => onChange({ ...criterion, value: { ...inner, ...patch } });
 
-  // Both of these were plain <button>s, which on the TV means they could not be
-  // reached at all: spatial nav searches `registry`, and only `useFocusable`
-  // puts anything in it. A DOM `.click()` — what an off-device driver does —
-  // works either way, so the harness cannot see the difference; the check that
-  // can is an assertion on the registry itself (see filter-entry F10). Found
-  // by reading, 2026-10-16, and it had shipped: the entity picker was
-  // unreachable from the remote, which is most of what P2 added.
+  // Both must be `useFocusable`, not plain <button>: spatial nav only searches
+  // `registry`, and a DOM `.click()` works either way, so an off-device harness
+  // cannot catch the difference. The pick button's focusable lives here to keep
+  // registration order; the button comes from the registry's `pick` part.
   //
-  // The pick button's focusable stays here, next to the remove button's, so
-  // the two register in the order they always have; the button itself is
-  // rendered from a `pick` part by the editor registry.
-  // ── Keeping Left/Right on this line ──────────────────────
+  // `.rowBody` wraps, and geometry then reads Left as "towards whatever is on
+  // screen left" — a footer button. Two fixes are both needed: the row gets its
+  // own zone (Left/Right do not cross zones without `crossZone`), and it
+  // declares its own left-to-right order.
   //
-  // `.rowBody` is `flex-wrap: wrap`, so a row with more controls than fit
-  // stacks them onto a second line — and then the geometry reads Left from a
-  // wrapped control as "towards whatever is to the left *on the screen*",
-  // which is a footer button. Reported from the TV, 2026-10-17: from "This
-  // only", Left went to Cancel before it would reach "Choose…" on the same
-  // line.
-  //
-  // Two things fix it, and both are needed. The row gets a zone of its own,
-  // which shuts the horizontal edges to the footer outright (Left/Right never
-  // cross zones without `crossZone`). And the row declares its own order,
-  // left to right in the order it renders, because inside a wrapped row the
-  // geometry is still free to prefer something on the other visual line.
-  //
-  // The chain has to list exactly what was rendered, in DOM order — a missing
-  // entry is merely a direction that falls back to the geometry, but an entry
-  // naming a control that is not there (the entity picker on a field with no
-  // entity source, a second value on a range that is not BETWEEN) is the same
-  // fallback, so the two mistakes look alike on the TV. The editor's ids come
-  // from the registry, where `chainIds` sits in the same module as the
-  // `parts` it describes.
+  // The chain must list exactly what was rendered, in DOM order: a missing entry
+  // and an entry naming an absent control both fall back to geometry, alike on
+  // the TV.
   const rowZone = `fb-row-${field}`;
   const parts = editorParts(field, desc, criterion);
   const chain = [`fb-rm-${field}`];
   if (modifierOptions.length > 0) chain.push(`fb-mod-${field}`);
   chain.push(...editorChainIds(field, desc, criterion));
 
-  // At either end of the chain the direction falls through to the geometry,
-  // where the row's own zone leaves it with nothing sideways to find. That is
-  // the intended answer: the line is the unit, so focus stays on it.
+  // At either end the direction falls through to the geometry, where the row's
+  // own zone leaves nothing sideways to find — the line is the unit.
   const edgesOf = (id) => {
     const i = chain.indexOf(id);
     if (i < 0) return null;

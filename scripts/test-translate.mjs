@@ -5,14 +5,9 @@
  *   node scripts/test-translate.mjs
  *
  * `verify-filters.mjs` proves the translator against the *real* saved filters,
- * which is the stronger evidence — but the user's 24 filters only ever exercise
- * ten fields, and they are all string/int/multi criteria. The branches that
- * handle a Boolean field, a list-valued enum, nested AND/OR, or a field from a
- * newer Stash are therefore unreachable from that data, and would otherwise ship
- * as assertions rather than as tested code.
- *
- * No test framework: the project has none, and this needs nothing it doesn't
- * already have. Exits non-zero on the first failure.
+ * but those only exercise ten fields, all string/int/multi. The Boolean,
+ * list-valued enum, nested AND/OR and newer-Stash branches are unreachable from
+ * that data and would otherwise ship untested. Exits non-zero on first failure.
  */
 
 import { translateFilter, stripWrappingQuotes } from '../src/utils/filterTranslate.js';

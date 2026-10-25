@@ -1,18 +1,15 @@
 /**
  * PlaybackInfoPanel — the "stats for nerds" readout, toggled from the rail.
  *
- * Owns its own polling rather than taking rows from the player. The rows are
- * live — buffer, position and frame counts all move — and putting the 500ms
- * tick here keeps that re-render to this panel instead of the player, the
- * rail and everything else under it.
+ * Owns its own 500 ms polling so the re-render stays in this panel rather than
+ * the player and everything under it.
  *
- * Deliberately outside `.controls` in VideoPlayer, so it survives the rail
- * hiding itself: it is a readout the user turned on, not part of the
- * transport. Nothing inside it is focusable, so it adds no D-pad stop.
+ * Outside `.controls` in VideoPlayer so it survives the rail hiding: it is a
+ * readout the user turned on, not part of the transport. Nothing inside is
+ * focusable, so it adds no D-pad stop.
  *
- * `role="group"` rather than `status`: a live region at 2Hz would narrate the
- * buffer level to a screen reader forever. The values are the user's to read
- * when they want them.
+ * `role="group"`, not `status`: a live region at 2Hz would narrate the buffer
+ * to a screen reader forever.
  */
 
 import { useEffect, useState } from 'react';
@@ -34,11 +31,9 @@ export default function PlaybackInfoPanel({ media, video, sourceKind, src, engin
         src,
         sceneDuration: video?.durationSeconds,
         engine,
-        // Why Auto is not on AVPlay, appended to the Player row. Without it a
-        // fallback is indistinguishable from a bug on the TV. Only a browser
-        // row may carry it: when AVPlay refused a file it goes on to play the
-        // transcode itself, and "AVPlay · AVPlay refused this format" reads
-        // like a contradiction on the panel.
+        // Why Auto is not on AVPlay. Only a browser row carries it: AVPlay
+        // falls back to the transcode itself, and "AVPlay refused this format"
+        // on an AVPlay row would contradict itself.
         engineNote: engine === 'avplay' ? '' : engineNoteFor(engineStatus),
         codecs: {
           videoCodec: video?.videoCodec,
@@ -50,9 +45,8 @@ export default function PlaybackInfoPanel({ media, video, sourceKind, src, engin
     read();
     const timer = setInterval(read, POLL_MS);
     return () => clearInterval(timer);
-    // The scene fields are primitives, so the timer is rebuilt only when the
-    // thing being described actually changes — not on every queue object
-    // identity the player happens to hand over.
+    // Primitive fields only, so the timer is not rebuilt on every queue object
+    // identity the player hands over.
   }, [
     media, video?.id, video?.durationSeconds,
     video?.videoCodec, video?.audioCodec, video?.container,

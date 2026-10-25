@@ -1,32 +1,22 @@
 /**
- * ErrorBoundary — keeps one render error from turning the TV black
+ * ErrorBoundary — keeps one render error from turning the TV black.
  *
- * React unmounts the whole tree when a render throws and nothing catches it.
- * On a TV that is a black screen with no devtools, no reload gesture and no
- * way back except force-quitting the app from the launcher. This wraps the
- * tree (see main.jsx) and, on a render/lifecycle error, swaps in a screen
- * with two focusable actions.
+ * React unmounts the whole tree on an uncaught render throw, which on a TV
+ * means no devtools and no way out but force-quitting; this wraps it (main.jsx)
+ * and swaps in a screen with two focusable actions.
  *
- * Why a class component: `getDerivedStateFromError` has no hook equivalent,
- * and this is the one place the app still needs one.
+ * A class because `getDerivedStateFromError` has no hook equivalent. The
+ * fallback registers `useKeyHandler({})` itself: spatial navigation lives in
+ * App, the tree that just unmounted, so otherwise the D-pad would be dead on
+ * the one screen needing it.
  *
- * The fallback registers `useKeyHandler({})` itself. Spatial navigation lives
- * in App, which is exactly the tree that has just unmounted — without this
- * the D-pad would be dead on the one screen the user needs it on. This is the
- * same reason LockScreen registers it.
+ * Recovery: "Try again" remounts the failed tree fresh, losing tab, overlays
+ * and player position (saved settings and module-level state survive).
+ * "Restart" reloads the widget, the only cold start available; React state is
+ * lost, saved settings are not.
  *
- * Recovery:
- *   - "Try again" clears the error and re-renders the children. If the
- *     failure was transient (a bad response shape, a race), the app comes
- *     back — but React unmounted the failed tree, so every component
- *     remounts with fresh state: the current tab, open overlays and player
- *     position are lost. Saved settings (and module-level state) survive.
- *   - "Restart" reloads the widget, which is the cold start the TV offers no
- *     other way to perform. React state is lost; saved settings are not.
- *
- * Deliberately NOT a global error handler: an unhandled promise rejection
- * from a failed background fetch must not take over the screen. Those are
- * logged in main.jsx; only errors React can attribute to rendering land here.
+ * NOT a global error handler: an unhandled background-fetch rejection must not
+ * take over the screen. Those are logged in main.jsx.
  */
 
 import { Component } from 'react';
@@ -92,8 +82,8 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // A TV has no console, but the harness and desktop dev do, and the
-    // component stack is the difference between "it broke" and "this line".
+    // A TV has no console, but the harness and desktop dev do; the component
+    // stack is the difference between "it broke" and "this line".
     console.error('[StashZen] render error:', error, info?.componentStack || '');
   }
 

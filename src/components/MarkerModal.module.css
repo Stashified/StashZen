@@ -1,10 +1,7 @@
 /*
- * MarkerModal — see MarkerModal.jsx.
- *
- * The layout is four horizontal rows on purpose. The D-pad walks within a row
- * with ←/→ and steps between rows with ↑/↓, so every part of the form is one
- * press from every other, whatever the row lengths. A wrapping grid of 60 tags
- * would put the Save button ten presses away from the tag row's last line.
+ * Four horizontal rows on purpose: ←/→ walks within a row and ↑/↓ between
+ * them, so every part is one press from every other. A wrapping grid of 60
+ * tags would put Save ten presses from the tag row's last line.
  */
 
 .overlay {
@@ -44,7 +41,6 @@
   color: var(--text-secondary);
 }
 
-/* ── Row 1: timestamp ──────────────────────────────────── */
 .timeRow {
   display: flex;
   align-items: center;
@@ -63,7 +59,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Rows 2–3: tag row and label field ─────────────────── */
 .section {
   margin-bottom: 18px;
 }
@@ -81,10 +76,8 @@
 }
 
 /*
- * Distinguished by size, weight and the absence of the label's uppercase —
- * not by colour. The palette's next step down, `--text-muted` (#55556a on
- * this panel's #1c1c26), is about a 2.4:1 contrast ratio, which is not
- * readable from a couch; a hint that has to be squinted at is a decoration.
+ * Distinguished by size and weight, not colour: `--text-muted` (#55556a on
+ * this panel's #1c1c26) is about 2.4:1, unreadable from a couch.
  */
 .labelHint {
   font-size: 13px;
@@ -95,10 +88,9 @@
 }
 
 /*
- * One row that scrolls sideways. `overflow-x: auto` (rather than hidden) so
- * the browser can scroll it, which is what makes `useFocusable`'s
- * `scrollIntoView({ inline: 'nearest' })` keep the focused chip on screen as
- * the cursor walks a list that is wider than the panel.
+ * `overflow-x: auto`, not hidden, so the browser can scroll — which is what
+ * lets `useFocusable`'s `scrollIntoView({ inline: 'nearest' })` keep the
+ * focused chip on screen.
  */
 .tags {
   display: flex;
@@ -137,14 +129,12 @@
   font-weight: 600;
 }
 
-/* Two classes so the ring beats `.chipSelected` whatever order the bundler
-   emits them in — the same rule as the rail's buttons. */
+/* Two classes so the ring beats `.chipSelected` whatever the bundler's order. */
 .chip.focused {
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
 }
 
-/* ── Row 3: the label field ───────────────────────────── */
 .field {
   display: flex;
   align-items: center;
@@ -171,7 +161,6 @@
   color: var(--text-primary);
 }
 
-/* ── Row 4: buttons ───────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -218,9 +207,8 @@
 }
 
 /*
- * Reserved height, not a conditional element: this line is the failure
- * announcement, and the panel must not resize under the cursor when a write
- * fails — the button the user was about to press again would move.
+ * Reserved height, not a conditional element: the panel must not resize when
+ * a write fails and move the button the user is about to press again.
  */
 .error {
   min-height: 22px;

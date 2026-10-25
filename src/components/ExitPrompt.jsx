@@ -1,32 +1,25 @@
 /**
- * ExitPrompt — Modal asking the user to confirm app exit.
+ * ExitPrompt — modal asking the user to confirm app exit.
  *
- * Shown when the user presses Back at a top-level tab (Home, Markers,
- * Performers grid). On confirm, attempts to exit via tizen.application;
- * silently no-ops in browsers where exit isn't permitted.
+ * Shown on Back at a top-level tab. On confirm it exits via
+ * `tizen.application`; in a browser that silently no-ops.
  *
- * Spatial nav is trapped inside via the standard role="dialog" check
- * in useKeyHandler.
+ * Spatial nav is trapped inside by the standard `role="dialog"` check.
  */
 
 import { useBackKey } from '../hooks/useBackKey.js';
 import { ActionButton } from './tvActions.jsx';
 import styles from './ExitPrompt.module.css';
 
-// The local ActionButton moved to tvActions.jsx. Its `zone: 'exit-prompt'`
-// was hardcoded here and is now passed at each call site — the zone is what
-// keeps this prompt's two buttons out of the settings walk, so it cannot be
-// left to a default.
+// `zone: 'exit-prompt'` is passed at each call site rather than defaulted: it
+// keeps these buttons out of the settings walk, so it must not be accidental.
 
 export default function ExitPrompt({ onCancel }) {
-  // Capture-phase handler — Back/Esc cancels the prompt itself so
-  // the user doesn't immediately re-trigger it.
+  // Capture phase, so Back/Esc cancels the prompt rather than re-triggering it.
   useBackKey(onCancel);
 
   const handleExit = () => {
-    // Tizen: real exit. Browser: no-op (browsers won't let pages close
-    // themselves except those they opened). The user can press the
-    // hardware Exit button or close the tab manually.
+    // Tizen exits for real; browsers refuse to close pages they did not open.
     try {
       if (typeof window !== 'undefined' && window.tizen?.application) {
         window.tizen.application.getCurrentApplication().exit();

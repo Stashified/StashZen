@@ -1,12 +1,9 @@
 /**
- * VideoGrid — NxM grid of VideoCard with infinite scroll
+ * VideoGrid — NxM grid of VideoCard with infinite scroll.
  *
- * Watches `controls.sort`, `controls.order` —
- * any change resets the grid and refetches from page 1.
- *
- * The paging itself lives in usePagedList; this component supplies the
- * request and the trigger (a sentinel observed from inside the scroll
- * container).
+ * A change to `controls.sort` or `controls.order` resets and refetches from
+ * page 1. Paging lives in usePagedList; this supplies the request and the
+ * trigger (a sentinel observed inside the scroll container).
  */
 
 import { useCallback, useEffect, useRef } from 'react';
@@ -23,9 +20,8 @@ const PAGE_SIZE = 40;
 export default function VideoGrid({ controls, objectFilter, searchQuery, onVideoSelect, onVideoLongPress }) {
   const { sort, order, cols } = controls;
 
-  // Named, not inline: the same closure is handed to the play queue so that
-  // a queue started from this grid pages exactly the listing the grid is
-  // showing — same request, same listCache entries.
+  // Named, not inline: the play queue shares this closure, so a queue started
+  // here pages exactly the listing the grid shows.
   const fetchPage = useCallback(
     (page) =>
       fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
@@ -38,23 +34,20 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     items: videos, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be in the key
+    // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // Closing the player returns focus to the scene last viewed, which a
-    // "Play all" queue can have walked past this grid's loaded page. The
-    // restore pages the grid forward to find that card — see utils/focus.js.
+    // A restore by `video-<id>` pages forward past the loaded page — see
+    // utils/focus.js.
     focusPrefix: 'video',
   });
 
-  // Stable identity *and* current values: the getters read the latest rows
-  // from the card's handler, so a page append can render only the new cards
-  // instead of re-rendering every existing one. See useStableListing.
+  // Stable identity with live getters, so a page append renders only the new
+  // cards. See useStableListing.
   const listing = useStableListing({ items: videos, total, page, fetchPage });
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
 
-  // ── IntersectionObserver ─────────────────────────────────
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const root = scrollRef.current;
@@ -69,7 +62,6 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     return () => observer.disconnect();
   }, [loadMore]);
 
-  // ── Render ───────────────────────────────────────────────
   if (loading) return (
     <div className={styles.state}>
       <div className={styles.spinner} aria-label="Loading videos" />

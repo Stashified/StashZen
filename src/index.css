@@ -1,17 +1,9 @@
-/* =========================================================
-   STASHZEN — Global Styles
-   Designed for 10-foot UI / Tizen remote navigation
-   ========================================================= */
+/* Global styles for the 10-foot / Tizen-remote UI. */
 
-/* ── Inter, self-hosted (latin subset) ────────────────────
-   Runtime webfonts were a third-party request on every cold start, and on
-   a LAN-only network they fail silently — the whole UI drops to a system
-   sans face. Self-hosting makes the font part of the widget: no external
-   host, no flash of fallback type. The URL is relative so it survives the
-   `base: './'` build.
-
-   One variable file covers 100–900; Google serves the same latin woff2 for
-   every weight. The stylesheets use 300–700, all inside that axis. */
+/* Inter, self-hosted (latin subset): a runtime webfont is a third-party request
+   that fails silently on a LAN-only network, dropping the UI to a system sans.
+   The URL is relative so it survives `base: './'`; one variable file covers
+   100–900 (the stylesheets use 300–700). */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -28,48 +20,34 @@
 }
 
 :root {
-  /* Color Palette — Stash's own UI. Stash is Blueprint.js on its dark theme,
-     so these are the sampled ramp values rather than colours picked by eye;
-     the two apps are meant to sit together. Names are Blueprint's (`dark-gray2`,
-     `blue5`, …) where the value is taken straight from the ramp.
-     Ramp *step* is chosen by role, not by position: anything the viewer reads
-     or tracks takes the light end. A 10-foot viewing distance costs far more
-     legibility than a desktop monitor does, and this app's ring is a focus
-     affordance rather than decoration. */
+  /* Stash's Blueprint dark ramp, sampled so the two apps sit together; names
+     are Blueprint's where the value comes straight from it. Step is chosen by
+     role, not position: anything read or tracked at 10 feet takes the light
+     end, where legibility costs far more than on a desktop monitor. */
   --bg-base:        #202b33;  /* page               dark-gray2 */
   --bg-surface:     #293742;  /* rail, toolbars     dark-gray3 */
   --bg-elevated:    #394b59;  /* menus, inputs      dark-gray5 */
   --bg-card:        #30404d;  /* cards              dark-gray4 */
   --bg-card-hover:  #394b59;
 
-  /* The accent has three jobs and so has three tokens. Blueprint splits it the
-     same way: its dark theme fills with blue3 and draws focus with blue5, which
-     is why `--accent` is the *bright* step and not the mid one.
-     The two fills are one step apart because a focused fill must be *seen* to
-     lift. That forces the pair below blue4: white ink on blue3 is 4.6:1 but on
-     blue4 only 3.3:1, and the hover/focused rules inherit their ink from the
-     rule above them rather than restating it — so a fill light enough to need a
-     dark label cannot be swapped in without changing the label too. Keeping the
-     ink constant instead means the filled state is blue3, which is exactly what
-     Stash's own primary button is; only the *unfocused* state sits a step lower. */
+  /* The accent has three jobs, so three tokens. `--accent` is the *bright*
+     step for focus rings; the two fills sit below blue4 because the hover and
+     focused rules inherit their ink from the rule above, so a fill light enough
+     to need dark ink cannot be swapped in without changing the label too. */
+
   --accent:         #48aff0;  /* blue5 — focus rings/borders, accent text, bars */
   --accent-fill:    #106ba3;  /* blue2 — a solid fill at rest */
   --accent-fill-hi: #137cbd;  /* blue3 — the same fill, focused: Stash's own button */
   --accent-dim:     rgba(19, 124, 189, 0.25);  /* blue3 tint behind a chip */
 
-  /* The accent as channels, for the places that need it at an alpha the four
-     tokens above don't cover — focus-ring falloffs, gradient ends, glows.
-     These sites used to hold a literal, and every one of them was still the
-     *pre-Blueprint* accent (`rgba(79,142,247,…)`, a periwinkle) after 4.1
-     moved the palette: a stale literal cannot be caught by changing a token,
-     and nothing failed, because a slightly-wrong blue still looks like a blue.
-     The search field's focus ring was among them. Anything that wants the
-     accent at a new alpha takes it from here rather than typing a literal. */
+  /* The accent as channels, for alphas the four tokens above don't cover.
+     Anything wanting a new alpha takes it from here, not a literal: a stale
+     literal cannot be caught by changing a token, and a wrong blue still reads
+     as blue. */
   --accent-rgb:     72, 175, 240;   /* blue5 as channels */
 
-  /* The modal scrim, same reasoning: these were literals too, and every one
-     was the *old* palette's near-black (10,10,15). Blueprint's dark theme
-     darkens toward dark-gray1 (#182026) instead, which is a blue-grey. */
+  /* The modal scrim: Blueprint's dark theme darkens toward dark-gray1, a
+     blue-grey, not a near-black literal. */
   --scrim-rgb:      16, 22, 26;     /* dark-gray1 as channels */
 
   --text-primary:   #f5f8fa;
@@ -84,39 +62,27 @@
   --amber:          #d9822b;  /* orange3 */
   --rating:         #d9822b;  /* orange3 — star / score, as Stash draws it */
 
-  /* Focus ring — thick and clear for TV */
   --focus-ring: 0 0 0 3px var(--accent), 0 0 0 5px rgba(72, 175, 240, 0.25);
 
-  /* Typography */
-  /* Both slots point at Inter for the trial. Inter has no condensed cut, so
-     `--font-condensed` keeps its name to avoid churning the call sites; the
-     labels that relied on narrow letterforms are the ones to watch on a TV. */
+  /* Both slots point at Inter, which has no condensed cut; `--font-condensed`
+     keeps its name to avoid churning call sites. */
   --font-body:      'Inter', sans-serif;
   --font-condensed: 'Inter', sans-serif;
 
-  /* Spacing */
-  /* 208px, not the Barlow Condensed 176px: Inter is wider, and "PERFORMERS"
-     at 17px/600/0.05em measures ~123px where the narrower face fitted in 87.
-     Rail padding and row padding are trimmed to match, so the wider rail
-     spends most of its growth on the label rather than on air. */
+  /* 208px, not the narrow face's 176px: Inter is wider — "PERFORMERS" at
+     17px/600/0.05em measures ~123px versus 87. Rail and row padding are
+     trimmed so the growth goes to the label, not to air. */
   --sidebar-w: 208px;   /* the rail; the content column starts here */
 
-  /* Easing */
   --ease-tv: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ── OLED theme ──────────────────────────────────────────────
-   A second, user-selectable palette. An OLED panel switches a pixel fully off
-   when it is black, so the largest surface goes to true #000: deeper blacks
-   and less power. Everything that has to stay a *shape* lifts a few steps off
-   it — a card at pure black would vanish into the page. Text, accent and
-   status colours are deliberately unchanged: identity and focus affordance
-   should not change with the panel.
-
-   The base theme's borders are near-black and disappear here, so both border
-   tokens are restated as white at low alpha. The black literals in the
-   player, viewer and card overlays are intentionally NOT overridden: those
-   are scrims drawn over art, where black is correct in either theme. */
+/* OLED: an off pixel is true black, so the largest surface goes to #000 and
+   anything that must stay a *shape* lifts a few steps off it — a card at pure
+   black would vanish. Text, accent and status colours are unchanged (identity
+   and focus affordance do not depend on the panel). Borders restate as white at
+   low alpha, since the base's near-black ones disappear. Black literals in the
+   player/viewer/card overlays are scrims over art and are correct either way. */
 :root[data-theme='oled'] {
   --bg-base:        #000000;
   --bg-surface:     #080c0f;
@@ -127,8 +93,7 @@
   --border:         rgba(255, 255, 255, 0.10);
   --border-strong:  rgba(255, 255, 255, 0.22);
 
-  /* Darkens toward true black rather than the base theme's blue-grey, so a
-     modal over the black page does not read as a lighter rectangle. */
+  /* Darkens to true black so a modal over the black page is not a lighter rectangle. */
   --scrim-rgb:      0, 0, 0;
 }
 
@@ -153,23 +118,13 @@ html, body {
 }
 
 /*
- * ── AVPlay plane mode ───────────────────────────────────────
- *
- * The TV's native player draws behind the web page, not inside it, so the page
- * has to be see-through above it for the picture to be visible at all. The
- * attribute is set by VideoPlayer's layout effect and removed by that effect's
- * cleanup — on close, on engine fallback and on unmount — and nowhere else.
- *
- * Backgrounds, not `opacity`: the theme paints `html`, `body`, `#root` and the
- * app shell, and an ancestor's background is not overridden by a child's. Each
- * one is restated because the selectors that set them are one class deep and a
- * bare `html` rule would lose to `#root`'s.
- *
- * `visibility: hidden` rather than `display: none` for the rest of the shell:
- * it keeps layout (the player's geometry, and the focus rectangles restored
- * when it closes) exactly as it was, and a hidden element is not focusable, so
- * the D-pad cannot wander into a listing nobody can see. The player host is
- * the only thing left visible, and it stays a direct child of the shell.
+ * AVPlay draws behind the web page, not inside it, so the page must be
+ * see-through for the picture to show at all. VideoPlayer's layout effect is
+ * the only writer of the attribute. Backgrounds, not `opacity`: a child does
+ * not override an ancestor's background, so every themed surface is restated.
+ * `visibility: hidden` rather than `display: none` keeps the player's geometry
+ * and the focus rectangles restored on close, and a hidden element is not
+ * focusable, so the D-pad cannot wander into a listing nobody can see.
  */
 html[data-avplay-plane],
 html[data-avplay-plane] body,
@@ -183,28 +138,19 @@ html[data-avplay-plane] [data-app-shell] > :not([data-player-host]) {
 }
 
 /*
- * ── Lock cover ──────────────────────────────────────────────
- *
- * AppLock sets this on <html> the moment the app is hidden with a PIN set,
- * and removes it in the same task that commits either the keypad or the app.
- * A resumed Tizen app otherwise restores its last frame — the library — for
- * about half a second before the lock screen can mount; this makes that
- * frame the themed background instead. `visibility` for the same reasons as
- * the AVPlay rule above: layout and focus geometry are untouched, and an
- * element under the cover is not focusable.
+ * A resumed Tizen app repaints its last frame — the library — for about half a
+ * second before the lock screen can mount; this makes that frame the themed
+ * background instead. `visibility` for the same reasons as the AVPlay rule.
  */
 html[data-lock-cover] #root {
   visibility: hidden;
 }
 
 /*
- * The cover over the AVPlay plane.
- *
- * Hiding `#root` is enough for the web UI, but the TV's renderer draws behind
- * the page: with plane mode on, the transparent page is exactly what lets the
- * picture through, so a hidden shell would leave the scene playing under the
- * keypad. Repainting the page base masks the plane and nothing else — the
- * attributes make this rule more specific than the transparency above, and
+ * The cover over the AVPlay plane: with plane mode on, the transparent page is
+ * what lets the picture through, so hiding `#root` alone would leave the scene
+ * playing under the keypad. Repainting the page base masks the plane and
+ * nothing else — the attribute selectors outrank the transparency above, and
  * `--bg-base` keeps the OLED theme's true black.
  */
 html[data-lock-cover][data-avplay-plane],
@@ -212,17 +158,12 @@ html[data-lock-cover][data-avplay-plane] body {
   background: var(--bg-base);
 }
 
-/* ── Focus Styles ───────────────────────────────────────── */
-/* All focusable elements get a strong ring on TV. The ring itself comes from
-   each component's own `.focused` class — this only suppresses the browser's
-   default outline. (There used to be a `.focusable:focus` /
-   `[data-focusable]:focus` rule here as well; no component ever set either
-   selector, so it was dead.) */
+/* All focusable elements get a strong ring on TV; the ring comes from each
+   component's own `.focused` class, so this only suppresses the default outline. */
 *:focus {
   outline: none;
 }
 
-/* ── Scrollbars ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -233,7 +174,6 @@ html[data-lock-cover][data-avplay-plane] body {
   border-radius: 2px;
 }
 
-/* ── Utility ────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -253,23 +193,9 @@ button {
   color: inherit;
 }
 
-/* `body.is-navigating` deliberately has NO styling rules.
-   useKeyHandler still toggles the class on every keypress, because VideoCard
-   and MarkerCard read it as a plain JS signal — "the user is holding an
-   arrow, don't start a preview" — and that behaviour is unchanged. What used
-   to be styled here was the workaround for the expensive focus shadows:
-
-     body.is-navigating *                   { animation-duration: 0s !important }
-     body.is-navigating [class*="focused"]  { box-shadow: ... !important }
-
-   Both are gone. The universal selector invalidated style for the entire
-   document, twice per keypress (add the class, drop it 180ms later), and
-   `[class*="focused"]` is a substring attribute match that no engine can
-   fast-path — so a grid of several hundred elements paid that twice for
-   every press. The two `[class*=]` blocks were also byte-identical
-   duplicates.
-
-   The workaround only existed to hide those shadows mid-navigation. The ring
-   is now a single unblurred layer (see VideoCard.module.css and friends), so
-   there is nothing left worth hiding — the mechanism was deleted rather than
-   optimised. */
+/* `body.is-navigating` deliberately has NO styling: useKeyHandler sets it only
+   as a JS signal (VideoCard and MarkerCard skip previews while an arrow is
+   held). Do not style it — a universal selector here invalidated style for the
+   whole document twice per keypress, and `[class*="focused"]` is a substring
+   match no engine can fast-path. The ring is one unblurred layer, so there is
+   nothing worth hiding mid-navigation. */

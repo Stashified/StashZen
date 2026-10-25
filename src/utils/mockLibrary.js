@@ -1,20 +1,13 @@
 /**
  * mockLibrary.js — the catalogue Test mode pretends to have.
  *
- * Test mode's data was the only part of the app that still looked like
- * something else: a set of placeholder names and stock photos that shipped
- * with the initial import and had never been touched. Nothing about it was
- * wrong exactly — it was invented data either way — but it was the first thing
- * anyone sees when they flip the app to Test, and it was not this app's.
+ * A fictional archive: forty-eight restored shorts, six studios, sixty-odd
+ * people, markers named the way an editor names them. Every name was invented
+ * for this file — ordinary English, no real title, studio or person.
  *
- * So: a fictional archive. Forty-eight restored shorts, six studios,
- * sixty-odd people, and markers named the way an editor names them. All of it
- * is ordinary English and none of it is a real title, studio or person — every
- * name below was invented for this file.
- *
- * Kept in one module so the three generators agree with each other: a marker
- * can name the scene it belongs to, and a scene's id means the same thing
- * everywhere. See mockArt.js for the covers, which are drawn from these ids.
+ * Kept in one module so the three generators agree: a marker names the scene
+ * it belongs to, and a scene's id means the same thing everywhere. Covers are
+ * drawn from these ids in mockArt.js.
  */
 
 export const SCENE_TITLES = [
@@ -115,9 +108,7 @@ export function mockSceneRef(i) {
 }
 
 /** A distinct name for the i-th performer: twenty first names crossed with
- *  twenty last names, walked so that sixty people get sixty different
- *  names. (The old generator cycled twelve of each, so a sixty-card grid
- *  showed the same twelve people five times over.) */
+ *  twenty last names, walked so sixty people get sixty different names. */
 export function mockPersonName(i) {
   const first = FIRST_NAMES[i % FIRST_NAMES.length];
   const last = LAST_NAMES[(i * 7 + Math.floor(i / FIRST_NAMES.length)) % LAST_NAMES.length];

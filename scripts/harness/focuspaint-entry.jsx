@@ -2,34 +2,19 @@
  * focuspaint-entry.jsx — the paint-cost contract of a focus move in the
  * classic grids.
  *
- * Reported from the TV on 2026-10-18, after the Markers tab itself had been
- * fixed: "moving between scenes in markers tab is slow (in classic view mode)
- * — key press lag. List and carousel are fine. No such issues in regular
- * scenes mode." Then the two facts that located it: it appears at **6
- * columns** and it does **not appear in Test mode**. Test mode's covers are
- * small inline SVGs; Live mode's are 1920x1080 scene frames. So the per-press
- * cost scales with the *pixels already on screen*, which rules out the key
- * handler and the request layer, and points at paint.
+ * Key-press lag appeared only at 6 columns and only with Live covers
+ * (1920x1080 scene frames, not Test mode's small inline SVGs): the cost scaled
+ * with pixels on screen, pointing at paint. A focused card became
+ * `position: relative; z-index: 10` with an outside `box-shadow` ring, which
+ * invalidated the whole grid stacking context and re-rastered two dozen
+ * frames. The fix is `contain: content` per card plus an inset ring and no
+ * stacking change on focus.
  *
- * A focused card used to become `position: relative; z-index: 10` and to draw
- * its accent ring with an outside `box-shadow`. Changing an element from
- * static to positioned changes the grid's paint order, and the ring painted
- * over the neighbours. The engine answers that with an invalidation of the
- * whole grid stacking context, and re-rastering two dozen full-HD frames is
- * what the TV was spending the keypress on. The fix is `contain: content` on
- * each card plus an inset ring and no stacking change on focus — so the
- * invalidation stops at the card.
- *
- * WHAT THIS DRIVER CAN AND CANNOT SEE. It cannot time a paint, and it does not
- * try: this harness has no TV compositor, and a millisecond budget measured in
- * headless Firefox would be a number that silently stops meaning anything.
- * What it pins is the *structural* contract the cost turned on — focus must
- * leave `position` and `z-index` alone, the card must be paint-contained, and
- * the ring must be inset. Those are the properties that, if removed, restore
- * the expensive invalidation, and each has a red control.
- *
- * All four classic-grid cards are covered because they are four separate CSS
- * modules: a fix applied to one is a fix applied to one.
+ * This driver cannot time a paint — headless Firefox has no TV compositor.
+ * It pins the structural contract: focus must leave `position` and `z-index`
+ * alone, the card must be paint-contained, and the ring must be inset. Each
+ * has a red control. All four classic-grid cards are covered because they are
+ * four separate CSS modules.
  */
 
 import { createRoot } from 'react-dom/client';

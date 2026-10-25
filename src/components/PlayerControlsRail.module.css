@@ -5,8 +5,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  /* Sits below the time/hint row, against the bottom edge of the overlay —
-     the transport row most players put there. */
+  /* Below the time/hint row, where most players put the transport. */
   margin-top: 16px;
 }
 
@@ -25,12 +24,10 @@
 }
 
 /*
- * The two marker buttons are the first controls in the app to lean on
- * `disabled` for D-pad purposes (findBestCandidate skips a DOM-disabled
- * element, which is what keeps a dimmed button from becoming an absorbing
- * wall). They stay in the layout at full size so the rail's geometry doesn't
- * change with the scene — a rail that reflows when you advance would move the
- * cursor's neighbours out from under it mid-navigation.
+ * Disabled for D-pad purposes: `findBestCandidate` skips a DOM-disabled
+ * element, so a dimmed button cannot become an absorbing wall. The buttons
+ * stay at full size so the rail's geometry does not reflow and move the
+ * cursor's neighbours mid-navigation.
  */
 .railBtn:disabled {
   opacity: 0.3;
@@ -38,10 +35,8 @@
 }
 
 /*
- * `.railBtn.focused` and not `.focused` — the module is imported into a
- * component that also renders plain `focused` classes from useFocusable, and
- * two-class specificity keeps the ring winning over `.active` regardless of
- * which rule the bundler emits first.
+ * Two-class specificity so the ring beats `.active` whatever order the bundler
+ * emits; a bare `.focused` would also collide with useFocusable's class.
  */
 .railBtn.focused {
   background: var(--accent-fill-hi);
@@ -62,8 +57,8 @@
   color: #fff;
 }
 
-/* Keeps the four groups (transport · scenes · markers · output) readable
-   without labels. Purely decorative — aria-hidden in the JSX. */
+/* Separates transport · scenes · markers · output without labels; decorative,
+   and aria-hidden in the JSX. */
 .sep {
   width: 1px;
   height: 26px;

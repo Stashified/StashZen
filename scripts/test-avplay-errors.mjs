@@ -6,12 +6,10 @@
  *   node scripts/test-avplay-errors.mjs
  *
  * AVPlay reports a refused codec as PLAYER_ERROR_CONNECTION_FAILED, the same
- * fault family as a dropped stream. The phase is what distinguishes them.
- * Misclassifying a refusal as an engine fault disables AVPlay after two scenes
- * (the session kill switch); misclassifying a broken engine as a refusal makes
- * the player retry a dead backend forever. Both directions are pinned here.
- *
- * No framework.
+ * family as a dropped stream; the phase distinguishes them. Calling a refusal
+ * an engine fault disables AVPlay after two scenes (the session kill switch),
+ * and calling a broken engine a refusal retries a dead backend forever. Both
+ * directions are pinned here.
  */
 
 import {
@@ -121,9 +119,9 @@ check('a transient is not engine-level',
   check('an unknown file is not cached under a shared key',
     avplayFormatKey({ container: null, videoCodec: '', audioCodec: undefined }) === null);
 
-  // A partial triple is not coarser — it is a shared key. `mp4||` would be
-  // written by the first unprobed scene that failed and then read by every
-  // other unprobed scene, turning one refusal into a session-wide verdict.
+  // A partial triple is not coarser — it is a shared key. `mp4||` written by
+  // the first unprobed scene to fail is then read by every other, turning one
+  // refusal into a session-wide verdict.
   check('a known container and video but unknown audio is not a key',
     avplayFormatKey({ container: 'mp4', videoCodec: 'h264' }) === null);
   check('a known video and audio but unknown container is a key',

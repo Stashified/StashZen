@@ -1,25 +1,15 @@
 /**
- * useSpriteVtt — Fetch and parse a Stash sprite VTT file
+ * useSpriteVtt — fetch and parse a Stash sprite VTT file
  *
- * Stash exposes two paths per scene:
- *   - paths.sprite  → the JPG containing all the thumbnail tiles
- *   - paths.vtt     → a WebVTT file mapping timestamp ranges to tile rects
+ * `paths.sprite` is the tile sheet and `paths.vtt` maps time ranges to tile
+ * rects, encoded in the `xywh` URL fragment of each cue payload:
  *
- * Example VTT cue:
  *   00:00:00.000 --> 00:00:10.000
  *   sprite_abc123.jpg#xywh=0,0,160,90
  *
- * The tile rect is encoded in the `xywh` URL fragment.
- *
- * Returns:
- *   {
- *     ready:   boolean,
- *     getCue:  (seconds) → { x, y, w, h, src } | null,
- *     error:   string | null,
- *   }
- *
- * The returned `src` is resolved relative to the VTT URL — Stash sometimes
- * gives a relative filename inside the cue, sometimes a full URL.
+ * Returns `{ ready, getCue(seconds) → { x, y, w, h, src } | null, error }`.
+ * `src` is resolved relative to the VTT URL — Stash sometimes gives a relative
+ * filename, sometimes a full URL.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -62,10 +52,9 @@ function parseVtt(text, vttUrl) {
         const fileRef = payload.slice(0, hashIdx);
         const xywh = payload.slice(hashIdx + 6).split(',').map(n => parseInt(n, 10));
         if (xywh.length === 4 && xywh.every(n => !isNaN(n))) {
-          // Resolve the sprite URL relative to the VTT URL, then re-attach the
-          // API key: resolving a relative reference drops the VTT's own query
-          // string, so without this the tile sheet is fetched unauthenticated
-          // and comes back as Stash's login page.
+          // Resolving a relative reference drops the VTT's query string, so
+          // re-attach the API key or the tile sheet is fetched unauthenticated
+          // and returns Stash's login page.
           let src;
           try {
             src = withApiKey(new URL(fileRef, vttUrl).href);
@@ -94,11 +83,9 @@ function parseVtt(text, vttUrl) {
   return cues;
 }
 
-// Module-level cache so flipping between videos in Random doesn't re-fetch.
-// Bounded: a long channel-surfing session would otherwise hold every VTT it
-// has ever seen (plus its sprite rects) until the app restarts. Map preserves
-// insertion order, so deleting and re-setting on a hit makes the first key the
-// least recently used one to evict.
+// Module-level LRU so channel-surfing does not re-fetch and does not hold
+// every VTT ever seen. Map preserves insertion order, so a delete/re-set on a
+// hit evicts the least recently used.
 const vttCache = new Map(); // vttUrl → cues[]
 const MAX_CACHE_ENTRIES = 24;
 
@@ -132,11 +119,9 @@ export function useSpriteVtt(vttUrl) {
     }
 
     let cancelled = false;
-    // The cleanup below can run while the request is still open (channel
-    // surfing unmounts the player); aborting frees it instead of letting a
-    // body nobody wants finish arriving. The timeout is the same one every
-    // other request uses: a stalled media URL used to leave the skim bar
-    // waiting forever.
+    // The cleanup can run while the request is open (channel surfing unmounts
+    // the player); abort it rather than finishing a body nobody wants. The
+    // standard timeout stops a stalled media URL holding the skim bar forever.
     const controller = new AbortController();
     fetchWithTimeout(vttUrl, { signal: controller.signal }, DEFAULT_TIMEOUT_MS, res => {
       if (!res.ok) throw new Error(`VTT HTTP ${res.status}`);

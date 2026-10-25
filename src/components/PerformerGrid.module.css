@@ -1,6 +1,5 @@
-/* See the note on the same class in VideoGrid.module.css: the count line and
-   the scroller live in one column, and `min-height: 0` is what lets the
-   scroller shrink to the column instead of overflowing it. */
+/* As in VideoGrid: `min-height: 0` lets the scroller shrink to its column
+   instead of overflowing it. */
 .page {
   flex: 1;
   display: flex;
