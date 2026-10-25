@@ -175,10 +175,12 @@ h3 {
 }
 
 .hero h1 {
-  /* Four short lines instead of two long ones: the tagline is complete, so
-     the size drops to keep every line inside the 880px measure. */
-  font-size: clamp(2.6rem, 6vw, 4.8rem);
-  letter-spacing: -0.02em;
+  /* A tagline, not the page's loudest element: four lines at display size
+     pushed the rest of the fold out of view. Kept a step under the section
+     headings so the screenshots and features lead. */
+  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
 }
 .hero h1 span {
   color: var(--accent);
