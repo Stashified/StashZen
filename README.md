@@ -1,9 +1,8 @@
 # StashZen
 
-**Private media, made simple.**
+**A Stash client for Samsung Tizen TVs. Firm grip, steady strokes, and a happy ending in every scene.**
 
-A [Stash](https://github.com/stashapp/stash) client for Samsung Tizen TVs, driven entirely with
-the remote. It is a web app packaged as a Tizen widget (`.wgt`).
+Driven entirely with the remote, it is a web app packaged as a Tizen widget (`.wgt`).
 
 [Project page](https://stashified.github.io/StashZen/) ·
 [Releases](https://github.com/Stashified/StashZen/releases) ·
