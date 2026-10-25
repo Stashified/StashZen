@@ -14,6 +14,8 @@ the remote. It is a web app packaged as a Tizen widget (`.wgt`).
   <img src="docs/screenshots/scene-detail.png" alt="Scene detail with markers and play actions" width="49%">
 </p>
 
+<sub>Captured in Test mode on sample data, not a real library.</sub>
+
 [Install](#install-on-the-tv) · [First run](#first-run) · [Controls](#remote-controls) ·
 [Features](#features) · [Troubleshooting](#troubleshooting) · [Security](#security-notes) ·
 [Developer notes](#developer-notes)
