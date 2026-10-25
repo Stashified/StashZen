@@ -193,7 +193,11 @@ relaunches the widget. Note what you were doing and open an issue if it recurs.
 - **Media URLs carry the key in their query string.** Images, video, sprites and VTT files cannot
   send the `ApiKey` header, so StashZen appends `?apikey=…`. The key therefore appears in Stash's
   and any reverse proxy's logs, and over plain HTTP it is readable on the network. Beyond a
-  trusted LAN, put Stash behind HTTPS.
+  trusted LAN, put Stash behind HTTPS, and have the proxy redact the `apikey` parameter in its
+  logs rather than record full media URLs.
+- **The package allows every network origin.** `tizen/config.xml` declares `<access origin="*">`.
+  The Stash server is chosen on the TV and is unknown at build time, so the permission cannot be
+  narrowed in the package; the app only loads its own bundle.
 - **Release packages carry no credentials.** CI sets no `VITE_*` variables and refuses to package
   a bundle containing a key, so a fresh install starts on the Setup screen. A locally built
   package can contain your key; see [Building your own package](#building-your-own-package).
