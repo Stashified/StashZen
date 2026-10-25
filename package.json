@@ -1,7 +1,7 @@
 {
   "name": "stashzen",
   "version": "0.37.1",
-  "description": "StashZen — a Stash client for Samsung Tizen TVs, with D-pad navigation",
+  "description": "A Stash client for Samsung Tizen TVs. Firm grip, steady strokes, and a happy ending in every scene.",
   "license": "MIT",
   "type": "module",
   "engines": {
