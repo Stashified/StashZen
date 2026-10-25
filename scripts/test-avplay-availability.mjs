@@ -6,9 +6,8 @@
  *   node scripts/test-avplay-availability.mjs
  *
  * The load is attempted once per session and its result — present or absent —
- * is kept. "Absent" must be a normal answer: every scene on such a panel then
- * plays on the browser, and re-probing the WebAPI script per scene would put a
- * 1.5 s stall in front of each one.
+ * is kept. "Absent" is a normal answer: every scene then plays on the browser,
+ * and re-probing the WebAPI script per scene would add a measured 1.5 s stall.
  */
 
 import {

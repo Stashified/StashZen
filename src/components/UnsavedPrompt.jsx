@@ -1,27 +1,16 @@
 /**
  * UnsavedPrompt — "you changed settings and did not press Save".
  *
- * Raised from the Settings panel when Back / Esc / Cancel would close it with
- * a dirty draft. Reported from the TV, 2026-10-24: "I sometimes forget to go
- * press save" — backing out silently discarded the change, and the panel gave
- * no sign that anything had been lost.
+ * Raised when Back / Esc / Cancel would close the Settings panel with a dirty
+ * draft, which used to discard changes silently.
  *
- * ## Why it is a nested dialog
+ * It is a nested dialog: `focusScopeOf` returns the nearest dialog, so the
+ * D-pad is confined to these buttons while the settings controls stay mounted
+ * behind. "Keep editing" is focused so the safe answer is the default.
  *
- * The prompt renders inside Settings' own `role="dialog"` overlay as a second,
- * innermost one. `focusScopeOf` returns the nearest dialog ancestor, so the
- * app's D-pad handler confines its candidates to these three buttons while the
- * prompt is open; the settings controls behind it stay mounted and cannot take
- * focus. `autoFocus` on "Keep editing" puts the cursor there before the first
- * key is read.
- *
- * ## Keys
- *
- * This component deliberately registers no Back handler. Settings' own
- * capture-phase listener is registered first and, seeing the prompt open,
- * dismisses it instead of closing the panel — two sibling listeners on the
- * same target would both run, and a second dismissal here would race that one.
- * Back therefore means "keep editing", the same as the focused default.
+ * Deliberately no Back handler here: Settings' capture-phase listener is
+ * registered first and, seeing the prompt open, dismisses it instead. A
+ * second listener would race it, so Back means "keep editing".
  */
 
 import { useFocusable } from '../hooks/useFocusable.js';

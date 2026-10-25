@@ -1,14 +1,13 @@
-/* PinPad — shared by the lock screen and the settings panel.
-   Overlay conventions match ExitPrompt.module.css so the two modals
-   read as the same surface. */
+/* Shared by the lock screen and the settings panel; the overlay conventions
+   match ExitPrompt so the modals read as one surface. */
 
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 960;              /* above ExitPrompt's 950 */
-  /* Flat scrim, not a backdrop-filter blur — see the note in
-     SettingsPanel.module.css. The keypad sits over the loading screen, but
-     the same panel is reused inside Settings, which opens over the grid. */
+  /* Flat scrim, not a backdrop-filter blur (see SettingsPanel): the pad sits
+     over the loading screen, and the same panel opens over the grid inside
+     Settings. */
   background: rgba(var(--scrim-rgb), 0.9);
   display: flex;
   align-items: center;
@@ -54,7 +53,6 @@
   margin-top: 6px;
 }
 
-/* ── Entry dots ─────────────────────────────────────────── */
 .dots {
   display: flex;
   justify-content: center;
@@ -76,8 +74,8 @@
   border-color: var(--accent);
 }
 
-/* Reserves its line whether or not there is an error, so the grid does
-   not jump when one appears. */
+/* Reserves its line whether or not there is an error, so the grid does not
+   jump when one appears. */
 .error {
   min-height: 22px;
   text-align: center;
@@ -87,7 +85,6 @@
   margin-bottom: 14px;
 }
 
-/* ── Key grid ───────────────────────────────────────────── */
 /* Evenly sized cells on purpose: useKeyHandler scores nav candidates by
    geometry, so uniform boxes give the correct D-pad order for free. */
 .grid {
@@ -131,10 +128,9 @@
   box-shadow: var(--focus-ring);
 }
 
-/* The optional way out — rendered only when a caller passes onDecline, so the
-   lock screen and the settings section render exactly as before. Full width and
-   under the grid: it leaves the pad rather than entering a digit, so it must
-   not read as a thirteenth key. */
+/* The optional way out: rendered only when a caller passes onDecline, so both
+   existing screens are unchanged. Full width under the grid, because it leaves
+   the pad rather than entering a digit and must not read as a thirteenth key. */
 .decline {
   width: 100%;
   margin-top: 12px;

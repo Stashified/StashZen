@@ -3,12 +3,9 @@ import { useFocusable } from '../../hooks/useFocusable.js';
 import { TIZEN_BACK } from '../../utils/input.js';
 import styles from '../FilterBuilder.module.css';
 
-// ── Dropdown ──────────────────────────────────────────────
-//
-// Modelled on ControlsPanel's, which is not extracted — its version is scoped
-// to the controls bar by zone and carries neither of the overlay concerns
-// here. This one is inside a dialog, so it needs the same data-focus-trap that
-// keeps an open menu a closed set.
+// Modelled on ControlsPanel's, which is not extracted: that one is scoped to
+// the controls bar and needs neither overlay concern here. Inside a dialog this
+// needs `data-focus-trap` to keep an open menu a closed set.
 export function Choice({ id, label, value, options, onChange, disabled, renderLabel,
                   zone = 'filter-builder', nextId = null }) {
   const [open, setOpen] = useState(false);
@@ -22,8 +19,8 @@ export function Choice({ id, label, value, options, onChange, disabled, renderLa
     disabled,
   });
 
-  // Closing unmounts whichever option held focus, dropping focus to <body>
-  // where the D-pad has no zone at all. Put it back on the trigger.
+  // Closing unmounts the focused option, dropping focus to <body>. Put it back
+  // on the trigger.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (wasOpenRef.current && !open) ref.current?.focus();

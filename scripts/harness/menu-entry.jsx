@@ -39,10 +39,9 @@ const TOTAL = 100;
 
 const active = () => document.activeElement;
 
-// useFocusable listens on the *element*, and useKeyHandler on the window, so
-// every key has to be dispatched at the focused element and bubble from
-// there — dispatching at the window would miss the per-element handlers
-// entirely.
+// useFocusable listens on the *element*, useKeyHandler on the window, so every
+// key must be dispatched at the focused element and bubble from there — a
+// window dispatch misses the per-element handlers entirely.
 function press(key, keyCode, { repeat = false } = {}) {
   const el = active() || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', {
@@ -57,14 +56,9 @@ function release(key, keyCode) {
   }));
 }
 
-// Hold Enter the way a remote does: an initial keydown, then auto-repeat at
-// roughly 30 Hz, then a keyup.
-//
-// The repeats are the point. `withRepeatFlag: false` is the interesting case:
-// a browser sets `repeat: true` on auto-repeats, which lets handleKeyDown's
-// guard short-circuit on `e.repeat` alone — but a remote (or a browser) that
-// spams unflagged keydowns leaves the `longPressFired` term as the only thing
-// stopping a second timer from being armed behind the first.
+// Hold Enter the way a remote does: keydown, ~30 Hz auto-repeat, keyup. The
+// repeats are the point: unflagged keydowns leave `longPressFired` as the only
+// thing stopping a second timer from arming behind the first.
 async function holdEnter(ms, { repeatEvery = 90, withRepeatFlag = true } = {}) {
   press('Enter', 13);
   const end = performance.now() + ms;
@@ -123,10 +117,9 @@ const menuOpen = () => !!document.querySelector(MENU);
 const playerOpen = () => !!document.querySelector(PLAYER);
 const detailOpen = () => !!document.querySelector(DETAIL);
 
-// Every overlay a card press could raise. Assertions about *nothing*
-// happening have to name all of them: a check that watched only the menu and
-// the player stayed green while the control opened the detail page behind
-// them, which is the failure mode this whole suite would otherwise have.
+// Every overlay a card press could raise; assertions about *nothing* happening
+// must name all of them — watching only the menu and player stayed green while
+// the control opened the detail page behind them.
 const NO_OVERLAY = () => !detailOpen() && !menuOpen() && !playerOpen();
 const ONLY_MENU = () => menuOpen() && !detailOpen() && !playerOpen();
 const overlayState = () => `detail ${detailOpen()}, menu ${menuOpen()}, player ${playerOpen()}`;
@@ -167,13 +160,8 @@ const playingScene = () => {
 };
 
 // ── Stepping the queue by key ───────────────────────────────
-// The player's vertical keys are a two-stop ladder, so one press is not one
-// step in every state: with the seek bar up and no cursor on it, ↓ returns to
-// the buttons and only the second ↓ steps; with the bar hidden, ↓ steps
-// directly. `stepNext` presses, notices whether the cursor landed on the
-// rail's ⏯ (that is the reveal, not a step), and presses again only then. It
-// blurs afterwards so the next call starts from the same place this one did.
-// `stepPrev` is the mirror: from the buttons, ↑ reaches the seek bar first.
+// The vertical keys are a two-stop ladder: with the seek bar up, ↓ first
+// reveals the buttons; `stepNext` spots the rail's ⏯ and retries, `stepPrev` mirrors.
 const railFocused = () =>
   ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
 
@@ -200,9 +188,8 @@ async function stepPrev() {
 }
 
 // ── Long press ──────────────────────────────────────────────
-// The whole mechanism in one place: a tap must fire the short action once,
-// and only on keyup; a hold must fire the menu and nothing else; and moving
-// off the card mid-press must cancel both.
+// A tap fires the short action once and only on keyup; a hold fires the menu and
+// nothing else; moving off the card mid-press cancels both.
 async function runKeys() {
   await sleep(900);
   check('K1 the grid loaded', !!cardEl('1'), 'video-1 in the focus registry');
@@ -211,13 +198,9 @@ async function runKeys() {
   focusCard('1');
   press('Enter', 13);
   await sleep(150);
-  // Still held: nothing may have happened yet. This is the observable
-  // difference between the old instant-on-keydown behaviour and the new one.
-  //
-  // The predicate has to name *every* overlay a card's short action could
-  // open. An earlier version checked only the menu and the player, so the
-  // control that put the action back on keydown left this check green while
-  // the detail page was already up behind it.
+  // Still held: nothing may have happened yet — the observable difference from
+  // the old instant-on-keydown behaviour. The predicate must name every overlay
+  // a short action could open; watching only menu+player stayed green.
   check('K2 a held Enter does nothing while it is held', NO_OVERLAY(), overlayState());
 
   release('Enter', 13);
@@ -251,11 +234,8 @@ async function runKeys() {
   check('K3 the keyup after a hold is swallowed', ONLY_MENU(), overlayState());
 
   // ── A hold whose repeats are unflagged ───────────────────
-  // `e.repeat` is not something a remote is obliged to set, and when it is
-  // absent the only thing stopping a repeat from arming a second timer is the
-  // longPressFired term in handleKeyDown. Two timers means a second
-  // onLongPress 600ms later — which re-records lastMenuCardRef from whatever
-  // is focused *then* (a menu row), so the close can no longer find the card.
+  // A remote need not set `e.repeat`, leaving `longPressFired` as the only guard
+  // against a second timer — which re-records lastMenuCardRef from a menu row.
   press('Escape', 27);
   await sleep(300);
   focusCard('6');
@@ -340,9 +320,8 @@ async function runMenu() {
     (await requests()).length === 0, `${(await requests()).length} requests`);
 
   // ── Advancing walks the seeded listing ───────────────────
-  // The player opens with the seek bar up, so these go through the ladder's
-  // two stops (see stepNext/stepPrev); ↑ is its mirror. What is under test is
-  // the queue, not the key count.
+  // The player opens with the seek bar up, so these go through the ladder's two
+  // stops (see stepNext/stepPrev); what is under test is the queue, not keys.
   mediaEl()?.pause();
   await stepNext();
   await sleep(300);
@@ -356,9 +335,8 @@ async function runMenu() {
   check('M2 Up steps back', playingScene() === 6, `playing scene ${playingScene()}`);
 
   // ── Off the end of the loaded page, and on to the end of the listing ──
-  // 40 rows are loaded; walking past them is what forces the queue to
-  // extend, and the walk has to stay contiguous — a gap would silently drop
-  // scenes and a repeat would re-fetch one.
+  // 40 rows are loaded; walking past them forces the queue to extend, and the
+  // walk must stay contiguous — a gap drops scenes, a repeat re-fetches one.
   await clearLogs();
   // One press to return from the seek bar to the buttons; from there each ↓
   // is a step (the cursor stays on the rail through a step), so the 35
@@ -384,11 +362,8 @@ async function runMenu() {
   await sleep(500);
 
   // ── M3b: Back returns to the scene last viewed ───────────
-  // The walk left the player on scene 41 — three pages into the listing,
-  // while the grid behind it still shows page 1. One assertion therefore
-  // covers both halves of the report from the TV: the restored card is the
-  // scene the user was *on* (not scene 5, where Play from here started), and
-  // the restore paged the grid forward to a card it had never loaded.
+  // The walk ended on scene 41, three pages in, while the grid still shows page
+  // 1: the restored card must be scene 41 (not 5), and the grid must page to it.
   press('Backspace', 10009);
   await sleep(350);
   press('Backspace', 10009);
@@ -404,13 +379,8 @@ async function runMenu() {
     `card 40 ${!!cardEl('40')}, card 41 ${!!cardEl('41')}`);
 
   // ── M4: Back returns focus where the press came from ─────
-  //
-  // The menu's three Play actions open the player without going through the
-  // detail page, so nothing else in the app records a restore target for it.
-  // Without `handleVideoLongPress` doing so, the player's Back unmounts the
-  // overlay and focus falls to <body> — a D-pad with nowhere to move. Card 9
-  // is deliberate: it is not the card any earlier phase left in the restore
-  // ref, so a stale target cannot pass this.
+  // Menu Play opens the player without the detail page, so nothing else records
+  // a restore target and focus falls to <body>. Card 9 is not a stale target.
   focusCard('9');
   await holdEnter(900);
   await sleep(250);
@@ -418,10 +388,9 @@ async function runMenu() {
   press('Enter', 13);          // Play — the first row, already focused
   await sleep(900);
   check('M4 setup: Play from the menu opened the player', playerOpen(), playingTitle());
-  // The bar is up here — the player shows it on open — so the first Back is
-  // the layering press, not the close. Both are asserted: a single Back that
-  // closed the player would still leave the second check green unless the
-  // first one is watching the player.
+  // The bar is up on open, so the first Back is the layering press, not the
+  // close; both are asserted, or a single Back that closed the player would
+  // leave the second check green.
   press('Backspace', 10009);
   await sleep(400);
   check('M4 the first Back on a menu-launched player hides the bar, not the player',
@@ -485,15 +454,8 @@ async function runQueue() {
 }
 
 // ── The resume save ─────────────────────────────────────────
-// The one thing in this app that can write *wrong data* into the library
-// rather than merely misdraw a screen, and the queue is what puts it at risk:
-// every advance re-points `src`, and a media element whose src has just been
-// reassigned reports currentTime 0. A save read from the element at teardown
-// therefore tells Stash the user watched none of a scene they just finished.
-//
-// Every check below therefore asserts over *all* the saves for a scene, not
-// the first one. The bug this is all about writes its zero in a later save
-// than the correct one, so `find()` would report green for a broken build.
+// Every advance re-points `src`, and a fresh src reports currentTime 0, so a
+// teardown read says unwatched. Assert over all saves: the zero lands later.
 async function runSaves() {
   await sleep(900);
   await clearLogs();
@@ -540,9 +502,8 @@ async function runSaves() {
     `worst save ${worst(one)} vs the ${at.toFixed(1)}s it reached`);
 
   // ── Let the next one end on its own ──────────────────────
-  // The other advance path. `ended` fires while the outgoing scene is still
-  // the one loaded, so this one has to survive a save from a *different*
-  // moment than the teardown.
+  // The other advance path: `ended` fires while the outgoing scene is still
+  // loaded, so this save comes from a different moment than the teardown.
   const v2 = mediaEl();
   v2.currentTime = Math.max(1, (v2.duration || 60) - 1.5);
   await sleep(3000);
@@ -550,13 +511,9 @@ async function runSaves() {
   check('S3 the queue advanced on its own', playingScene() === 3, `scene ${playingScene()}`);
   const two = await savesFor('2');
   check('S3 the finished scene was saved', two.length > 0, JSON.stringify(two));
-  // A completed scene is *meant* to end on resume_time 0: Stash's Continue
-  // Watching is `resume_time > 0`, so the completion save clears the shelf
-  // entry (VideoPlayer's `completedRef` comment). What must not happen is a
-  // zero *before* that — the teardown-after-src-swap bug that made every save
-  // for the scene unwatched. Assert the shape, not "all saves > 1", which is
-  // the wrong contract and was never checked in a sweep because this runner
-  // was not registered. Deleting `completedRef`'s `? 0` turns this red.
+  // A completed scene is meant to end on resume_time 0 (Stash's Continue
+  // Watching is resume_time > 0), so only a zero *before* completion is wrong.
+  // Deleting `completedRef`'s `? 0` turns this red.
   check('S3 mid-scene saves kept the position, then completion cleared it',
     two.length > 0
       && two.slice(0, -1).every(s => s.resume_time > 1)
@@ -581,11 +538,8 @@ async function runSaves() {
     ids.length === 1 && ids[0] === '3', `saved ids this round: ${ids.join(', ')}`);
 
   // ── One write at a time; latest wins ─────────────────────
-  // The server holds each save for 1.2 s (`save: slow`) *after* recording it,
-  // so a second request sent in parallel would appear immediately. Seeing one
-  // row while the first write is in flight is therefore proof the client
-  // queued rather than overlapped — and `play_duration` is added server-side,
-  // so two overlapping deltas would double-count.
+  // The server records each save then holds it 1.2 s (`save: slow`), so one row
+  // while the first is in flight proves the client queued, not overlapped.
   await setMode({ save: 'slow' });
   await clearLogs();
   await openPlayAll();
@@ -612,7 +566,7 @@ async function runSaves() {
 
   // ── A failed save keeps what is owed ─────────────────────
   // `play_duration` is cumulative, so dropping the owed time on a rejection
-  // silently loses whatever was watched; the retry must carry both halves.
+  // silently loses whatever was watched; the retry carries both halves.
   await setMode({ save: 'fail' });
   await clearLogs();
   await sleep(2500);                       // ~2.5 s of playback owed
@@ -637,10 +591,8 @@ async function runSaves() {
     `saves for scene 1: ${JSON.stringify(retried)}`);
 
   // ── A late response must not touch the new scene ─────────
-  // The queue re-points the effect at the incoming scene while the outgoing
-  // scene's write is still unacknowledged. If the settling success stamped
-  // `lastSaved` or drained `played` for the *live* scene, the new scene would
-  // report the old position and lose its watch time.
+  // The queue re-points at the incoming scene while the outgoing write is still
+  // unacknowledged; a settling success must not stamp the live scene's state.
   await setMode({ save: 'slowlong' });     // 4 s, see server.py
   await clearLogs();
   const v6 = mediaEl();
@@ -672,11 +624,8 @@ async function runSaves() {
 }
 
 // ── Auto-repeat on an ordinary button ───────────────────────
-// A card's long press has its own guard for this, but every plain button in
-// the app is a useFocusable too, and a remote held down on one of those used
-// to run its action at ~30Hz. The rating stepper is the sharpest place to see
-// it: 7 stars and a second of held OK lands on 10 unless the repeats are
-// being ignored.
+// Every plain button is a useFocusable too, and a held remote used to run its
+// action at ~30 Hz; the stepper shows it: 7 stars + a 1 s hold lands on 10.
 async function runButtons() {
   await sleep(900);
 
@@ -729,16 +678,12 @@ setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'h
 
 createRoot(root).render(<App />);
 
-// Home is the showroom as of 0.15.0 and no longer holds a paged scene grid;
-// every runner below drives `video-N` cards, extension past the loaded page
-// and a 100-scene listing, all of which now live on the Scenes tab. Switch
-// there once, before the runner starts, and leave every id and page
-// expectation untouched — retargeting the ids to the showroom instead would
-// have quietly dropped the queue-extension coverage (a shelf never pages).
+// Home is the showroom since 0.15.0 with no paged grid; every runner drives
+// `video-N` cards and a 100-scene listing on the Scenes tab, so switch once
+// before the runner starts rather than retargeting ids (a shelf never pages).
 //
-// The settle before the focus is the same race filter-entry documents:
-// Home's own autoFocus timer runs after mount, and a focus set before it
-// fires gets pulled back.
+// The settle matches filter-entry: Home's autoFocus timer runs after mount and
+// pulls back a focus set before it fires.
 async function goToScenes() {
   await waitFor(() => registry.has('nav-scenes'));
   await sleep(400);

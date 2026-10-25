@@ -1,15 +1,11 @@
 /**
  * usePlayback — the player, the long-press menu, and every way into both.
  *
- * Every entry point produces the same shape — a queue plus the index to
- * start at — so the player has one code path rather than a "single video"
- * one and a "queue" one that can drift apart. See playQueue.js.
- *
- * The long-press menu is not scene-only any more: markers, images and
- * galleries each open one, and the record carries a `kind` so the overlay can
- * ask actionMenus.js for the right rows. The focus bookkeeping is shared —
- * whatever the kind, the menu remembers the card it opened on and the player
- * remembers where to return.
+ * Every entry point produces the same shape — a queue plus the index to start
+ * at — so the player has one code path. The long-press menu is not scene-only:
+ * markers, images and galleries each carry a `kind` so the overlay can ask
+ * actionMenus.js for the right rows. Focus bookkeeping is shared: the menu
+ * remembers the card it opened on, the player where to return.
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -27,18 +23,16 @@ export function usePlayback({
   sceneCardFocus,
   menuCardFocus,
 }) {
-  // The playback session: an ordered queue of scenes plus where to start in
-  // it. Null when nothing is playing. One scene is the ordinary case — the
-  // detail page's Play and a marker both open a queue of one; a longer queue
-  // is Play all / Play from here, and it is what the player's ↑/↓ walks.
+  // The playback session: an ordered queue of scenes plus where to start. Null
+  // when nothing is playing. One scene is the ordinary case; a longer queue is
+  // Play all / Play from here, which the player's ↑/↓ walks.
   const [playSession, setPlaySession] = useState(null);
   // The long-press menu: `{ kind, item, list, index }` for the card it opened
   // on. `kind` is 'scene' | 'marker' | 'image' | 'gallery'.
   const [actionMenu, setActionMenu] = useState(null);
-  // The queue row the player is showing *now*. A listing queue can be skipped
-  // through, and Back has to return to the card of the scene the user was
-  // actually on — not the one the session started from. The row, not its id:
-  // a marker queue names its card with `markerId` while it plays a scene.
+  // The queue row the player shows *now*: a listing queue can be skipped
+  // through, and Back returns to the card of the scene actually on screen. The
+  // row, not its id — a marker queue names its card with `markerId`.
   const lastItemRef = useRef(null);
 
   const openPlayer = (session) => {
@@ -55,8 +49,7 @@ export function usePlayback({
 
   // Stable pieces only: the useRestoreFocus() objects are rebuilt every
   // render, but their `remember` callbacks are not. Depending on the objects
-  // would give every card a new onLongPress identity on each App render and
-  // undo the memoization.
+  // would give every card a new onLongPress identity and undo memoization.
   const rememberMenuCard = menuCardFocus.remember;
   const rememberMain = mainFocus.remember;
   const openMenu = useCallback((menu) => {
@@ -65,11 +58,9 @@ export function usePlayback({
   }, [rememberMenuCard]);
 
   const handleVideoLongPress = useCallback((video, list, index) => {
-    // The menu's Play / Play all / Play from here open the player without ever
-    // going through `playSceneAt`, which is the only other thing that records a
-    // restore target for it. Without this the player's Back put focus on a
-    // stale control from an earlier overlay — or on <body>, leaving the D-pad
-    // with nothing to move from. The menu's own close uses the same element.
+    // The menu's Play actions open the player without `playSceneAt`, the only
+    // other recorder of a restore target; without this the player's Back lands
+    // on a stale control or <body>. The menu's own close uses this element.
     rememberMain(document.activeElement);
     openMenu({ kind: 'scene', item: video, list, index });
   }, [rememberMain, openMenu]);
@@ -110,15 +101,11 @@ export function usePlayback({
     setSelectedScene(video);
   };
 
-  // Play and a marker differ only in where playback starts. Both keep the
-  // same focus restore: when the player closes, focus goes back to the card,
-  // not to the detail page that is already gone.
-  //
-  // `resumeTime` is the detail page's freshly fetched value, when it has one.
-  // The card the queue is built from may be stale — the listing behind the
-  // page is not refetched after a save — and the player decides whether to
-  // raise the resume prompt from this item. A marker's `seconds` still means
-  // "start here", which suppresses the prompt for that press.
+  // Play and a marker differ only in where playback starts; both restore focus
+  // to the card when the player closes. `resumeTime` is the detail page's
+  // freshly fetched value — the card may be stale because the listing behind
+  // is not refetched after a save — and a marker's `seconds` means "start
+  // here", suppressing the resume prompt.
   const playSceneAt = (seconds = 0, resumeTime = null) => {
     mainFocus.remember(sceneCardFocus.targetRef.current);
     const scene = resumeTime == null
@@ -136,19 +123,13 @@ export function usePlayback({
     openPlayer(queueOf(queueItemFromMarker(marker), marker.seconds || 0));
   };
 
-  // Where a closed player puts the cursor. "Play all" / "Play from here" walk
-  // a listing, so the card to return to is the one for the scene on screen
-  // when Back was pressed — the user's last position, not the one the session
-  // started from. The session says which listing it walks: a scene queue
-  // restores that listing's scene card, and a marker queue (which plays
-  // scenes, one per marker row) restores the marker card that row came from.
-  // A single-scene Play sets neither — its card never changed — and keeps the
-  // element restore.
+  // Where a closed player puts the cursor: the card for the scene on screen
+  // when Back was pressed, not the one the session started from. A scene queue
+  // restores that listing's card, a marker queue its marker card; a
+  // single-scene Play sets neither and keeps the element restore.
   //
-  // The card's id prefix comes from the listing, because not every scene card
-  // is named `video-<id>`: Home's shelves register under
-  // `showroom-<shelf>-video-<id>`. Assuming the grid's prefix there made the
-  // restore poll for a card that could never appear. See ShowroomRow's `list`.
+  // The id prefix comes from the listing — not every scene card is
+  // `video-<id>`; Home's shelves use `showroom-<shelf>-video-<id>`.
   const handlePlayerClose = () => {
     const session = playSession;
     const last = lastItemRef.current;
@@ -159,15 +140,14 @@ export function usePlayback({
       : session?.restoreBy === 'marker' && last?.markerId != null
         ? `marker-${last.markerId}`
         : null;
-    // Falling back to the element the player remembered is the old behaviour,
-    // and the right answer when the last-viewed card no longer exists (the
-    // queue is not the grid's listing any more, or a resume point cleared the
-    // scene out of Continue Watching).
+    // Fall back to the element the player remembered when the last-viewed card
+    // no longer exists (the queue left the listing, or a resume point cleared
+    // the scene out of Continue Watching).
     const fallback = () => mainFocus.restore({ fallback: focusFirstControl });
     if (focusId) {
-      // Deferred like every overlay close, and then retried until the card
-      // exists: the queue can have walked past the grid's loaded page, and
-      // the registered listing pages forward to reach it — see utils/focus.js.
+      // Deferred like every overlay close, then retried until the card exists:
+      // the queue can have walked past the loaded page, and the listing pages
+      // forward — see utils/focus.js.
       setTimeout(() => focusByIdWhenReady(focusId, { fallback }), 50);
       return;
     }
@@ -189,9 +169,8 @@ export function usePlayback({
     playSceneAt,
     handleScenePlay,
     handleMarkerSelect,
-    // The overlay handlers need the element the menu opened from: an image
-    // or gallery the menu opens a viewer for must return focus to *that*
-    // card, and this is where it was recorded.
+    // The overlay handlers need the element the menu opened from, so an image
+    // or gallery viewer returns focus to *that* card.
     menuCardFocus,
   };
 }

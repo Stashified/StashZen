@@ -1,7 +1,6 @@
 /**
- * PerformersPage — renders the performer grid, or the carousel when this
- * section's mode is set to one. `mode` is a prop rather than `controls.mode`;
- * see ScenesPage's header for why.
+ * PerformersPage — the performer grid, or the carousel/list for this section's
+ * mode. `mode` is a prop rather than `controls.mode`; see ScenesPage's header.
  */
 
 import PerformerGrid from '../components/PerformerGrid.jsx';

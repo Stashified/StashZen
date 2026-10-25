@@ -3,22 +3,20 @@
  *
  * The loader is `entityService.js`; what is specific to images is here.
  *
- * An Image is one file. It has no `folder` (a Gallery has one) — this library
- * holds 31,251 of them, which is why the grid is 40 a page and appends only
- * when the user scrolls to it, and why nothing here preloads.
+ * An Image is one file and has no `folder` (a Gallery has one). This library
+ * holds 31,251 of them, which is why the grid is 40 a page, appends only on
+ * scroll, and nothing here preloads.
  *
- * Three URLs come back per row and they are three different sizes of the same
- * picture:
- *   - `paths.thumbnail` — what the grid tile draws
+ * Three URLs come back per row, three sizes of the same picture:
+ *   - `paths.thumbnail` — the grid tile
  *   - `paths.preview`   — a mid-size still
- *   - `paths.image`     — the full-resolution file, for the viewer
- * All three are absolute and unkeyed and need `withApiKey()`. The tile and the
- * viewer deliberately do not share a field: pulling full-resolution art for
- * every tile on screen is the one thing that would make this section slow.
+ *   - `paths.image`     — full resolution, for the viewer
+ * All are absolute and unkeyed and need `withApiKey()`. Tile and viewer
+ * deliberately do not share a field: full-res art for every tile would make
+ * this section slow.
  *
- * Test mode draws both sizes from the same seed, so the picture in the viewer
- * is the picture on the tile. `coverArt` is SVG, so it scales rather than
- * blurring — there is no second, larger drawing to make.
+ * Test mode draws both sizes from the same seed, so the viewer's picture is
+ * the tile's; `coverArt` is SVG and scales rather than blurring.
  */
 
 import { withApiKey } from './stashUrl.js';
@@ -85,14 +83,12 @@ const FIND_IMAGES_QUERY = `
 `;
 
 /**
- * A tile's caption. Stash titles are empty far more often for images than for
- * scenes — photographs commonly have no title at all — and an empty caption
- * left the grid looking like a bare wall of pictures. The file's own name is
- * the fallback, with only the extension dropped; see `filenameStem`.
+ * A tile's caption. Image titles are empty far more often than scene titles
+ * (photographs commonly have none), so the file's own name is the fallback,
+ * extension dropped — see `filenameStem`.
  *
  * The first visual file is the one the tile draws, so its name is the honest
- * one. A row with neither a title nor a file name stays null and the viewers
- * fall back to "Image" themselves.
+ * one. A row with neither stays null and viewers fall back to "Image".
  */
 export function normalizeImage(im) {
   const basename = im?.visual_files?.[0]?.basename ?? null;
@@ -125,13 +121,11 @@ export async function fetchImages(opts = {}) {
 }
 
 // ── One image, in full, for the viewer's info panel ───────
-// The listing query carries only what a tile draws, so the metadata overlay
-// asks for one row. It is read-only: the panel has no rating or counter
-// buttons, which is also why nothing here clears a cache.
-// `visual_files` is a union on Stash 0.31.1 (ImageFile | VideoFile); there is
-// no `files` field on Image at all. The inline fragment is what keeps this
-// query valid — asking for `files` fails the whole operation, which on the TV
-// would be the info panel's error state rather than a wrong number.
+// The listing query carries only what a tile draws, so the overlay asks for
+// one row. Read-only — no rating or counter buttons, hence no cache clearing.
+// `visual_files` is a union (ImageFile | VideoFile) and Image has no `files`
+// field; the inline fragment keeps the query valid — asking for `files` fails
+// the whole operation, which on TV is the panel's error state.
 const FIND_IMAGE_INFO_QUERY = `
   query FindImageInfo($id: ID!) {
     findImage(id: $id) {

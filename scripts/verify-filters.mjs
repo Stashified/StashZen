@@ -5,25 +5,22 @@
  *   node scripts/verify-filters.mjs            # report
  *   node scripts/verify-filters.mjs --verbose  # + the translated JSON per filter
  *
- * For each saved filter of each mode it sends the same query twice: once with
- * the stored `object_filter` forwarded verbatim (what the app did before
- * filterTranslate.js existed) and once translated. It reports the HTTP status
- * and row count of both, so the fix is measured rather than asserted.
+ * For each saved filter of each mode it sends the same query twice: the stored
+ * `object_filter` forwarded verbatim and the translated one. It reports the
+ * HTTP status and row count of both, so the fix is measured rather than
+ * asserted.
  *
- * For SCENES it then goes one step further and calls the app's *real*
- * `fetchVideos` with the raw stored filter — the actual query text, the actual
- * wiring in loadVideos, the actual normaliser. Its count must match the
- * hand-translated one; a mismatch means the wiring, not the translator, is
- * wrong. (videoService imports cleanly under Node: settings.js catches the
- * missing `localStorage`, and `import.meta.env` is simply undefined here.)
+ * For SCENES it also calls the app's *real* `fetchVideos` with the raw stored
+ * filter — real query text, loadVideos wiring and normaliser. Its count must
+ * match the hand-translated one; a mismatch means the wiring, not the
+ * translator, is wrong. (videoService imports under Node: settings.js catches
+ * the missing `localStorage`, and `import.meta.env` is undefined here.)
  *
- * Dev-only: lives in scripts/, is never imported by src/, and so never reaches
- * the .wgt bundle.
+ * Dev-only: never imported by src/, so never in the .wgt bundle.
  *
  * Only `count` is selected and only field *presence* is asserted — never a
- * title, path or any other scene metadata is printed. The translated JSON
- * printed by --verbose does contain the filter's own criteria (a folder path,
- * a tag id), which is why it is opt-in.
+ * title, path or other scene metadata. The translated JSON under --verbose does
+ * contain the filter's own criteria (a folder path, a tag id), hence opt-in.
  *
  * Exits non-zero if any translated filter fails, so it can gate a release.
  */
@@ -31,6 +28,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { parseDotenv } from './parse-dotenv.mjs';
 import { translateFilter } from '../src/utils/filterTranslate.js';
 import { setSettings } from '../src/utils/settings.js';
 import { fetchVideos } from '../src/utils/videoService.js';
@@ -43,11 +41,12 @@ function loadEnv() {
   const env = { ...process.env };
   if (env.VITE_STASH_URL && env.VITE_STASH_API_KEY) return env;
   try {
-    for (const line of readFileSync(resolve(HERE, '../.env.production'), 'utf8').split('\n')) {
-      const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=(.*)$/.exec(line);
-      if (m && !env[m[1]]) env[m[1]] = m[2].trim();
+    for (const [k, v] of Object.entries(
+      parseDotenv(readFileSync(resolve(HERE, '../.env.production'), 'utf8')),
+    )) {
+      if (!env[k]) env[k] = v;   // an explicit environment variable wins
     }
-  } catch { /* no .env.production — explicit env is the only source */ }
+  } catch { /* explicit env only */ }
   return env;
 }
 
@@ -58,9 +57,9 @@ if (!env.VITE_STASH_URL) {
 }
 const ENDPOINT = env.VITE_STASH_URL.replace(/\/+$/, '') + '/graphql';
 
-// Point the app's own settings store at the same server, so the end-to-end
-// check below goes through the real service code rather than a copy of it.
-// (persistToStorage's localStorage write is caught internally when absent.)
+// Point the app's own settings store at the same server so the end-to-end check
+// goes through the real service code. (persistToStorage's write is caught when
+// localStorage is absent.)
 setSettings({ stashUrl: env.VITE_STASH_URL, stashKey: env.VITE_STASH_API_KEY || '' });
 
 async function post(query, variables) {
@@ -122,8 +121,8 @@ async function probe(spec, filter) {
 }
 
 /**
- * Drive the app's real fetch path — loadVideos' query, its translateFilter
- * call, its normaliser — for one *raw* stored filter. Only field presence is
+ * Drive the app's real fetch path — loadVideos' query, translateFilter call
+ * and normaliser — for one *raw* stored filter. Only field presence is
  * asserted; no scene data is captured or printed.
  */
 async function probeApp(rawFilter) {
@@ -142,9 +141,9 @@ async function probeApp(rawFilter) {
 
 /**
  * Order-insensitive JSON. GraphQL input objects don't care about key order, and
- * the translator's own emission order legitimately differs between a first and a
- * second pass (the fixed-point step appends `depth`/`distance` after `modifier`).
- * Comparing raw JSON.stringify output would report that as a change.
+ * the translator's emission order differs between passes (the fixed-point step
+ * appends `depth`/`distance` after `modifier`); raw JSON.stringify would call
+ * that a change.
  */
 function canonical(v) {
   if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
@@ -203,9 +202,9 @@ for (const spec of MODES) {
     const translated = translateFilter(stored, spec.filterType);
     const after = await probe(spec, translated);
 
-    // Idempotency, asserted on real data rather than in a fixture: the services
-    // translate unconditionally, and PerformerDetailPage already hands them a
-    // GraphQL-shaped filter. A second pass must be a no-op.
+    // Idempotency on real data: the services translate unconditionally, and
+    // PerformerDetailPage hands them a GraphQL-shaped filter, so a second pass
+    // must be a no-op.
     if (canonical(translateFilter(translated, spec.filterType)) !== canonical(translated)) {
       notIdempotent++;
       console.log(`  !  ${f.name} — translating twice changes the result`);

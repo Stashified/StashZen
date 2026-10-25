@@ -4,11 +4,10 @@
  *
  *   node scripts/test-engine-controller.mjs
  *
- * Pins three rules that the source resolver depends on and that are easy to
- * get subtly wrong:
+ * Three rules the source resolver depends on:
  *
- *   - content refusals never disable AVPlay, and engine-level ones do so only
- *     after two *different* scenes
+ *   - content refusals never disable AVPlay; engine-level ones do so only after
+ *     two *different* scenes
  *   - the negative cache is per format and only for direct attempts
  *   - the status code reports the first reason that applies, in a fixed order
  */

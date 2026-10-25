@@ -1,22 +1,16 @@
 /**
  * FilterBuilder — compose a filter in the app instead of in Stash's web UI.
  *
- * WHAT IT WRITES. Stash's *stored* envelope, which is what `saveFilter`
- * persists and what `filterService` reads back — not the GraphQL shape.
- * Writing GraphQL shape here would produce a filter Stash's own web UI could
- * not open, and `filterTranslate` converts on the way out at query time
- * anyway. The four envelopes are documented in filterTranslate.js's header;
- * `blankCriterion` and `seedCriterion` in `filterBuilder/criterionDraft.js`
- * are the only places in this app that build them.
+ * Writes Stash's *stored* envelope (what `saveFilter` persists), not the
+ * GraphQL shape: GraphQL shape here would produce a filter Stash's own web UI
+ * could not open. `criterionDraft.js` is the only builder of these.
  *
- * Everything about *which* fields exist, what editor each needs and which
- * modifiers are legal comes from `filterCriteria.js` — see the note there on
- * why nothing in this path enumerates fields.
+ * Fields, editors and legal modifiers all come from `filterCriteria.js`; see
+ * the note there on why nothing in this path enumerates fields.
  *
- * THREE LEVELS OF OVERLAY, AND THE OUTERMOST IS THIS ONE. FieldPicker and
- * EntityPicker render as DOM children, never through a portal, because
- * `focusScopeOf` returns the *nearest* enclosing `role="dialog"` and a
- * portalled child would escape to <body>. See EntityPicker's header.
+ * FieldPicker and EntityPicker render as DOM children, never through a
+ * portal: `focusScopeOf` returns the nearest enclosing `role="dialog"`, and a
+ * portalled child would escape to <body>.
  */
 
 import { useMemo, useState } from 'react';
@@ -32,7 +26,6 @@ import { FieldPicker } from './filterBuilder/FieldPicker.jsx';
 import { NamePrompt } from './filterBuilder/NamePrompt.jsx';
 import { useBuilderBack } from './filterBuilder/useBuilderBack.js';
 
-// ── Main ──────────────────────────────────────────────────
 export default function FilterBuilder({
   filterType,
   title = 'Filter',
@@ -45,9 +38,8 @@ export default function FilterBuilder({
   const descs = useMemo(() => criteriaFor(filterType), [filterType]);
   const byField = useMemo(() => new Map(descs.map(d => [d.field, d])), [descs]);
 
-  // Ordered, so a row does not jump to the top when its value changes.
-  // Seeded through `seedCriterion`: `initial` is the applied working filter,
-  // which may still be in GraphQL shape (see the helper).
+  // Ordered, so a row does not jump when its value changes. Seeded through
+  // `seedCriterion` because `initial` may still be in GraphQL shape.
   const [order, setOrder] = useState(() => Object.keys(initial || {}));
   const [criteria, setCriteria] = useState(() => {
     const seeded = {};
@@ -64,39 +56,27 @@ export default function FilterBuilder({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  // Declared here rather than next to the picker it feeds, because the Back
-  // guard below reads it: `picking` alone would arm the guard for a criterion
-  // that renders no picker, standing Back down with nothing on screen.
+  // Read by the Back guard below; `picking` alone would arm the guard for a
+  // criterion that renders no picker.
   const pickingDesc = picking ? byField.get(picking) : null;
 
-  // A field present in a saved filter but absent from the schema snapshot would
-  // be dropped silently. Keep it and say so, rather than letting the user's
-  // filter quietly lose a condition on the round trip.
+  // A field in a saved filter but absent from the schema snapshot would be
+  // dropped silently. Keep it and say so rather than lose a condition.
   const unknown = order.filter(f => !byField.has(f));
 
-  // The Back guard — THE GUARD IS LOAD-BEARING, and the reason is ordering
-  // rather than taste. See useBuilderBack, which explains why its listener has
-  // to be registered before the pickers' and why it must never re-register.
-  // Called here, before the focusables, at the position the guard has always
-  // occupied.
-  //
-  // `open` mirrors what is actually rendered, deliberately down to the
-  // `pickingDesc?.entity` check: a multi-valued criterion with no entity
-  // source renders no picker, and a guard armed on `picking` alone would
-  // stand Back down with nothing on screen.
+  // The Back guard is load-bearing, and the reason is ordering: see
+  // useBuilderBack for why its listener must register before the pickers' and
+  // never re-register. `open` mirrors what is actually rendered down to the
+  // `pickingDesc?.entity` check, or Back would stand down with nothing shown.
   const rootRef = useBuilderBack({
     open: Boolean(adding || naming || (picking && pickingDesc?.entity)),
     onClose,
   });
 
-  // Closing any of the nested layers unmounts whatever held focus, and focus
-  // drops to <body> — the D-pad then has no zone and every horizontal press
-  // is rejected. Put it back on a named control, after the commit that
-  // mounts it. Same 50 ms the autofocus timer uses to let the DOM settle.
-  //
-  // `document.contains` rather than `isConnected`: this is the same check the
-  // browser makes before honouring `.focus()`, and the target may have been
-  // removed by the very update being committed.
+  // Closing a nested layer unmounts whatever held focus, dropping it to <body>
+  // where the D-pad has no zone. Restore it after the commit that mounts the
+  // target; 50 ms matches the autofocus timer. `document.contains` is the same
+  // check the browser makes before honouring `.focus()`.
   const restoreFocus = (id) => {
     setTimeout(() => {
       const el = registry.get(id)?.el;
@@ -108,17 +88,15 @@ export default function FilterBuilder({
     setCriteria(prev => ({ ...prev, [desc.field]: blankCriterion(desc) }));
     setOrder(prev => (prev.includes(desc.field) ? prev : [...prev, desc.field]));
     setAdding(false);
-    // The new row's first control. Landing on the remove button rather than
-    // on the value is deliberate: it is the leftmost stop of the row's
-    // declared chain, so Right reaches every other control in order.
+    // The remove button, not the value: it is the row chain's leftmost stop,
+    // so Right reaches every other control in order.
     restoreFocus(`fb-rm-${desc.field}`);
   };
 
   const removeField = (field) => {
-    // The nearest surviving row, preferring the one that took its place, and
-    // the footer's Add button when the last row goes. The row list includes
-    // fields this build's schema does not know, which render nothing — they
-    // cannot be a focus target, so skip them.
+    // The nearest surviving row (preferring the one that took its place), or
+    // the footer's Add button when the last row goes. Unknown-schema fields
+    // render nothing, so skip them as focus targets.
     const rendered = order.filter(f => byField.has(f));
     const at = rendered.indexOf(field);
     const rest = rendered.filter(f => f !== field);
@@ -135,9 +113,8 @@ export default function FilterBuilder({
 
   const update = (field, criterion) => setCriteria(prev => ({ ...prev, [field]: criterion }));
 
-  // Only fields that would translate to something go out. A criterion left at
-  // its blank state — an empty text box — is dropped by the translator anyway;
-  // dropping it here keeps the "3 criteria" count honest.
+  // Only fields that would translate go out. Blank criteria are dropped by the
+  // translator anyway; doing it here keeps the criterion count honest.
   const effective = useMemo(
     () => effectiveCriteria(order, criteria, byField),
     [order, criteria, byField],

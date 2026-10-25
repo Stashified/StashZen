@@ -1,28 +1,20 @@
 /**
- * Headless driver for "leaving a tab means reading it again" (0.22.1).
+ * Headless driver for "leaving a tab means reading it again".
  *
- * The report: scenes added to or removed from the Stash server did not appear
- * in the TV app until it was fully closed and relaunched. The cause was the
- * list cache, not React: every listing page is cached in a module-scoped Map
- * (listCache.js) that outlives the `dataKey` remount, and a tab switch
- * remounts the page. So the remount's "fetch page 1" was a cache hit — the
- * page looked like it reloaded and had exactly the rows it had before.
- *
- * The fix is `changeTab` in App.jsx: clear every list cache before the tab
- * state moves, so the arriving page goes to the wire. This driver proves the
- * wire part, which is the whole mechanism:
+ * Server changes did not appear until a relaunch: every listing page lives in
+ * a module-scoped Map (listCache.js) that outlives the `dataKey` remount, so a
+ * tab switch's "fetch page 1" was a cache hit. The fix has `changeTab` in
+ * App.jsx clear every list cache before the tab state moves.
  *
  *   F1  the first Scenes visit fetches its page 1
  *   F2  Home → Scenes → Home re-fetches the Recently Added shelf
  *   F3  Home → Scenes again re-fetches the Scenes page 1
  *   F4  pressing the rail's current row reloads that tab in place
  *
- * Request counting is the assertion because the server's data does not
- * change during the run; a re-fetch is the behaviour, and a cache hit is its
- * absence. The fake logs each listing request with page/per_page/sort at
- * `/requests`. The control is to remove `clearAllListCaches()` from
- * `changeTab`: F2–F4 go red while F1 stays green, which is exactly the
- * shipped bug (the first fetch always happened).
+ * Request counting is the assertion: the server's data does not change, so a
+ * re-fetch is the behaviour and a cache hit its absence. The fake logs each
+ * listing request at `/requests`. Red control: remove
+ * `clearAllListCaches()` from `changeTab` and F2–F4 go red, F1 stays green.
  */
 
 import '../../src/index.css';
@@ -58,9 +50,8 @@ async function waitFor(pred, ms = 5000, step = 25) {
   return false;
 }
 
-// Enter needs a keyup on the cards (long-press support moves the short action
-// there); rail rows activate on keydown alone. Sending both is inert for the
-// rail, and matches the rail driver's helper.
+// Cards need a keyup as well (long-press moves the short action there); rail
+// rows activate on keydown alone, so sending both is inert for them.
 async function tapEnter() {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -77,10 +68,8 @@ const focus = (id) => {
   return !!entry;
 };
 
-// Scene requests are told apart by the `scene_filter` key the fake logs with
-// them. Without it, the other created_at shelves (studios, performers) and
-// their listings answer the same page/per_page/sort shape — the first run of
-// this driver counted three "shelf" fetches for one Home mount.
+// Told apart by the `scene_filter` key: without it, other created_at shelves
+// (studios, performers) answer the same page/per_page/sort shape.
 // The showroom's Recently Added Scenes shelf: five cards, newest added.
 const isRecentShelf = (r) => 'scene_filter' in r
   && r.page === 1 && r.per_page === 5 && r.sort === 'created_at';
@@ -94,11 +83,10 @@ async function switchTab(id) {
   await tapEnter();
 }
 
-// Type into the controls bar's search field the way the IME does: set the
-// input's own value through the native setter (a plain `input.value =` is
-// swallowed by React's controlled-input tracker) and let the 300 ms debounce
-// commit it. The on-screen keyboard itself cannot be raised here — see the
-// harness notes — but the commit path below it is the shipped one.
+// Type the way the IME does: the native setter (a plain `input.value =` is
+// swallowed by React's controlled-input tracker), then the 300 ms debounce
+// commits. The on-screen keyboard cannot be raised headlessly; the commit path
+// below it is the shipped one.
 async function typeSearch(text) {
   const input = document.querySelector('input[placeholder="Search…"]');
   if (!input) return false;
@@ -112,14 +100,13 @@ async function typeSearch(text) {
 }
 
 async function run() {
-  // Home's shelves arrive over the wire; wait for the rendered card, not just
-  // for the request, so the next tab press does not race the mount.
+  // Wait for the rendered card, not just the request, so the next tab press
+  // does not race the mount.
   await waitFor(() => registry.has('showroom-recent-scenes-video-1'));
   await sleep(300);
 
   // ── F1  First visit to Scenes fetches page 1 ───────────
-  // Not the regression by itself — a cold cache never served this — but it is
-  // the baseline that makes F3 mean "again" rather than "at all".
+  // Not the regression itself; the baseline that makes F3 mean "again".
   await clearLogs();
   await switchTab('nav-scenes');
   const firstScenes = await waitFor(async () =>
@@ -152,9 +139,8 @@ async function run() {
       + `(${JSON.stringify(againReqs[0] || null)})`);
 
   // ── F4  Pressing the current rail row reloads in place ──
-  // The one gesture for "the library changed while I was sitting here": the
-  // active row is already under the D-pad, and `changeTab` treats a press on
-  // it as an explicit reload rather than a no-op.
+  // The one gesture for "the library changed while I sat here": `changeTab`
+  // treats a press on the active row as an explicit reload, not a no-op.
   await clearLogs();
   await switchTab('nav-scenes');
   const reloaded = await waitFor(async () =>
@@ -169,11 +155,9 @@ async function run() {
     errors.slice(-2).join(' | ') || 'none');
 
   // ── F6  a shelf that fails says so ──────────────────────
-  // Before this a failed shelf rendered as no shelf at all: the row returned
-  // null for an empty list, so a studios query that errored was
-  // indistinguishable from a library with no studios, and the rest of Home
-  // looked healthy. The heading plus one line is the minimum that lets a user
-  // tell "nothing here" from "we could not ask".
+  // The row used to return null for an empty list, so an errored query looked
+  // like a library with no studios. The heading plus one line lets a user tell
+  // "nothing here" from "we could not ask".
   await fetch(`http://127.0.0.1:${PORT}/mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -198,11 +182,8 @@ async function run() {
   });
 
   // ── F7–F9  a search term does not travel between tabs ────
-  // `controls` is one shared object, and the arrival rule resets sort, order,
-  // filter and columns on a tab change. Search used to be the lone survivor,
-  // so a term typed on one section silently narrowed every other one.
-  // Reported from the TV, 2026-10-20: "search term 'kitty' ... was saved/kept
-  // as active search when moving between tabs".
+  // `controls` is shared and the arrival rule resets sort, order, filter and
+  // columns; search used to survive, silently narrowing every other tab.
   await switchTab('nav-scenes');
   await waitFor(() => registry.has('video-1'));
   await clearLogs();

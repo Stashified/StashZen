@@ -2,18 +2,17 @@
 /**
  * check-bundle.mjs — refuse to ship an API key in the built bundle.
  *
- * Vite inlines `VITE_STASH_API_KEY` from `.env.production` at build time.
- * That is convenient for a local package aimed at your own TV and dangerous
- * for anything you hand to someone else: the key is then readable in the
- * JavaScript. CI has always had a grep for it, but a local `npm run build`
- * had nothing, and that is the path a shared `.wgt` more often comes from.
+ * Vite inlines `VITE_STASH_API_KEY` from `.env.production` at build time. Fine
+ * for a local package on your own TV, dangerous for anything handed to someone
+ * else: the key is then readable in the JavaScript. A local `npm run build` is
+ * the path a shared `.wgt` more often comes from.
  *
- * Runs as npm's `postbuild`, so both `npm run build` and CI get it. It
- * NEVER prints the key: only file names and whether a key was found.
+ * Runs as npm's `postbuild`, so both `npm run build` and CI get it. It NEVER
+ * prints the key: only file names and whether a key was found.
  *
  * CI (`process.env.CI`) never gets the opt-out. A local build may set
- * `ALLOW_BAKED_KEY=1` when the package is only for the builder's own TV;
- * that build must not be shared.
+ * `ALLOW_BAKED_KEY=1` when the package is only for the builder's own TV; that
+ * build must not be shared.
  *
  * Usage:
  *   node scripts/check-bundle.mjs
@@ -23,44 +22,24 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseDotenv } from './parse-dotenv.mjs';
 
 // Stash API keys are JWTs, so `eyJhbGciOi` is the base64 of {"alg":... .
 // Kept identical to the pattern the CI workflow has always used.
 const JWT_MARKER = 'eyJhbGciOi';
 
-// A private-network address in a release bundle means the builder's own
-// server was inlined. Not a credential, but worth saying out loud.
+// A private-network address in a release bundle means the builder's own server
+// was inlined. Not a credential, but worth saying.
 //
-// The one exception is the documented example address. It is the placeholder
-// text in FirstRun's server field and the sample in `.env.example`, so it is
-// in every bundle and a warning for it would fire on every clean build — the
-// quickest way to teach people to scroll past the check. Match the address
-// *and port* so the exemption cannot hide an unconnected address by accident.
+// The documented example address is exempt: it is FirstRun's placeholder and
+// `.env.example`'s sample, so it is in every bundle and a warning for it would
+// fire on every clean build. Match the address *and port* so the exemption
+// cannot hide an unconnected address by accident.
 const LAN_PLACEHOLDER = '192.168.1.10:9999';
 const LAN_RE = /\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/;
 
-/** Parse the KEY=value lines this project uses. Quotes and `export` allowed. */
-export function parseDotenv(text) {
-  const out = {};
-  for (const raw of String(text).split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!m) continue;
-    let value = m[2].trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    } else {
-      // Unquoted values end at an unescaped ` #` comment.
-      value = value.replace(/\s+#.*$/, '').trim();
-    }
-    out[m[1]] = value;
-  }
-  return out;
-}
+// The parser lives in parse-dotenv.mjs; re-exported for existing imports.
+export { parseDotenv };
 
 function walk(dir, base = dir) {
   const files = [];
@@ -86,8 +65,8 @@ export function scanBundle({ distDir, secret = '' }) {
   for (const rel of walk(distDir)) {
     const full = join(distDir, rel);
     const st = statSync(full);
-    // Bundles are small text files. Skip anything that is obviously binary
-    // rather than risk a false positive from compressed bytes.
+    // Bundles are small text files; skip anything obviously binary rather than
+    // risk a false positive from compressed bytes.
     if (st.size > 8 * 1024 * 1024) continue;
     let text;
     try {
@@ -101,8 +80,8 @@ export function scanBundle({ distDir, secret = '' }) {
     result.filesScanned += 1;
     if (text.includes(JWT_MARKER)) result.jwtFiles.push(rel);
     if (secret && secret.length >= 8 && text.includes(secret)) result.keyFiles.push(rel);
-    // Remove the documented placeholder first, then look for anything else —
-    // a file may legitimately contain both.
+    // Remove the documented placeholder first, then look for anything else: a
+    // file may legitimately contain both.
     if (LAN_RE.test(text.split(LAN_PLACEHOLDER).join(''))) result.lanFiles.push(rel);
   }
 
@@ -115,8 +94,8 @@ export function scanBundle({ distDir, secret = '' }) {
 /**
  * Decide whether the bundle is shippable.
  *
- * `secret` is the key from `.env.production` when one exists; it is used for
- * a targeted search and never included in a returned message.
+ * `secret` is the key from `.env.production` when one exists; it is used for a
+ * targeted search and never included in a returned message.
  *
  * @returns {{ ok: boolean, lines: string[] }}
  */

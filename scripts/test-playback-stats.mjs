@@ -4,13 +4,11 @@
  *
  *   node scripts/test-playback-stats.mjs
  *
- * Two rules are load-bearing. The panel is designed to be photographed for a
- * bug report, so it must never print a media URL's query string — every Stash
- * transcode carries `?apikey=…`. And the AVPlay backend cannot answer buffer,
- * seekable, readyState, frame or resolution questions, so those rows are left
- * out rather than filled with placeholders that look like measurements.
- *
- * No framework.
+ * Two load-bearing rules. The panel is meant to be photographed for a bug
+ * report, so it must never print a media URL's query string — every Stash
+ * transcode carries `?apikey=…`. And AVPlay cannot answer buffer, seekable,
+ * readyState, frame or resolution questions, so those rows are omitted rather
+ * than filled with placeholders that look like measurements.
  */
 
 import {

@@ -1,14 +1,10 @@
 /**
  * actionMenus.js — what a long-press menu offers, for each kind of card.
  *
- * Pure in the sense that matters here: it reads the menu's state and closes
- * over the handlers it is given, and owns none of it. Every playback entry
- * ends in `openPlayer`, which is the one place that knows how to open the
- * player without leaving the menu behind it; the image/gallery entries end in
- * the viewer openers for the same reason.
- *
- * The menu itself (`ActionMenu`) draws rows and nothing else — which rows a
- * card has is a question about the section, and belongs here.
+ * Pure: it reads the menu state and closes over the handlers passed in.
+ * Playback entries end in `openPlayer` and image/gallery entries in the viewer
+ * openers, so the menu is never left behind. The menu component only draws
+ * rows — which rows a card has belongs here.
  */
 
 import { queueOf, queueItemFromMarker, markerQueueItems, queueFromMarkers } from './playQueue.js';
@@ -58,14 +54,10 @@ export function buildActionMenu({ kind, item, list, index = 0 } = {}, handlers) 
  * @param {{ item, list, index }} actionMenu   the card the menu opened on
  * @param {{ openPlayer, onDetails }} handlers
  *
- * "Play all" and "Play from here" continue through the listing, so they only
- * make sense when the card came from a view that has one — and every card
- * that can open this menu does.
- *
- * `restoreBy` is what tells the player's Back that this queue walks cards:
- * 'video' returns to the scene card last viewed rather than the one the queue
- * started on. See usePlayback.handlePlayerClose. The single-scene Play does
- * not set it — its card never changes.
+ * "Play all" / "Play from here" continue through the listing, so need a view
+ * that has one — every card opening this menu does. `restoreBy: 'video'` tells
+ * Back to return to the last-viewed scene card rather than the queue's origin;
+ * single-scene Play omits it (its card never changes).
  */
 export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetails }) {
   return [
@@ -98,16 +90,14 @@ export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetai
 
 /**
  * A marker is a timestamp in a scene, so "Play" means that scene from that
- * point — and the listing entries walk the *markers*, one scene each.
+ * point; listing entries walk the *markers*, one scene each.
  *
- * `markerQueueItems` is what turns the marker run into scene rows and drops
- * repeats, which is why the hint counts scenes rather than markers. A `+`
- * says the grid had not loaded every marker yet; the queue continues into
- * the remaining pages by itself.
+ * `markerQueueItems` turns markers into scene rows and drops repeats, so the
+ * hint counts scenes. A `+` means not every marker was loaded — the queue pages
+ * in the rest itself.
  *
- * `restoreBy: 'marker'`: Back returns to the marker card of the scene last
- * viewed, matching a scene queue's behaviour. The queue rows carry the
- * marker's own id for it; the scene id alone names no card in this tab.
+ * `restoreBy: 'marker'`: Back returns to the last-viewed scene's marker card;
+ * rows carry the marker id because a scene id names no card in this tab.
  */
 export function buildMarkerMenuItems({ item, list, index }, { openPlayer, onDetails }) {
   const loaded = list?.items?.length ? list.items : [item];
@@ -142,8 +132,7 @@ export function buildMarkerMenuItems({ item, list, index }, { openPlayer, onDeta
     {
       id: 'menu-details',
       label: 'Details',
-      // The *scene's* page — a marker has no page of its own, and this is the
-      // one entry that looks beyond the timestamp.
+      // A marker has no page of its own, so Details opens its scene's.
       onSelect: () => onDetails(item.scene),
     },
   ];
@@ -153,9 +142,8 @@ export function buildMarkerMenuItems({ item, list, index }, { openPlayer, onDeta
  * The image viewer's menu. Every row opens the viewer; they differ only in
  * where it starts and whether it runs.
  *
- * The listing is the grid's loaded snapshot, as for the viewer's own arrows —
- * the viewer does not page that listing. The hint therefore counts what is
- * loaded, and the row offering the most says where it starts.
+ * The listing is the grid's loaded snapshot (the viewer does not page it), so
+ * hints count what is loaded.
  */
 export function buildImageMenuItems({ item, list, index }, { openImageViewer }) {
   const loaded = list?.items?.length ? list.items : [item];
@@ -190,12 +178,11 @@ export function buildImageMenuItems({ item, list, index }, { openImageViewer }) 
 
 /**
  * A gallery is a container, so its menu chooses a way to show the pictures.
- * The viewer fetches the gallery's own images — the listing behind the card
- * is galleries, not images — and pages the rest in behind the first screen.
- * See ImageViewer.
+ * The viewer fetches the gallery's own images — the listing behind the card is
+ * galleries — and pages the rest in behind the first screen.
  *
  * "View images" is the same destination as Enter: the Images tab filtered to
- * this gallery, where every other image affordance already lives.
+ * this gallery.
  */
 export function buildGalleryMenuItems({ item }, { openGallery, openGallerySlideshow }) {
   return [

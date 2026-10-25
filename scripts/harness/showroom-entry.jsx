@@ -1,69 +1,30 @@
 /**
- * Headless driver for Home as a showroom (0.15.0's P9, reshaped in 0.18.0).
+ * Headless driver for Home as a showroom.
  *
- * Mounts the whole `App`, like rail-entry and sections-entry, because almost
- * every claim here is about two things at once: a shelf and the request it
- * sent, a See-all tile and the tab it opens, a tab's Back and the shelf it
- * returns to. No one component can be asked any of it alone.
+ * Mounts the whole `App`: each claim pairs two things — a shelf and its
+ * request, a See-all tile and the tab it opens, a tab's Back and the shelf it
+ * returns to.
  *
- * ## What is worth asserting, and what is not
+ *   H1–H4  five fixed shelves in Stash's order, Continue Watching directly
+ *          below Recently Released Scenes; five cards plus a See-all tile
+ *          last, so Right past the fifth card reaches it.
+ *   H2b    TV geometry: bigger cards and three shelves on the first screen,
+ *          measured from rects at 1920x1080.
+ *   H4b–e  each shelf sends its own query, read from `/requests`; a wrong sort
+ *          still renders. Continue Watching also needs `resume_time > 0`, and
+ *          the fake returns a distinctive subset so the DOM can agree.
+ *   H7–H14 the See-all hand-off carries the shelf's sort, order and filter;
+ *          for Continue Watching, Studios and Galleries these differ from the
+ *          tab default, and `sortForTab` marks the sort deliberate.
+ *   H18    the hand-off marker is consumed: an ordinary Studios arrival reads
+ *          Name, not staged Date Added; the Scenes filter is dropped.
+ *   H15–H17 a performer card returns to the same card via `performerOrigin`;
+ *          a studio or gallery routes through the filter machinery.
+ *   H23    the stale shelf card still asks: the detail page's uncached fetch
+ *          is the fresh position, and Play must carry it into the queue.
  *
- * The shelves are deliberately plain: five fixed page-1 fetches and a slice.
- * Rendering a card is already covered everywhere else, so this file does not
- * re-assert that a card draws. It covers what is new in 0.18.0 and 0.18.4:
- *
- *   H1–H4  the showroom is five *fixed* shelves: Stash's order — Recently
- *          Released Scenes, Recently Added Studios, Recently Added Performers,
- *          Recently Released Galleries — with the user's own in-progress
- *          queue, Continue Watching, added in 0.18.4 directly below Recently
- *          Released Scenes. Five cards plus a See-all
- *          tile, no hidden horizontal scrolling. The tile is the strip's last
- *          element, because that is what makes Right past the fifth card land
- *          on it.
- *
- *   H2b    the geometry the TV asked for: bigger cards and three shelves in
- *          the first screen. Measured from real rects at 1920x1080 rather than
- *          re-derived from the stylesheet, so a font metric or a row margin
- *          that pushes the third shelf under the fold is a failure here.
- *
- *   H4b–e  each shelf sends *its own* query. This is the one thing a table of
- *          row definitions can get wrong one row at a time without anything
- *          failing to render — a studios shelf sorted by `scenes_count` would
- *          look perfectly healthy. Read from `/requests`, the fake's record of
- *          the GraphQL variables it was sent. H4b2/H4g are the same claim for
- *          Continue Watching, where a forgotten filter is a *plausible* five
- *          cards rather than an empty row: the fake honours `resume_time > 0`
- *          with a distinctive subset so the DOM can show the difference too.
- *
- *   H7–H14 the See-all hand-off. A tile is not a tab switch on its own: it has
- *          to arrive with the shelf's sort, order and filter, and that sort is
- *          *not* the destination tab's default for three of the five rows. The
- *          arrival rule (0.18.0) adopts each tab's default sort, so the tile
- *          carries `sortForTab` to mark its sort as deliberate. Continue
- *          Watching (Last Played vs Date Added, plus a filter), Studios (Date
- *          Added vs Name) and Galleries (Date vs Date Added) are the checks
- *          with teeth because their two values differ. Scenes and Performers
- *          ask for the same sort their tab defaults to, so the wire and the
- *          destination are all those two can assert.
- *
- *   H18    the hand-off marker is consumed. H18b carries the claim with teeth
- *          — an ordinary arrival at Studios must read Name, not the staged
- *          Date Added — while H18 asserts the Scenes filter is dropped.
- *
- *   H15–H17 pressing a Home card. A performer opens the detail page and Back
- *          returns Home to the same card (a dedicated `performerOrigin`, not
- *          `filterOrigin`); a studio and a gallery still route through the
- *          filter machinery and Back drops it.
- *
- *   H23    the resume question survives a stale shelf. The showroom is not
- *          refetched after playback, so the card still says 0 while Stash has
- *          a saved position; the detail page's uncached fetch is the fresh
- *          answer, and Play must carry it into the player's queue or the
- *          scene resumes silently.
- *
- * What this cannot tell you: whether five shelves read as a showroom, whether
- * TV overscan clips the fourth shelf, and anything about how the cards look on
- * the actual panel. That is the TV pass.
+ * TV pass: whether five shelves read as a showroom, overscan, and how the
+ * cards look on the panel.
  */
 
 import '../../src/index.css';
@@ -74,10 +35,9 @@ import { setSettings } from '../../src/utils/settings.js';
 
 const PORT = window.__PORT__;
 
-// Written out rather than imported from ShowroomPage. The point of the check
-// is that the rendered page agrees with the intent, and importing the table
-// the page renders would make the two agree by construction. Five is the
-// contract the CSS grid (six columns) and the "See all" tile are built on.
+// Written out, not imported from ShowroomPage: importing the rendered table
+// would make intent and output agree by construction. Five is the contract the
+// six-column grid and the "See all" tile are built on.
 const SHELF = 5;
 const SHELVES = [
   {
@@ -87,10 +47,9 @@ const SHELVES = [
   {
     key: 'continue-watching', heading: 'Continue Watching',
     prefix: 'showroom-continue-video', tile: 'showroom-seeall-continue',
-    // Card ids carry the *scene id*, and the fake answers `resume_time > 0`
-    // with scenes 41–45. The other shelves' fixtures are 1..5, which is why
-    // their first card is `<prefix>-1`; writing this one out keeps the check
-    // about the prefix rather than about a coincidence of the fixture.
+    // Card ids carry the scene id, and the fake answers `resume_time > 0` with
+    // 41–45; other shelves use 1..5. Writing this out keeps the check about the
+    // prefix, not a fixture coincidence.
     firstId: 'showroom-continue-video-41',
   },
   {
@@ -132,9 +91,8 @@ async function waitFor(pred, ms = 6000, step = 25) {
 }
 
 // ── Driving the remote ──────────────────────────────────────
-// Same idiom as rail-entry: dispatched on the focused element with `bubbles`,
-// which reaches useKeyHandler's window listener and useFocusable's element
-// listener alike. 150ms between presses clears MIN_REPEAT_MS.
+// Dispatch on the focused element with `bubbles` to reach both listeners;
+// 150 ms between presses clears MIN_REPEAT_MS.
 async function press(key) {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
@@ -162,13 +120,10 @@ async function pressBack() {
 const playerOpen = () => !!document.querySelector('[role="dialog"][aria-label^="Now playing"]');
 
 /**
- * Close the player, in the presses the remote now needs.
- *
- * Playback shows the controls, and Back hides the bar before it closes the
- * player (see keyRouting.js). The 0.4 s between the presses lets the fade
- * finish and the key listener pick up the new state; the negative wait is
- * retried once with a second Back, so a bar that had already auto-hidden does
- * not turn this into an extra press on the screen below.
+ * Close the player in the presses the remote needs: Back hides the bar before
+ * closing the player. The 0.4 s pause lets the fade finish and the listener
+ * update; if the bar had auto-hidden, retry once so this is not an extra press
+ * on the screen below.
  */
 async function closePlayer() {
   await pressBack();
@@ -210,10 +165,9 @@ const setMode = async (patch) => fetch(`http://127.0.0.1:${PORT}/mode`, {
   body: JSON.stringify(patch),
 });
 
-/** "No criteria" on the wire is `{}`, not null: every service sends the
- *  filter variable as `translateFilter(...)`, which returns an empty GraphQL
- *  input for an absent filter. Asserting emptiness rather than null tests the
- *  intent — the request carried no criterion — without pinning the encoding. */
+/** "No criteria" on the wire is `{}`, not null: `translateFilter` returns an
+ *  empty GraphQL input. Assert emptiness to test the intent without pinning
+ *  the encoding. */
 const unfiltered = (filter) => !filter || Object.keys(filter).length === 0;
 
 const railActive = () =>
@@ -224,9 +178,8 @@ const sortText = () => registry.get('ctrl-sort')?.el.textContent?.trim() ?? '(no
 const filterText = () => registry.get('ctrl-filter')?.el.textContent?.trim() ?? '(none)';
 const descPressed = () => registry.get('ctrl-desc')?.el.getAttribute('aria-pressed');
 
-/** Registry ids of a prefix whose element is still in the document. The
- *  registry outlives an unmounted card, and only a connected element is one
- *  the user can see. */
+/** Registry ids of a prefix whose element is still connected: the registry
+ *  outlives unmounted cards, but only a connected element is visible. */
 const liveIds = (prefix) => [...registry.entries()]
   .filter(([id, entry]) => id.startsWith(`${prefix}-`) && document.contains(entry.el))
   .map(([id]) => id);
@@ -255,12 +208,9 @@ async function finish() {
 
 // ── The run ─────────────────────────────────────────────────
 async function run() {
-  // The five shelves arrive over the wire. The gate is deliberately DOM-shaped
-  // rather than keyed on a focus id: the per-row id prefix is one of the
-  // things under test, so a gate that waited for a card id would report a
-  // broken prefix as "Home never loaded" and the checks that name it would
-  // never run. Five sections is enough: they are only rendered after all five
-  // fetches resolve, so their presence means the shelves are final.
+  // Gate on DOM shape, not a focus id: the id prefix is under test, so a card
+  // gate would report a broken prefix as "Home never loaded". Five sections
+  // render only after all five fetches resolve, so they mean shelves are final.
   const shelfReady = () => document.querySelectorAll('[data-showroom-row]').length === 5;
   const loaded = await waitFor(shelfReady, 8000);
   await sleep(400);
@@ -272,12 +222,9 @@ async function run() {
   }
 
   // ── H0  the resting place ───────────────────────────────
-  // Recently Added Scenes is the top shelf — Stash's own lead shelf, with
-  // Continue Watching directly under it as of 0.18.4 — so its first card
-  // autofocuses; every other shelf passes autoFocus false so five cards do
-  // not race for it. The performer shelf is the one that could silently win:
-  // PerformerCard defaulted to `index === 0` before 0.18.0, so it is named
-  // explicitly in the failure detail.
+  // Recently Added Scenes is the top shelf, so its first card autofocuses;
+  // every other shelf passes `autoFocus` false so five cards do not race.
+  // PerformerCard once defaulted to `index === 0`, hence the named detail.
   const atRest = focusedId();
   check('H0 Home rests on the first Recently Added card, and only one shelf claims focus',
     atRest === 'showroom-recent-scenes-video-1',
@@ -304,11 +251,9 @@ async function run() {
     ctrlIds.length ? `registered: ${ctrlIds.join(', ')}` : 'no ctrl- ids, no toolbar');
 
   // ── H2b  the geometry the TV asked for ──────────────────
-  // Bigger cards and three shelves in the first screen. Read from rects, not
-  // from arithmetic: the stylesheet's six 1fr tracks are only half the claim,
-  // and a font metric or an extra row margin is exactly how "three rows fit"
-  // silently stops being true. The second card is measured because the first
-  // one is focused and scaled.
+  // Bigger cards, three shelves on the first screen. Read rects, not
+  // arithmetic: a font metric or extra margin is how "three rows fit" silently
+  // stops being true. Measure the second card because the first is focus-scaled.
   {
     const page = shelfEl('recent-scenes')?.parentElement;
     const strip = stripOf('recent-scenes');
@@ -330,11 +275,9 @@ async function run() {
     check('H2b cards are bigger than the old six-across layout',
       width >= 245 && width <= 275, `second card is ${width.toFixed(1)}px wide (was ~218)`);
 
-    // One card footprint on all four shelves. This is the 0.18.2 fix: the
-    // performer row's 3:4 portrait cards used to be 347px tall against 211 for
-    // scenes and 151 for studios/galleries. Read the first strip cell, which
-    // is never the focus-scaled one, and round to whole pixels because the
-    // tracks are fractional under a 1fr grid.
+    // One card footprint on all shelves: the performer row's 3:4 portrait
+    // cards were 347 px tall against 211 for scenes and 151 for studios and
+    // galleries. Read the first strip cell (never focus-scaled), rounded.
     const cardH = Object.fromEntries(SHELVES.map(s => [
       s.key,
       Math.round(stripOf(s.key)?.children[0]?.getBoundingClientRect().height ?? 0),
@@ -353,19 +296,16 @@ async function run() {
         Math.round(stripOf(s.key)?.lastElementChild?.getBoundingClientRect().height ?? 0)}px`
       ).join(' · '));
 
-    // Equal wrappers are not enough: a card that kept its aspect ratio would
-    // still sit in a 240px box, either leaving a blank strip under a scene
-    // info bar or clipping the performer overlay out of view. The two scene
-    // shelves have a bar below the art; the other three overlay their text, so
-    // their single child must be the full card face.
+    // Equal wrappers are not enough: a card keeping its aspect ratio would
+    // leave a blank strip or clip the overlay. The scene shelves have an info
+    // bar below the art; the other three overlay text on the full card face.
     const artGap = Object.fromEntries(SHELVES.map(s => {
       const card = stripOf(s.key)?.children[0]?.firstElementChild;
       if (!card) return [s.key, 'no card'];
       const cr = card.getBoundingClientRect();
-      // The two scene shelves end in the info bar, so their fill is measured
-      // against that; the overlay rows' whole face is their first child. Read
-      // the *kind*, not one key, or the continue shelf silently falls into the
-      // overlay branch and reports the info bar's height as a gap.
+      // Scene shelves measure fill against the info bar; overlay rows use the
+      // whole first child. Branch on kind, not one key, or Continue Watching
+      // falls into the overlay branch and reports the bar height as a gap.
       if (['continue-watching', 'recent-scenes'].includes(s.key)) {
         return [s.key, Math.round(cr.bottom - card.lastElementChild.getBoundingClientRect().bottom)];
       }
@@ -403,10 +343,9 @@ async function run() {
       + `; tile registered=${registry.has(shelf.tile)}`);
   }
 
-  // Each shelf draws its own card family. A gallery row rendered with the
-  // studio descriptor would draw perfectly well and register `studio-*` ids,
-  // which is both the wrong detail destination and a registry collision with
-  // the studios shelf above it.
+  // Each shelf draws its own card family. A gallery row using the studio
+  // descriptor would look fine, register `studio-*` ids, open the wrong detail
+  // and collide with the studios shelf.
   for (const shelf of SHELVES) {
     // The first slot is a `.cell` wrapper (it owns the shelf's fixed height);
     // the card whose focus id proves the card family is its first child.
@@ -417,27 +356,24 @@ async function run() {
   }
 
   // ── H4b–e  each shelf's own request ─────────────────────
-  // `/requests` is the fake's record of the GraphQL variables it received, so
-  // this is the shelf table verified at the wire rather than at the table. The
-  // limit is what tells a shelf apart from the tab: a shelf asks for five.
+  // Verify the shelf table at the wire via `/requests`, not at the table. The
+  // limit of five tells a shelf apart from the tab.
   const reqs = await getJSON('/requests');
   const sceneShelves = reqs.filter(r => r.scene_filter !== undefined && r.per_page === SHELF);
   const studioShelves = reqs.filter(r => r.studio_filter !== undefined && r.per_page === SHELF);
   const performerShelves = reqs.filter(r => r.performer_filter !== undefined && r.per_page === SHELF);
   const galleryShelves = reqs.filter(r => r.gallery_filter !== undefined && r.per_page === SHELF);
 
-  // Newest-added scenes: `date` is the release date, so with it an old film
-  // added today would not be on the "Recently Added" shelf at all. `created_at`
-  // is the library's own arrival order, and the Scenes tab's default sort.
+  // `date` is the release date, so an old film added today would miss the
+  // shelf; `created_at` is arrival order and the Scenes tab's default.
   const scenesReq = sceneShelves.find(r => r.sort === 'created_at');
   check('H4b the Scenes shelf asks for created_at, descending, unfiltered',
     !!scenesReq && scenesReq.direction === 'DESC' && unfiltered(scenesReq.scene_filter),
     scenesReq ? JSON.stringify(scenesReq)
       : `no per_page=${SHELF} FindScenes sorted by created_at`);
 
-  // Continue Watching is the one shelf that is also a filter. Both halves are
-  // asserted: a shelf that forgot `resume_time` would otherwise be five
-  // perfectly plausible newest scenes sorted by an engagement field.
+  // Continue Watching is also a filter. Assert both halves: without
+  // `resume_time` this would be five plausible newest scenes sorted by play date.
   const continueReq = sceneShelves.find(r => r.sort === 'last_played_at');
   const continueCriterion = continueReq?.scene_filter?.resume_time || {};
   const continueValue = typeof continueCriterion.value === 'object'
@@ -448,12 +384,9 @@ async function run() {
       && continueCriterion.modifier === 'GREATER_THAN' && continueValue === 0,
     continueReq ? JSON.stringify(continueReq) : `no per_page=${SHELF} FindScenes sorted by last_played_at`);
 
-  // …and the DOM agrees. The fake answers `resume_time > 0` with scenes 41–45
-  // and everything else with 1..N, so this is the difference between "the
-  // shelf applied its criterion" and "the shelf asked for the right sort".
-  // The aria-label carries the title alone (`VERIFY scene 41`); textContent
-  // runs the resolution and year into it, so "…scene 41" is not distinguishable
-  // from "…scene 412" there.
+  // The DOM agrees: the fake returns 41–45 for `resume_time > 0` and 1..N
+  // otherwise. Read the aria-label, which carries the title alone; textContent
+  // appends resolution and year, where "…scene 41" matches "…scene 412".
   const cardLabel = (el) => el?.getAttribute('aria-label') || '';
   const continueFirstCard = stripOf('continue-watching')?.children[0]?.firstElementChild;
   const recentFirstCard = stripOf('recent-scenes')?.children[0]?.firstElementChild;
@@ -479,8 +412,7 @@ async function run() {
     galleriesReq ? JSON.stringify(galleriesReq) : `no per_page=${SHELF} FindGalleries sorted by date`);
 
   // ── H5  Down/Up walk the shelves ────────────────────────
-  // Same column, one shelf apart: the first card of each shelf is directly
-  // under the first card of the one above.
+  // The first card of each shelf sits directly under the first card above it.
   const walk = [];
   if (focus('showroom-recent-scenes-video-1')) {
     walk.push(focusedId());
@@ -515,14 +447,10 @@ async function run() {
     ].join('>'),
     walk.join(' > ') || 'the first Recently Added card is not focusable');
 
-  // Up must restore the top of Home, not merely the first card. The page
-  // scrolled to reach the gallery shelf; `block:'nearest'` on the card would
-  // align the *card's* top edge with the scrollport, leaving the page's top
-  // padding and the top shelf's heading above the fold — and, with the card's
-  // focus scale and -4px lift, clipping its top by a few pixels. Reported from
-  // the TV 2026-10-17: "scrolling to bottom and the back again it doesn't
-  // return fully to top position (recently released scenes text doesnt appear
-  // at all, icons are cut off by few pixels too)".
+  // Up must restore the top of Home, not merely the first card.
+  // `block:'nearest'` aligns the card's top with the scrollport, leaving the
+  // page padding and shelf heading above the fold and clipping the card's
+  // focus-scaled, lifted top.
   {
     const page = shelfEl('recent-scenes')?.parentElement;
     const heading = shelfEl('recent-scenes')?.querySelector('h2');
@@ -603,13 +531,9 @@ async function run() {
   await sleep(200);
 
   // ── H7  Recently Added Scenes See all ───────────────────
-  // The shelf now asks for the newest *added* scenes (`created_at`), which is
-  // also the Scenes tab's default. The listing may therefore already be in the
-  // page cache — before 0.21.2 the shelf's `date` was a different key, so this
-  // press always fetched. Accept either: no new 40-row request (the card set
-  // is the tab-default one by construction) or a new one carrying the same
-  // sort, descending and unfiltered. A press that fetched the *release-date*
-  // page would show up in the second case with sort `date`, and fail.
+  // The shelf asks for `created_at`, also the Scenes default, so the listing
+  // may already be cached. Accept a cache hit or a matching
+  // created_at/desc/unfiltered request; a release-date (`date`) press fails.
   await clearLogs();
   const reqsBefore = (await getJSON('/requests')).length;
   const scenesArrived = await pressTile('showroom-seeall-recent-scenes', 'Scenes');
@@ -634,13 +558,11 @@ async function run() {
   // ── H10a  Back returns to the tile that was pressed ─────
   await backToHome('showroom-seeall-recent-scenes');
 
-  // ── H19  Continue Watching See all (0.18.4) ─────────────
-  // The only filtered shelf hand-off. Four claims, and each fails on its own
-  // kind of mistake: the wire proves the criterion and sort travelled, the
-  // control reads the shelf's sort rather than Scenes' default, the dropdown
-  // names the shelf rather than "Custom filter", and the rendered count proves
-  // the *listing* applied the filter rather than merely carrying it in state
-  // (the fake answers it with exactly five scenes).
+  // ── H19  Continue Watching See all ─────────────────────
+  // The only filtered hand-off. Four independent claims: the criterion and
+  // sort reached the wire; the control reads the shelf's sort, not the tab
+  // default; the dropdown names the shelf; and the rendered count proves the
+  // listing applied the filter (the fake returns exactly five scenes).
   await clearLogs();
   const continueArrived = await pressTile('showroom-seeall-continue', 'Scenes');
   const continueFocused = await waitFor(() => String(focusedId() || '').startsWith('video-'), 3000);
@@ -671,11 +593,9 @@ async function run() {
   await backToHome('showroom-seeall-continue');
 
   // ── H8  the hand-off overrides a previously chosen sort ─
-  // On Scenes, choose Title — a valid, non-default sort — then return Home and
-  // press the tile again. The shelf's `created_at` is now the tab default too,
-  // so the assertion is only that Title does not survive; the discriminating
-  // marker check lives in H18b, where the staged sort differs from the tab
-  // default.
+  // Choose Title on Scenes, return Home and press the tile. Since the shelf
+  // sort now equals the tab default, this only asserts Title does not survive;
+  // H18b is the discriminating staged-sort check.
   focus('nav-scenes');
   await sleep(120);
   await tapEnter();
@@ -694,13 +614,11 @@ async function run() {
   // ── H10b ────────────────────────────────────────────────
   await backToHome('showroom-seeall-recent-scenes');
 
-  // ── H18  the hand-off marker and the filter do not outlive their arrival ─
-  // Opening Scenes from the rail — an ordinary arrival, with no tile involved
-  // — must show the tab's default. The shelf's sort now equals that default,
-  // so the sort half proves only that Title did not survive; H18b is where a
-  // staged sort that *differs* from the default is the assertion. The filter
-  // half still has teeth for H20's Continue Watching criterion: Back out of
-  // the filtered listing and arrive here normally, and Scenes must be All.
+  // ── H18  the hand-off marker and filter do not outlive arrival ─
+  // An ordinary Scenes arrival from the rail must show the tab default. The
+  // sort half only proves Title did not survive (H18b covers a differing
+  // staged sort); the filter half still proves the Continue Watching criterion
+  // is gone, so Scenes is All.
   focus('nav-scenes');
   await sleep(120);
   await tapEnter();
@@ -715,7 +633,7 @@ async function run() {
 
   // ── H9  Recently Added Studios See all ──────────────────
   // The Studios tab defaults to Name; the shelf asks for Date Added, so the
-  // control is discriminating here as well as the wire.
+  // control discriminates as well as the wire.
   await clearLogs();
   const studiosArrived = await pressTile('showroom-seeall-recent-studios', 'Studios');
   const studiosFocused = await waitFor(() => String(focusedId() || '').startsWith('studio-'), 3000);
@@ -736,12 +654,10 @@ async function run() {
   // ── H10c ────────────────────────────────────────────────
   await backToHome('showroom-seeall-recent-studios');
 
-  // ── H18b  the Studios hand-off marker does not outlive its arrival ─
-  // The Studios shelf stages `created_at` against a tab default of Name, so a
-  // leftover marker would keep Date Added. H9 just consumed the marker by
-  // holding it through the arrival; coming in from the rail again must read
-  // Name. This is the marker-consumption claim H18 lost when the Scenes shelf
-  // moved onto the tab's own default sort.
+  // ── H18b  the Studios hand-off marker does not outlive arrival ─
+  // The shelf stages `created_at` against Name, so a leftover marker would keep
+  // Date Added. H9 consumed the marker; arriving from the rail again must read
+  // Name. This carries the claim H18 lost when Scenes moved to its default sort.
   focus('nav-studios');
   await sleep(120);
   await tapEnter();
@@ -753,9 +669,8 @@ async function run() {
   await sleep(200);
 
   // ── H13  Recently Added Performers See all ──────────────
-  // The shelf sort equals the tab default here, so the control cannot
-  // distinguish marker from default; the destination, the wire and the focus
-  // are the claims.
+  // The shelf sort equals the tab default, so the control cannot distinguish
+  // marker from default; destination, wire and focus are the claims.
   await clearLogs();
   const performersArrived = await pressTile('showroom-seeall-recent-performers', 'Performers');
   const performersFocused = await waitFor(
@@ -773,10 +688,8 @@ async function run() {
   check('H13 focus lands on the Performers grid card', performersFocused, `focus is ${focusedId()}`);
 
   // ── H13b  Back precedence: detail → grid → Home ─────────
-  // A detail opened from inside the See-all Performers listing must return to
-  // that listing first. `performerOrigin` is deliberately separate from
-  // `filterOrigin` for exactly this: reusing the latter would make the first
-  // Back jump all the way Home.
+  // A detail opened from the See-all Performers listing returns there first.
+  // `performerOrigin` is separate from `filterOrigin`, which would jump Home.
   focus('performer-1');
   await sleep(100);
   await tapEnter();
@@ -791,8 +704,8 @@ async function run() {
   await backToHome('showroom-seeall-recent-performers');
 
   // ── H14  Recently Released Galleries See all ────────────
-  // Galleries default to Date Added; the shelf asks for Date. The control
-  // text is compared exactly: a /Date/ regex would also match "Date Added".
+  // Galleries default to Date Added; the shelf asks for Date. Compare the
+  // control text exactly: a /Date/ regex also matches "Date Added".
   await clearLogs();
   const galleriesArrived = await pressTile('showroom-seeall-recent-galleries', 'Galleries');
   const galleriesFocused = await waitFor(() => focusedId() === 'gallery-1', 3000);
@@ -814,9 +727,9 @@ async function run() {
   await backToHome('showroom-seeall-recent-galleries');
 
   // ── H15  a performer opened from Home returns Home ──────
-  // The detail page only renders under the Performers tab, so this crosses a
-  // tab switch. `performerOrigin` names the Home card by id; the focus restore
-  // goes through `focusByIdWhenReady` because Home remounts and refetches.
+  // The detail renders only under Performers, so this crosses a tab switch.
+  // `performerOrigin` names the Home card; restore uses `focusByIdWhenReady`
+  // because Home remounts and refetches.
   await waitFor(() => registry.has('performer-3'), 4000);
   await clearLogs();
   focus('performer-3');
@@ -889,13 +802,9 @@ async function run() {
     + `back=${galleryBack} rail=${railActive()} focus=${focusedId()}`);
 
   // ── H21  clearing progress prunes the card in place ─────
-  //
-  // The end-to-end claim of the scene page's Clear progress action: Home is
-  // still mounted underneath the overlay, so its five requests do not re-run.
-  // The page reports the cleared id to App, App hands it to the showroom, and
-  // the card goes. Then Back has to land somewhere — the card it would have
-  // restored no longer exists, so the close handler falls back to the first
-  // control in the page.
+  // Home stays mounted under the overlay, so its five requests do not re-run.
+  // The page reports the cleared id, App passes it on, and the card goes. Back
+  // then falls back to the page's first control, since that card is gone.
   await waitFor(() => registry.has('showroom-continue-video-41'), 4000);
   await clearLogs();
   focus('showroom-continue-video-41');
@@ -929,13 +838,9 @@ async function run() {
     `focus is ${focusedId()} (the pruned card's focus id was the restore target)`);
 
   // ── H22  clearing progress then playing raises no stale question ─
-  //
-  // The card is what the Play press builds the player's queue from, and it
-  // still carries resume_time 60 when Clear progress runs. App patches that
-  // card on the page's report. Without the patch the player asks "Resume from
-  // 1:00?" about a position the user just explicitly discarded — on the very
-  // next press, which is what makes it worse than a stale shelf: it is a
-  // question with no correct answer offered.
+  // Play builds the queue from the card, which still carries `resume_time` 60
+  // when Clear progress runs. App patches it on the page's report; without the
+  // patch the next press asks "Resume from 1:00?" about a discarded position.
   await waitFor(() => registry.has('showroom-continue-video-42'), 4000);
   focus('showroom-continue-video-42');
   await sleep(120);
@@ -963,21 +868,15 @@ async function run() {
     startsFresh, `currentTime=${freshV?.currentTime?.toFixed(1)}`);
 
   await closePlayer();
-  // The scene-42 page is still open under the player. Close it so the next
-  // check starts from the shelf, as the user does.
+  // Close the scene-42 page under the player so the next check starts at the shelf.
   await pressBack();
   await waitFor(() => !document.querySelector('[role="dialog"]'), 3000);
 
   // ── H23  a stale card still asks, because the detail fetch is fresh ─
-  //
-  // The user's own sequence: play a recent scene, pause, Back — the shelf is
-  // not refetched, so its card still says resume_time 0 while Stash now has a
-  // saved position. Play from that stale card used to seek silently. The
-  // detail page's uncached FindSceneDetail is the one fresh answer the player
-  // can be given, so Play has to carry it into the queue. Two modes are set
-  // because the app makes two reads: the per-open fetch agrees with the saved
-  // position (22), which is what makes the old failure a *silent* seek rather
-  // than a visible inconsistency.
+  // Play, pause, Back: the shelf is not refetched, so its card still says
+  // `resume_time` 0 while Stash holds a position. The detail page's uncached
+  // `FindSceneDetail` is the fresh answer and Play must carry it into the queue.
+  // Both reads return 22, which made the old failure a silent seek.
   await setMode({ detailResume: 22, resume: 22 });
   await waitFor(() => registry.has('showroom-recent-scenes-video-1'), 4000);
   const detailBefore = (await getJSON('/detailfetches')).length;
@@ -985,9 +884,8 @@ async function run() {
   await sleep(120);
   await tapEnter();
   await waitFor(() => registry.has('scene-play'), 4000);
-  // `scene-play` is registered from the card-first paint. Wait for the fresh
-  // fetch to land before pressing it, or Play forwards the stale 0 the card
-  // itself carries — which is the failure this check exists to catch.
+  // `scene-play` registers from the card-first paint. Wait for the fresh fetch,
+  // or Play forwards the stale 0 this check exists to catch.
   for (const end = Date.now() + 4000; Date.now() < end; await sleep(50)) {
     if ((await getJSON('/detailfetches')).length > detailBefore) break;
   }
@@ -999,8 +897,8 @@ async function run() {
   check('H23 Play on a card whose shelf is stale asks about the fetched resume point',
     asksAgain,
     `prompt=${asksAgain} — the shelf card says 0, FindSceneDetail said 22`);
-  // Answer "start from the beginning" and confirm the declined position was
-  // not applied anyway — the two halves the prompt exists for.
+  // Answer "start from the beginning" and confirm the declined position is
+  // not applied anyway.
   focus('resume-prompt-start');
   await tapEnter();
   await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Resume playback"]'), 3000);
@@ -1012,16 +910,13 @@ async function run() {
     restarted,
     `currentTime=${document.querySelector('video')?.currentTime?.toFixed(1)}`);
   await closePlayer();
-  // The scene-1 detail page is open under the player; close it the way the
-  // user does so the last check starts from Home.
+  // Close the scene-1 detail page under the player so the last check starts at Home.
   await pressBack();
   await waitFor(() => !document.querySelector('[role="dialog"]'), 3000);
 
-  // The rail-row focus guard has its own check in rail-entry (R11), against a
-  // listing that has actually ended. An earlier H24 here tried to prove it
-  // from Home's bottom shelf, but Down from that card always found its
-  // same-row neighbour first: the check passed with the guard deleted, so it
-  // was observing the shelf's geometry and not the guard.
+  // The rail-row guard is checked in rail-entry (R11) against a listing that
+  // has ended. An earlier H24 here read Home's bottom shelf, but Down always
+  // found a same-row neighbour first, so it passed with the guard deleted.
 
   // ── H12  nothing threw ──────────────────────────────────
   check('H12 no uncaught error during the run', errors.length === 0, errorTail());

@@ -1,19 +1,13 @@
 /**
- * SceneDetailPage — full-screen scene view with editable rating, organised,
- * like, and the two activity actions: clear progress (leaves Continue
- * Watching) and mark played (appends a play now).
+ * SceneDetailPage — full-screen scene view with the editable rating, organised,
+ * like and the two activity actions: clear progress (leaves Continue Watching)
+ * and mark played (appends a play now).
  *
- * Mounted by App as an overlay rather than swapped in as a page, so the grid
- * underneath keeps its scroll position and its fetched pages: closing the
- * page is a state change, not a refetch. The overlay carries `role="dialog"`,
- * which is all useKeyHandler needs to confine the D-pad to it
- * (see `focusScopeOf`).
- *
- * The data load and the six writes live in `sceneDetail/` — see
- * `useSceneDetailData` for why the card paints first and when editing is
- * allowed, and `useSceneEdits` for the optimistic-write rules.
- *
- * The formatters and the small presentational pieces live in `sceneDetail/`.
+ * Mounted as an overlay rather than swapped in as a page, so the grid
+ * underneath keeps its scroll position and fetched pages: closing is a state
+ * change, not a refetch. `role="dialog"` is what confines the D-pad to it via
+ * `focusScopeOf`. Data and writes live in `sceneDetail/` — see the two hooks
+ * for when the card paints first and the optimistic-write rules.
  */
 
 import { useFlash } from '../hooks/useFlash.js';
@@ -30,31 +24,26 @@ import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
 
 const NOTICE_MS = 4000;
 const MAX_URLS = 3;
-// A scene can carry dozens of markers. Eight is enough to look like a
-// timeline without turning the page's footer into a scrolling wall; the rest
-// are counted, and every marker is still reachable from the Markers tab.
+// Eight markers look like a timeline without a scrolling wall; the rest are
+// counted, and every marker stays reachable from the Markers tab.
 const MAX_MARKERS = 8;
-// Galleries are a hand-off row, not a listing: four is enough to see that the
-// scene belongs to one, and the +N keeps a scene with dozens bounded.
+// Galleries are a hand-off row, not a listing: four plus +N keeps it bounded.
 const MAX_GALLERIES = 4;
 
-// ── Main ────────────────────────────────────────────────────
 export default function SceneDetailPage({
   scene, onClose, onPlay, onPlayAt, onActivityChange, onGallerySelect,
 }) {
   // Transient status line, cleared on unmount — see useFlash. Called first so
-  // its unmount effect keeps the position it had before the split.
+  // its unmount effect is registered before the others.
   const [notice, flash] = useFlash(NOTICE_MS);
 
   const { detail, setDetail, status, loadError, canEdit } = useSceneDetailData(scene);
 
-  // Back owns this page. Capture phase, and stopPropagation, so App's global
-  // handler never sees it — App's own guard is only a backstop. No text
-  // inputs exist here, so Backspace is unambiguous.
+  // Back owns this page: capture phase and stopPropagation, so App's global
+  // handler never sees it. No text inputs exist here, so Backspace is unambiguous.
   useBackKey(() => onClose?.());
 
-  // The six writes — see useSceneEdits for the optimistic rules and the
-  // in-flight tokens.
+  // The six writes — see useSceneEdits for the optimistic and in-flight-token rules.
   const { setRating, toggleOrganized, incrementLike, clearLike, clearProgress, markPlayed } =
     useSceneEdits({ detail, setDetail, flash, onActivityChange, canEdit });
 
@@ -80,7 +69,7 @@ export default function SceneDetailPage({
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={detail.title}>
       <div className={styles.panel}>
-        {/* ── Left: hero ───────────────────────────────── */}
+
         <div className={styles.heroCol}>
           {detail.screenshot ? (
             <img src={detail.screenshot} alt="" className={styles.hero} />
@@ -114,7 +103,7 @@ export default function SceneDetailPage({
           )}
         </div>
 
-        {/* ── Right: everything else ───────────────────── */}
+
         <div className={styles.body}>
           <h1 className={styles.title}>{detail.title}</h1>
 
@@ -143,9 +132,8 @@ export default function SceneDetailPage({
 
           {detail.tags?.length > 0 && <Chips items={detail.tags} />}
 
-          {/* A scene can be in a gallery. Enter leaves for the Galleries tab;
-              the tab change closes this page through useDetailSelection, so
-              the chip does not close it itself (see GalleryChip). */}
+          {/* Enter leaves for the Galleries tab; the tab change closes this
+              page through useDetailSelection (see GalleryChip). */}
           {detail.galleries?.length > 0 && (
             <div className={styles.markers} role="group" aria-label="Galleries">
               <span className={styles.markersLabel}>Galleries</span>
@@ -154,7 +142,7 @@ export default function SceneDetailPage({
                   key={gallery.id}
                   gallery={gallery}
                   // The scene id is what Back can focus on the origin tab —
-                  // there is no gallery card there. See handleGallerySelect.
+                  // there is no gallery card there (see handleGallerySelect).
                   onGallerySelect={g => onGallerySelect?.(g, detail.id)}
                 />
               ))}
@@ -183,16 +171,13 @@ export default function SceneDetailPage({
           {detail.videoCodec && (
             <div className={styles.tech}>
               {[detail.videoCodec, detail.audioCodec].filter(Boolean).join(' / ')}
-              {/* Stash's `bit_rate` is bits per second (4,200,000 for a 1080p
-                  H.264 file), and the normalizer exposes it as `bitRate`.
-                  Reading `detail.bitrate` here meant this never rendered at
-                  all; dividing bps by 1000 and calling it Mb/s was wrong even
-                  once it did. */}
+              {/* `bit_rate` is bits per second (4,200,000 for 1080p H.264),
+                  exposed as `bitRate`; the label is kb/s, hence /1000. */}
               {detail.bitRate ? ` · ${Math.round(detail.bitRate / 1000)} kb/s` : ''}
             </div>
           )}
 
-          {/* ── Markers ──────────────────────────────────── */}
+
           {detail.markers?.length > 0 && (
             <div className={styles.markers} role="group" aria-label="Markers">
               <span className={styles.markersLabel}>Markers</span>
@@ -207,7 +192,7 @@ export default function SceneDetailPage({
             </div>
           )}
 
-          {/* ── Actions ──────────────────────────────────── */}
+
           <div className={styles.actions}>
             <ActionButton
               id="scene-play"
@@ -215,11 +200,9 @@ export default function SceneDetailPage({
               icon="▶"
               primary
               autoFocus
-              // The fetched resume point travels with the press. The card
-              // behind this page may be stale — a scene just played from the
-              // same mounted listing still says 0 — and the player decides
-              // whether to ask "resume or start over" from the queue item it
-              // is handed. `detail` has the server's answer by now.
+              // The fetched resume point travels with the press: the card
+              // behind may be stale, and the player decides "resume or start
+              // over" from the queue item it is handed.
               onEnter={() => onPlay?.(detail.resumeTime || 0)}
             />
 
@@ -272,16 +255,13 @@ export default function SceneDetailPage({
             />
           </div>
 
-          {/* Stated on screen rather than left to a tooltip: a TV remote has no
-              pointer to hover with, so a `title` is a message nobody receives.
-              This is the only way a user can learn that the o-count has a
-              second gesture at all. */}
+          {/* Stated on screen, not left to a `title` tooltip: a TV remote has
+              no pointer, and this is the only way to learn the second gesture. */}
           <p className={styles.hint}>
             <kbd>OK</kbd> choose &nbsp;·&nbsp; hold <kbd>OK</kbd> on o-count to clear it
           </p>
 
-          {/* Transient save feedback. aria-live so a screen reader hears the
-              failure; sighted users get the same text under the buttons. */}
+          {/* Transient save feedback, aria-live so a screen reader hears it. */}
           <div className={styles.notice} role="status" aria-live="polite">
             {notice}
           </div>

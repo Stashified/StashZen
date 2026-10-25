@@ -1,21 +1,16 @@
 /**
- * PerformerCard — Cover image + name + scene count
- * Cover is portrait-oriented (3:4) — matches Stash's image_path.
+ * PerformerCard — cover image + name + scene count, portrait (3:4) to match
+ * Stash's `image_path`.
  *
- * Takes its record as `item`, like every other card in the tree — the shared
- * name is what lets one container render any of them (`Carousel` does; see its
- * header).
+ * Takes its record as `item`, like every card, so one container can render any
+ * of them (`Carousel` does).
  *
- * The portrait ratio is why this card needs a `--slot-w` of its own when the
- * carousel renders it: the strip's slot width and the hero's scale factor are
- * both sized for 16:9 landscape art. See Carousel.module.css.
+ * The portrait ratio needs a `--slot-w` of its own in the carousel, whose slot
+ * width and hero scale assume 16:9. See Carousel.module.css.
  *
- * `autoFocus` defaults to "the first card in a grid", which is what every
- * listing wants. The Home shelf overrides it, because four shelves mount at
- * once and only the top one may claim focus — without the explicit `false`
- * this card's first instance would race the scene shelf for it. `nextId` is
- * the same explicit edge VideoCard takes, so the top shelf can hand Up to the
- * rail.
+ * `autoFocus` defaults to the first card, which every listing wants. The Home
+ * shelf overrides it to `false`: four shelves mount at once and only the top
+ * may claim focus. `nextId` lets the top shelf hand Up to the rail.
  */
 
 import { useState } from 'react';
@@ -26,9 +21,8 @@ export default function PerformerCard({
   item, index, onSelect,
   autoFocus = index === 0,
   nextId = null,
-  // Home gives every shelf card one fixed height; `fill` drops the 3:4 ratio
-  // so the portrait cover takes that height instead of exceeding it. The
-  // Performers grid and the carousel pass nothing and stay portrait.
+  // Home fixes shelf card heights; `fill` drops the 3:4 ratio so the cover
+  // takes that height. Grids and the carousel stay portrait.
   fill = false,
 }) {
   const [imgError, setImgError] = useState(false);

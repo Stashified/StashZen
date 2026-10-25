@@ -2,10 +2,9 @@ import { EDITOR } from '../../../utils/filterCriteria.js';
 import { innerOf } from './common.js';
 
 /**
- * NUMBER, DATE and TIMESTAMP: one value box, plus a second one only when the
- * field supports a range and the modifier actually asks for one. The second
- * box is the entry that used to go missing from the chain most easily — it
- * depends on both the descriptor and the current modifier, not on the field.
+ * NUMBER, DATE and TIMESTAMP: one value box, plus a second only when the field
+ * supports a range and the modifier asks for one. The range box depends on the
+ * descriptor and the current modifier, not just the field.
  */
 const isRange = (desc, criterion) =>
   Boolean(desc.supportsRange

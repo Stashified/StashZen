@@ -1,15 +1,10 @@
 /**
  * The tag to offer first in the add-marker form: whichever tag this scene's own
- * markers use most.
+ * markers use most. Not most-recently-used (markers arrive without timestamps)
+ * and not the library's most-used — the scene's own history predicts better.
  *
- * Not "the most recently used one", even though that is the intuition, because
- * the markers arrive without timestamps — and not the server's most-used tag
- * either, because a scene's own history is a far better predictor of the next
- * marker on it than the library as a whole is.
- *
- * Ties go to the tag that appears earliest in the scene, since the position is
- * only replaced on a strictly greater count. That makes the answer stable
- * across re-renders rather than dependent on iteration order.
+ * Ties go to the earliest tag, since a position is replaced only on a strictly
+ * greater count; that keeps the answer stable rather than iteration-dependent.
  */
 export function deriveDefaultTag(markers) {
   const counts = new Map();
@@ -27,11 +22,9 @@ export function deriveDefaultTag(markers) {
 /**
  * Union two marker lists by id, in playback order.
  *
- * The union is what makes a marker survive the request that raced it: the
- * player asks for a scene's markers as it opens, and one created while that
- * request is in flight comes back in neither the old state nor the response.
- * The per-scene reset means a marker in state can only belong to the scene
- * being fetched, so there is nothing stale for this to preserve.
+ * A marker created while the open request is in flight appears in neither the
+ * old state nor the response. The per-scene reset means state holds only this
+ * scene's markers, so there is nothing stale to preserve.
  */
 export function mergeMarkers(a, b) {
   const byId = new Map();

@@ -1,15 +1,12 @@
 /**
- * EntityGrid — Infinite-scroll grid for the four browse-only sections.
+ * EntityGrid — infinite-scroll grid for the four browse-only sections.
  *
- * Same division of labour as the other three grids: `usePagedList` owns the
- * state machine, this component supplies the request and the trigger (a
- * sentinel observed from inside the scroll container). PerformerGrid differed
- * from VideoGrid and MarkerGrid in exactly five fields — service, itemsKey,
- * card, noun and aria-label — and all five now come from the `view` descriptor.
+ * As in the other grids, `usePagedList` owns the state machine while this
+ * supplies the request and the trigger. service, itemsKey, card, noun and
+ * aria-label all come from the `view` descriptor.
  *
- * What it deliberately does NOT have, compared with VideoGrid: the long-press
- * action menu, and the top/bottom fade overlays. Those belong to scenes (the
- * menu is Play/Play all/Details) and to a grid whose cards scrub on focus.
+ * Deliberately no long-press menu or fade overlays, unlike VideoGrid: those
+ * belong to scenes and to cards that scrub on focus.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -38,20 +35,16 @@ export default function EntityGrid({
     items, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be in the key
+    // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // Back out of a filtered listing lands here again with only page 1; the
-    // restore in utils/focus.js pages forward to the card it wants.
+    // Back into a filtered listing lands on page 1; the restore in
+    // utils/focus.js pages forward.
     focusPrefix: view.focusPrefix,
   });
 
-  // Handed to each card, because the Images section's selection opens a viewer
-  // that steps through the listing it was opened from. Same shape the Carousel
-  // passes, minus `fetchPage`: the viewer takes a snapshot and does not page, so
-  // offering it a way to extend the list would be offering something it cannot
-  // honour. See ImageViewer's header. `useStableListing` so a page append does
-  // not hand every card a new prop (the review's R6); its `fetchPage` getter is
-  // simply undefined here.
+  // No `fetchPage`: the Images viewer takes a snapshot and cannot page, and the
+  // Carousel's shape otherwise applies. `useStableListing` so a page append
+  // does not hand every card a new prop.
   const listing = useStableListing({ items, total, page });
 
   const scrollRef = useRef(null);

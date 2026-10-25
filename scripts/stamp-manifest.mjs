@@ -4,25 +4,18 @@
  *
  *   node scripts/stamp-manifest.mjs [dist/config.xml]
  *
- * **Why this exists.** `tizen/config.xml` carries its own `version` attribute,
- * and nothing in the repo kept it in step with `package.json`. It drifted: the
- * file said `0.10.1` while package.json said `0.13.0`, and had been wrong for
- * four releases. It did not show in shipped artifacts, because the release
- * workflow seds the real version into `dist/config.xml` before packaging — but
- * the manual build in the README copies the file through untouched unless it
- * is stamped, so a **local** build would ship a widget manifest claiming a
- * version it was not. A version that is only right when CI builds it is a
- * trap, and the fix is for every path that packages to stamp the same value.
+ * `tizen/config.xml` carries its own `version`, which nothing kept in step with
+ * package.json. The release workflow rewrites dist/config.xml before packaging,
+ * but the README's manual build copies the file through untouched unless
+ * stamped, so a local build would ship a manifest claiming the wrong version.
+ * Every packaging path must stamp the same value.
  *
- * **Why a script.** `sed -i` is not portable: GNU sed takes `-i` bare and BSD
- * sed requires `-i ''`, so a line that works in one corrupts the file in the
- * other (GNU reads the `''` as the script). One small script is the same
- * command on every machine following the README.
+ * A script rather than `sed -i`: GNU sed takes `-i` bare and BSD sed requires
+ * `-i ''`; the GNU form reads the `''` as the script and corrupts the file. One
+ * script is the same command on every machine following the README.
  *
- * Deliberately not idempotent-hostile: re-running it is a no-op, and a missing
- * file is a loud failure rather than a silent skip — the staging step it
- * depends on having happened is exactly the thing that would otherwise be
- * missed.
+ * Re-running is a no-op; a missing file is a loud failure, since it means the
+ * staging step this depends on did not happen.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -45,14 +38,13 @@ try {
   process.exit(1);
 }
 
-// Anchored to the `<widget` element's own attribute: a bare /version="[^"]*"/
-// would match `<tizen:application ... version="4.0"` first if the attributes
-// were ever reordered, and would silently stamp the *required Tizen version*.
+// Anchored to the `<widget` element: a bare /version="[^"]*"/ can match
+// `<tizen:application ... version="4.0"` and stamp the required Tizen version.
 const VERSION_ATTR = /(<widget[^>]*\sversion=")[^"]*(")/;
 
-// Tested before replacing: "the file did not change" is also what a successful
-// stamp onto an already-correct manifest looks like, so the old guard could
-// not tell a no-op from a manifest this regex never matched.
+// Test before replacing: no change is also what a successful stamp onto an
+// already-correct manifest looks like, so it cannot distinguish a no-op from a
+// regex that never matched.
 if (!VERSION_ATTR.test(xml)) {
   console.error(`stamp-manifest: ${target} has no <widget … version="…"> attribute — nothing to stamp.`);
   process.exit(1);

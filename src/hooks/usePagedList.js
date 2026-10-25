@@ -1,21 +1,16 @@
 /**
  * usePagedList — the pagination state machine the list views share
  *
- * VideoGrid, VideoCarousel, VideoCoverflow and the Reels feed each carried a
- * byte-for-byte copy of this. What they actually differed in was the request
- * (page size, and which fields of `controls` go into it) and *when* they ask
- * for more — the grid watches an IntersectionObserver sentinel, the others
- * watch how near the focused index is to the end of the list. So the
- * trigger stays with the caller and this hook stays agnostic about it; what
- * it owns is the part that was identical:
+ * The request (page size, which `controls` go into it) and *when* to ask for
+ * more stay with the caller — the grid watches an IntersectionObserver
+ * sentinel, the others the focused index. The hook owns the identical part:
  *
- *   - the request-id guard, so a page that resolves after a reset (or after
- *     a sort change) cannot write its rows into the new list
- *   - the dedupe-by-id append, because Stash's ordering can shift between
- *     page requests and a row can legitimately appear twice
+ *   - the request-id guard, so a page resolving after a reset or sort change
+ *     cannot write its rows into the new list
+ *   - the dedupe-by-id append, because Stash's ordering can shift between page
+ *     requests and a row can legitimately appear twice
  *   - the "we already hold every row" stop
- *   - the in-flight flag, which is also what keeps two triggers from
- *     fetching the same page twice
+ *   - the in-flight guard, which keeps two triggers off the same page
  *
  * Usage:
  *
@@ -26,30 +21,24 @@
  *     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
  *   });
  *
- * `fetchPage(page)` takes a 1-based page number and resolves to
- * `{ items, total }` — `items` whatever entity the caller is listing, so the
- * hook does not need to know that scenes call their array `videos`. The page
- * size belongs to the caller, baked into the closure.
+ * `fetchPage(page)` takes a 1-based page and resolves to `{ items, total }`
+ * (whatever entity the caller lists); the page size is baked into the closure.
  *
  * `requestKey` is the caller's *request identity*: change it and the list
- * resets to page 1. Build it with `pageRequestKey` (utils/requestKey.js) from
- * everything that belongs to the request — never from `fetchPage`, and never
- * from the page number.
+ * resets to page 1. Build it with `pageRequestKey` from everything that
+ * belongs to the request — never from `fetchPage` or the page number.
  *
- * Two stop conditions beyond "every row is held":
+ * Two stops beyond "every row is held":
  *
- *   - **No progress.** A page that yields no new ids ends the list. Stash's
- *     count and its rows can disagree while a scan runs or a library shrinks;
- *     without this, the sentinel stays on screen and each empty page bumped
- *     `page`, chaining requests until the server reported a truthy total or
- *     one failed. `usePlayQueue` tolerates duplicate pages for a while
- *     (`MAX_DUPLICATE_PAGES`) because playback must keep moving; a listing
- *     has no such obligation, so it stops at the first no-progress page.
- *   - **A failed page.** The failure is shown and the same page is retried
- *     automatically, with a bounded budget (MAX_PAGE_ATTEMPTS, RETRY_DELAY_MS
- *     apart). A failed page is no longer a dead end that only a sort/filter
- *     change could clear — on a TV that is several remote presses. After the
- *     budget the list stays blocked with the error visible.
+ *   - **No progress.** A page yielding no new ids ends the list. Stash's count
+ *     and rows can disagree while a scan runs or a library shrinks; without
+ *     this each empty page bumped `page` and chained requests. `usePlayQueue`
+ *     tolerates duplicates because playback must keep moving; a listing stops
+ *     at the first no-progress page.
+ *   - **A failed page.** Shown and retried automatically with a bounded budget
+ *     (MAX_PAGE_ATTEMPTS, RETRY_DELAY_MS apart), so a TV user need not change
+ *     sort/filter (several remote presses) to get out. After the budget the
+ *     list stays blocked with the error visible.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -67,79 +56,57 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
-  // The no-progress stop is a *successful* end, not a failure: the server
-  // answered, it just had nothing new. A separate flag keeps it off the error
-  // path and lets the grids draw their end marker instead of leaving the
-  // sentinel mounted forever with a stale "n of total" above it.
+  // The no-progress stop is a *successful* end: the server answered with
+  // nothing new. A separate flag keeps it off the error path and lets grids
+  // draw their end marker instead of leaving the sentinel up forever.
   const [ended, setEnded] = useState(false);
 
   const requestIdRef = useRef(0);
 
-  // Every id this request identity has ever produced. The old dedupe rescanned
-  // `items`, which was enough to avoid appending a row twice but could not
-  // distinguish "the page was genuinely empty" from "the page repeated what we
-  // already hold" — and that distinction is exactly the no-progress signal the
-  // stop condition below needs. Seeded from page 1 by the reset effect.
+  // Every id this request identity has produced. Rescanning `items` avoided
+  // duplicate appends but could not tell "genuinely empty page" from "repeated
+  // what we hold" — the distinction the no-progress stop needs.
   const seenIdsRef = useRef(new Set());
 
-  // A page-N failure is retried from here, never from a consumer's trigger.
-  // Without `retryPendingRef`, `setLoadingMore(false)` in the failure path
-  // re-armed the grid's observer and the retry became an immediate loop with
-  // no backoff. The flag makes every churn trigger a no-op while the timer
-  // is pending.
+  // A page-N failure is retried from here, never from a consumer's trigger:
+  // without `retryPendingRef`, `setLoadingMore(false)` re-armed the observer
+  // and the retry became an immediate loop with no backoff.
   const blockedRef = useRef(false);
   const attemptsRef = useRef(0);
   const retryPendingRef = useRef(false);
   const retryTimerRef = useRef(null);
 
-  // Re-entrancy guard held in a ref, not in `loadingMore` state. Two triggers
-  // can ask for the next page in the same tick — the grid's sentinel observer
-  // and a focus restore paging the listing forward (utils/focus.js) — and a
-  // state update is invisible to the second call, so both used to fetch the
-  // same page. Both callers then receive the same rows (the list cache shares
-  // the in-flight request), the first appends them, and the second hits the
-  // no-progress stop below: it rewrote the total to the rows held at that
-  // moment and marked the list exhausted, so a 1,892-row library printed
-  // "40 performers" and could never page again. Reported from the TV on
-  // 2026-10-20, right after Back restored a card from deep in the listing.
+  // Re-entrancy guard held in a ref, not `loadingMore` state: two triggers can
+  // ask for the next page in the same tick (the sentinel observer and a focus
+  // restore paging forward), and a state update is invisible to the second.
+  // Both then fetched the same page, and the second hit the no-progress stop —
+  // a 1,892-row library printed "40 performers" and could never page again.
   //
-  // Holds the *request id that owns the fetch*, not a boolean. A boolean
-  // outlived the identity it belonged to: page 3 of one sort could still be
-  // running when the user changed the sort, and the new identity's first
-  // trigger then refused to fetch because the old request "held" the flag.
-  // When the old request settled it cleared the flag without a state change
-  // (its id was stale), so nothing re-armed the sentinel and paging stalled
-  // until the next scroll. The guard below blocks only an owner that is also
-  // the current identity.
+  // Holds the *request id that owns the fetch*, not a boolean: a boolean
+  // outlived its identity, so page 3 of the old sort blocked the new one, and
+  // its stale settle cleared the flag without re-arming the sentinel. The guard
+  // below blocks only an owner that is also the current identity.
   const inFlightRef = useRef(null);
 
-  // What `loadMore` is allowed to act on, read from refs rather than from the
-  // render closure. The guard above stops two triggers *at the same time*;
-  // it does not stop a trigger that was queued by an older render — the
-  // sentinel observer is rebuilt after every page, and a callback queued just
-  // before the rebuild still holds the previous render's `page`. That stale
-  // call passed a false `loadingMore`, asked for the page that had just
-  // arrived, and hit the same no-progress stop from the other side (the
-  // performer harness caught it as "80 performers" after a third-page
-  // restore). Reading the current page/count means a late trigger asks for
-  // the *next* page or, once every row is held, for nothing at all.
+  // What `loadMore` may act on, read from refs rather than the render closure.
+  // The guard above stops simultaneous triggers, not one queued by an older
+  // render: the sentinel observer is rebuilt every page, and a callback queued
+  // just before still holds the previous `page`, asking for the page that just
+  // arrived. Current refs make it ask for the next page, or nothing at all.
   const pageRef = useRef(1);
   const itemsLenRef = useRef(0);
   const totalRef = useRef(0);
   const loadingRef = useRef(true);
 
-  // Callers write `fetchPage` inline, so it is a new function on every render.
-  // Holding it in a ref lets the reset effect key on `requestKey` alone —
-  // otherwise the list would be refetched every render. The ref is written by
-  // an effect declared *before* the reset effect, so on a commit where both
-  // run, the reset sees the current closure. Same shape as useKeyHandler's
-  // onBackRef.
+  // Callers write `fetchPage` inline, so it is new every render. Holding it in
+  // a ref lets the reset effect key on `requestKey` alone. This effect is
+  // declared before the reset effect, so on a shared commit the reset sees the
+  // current closure.
   const fetchPageRef = useRef(fetchPage);
   useEffect(() => { fetchPageRef.current = fetchPage; });
 
-  // Latest `loadMore` for the retry timer. The timer fires between renders,
-  // when the closure that scheduled it may be stale (its `loadingMore` is
-  // still true); the ref always points at the current one.
+  // Latest `loadMore` for the retry timer, which fires between renders holding
+  // a stale closure.
   const loadMoreRef = useRef(null);
 
   // ── Reset to page 1 whenever the request identity changes ─
@@ -147,17 +114,15 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     const reqId = ++requestIdRef.current;
     let cancelled = false;
 
-    // The timer belongs to the identity being replaced. Leaving it armed let
-    // it fire `loadMore` against the new list, and its page-N failure path
-    // then blocked a request identity that had never failed.
+    // The timer belongs to the replaced identity; left armed it fired against
+    // the new list and blocked an identity that had never failed.
     clearTimeout(retryTimerRef.current);
     retryTimerRef.current = null;
     retryPendingRef.current = false;
     attemptsRef.current = 0;
     seenIdsRef.current = new Set();
     blockedRef.current = false;
-    // Synchronously, before any stale trigger can read them — see the block
-    // comment where these refs are declared.
+    // Synchronously, before any stale trigger can read them.
     pageRef.current = 1;
     itemsLenRef.current = 0;
     totalRef.current = 0;
@@ -169,19 +134,14 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     setPage(1);
     setTotal(0);
     setEnded(false);
-    // Both of these belong to the request identity being replaced. Without
-    // the first, a page that was in flight when the reset happened reached
-    // `finally` with a stale id, skipped its `setLoadingMore(false)`, and
-    // left infinite scroll dead (and the spinner up) until the view
-    // remounted. The second gives the new identity a fresh error budget.
+    // Both belong to the replaced identity: without the first, an in-flight
+    // page skipped `setLoadingMore(false)` and left infinite scroll dead; the
+    // second gives the new identity a fresh error budget.
     setLoadingMore(false);
 
-    // Page 1 gets the same bounded retry as page N. Its failure used to be a
-    // dead end: the error said there was nothing to press, and only leaving
-    // and re-entering the tab (a remount) tried again. The error is not shown
-    // until the budget is spent, because a retry that is already on its way
-    // is not a failure the user should have to read about — the loading
-    // state stays up instead.
+    // Page 1 gets the same bounded retry as page N: its failure used to be a
+    // dead end only a remount cleared. The error is not shown until the budget
+    // is spent — a retry already on its way is not something to read about.
     const attemptFirstPage = () => {
       fetchPageRef.current(1)
         .then(data => {
@@ -230,15 +190,12 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     // is what makes an in-flight page harmless once the list has moved on.
     const reqId = requestIdRef.current;
 
-    // `loading` and `loadingMore` are the *committed* state; the refs are what
-    // close both windows — two triggers in one tick (the owner check) and a
-    // trigger queued by an older render (the refs below). The committed pair
-    // stays as a conservative extra: a stale-true `loading` only defers one
-    // trigger, and a stale-false one is covered by the ref.
+    // The refs close both windows: two triggers in one tick (owner check) and
+    // a trigger queued by an older render (refs below). The committed pair is
+    // a conservative extra — a stale-true `loading` only defers one trigger.
     //
-    // The owner check is deliberately `===`: a fetch belonging to a *replaced*
-    // identity must not block the new one. Its `finally` below only clears the
-    // flag when it still owns it, so it cannot swallow the new request's slot.
+    // The owner check is deliberately `===`: a replaced identity must not block
+    // the new one, and its `finally` clears the flag only when it still owns it.
     if (inFlightRef.current === reqId || loadingMore || loading || loadingRef.current
         || blockedRef.current || retryPendingRef.current) return false;
     if (itemsLenRef.current >= totalRef.current && totalRef.current > 0) return false;
@@ -262,11 +219,10 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
       }
 
       if (fresh.length === 0) {
-        // No progress: this page added nothing. Treat it as the end for this
-        // request identity — see the header. `total` becomes what we actually
-        // hold: keeping the server's higher count would leave "n of total"
-        // promising rows the list has stopped fetching, and `ended` is what
-        // lets the grid unmount the sentinel and draw its end marker.
+        // No progress: this page added nothing, so treat it as the end for this
+        // identity. `total` becomes what we hold — the server's higher count
+        // would promise rows the list has stopped fetching — and `ended` lets
+        // the grid unmount the sentinel and draw its end marker.
         blockedRef.current = true;
         totalRef.current = itemsLenRef.current;
         setTotal(itemsLenRef.current);
@@ -304,10 +260,8 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
         blockedRef.current = true;
       }
     } finally {
-      // Only when this request still owns the slot. A reset may have let the
-      // new identity start its own fetch while this one was running; an
-      // unconditional clear here would drop *that* guard and let a second
-      // trigger duplicate it.
+      // Only when this request still owns the slot; a reset may have started a
+      // new fetch whose guard an unconditional clear would drop.
       if (inFlightRef.current === reqId) inFlightRef.current = null;
       if (reqId === requestIdRef.current) setLoadingMore(false);
     }
@@ -315,33 +269,26 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     // this: an early return (blocked, retrying, already loading) is not a page
     // it may spend, or a restore can burn all twelve on no-ops.
     return true;
-    // `loading` is not read in the body — it is a dependency because the grids
-    // wire their sentinel observer to this callback's identity. On the first
-    // render the component is still the spinner and has no sentinel to
-    // observe; the observer is attached when this identity changes as page 1
-    // lands. Its other transition points (a reset, and every page's
-    // loadingMore flip) keep the sentinel re-armed.
+    // `loading` is not read in the body but is a dependency because the grids
+    // wire their sentinel observer to this callback's identity: on the first
+    // render there is no sentinel, so it must change when page 1 lands.
   }, [loadingMore, loading]);
 
   useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
 
-  // The grid renders an end-of-list marker off this and unmounts its sentinel.
-  // `ended` covers the no-progress stop, where the held rows are the whole
-  // list even though the server's count said otherwise.
+  // The grid draws an end marker off this and unmounts its sentinel; `ended`
+  // covers the no-progress stop, where the held rows are the whole list.
   const exhausted = ended || (total > 0 && items.length >= total);
 
   // ── A focus restore can ask this listing for more rows ────
-  // Back out of a filtered listing remounts the origin grid, which fetches
-  // page 1 only; a card from a later page would otherwise never come back and
-  // focus would fall to the first card. `focusByIdWhenReady` pages the
-  // registered listing forward one page at a time until the card exists — see
-  // utils/focus.js. The section's own prefixes are the lookup keys.
+  // Back out of a filtered listing remounts the origin grid, which fetches only
+  // page 1; a card from a later page would never come back. The registered
+  // listing pages forward until it exists — see utils/focus.js.
   //
-  // Reading the paging state through a ref, not capturing it: `loadMore` is
-  // replaced on every render (its guards close over the current page), and
-  // the registered object has to stay stable or the restore would hold a
-  // stale listing. The state snapshot is refreshed after each render, before
-  // any restore's next attempt (see RETRY_MS in utils/focus.js).
+  // The driver reads paging state through a ref because `loadMore` is replaced
+  // every render (its guards close over the current page), yet the registered
+  // object must stay stable. The snapshot refreshes after each render, before
+  // any restore's next attempt.
   const driverStateRef = useRef(null);
   useEffect(() => {
     driverStateRef.current = {

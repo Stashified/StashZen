@@ -1,31 +1,20 @@
 /**
  * useFocusable — attach to any element to make it TV-navigable
  *
- * Zones group elements for D-pad navigation:
- *   - Within a zone, Left/Right/Up/Down move freely.
- *   - Crossing zones happens via Up/Down only (typical TV pattern).
- *   - This prevents Left/Right from "leaking" out of horizontal rows.
+ * Zones group elements for D-pad navigation: within a zone Left/Right/Up/Down
+ * move freely, while crossing zones happens via Up/Down only — which prevents
+ * Left/Right leaking out of horizontal rows.
  *
  * Usage:
- *   const { ref, focused } = useFocusable({
- *     id: 'my-btn',
- *     zone: 'grid',
- *   });
+ *   const { ref, focused } = useFocusable({ id: 'my-btn', zone: 'grid' });
  *
  * ## Long press
  *
- * Opt-in: pass `onLongPress` and the element distinguishes a tap from a
- * hold. Elements that don't pass it are untouched — `onEnter` still fires
- * on keydown, exactly as before, so nothing that exists today can regress.
- *
- * The short action of a long-pressable element necessarily moves from
- * keydown to keyup (~80–150 ms on a typical remote). That delay is the
- * price of the feature: a single press cannot otherwise mean both "play"
- * and "open the menu" without one of them firing first.
- *
- * Movement cancels the press for free: any D-pad key moves focus, focus
- * fires `blur` on this element, and the timer dies with it. The keyup that
- * follows lands on whatever took focus, not here.
+ * Opt-in: pass `onLongPress` and the element distinguishes a tap from a hold;
+ * elements without it are untouched and `onEnter` still fires on keydown. The
+ * short action necessarily moves to keyup (~80–150 ms), the price of one press
+ * meaning both "play" and "open the menu". Moving focus cancels the press:
+ * blur kills the timer.
  */
 
 import { useRef, useState, useEffect, useCallback, useId } from 'react';
@@ -33,9 +22,8 @@ import { isRestorePending } from '../utils/restorePending.js';
 
 const registry = new Map();
 let currentFocusId = null;
-// The element that is mid-`focus()` from an `autoFocusFallback` timer. Read by
-// `handleFocus` to record how the focused element got there — see
-// `autoFocusWhenIdle` for why the distinction matters.
+// The element that is mid-`focus()` from an `autoFocusFallback` timer; read by
+// `handleFocus` to record how focus got there — see `autoFocusWhenIdle`.
 let focusingFallback = false;
 
 // How long Enter must be held for a long-pressable element to count it as a
@@ -57,69 +45,48 @@ export function useFocusable({
   longPressMs = LONG_PRESS_MS,
   disabled = false,
   autoFocus = false,
-  // Opt-in, and only meaningful with `autoFocus`. Takes focus only when
-  // nothing else has it, i.e. `document.activeElement` is <body>.
-  //
-  // This is for the *first card of a listing*, not for dialogs. A listing
-  // resets — a search keystroke, a sort, a filter — and unmounts every card;
-  // the new first card then auto-focuses and pulls the focus ring out of the
-  // search field (closing the TV keyboard) or off the controls trigger the
-  // user just used. Dialogs must keep the aggressive default: they open from
-  // a focused control and exist to take focus from it.
+  // Opt-in, only with `autoFocus`. Takes focus only when nothing else has it
+  // (`activeElement` is <body>), for the *first card of a listing*, not for
+  // dialogs: a listing reset unmounts every card, and the new first card would
+  // otherwise pull the ring out of the search field (closing the TV keyboard)
+  // or off the controls trigger just used. Dialogs keep the aggressive default.
   autoFocusWhenIdle = false,
-  // Opt-in, and only meaningful with `autoFocus`: this element is a *fallback*
-  // — it takes focus only if nothing else has it, and unlike any other focus
-  // it may be replaced by an `autoFocusWhenIdle` element later.
+  // Opt-in, only with `autoFocus`: a *fallback* — it takes focus only if
+  // nothing else has it, and unlike any other focus may be replaced later by
+  // an `autoFocusWhenIdle` element.
   //
-  // The rail is the case. It is the one focus stop that exists on every tab,
-  // including the frames before a listing's first card has loaded, so it
-  // claims focus at boot. The tab's content is the intended resting place,
-  // though, and a shelf card mounts only after its fetch resolves — by then
-  // the rail has held focus for a while. Treating that as "the user is
-  // somewhere" is what left Home resting on the rail; the rail never moved
-  // focus, it simply happened first. A focus the *user* placed — a D-pad
-  // press, or a dialog opened from one — is still never replaced.
+  // The rail is the case: it exists on every tab and claims focus at boot, but
+  // a shelf card mounts after its fetch and is the intended resting place. A
+  // focus the *user* placed — a D-pad press or a dialog — is never replaced.
   autoFocusFallback = false,
-  // Opt-in: this element can never be *entered* by a Left/Right press. Used by
-  // the rail's inactive rows, which sit in the grid's own zone: without it,
-  // Left out of the content column lands on whichever row happens to be beside
-  // the card — Settings, for cards low enough down — instead of on the tab the
-  // user is actually looking at. See useKeyHandler for why *entering* is the
-  // axis worth gating, and NavRail for the rule it implements.
+  // Opt-in: this element can never be *entered* by Left/Right. Used by the
+  // rail's inactive rows, which sit in the grid's own zone; without it Left
+  // out of the content lands on whichever row is beside the card (Settings,
+  // low down) instead of the tab being looked at. Entering is the axis worth
+  // gating — see useKeyHandler.
   verticalOnly = false,
-  // Opt-in: this element is one row of the left navigation rail. The rail is
-  // drawn to the left of the content, but its rows sit in the grid's own zone
-  // (see NavRail), so Down out of the last card of a page finds a rail row —
-  // Settings, at the foot of the screen — whenever the next page has not
-  // arrived yet. Holding Down through a page load then dropped the cursor onto
-  // the rail. Down now skips rail rows while the cursor is in the content;
-  // Up may still enter the rail, because returning there from the top row is
-  // intended. See useKeyHandler for the rule.
+  // Opt-in: one row of the left navigation rail. The rows sit in the grid's
+  // own zone, so Down out of the last card of a page finds Settings when the
+  // next page has not arrived. Down skips rail rows from the content; Up may
+  // still enter them, because returning from the top row is intended.
   railRow = false,
-  // Opt-in: this element is connected to the rest of the app *across* zones,
-  // while still refusing to be entered sideways from outside its own — that
-  // refusal is the whole point of giving it a zone. Used by the controls bar,
-  // which keeps a zone of its own so nothing in the grid can step into it
-  // sideways, and then has to be lifted out of both penalties that zone
-  // imposes: the CROSS_ZONE_PENALTY that would make Up out of the first card
-  // row land on the rail row above instead of on the filter below, and the
-  // same-zone requirement that would make Left out of the bar do nothing at
-  // all. See useKeyHandler for the two rules it appears in, and ControlsPanel.
+  // Opt-in: connected across zones while still refusing to be entered sideways
+  // from outside its own — that refusal is why it has a zone. The controls bar
+  // keeps a zone so the grid cannot step in sideways, then must be lifted out
+  // of both penalties: CROSS_ZONE_PENALTY (Up would land on the rail instead of
+  // the filter below) and the same-zone requirement (Left would do nothing).
+  // See useKeyHandler.
   crossZone = false,
-  // Opt-in: an explicit destination for a direction, e.g. `{ down: 'nav-x' }`.
-  // It replaces the spatial search for that one press, falling back to it if
-  // the named element is missing or disabled.
+  // Opt-in: an explicit destination for a direction, e.g. `{ down: 'nav-x' }`,
+  // replacing the spatial search for that press (falling back to it if the
+  // named element is missing or disabled).
   //
-  // This is for a layout the scoring cannot see through. The rail's rows use
-  // it: Settings is pinned to the bottom of the rail while the three tabs sit
-  // at the top, so the 860px of empty rail between them loses to the nearest
-  // grid card (score ~434 against ~860, at a 1.5 secondary weight) and every
-  // Down press left the rail. Since Settings is also `verticalOnly`, that made
-  // it unreachable from the remote by any route — reported from the TV on
-  // 2026-10-16. The rail knows its own order; the geometry does not.
-  //
-  // A general "ordered list" mode would be a bigger thing than one edge, and
-  // the cost of the explicit edge is only visible where it is declared.
+  // For a layout the scoring cannot see through: the rail's rows use it, since
+  // Settings sits at the bottom while the tabs sit at the top, and the empty
+  // middle loses to the nearest grid card (score ~434 against ~860, at a 1.5
+  // secondary weight), so every Down left the rail. Being also `verticalOnly`,
+  // that made Settings unreachable. The rail knows its own order; geometry does
+  // not. A general ordered-list mode would cost more than one declared edge.
   nextId = null,
 } = {}) {
   const generatedId = useId();
@@ -137,20 +104,13 @@ export function useFocusable({
   const autoFocusedRef = useRef(false);
   const nextIdRef = useRef(nextId);
 
-  // Refreshed on every render rather than in the registration effect below.
-  // Callers write `nextId={{ down: 'nav-settings' }}`, which is a fresh object
-  // each render; putting it in that effect's dependency list would tear down
-  // and re-add the element's four listeners on every single render, which on a
-  // TV is the kind of thing you feel in the D-pad. An effect with no dep array
-  // is one Map lookup and one assignment.
-  //
-  // The ref is what lets the registration effect *below* read the value without
-  // taking it as a dependency — and it has to be a ref rather than just relying
-  // on this effect, because on the very first commit this one runs first and
-  // finds no registry entry to update, so the registration would otherwise
-  // install a stale `nextId` and nothing would correct it until the next
-  // render. (Refs are also the house answer to this: see `callbacksRef` above,
-  // which has the same problem for the same reason.)
+  // Refreshed every render, not in the registration effect below: callers write
+  // `nextId={{ down: 'nav-settings' }}`, a fresh object each render, and putting
+  // it in that effect's deps would tear down and re-add four listeners per
+  // render — felt in the D-pad on a TV. The ref lets the registration effect
+  // read the value without depending on it; on the first commit this effect
+  // runs first and finds no entry, so a ref is the only way to avoid installing
+  // a stale `nextId` until the next render.
   useEffect(() => {
     nextIdRef.current = nextId;
     const entry = registry.get(id);
@@ -169,39 +129,31 @@ export function useFocusable({
       setFocused(true);
       currentFocusId = id;
       // Recorded per focus, not per element: the same rail row is a *fallback*
-      // when it claims focus at boot and a user-placed stop once the D-pad
-      // reaches it, and only the former may be replaced. See
-      // `autoFocusWhenIdle`.
+      // at boot and a user-placed stop later, and only the former may be
+      // replaced. See `autoFocusWhenIdle`.
       const entry = registry.get(id);
       if (entry) entry.focusOrigin = focusingFallback ? 'fallback' : 'user';
       callbacksRef.current.onFocus?.();
-      // Keep the focused card in view. `block: 'nearest'` only scrolls when
-      // the element is actually out of view, rather than constantly
-      // re-centering.
+      // Keep the focused card in view; `nearest` scrolls only when out of view.
       //
-      // `behavior: 'auto'` is explicit, not redundant: it overrides the CSS
-      // `scroll-behavior` property, so a stylesheet can't silently put the
-      // glide back. Smooth scrolling here was measured as a drag on the TV —
-      // it animates on the main thread, so every D-pad press started an
-      // animation that then competed with the *next* press, and the focus
-      // ring visibly trailed the key. Grid wrappers set `scroll-behavior`
-      // too; both places have to stay instant.
+      // `behavior: 'auto'` is explicit: it overrides CSS `scroll-behavior` so a
+      // stylesheet cannot silently restore the glide. Smooth scrolling was
+      // measured as a drag on the TV — it animates on the main thread, so each
+      // press started an animation competing with the next, and the ring
+      // trailed the key. Grid wrappers set `scroll-behavior` too; both stay
+      // instant.
       if (el.scrollIntoView) {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
       }
 
-      // A card is not the whole shelf. On Home the focusable sits under a
-      // row heading, and scrolling only the card is why coming back up from
-      // the gallery shelf left the page at scrollTop 70 instead of 0: the
-      // heading was 42px above the fold and the focused card's focus scale
-      // and -4px lift were clipped at the top edge. Reported from the TV,
-      // 2026-10-17. When a showroom row is clipped at the top, scroll the
-      // row (heading included) instead, and when it is the first row, go
-      // all the way to the page's own top padding.
+      // A card is not the whole shelf. On Home the focusable sits under a row
+      // heading, and scrolling only the card left the heading 42px above the
+      // fold, clipping the card's focus scale and -4px lift. When a showroom
+      // row is clipped at the top, scroll the row instead, and for the first
+      // row go to the page's top padding.
       //
-      // Only the top edge is handled: moving Down into a row should stay as
-      // minimal as before, because the row's heading is already above the
-      // card and visible.
+      // Only the top edge: Down into a row stays minimal, since the heading is
+      // already visible above the card.
       const row = el.closest?.('[data-showroom-row]');
       if (row && row.getBoundingClientRect().top < 0) {
         row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
@@ -238,13 +190,11 @@ export function useFocusable({
 
       const { onEnter, onLongPress: longPress, longPressMs: holdMs } = callbacksRef.current;
 
-      // Auto-repeat is never an activation. A remote spams keydown at ~30 Hz
-      // while a key is held, so acting on repeats runs the action 30 times a
-      // second — and worse, the repeats outlive whatever the first press did:
-      // a long press moves focus into the menu it just opened, and every
-      // repeat that follows lands on the first row and activates it, so
-      // holding OK plays the scene instead of showing the menu. Only a fresh
-      // keydown, after a keyup, counts as a press.
+      // Auto-repeat is never an activation. A remote spams keydown at ~30 Hz,
+      // so repeats would run the action 30 times a second — and outlive the
+      // first press: a long press moves focus into the menu it opened, and
+      // every repeat activates its first row, so holding OK plays the scene
+      // instead of showing the menu. Only a fresh keydown after a keyup counts.
       if (e.repeat) {
         e.preventDefault();
         return;
@@ -256,9 +206,8 @@ export function useFocusable({
         return;
       }
 
-      // Always suppress the native activation — a focused <button> would
-      // otherwise fire a click on keydown and the action would run twice,
-      // once from onEnter and once from onClick.
+      // Suppress native activation: a focused <button> would fire a click on
+      // keydown and run the action twice, from onEnter and onClick.
       e.preventDefault();
 
       // A held remote repeats keydown at ~30 Hz. The timer belongs to the
@@ -297,24 +246,22 @@ export function useFocusable({
     el.addEventListener('keydown', handleKeyDown);
     el.addEventListener('keyup', handleKeyUp);
 
-    // `nextIdRef.current`, not `nextId`: reading the prop here would mean
-    // listing it as a dependency, and a fresh object each render would then
-    // re-register the element on every one. See the refresh effect above.
+    // `nextIdRef.current`, not `nextId`: reading the prop here would make it a
+    // dependency, and a fresh object each render would re-register the element
+    // every time. See the refresh effect above.
     registry.set(id, {
       el, zone: effectiveZone, verticalOnly, crossZone, railRow, nextId: nextIdRef.current,
     });
 
 
-    // The 50ms delay exists to let the element land in the DOM before
-    // asking for focus. The latch keeps this once-per-instance, so a dep
-    // change doesn't yank focus back to an element the user has navigated
-    // away from.
+    // The 50 ms lets the element land in the DOM before asking for focus. The
+    // latch keeps this once-per-instance, so a dep change cannot yank focus
+    // back from where the user navigated.
     let autoFocusTimer = null;
     let autoFocusFired = false;
-    // A restore is on its way to a card in this listing: hold the first-card
-    // focus so the cursor does not land on the wrong one and then jump. The
-    // cap means a restore that finds nothing still leaves the D-pad somewhere
-    // to move from rather than on <body> for the whole 8 s budget.
+    // A restore is on its way to a card here: hold first-card focus so the
+    // cursor does not land on the wrong one and then jump. The cap still
+    // leaves the D-pad somewhere to move after 1.5 s.
     const autoFocusDeferUntil = Date.now() + 1500;
     if (!disabled && autoFocus && !autoFocusedRef.current) {
       autoFocusedRef.current = true;
@@ -349,14 +296,10 @@ export function useFocusable({
       document.removeEventListener('visibilitychange', cancelOnHide);
       window.removeEventListener('pagehide', cancelOnHide);
       clearTimeout(autoFocusTimer);
-      // If the timer was cancelled before it fired, this effect run left
-      // nothing focused — release the latch so the re-run still can.
-      //
-      // This matters under React StrictMode (dev only): it mounts, runs
-      // the effect, cleans up, then runs it again. Without this, the
-      // cleanup cancels the first timer and the second run sees the latch
-      // already set, so the element ends up focusable but never focused —
-      // which strands the user's D-pad on <body> until they press a key.
+      // If the timer was cancelled before it fired, release the latch so the
+      // re-run still can. Under StrictMode (dev) the effect mounts, cleans up
+      // and runs again; without this the second run sees the latch set and the
+      // element stays focusable but never focused, stranding the D-pad.
       if (autoFocusTimer !== null && !autoFocusFired) {
         autoFocusedRef.current = false;
       }
@@ -365,18 +308,12 @@ export function useFocusable({
       el.removeEventListener('keydown', handleKeyDown);
       el.removeEventListener('keyup', handleKeyUp);
       if (registry.get(id)?.el === el) registry.delete(id);
-      // Forgetting where focus was is only correct when the element is gone.
-      // A *re-registration* — `disabled` flipping, the rail's `verticalOnly`
-      // following the active tab — leaves it connected and still on screen,
-      // and nulling this made the next Left/Right press start from <body>,
-      // where there is no zone: every zone-tagged candidate was rejected and
-      // the horizontal D-pad did nothing until the user pressed Up or Down.
-      //
-      // The entry above is deleted and re-added by the new effect run, so a
-      // disabled element has no entry again only if the effect body skips
-      // registering it. It registers either way (the candidate search already
-      // skips `el.disabled` as a landing target), precisely so the *current*
-      // element keeps its zone and rect while it is disabled.
+      // Forget where focus was only when the element is gone. A
+      // *re-registration* (`disabled` flipping, `verticalOnly` following the
+      // tab) leaves it connected, and nulling this started the next Left/Right
+      // from <body> with no zone. The entry is re-added below — even while
+      // disabled, since the candidate search already skips it as a landing
+      // target — so the current element keeps its zone and rect.
       if (currentFocusId === id && !el.isConnected) currentFocusId = null;
     };
   }, [id, effectiveZone, disabled, autoFocus, autoFocusWhenIdle, autoFocusFallback,

@@ -4,17 +4,13 @@
  *
  *   node scripts/test-key-routing.mjs
  *
- * The map that decides what a remote key does in the player is the most
- * intricate table in the app: four states (no rail, rail up, foreign dialog,
- * one-scene queue) times every key, and the prevent/stop flags matter as much
- * as the action — a wrongly consumed ←/→ breaks spatial nav, and an
- * unconsumed arrow outside the rail drops the cursor onto a rail the user
- * never opened. Back is the one key whose meaning also depends on whether the
- * controls are on screen: the bar goes first, the player on the press after.
- * Off-device the harness can only prove the mapping, not what a given TV's
- * remote emits, so the mapping itself is pinned here directly.
- *
- * No framework, same as test-play-queue.mjs and test-progress-reporter.mjs.
+ * The player's key map is four states (no rail, rail up, foreign dialog,
+ * one-scene queue) times every key. The prevent/stop flags matter as much as
+ * the action: a wrongly consumed ←/→ breaks spatial nav, and an unconsumed
+ * arrow drops the cursor onto a rail the user never opened. Back depends on
+ * whether the controls are on screen — the bar goes first, the player on the
+ * next press. The harness cannot know what a given TV's remote emits, so the
+ * mapping is pinned here.
  */
 
 import { routePlayerKey } from '../src/components/player/keyRouting.js';
@@ -71,11 +67,9 @@ check('rail: Space is instant transport', is(ev(' ', 32), RAIL, 'media', true, t
 check('rail: 415 is instant transport', is(ev('', 415), RAIL, 'media', true, true));
 check('rail: 19 is instant transport', is(ev('', 19), RAIL, 'media', true, true));
 check('rail: 10252 is instant transport', is(ev('', 10252), RAIL, 'media', true, true));
-// The two directions are mirror images, and the buttons are the other stop of
-// the ladder: ↓ from the buttons steps to the next scene in one press, while ↑
-// leaves for the seek bar (←/→ skim there). ↑ and Back are both exits, but they
-// part ways on the bar: ↑ is the seek mode and leaves it up (the backend calls
-// showControls), Back dismisses it.
+// The directions mirror: ↓ from the buttons steps to the next scene in one
+// press, while ↑ leaves for the seek bar. ↑ and Back both exit the rail but
+// part ways on the bar: ↑ is seek mode and leaves it up, Back dismisses it.
 check('rail: ArrowUp leaves the rail for the seek bar',
   is(ev('ArrowUp', 38), RAIL, 'leave-rail-seek', true, true));
 check('rail: ArrowUp by code alone leaves the rail for the seek bar',
@@ -114,10 +108,9 @@ check('repeat arrows still navigate (they are held on purpose)',
 check('no rail: 413 closes', is(ev('', 413), NO_RAIL, 'close', true, true));
 
 // ── No rail, bar up: Back puts the bar away first ──────────
-// The user's 2026-10-18 report: with the controls on screen, Back hid nothing
-// and closed the player, losing the playback they were only trying to uncover.
-// Back is now one level up in the bar too; the *next* Back closes (the checks
-// above, on a hidden bar).
+// With the controls on screen, Back used to hide nothing and close the player,
+// losing playback the user was only trying to uncover. It is one level up in
+// the bar too; the *next* Back closes (the checks above, on a hidden bar).
 for (const e of [ev('Escape', 27), ev('Backspace', 8), ev('', 10009), ev('', 413)]) {
   check(`no rail, bar up: ${e.key || e.keyCode} hides the bar`,
     is(e, VISIBLE, 'hide-controls', true, true), show(route(e, VISIBLE)));
@@ -139,10 +132,9 @@ check('no rail: 417 skims forward', is(ev('', 417), NO_RAIL, 'skim-forward', tru
 // as a dropped key, so both raise the rail instead.
 check('no rail, multi: ArrowUp steps back', is(ev('ArrowUp', 38), NO_RAIL, 'step-prev', true, true));
 check('no rail, multi: ArrowDown steps forward', is(ev('ArrowDown', 40), NO_RAIL, 'step-next', true, true));
-// With the bar up, the seek bar is the lower stop: ↓ returns to the buttons
-// (the press after it steps), and ↑ steps back at once. That is what makes
-// "seek bar → ↓ → controls → ↓ → next scene" and "controls → ↑ → seek bar →
-// ↑ → previous scene" work.
+// With the bar up, the seek bar is the lower stop: ↓ returns to the buttons and
+// the press after steps, while ↑ steps back at once. That makes the ladder
+// "seek bar → ↓ → controls → ↓ → next scene" and its mirror work.
 check('no rail, bar up: ArrowDown returns to the buttons',
   is(ev('ArrowDown', 40), VISIBLE, 'reveal-rail', true, true));
 check('no rail, bar up: ArrowUp steps back',

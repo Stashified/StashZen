@@ -1,11 +1,9 @@
 import { useEditableField } from '../../hooks/useEditableField.js';
 import styles from '../SettingsPanel.module.css';
 
-// ── A text field you select first, then edit ─────────────
-//
-// The D-pad selects the wrapper; Enter moves focus onto the input and only
-// then does the TV's on-screen keyboard appear. The reasoning, and the two
-// traps that make this harder than it looks, live in useEditableField.
+// The D-pad selects the wrapper; Enter moves onto the input and only then does
+// the TV keyboard appear. The reasoning and its two traps live in
+// useEditableField.
 export function TextField({ id, label, value, onChange, placeholder, type = 'text', externalRef }) {
   const labelId = `${id}-label`;
   const { setWrapperRef, inputRef, selected, editing, inputHandlers } = useEditableField({

@@ -1,17 +1,13 @@
 /**
  * listCache — module-scope cache for paginated list responses.
  *
- * Same shape as the cache already in filterService.js (a Map plus an
- * inflight Map plus a clear export), generalised for the three list
- * services: scenes, performers and markers.
+ * A Map plus an inflight Map plus a clear export, shared by the list services.
  *
  * WHY THE SOURCE IS IN EVERY KEY. These Maps live at module scope, so they
- * outlive the `key={dataKey}` remount in App.jsx — the remount that is
- * meant to discard everything belonging to the previous source. Keying on
- * request parameters alone would hand one Stash instance's scenes to
- * another, or serve Test mode's mock data in Live. Keys are therefore only
- * ever built through `listCacheKey()`, which folds in `dataSourceKey()`,
- * so a call site cannot forget it.
+ * outlive the `key={dataKey}` remount in App.jsx that discards the previous
+ * source. Keying on request parameters alone would hand one Stash instance's
+ * scenes to another, or serve Test mocks in Live, so keys are only built
+ * through `listCacheKey()`, which folds in `dataSourceKey()`.
  *
  * Bounded, because a long browse session mints a key per page.
  */
@@ -40,13 +36,10 @@ export function listCacheKey(...parts) {
   ].join(SEP);
 }
 
-// Every cache this module has handed out. The caches are module-scoped on
-// purpose, so a React remount cannot drop them; `clearAllListCaches` is the
-// explicit way out, used when the user leaves a tab. Without it, leaving
-// Home and coming back re-mounted every shelf and then served its page 1
-// from this Map — the fetch the remount looked like it was doing never
-// happened, and a scene added on the server stayed invisible until the app
-// was restarted. See App.jsx's `changeTab`.
+// Every cache this module has handed out. Module scope means a React remount
+// cannot drop them, so `clearAllListCaches` is the explicit way out when the
+// user leaves a tab. Without it, returning to Home remounts every shelf, serves
+// page 1 from this Map, and never sees a scene added on the server.
 const caches = new Set();
 
 export function createListCache() {
@@ -78,12 +71,10 @@ export function createListCache() {
       if (inflight.has(key)) return inflight.get(key);
 
       const gen = generation;
-      // Delete *this* promise, not whatever is under the key. After a clear()
-      // the old request is still running while a new one has already been
-      // registered — `inflight.clear()` dropped the old entry but cannot stop
-      // it settling — and an unconditional delete made the old answer remove
-      // the new request's slot, so the next caller started a third request
-      // instead of joining the second.
+      // Delete *this* promise, not whatever is under the key: after a clear()
+      // an old request is still running while a new one is registered, and an
+      // unconditional delete would let the old answer remove the new slot, so
+      // the next caller starts a third request instead of joining.
       const settle = () => {
         if (inflight.get(key) === p) inflight.delete(key);
       };
@@ -116,11 +107,9 @@ export function createListCache() {
 /**
  * Drop every cached list page, in every service, at once.
  *
- * `clearScenePages`-style exports exist for writes the app makes, where one
- * entity family is affected. This is for the case the app cannot see: the
- * library changed on the server. It is called when the user switches tab, so
- * arriving at a tab re-reads page 1 — see App.jsx's `changeTab` for why the
- * remount alone was not enough.
+ * `clearScenePages`-style exports cover writes the app makes; this covers what
+ * it cannot see — the library changed on the server. Called on tab switch so
+ * arriving re-reads page 1 (the remount alone was not enough).
  */
 export function clearAllListCaches() {
   for (const cache of caches) cache.clear();

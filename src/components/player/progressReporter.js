@@ -2,19 +2,15 @@
  * progressReporter — everything the player writes back to Stash, as a plain
  * object.
  *
- * This is the one subsystem in the app that can write *wrong data* into the
- * user's library: `play_duration` is added server-side, so a double-sent delta
- * or a zero read at the wrong moment is permanent. It is therefore separated
- * from React entirely — no hooks, no DOM, no module state — and the two
- * network calls are injected. The caller keeps the effects that are about the
- * page rather than the element (visibility, pagehide, the periodic save and
- * the teardown) and feeds this object the timeline events.
+ * This is the one subsystem that can write *wrong data* into the user's
+ * library: `play_duration` is added server-side, so a double-sent delta or a
+ * zero read at the wrong moment is permanent. Hence no React, DOM or module
+ * state, and injected network calls; the caller keeps the page-level effects.
  *
- * The snapshot rule: `save()` captures the position and the owed watch time at
- * the moment the write is *requested*, and the sender only ever uses that
- * snapshot. A queued save may be sent long after the queue has moved on, and
- * re-reading the live values then would report the next scene's position (or
- * a drained `played`) for the outgoing one.
+ * The snapshot rule: `save()` captures the position and owed watch time when the
+ * write is *requested*, and the sender only uses that snapshot. A queued save
+ * may be sent long after the queue moved on, and re-reading live values would
+ * report the next scene's position for the outgoing one.
  */
 
 import { PLAY_CREDIT_MAX_S, PLAY_CREDIT_MIN_S } from './constants.js';
@@ -22,8 +18,7 @@ import { PLAY_CREDIT_MAX_S, PLAY_CREDIT_MIN_S } from './constants.js';
 /**
  * @param {object} deps
  * @param {(input: {id: string, resumeTime: number, playDuration: number}) => Promise<{ok: boolean, error?: any}>} deps.save
- *        the sceneSaveActivity write. Named to match the method below; the
- *        factory keeps the injected function as `write`.
+ *        the sceneSaveActivity write, kept internally as `write`.
  * @param {(id: string) => Promise<{ok: boolean, error?: any}>} deps.addPlay
  * @param {(state: 'saving'|'saved'|'failed') => void} deps.onSync
  *        every call is already guarded by the mounted latch.
@@ -55,11 +50,10 @@ export function createProgressReporter({
   };
 
   /**
-   * Send one already-captured snapshot, and drain whatever queued behind it.
-   *
-   * Kept recursive rather than a loop: a queued snapshot re-enters the sender
-   * when the write in flight settles, which is what makes "one write at a
-   * time" hold without a scheduler.
+   * Send one already-captured snapshot, then drain whatever queued behind it.
+   * Recursive rather than a loop: a queued snapshot re-enters the sender when
+   * the write in flight settles, which holds "one write at a time" without a
+   * scheduler.
    */
   function sendSnapshot(snapshot) {
     saveInFlight = true;
@@ -72,44 +66,37 @@ export function createProgressReporter({
     }).then((res) => {
       saveInFlight = false;
 
-      // The completion prune names the scene the snapshot describes, so it
-      // must not wait for that scene to still be the one on screen: a queue
-      // advance or a player close happens before this write lands, and under
-      // the old placement the shelf kept a card whose resume point had just
-      // been cleared. Neither does it need the component: the App that owns
-      // the shelf is still mounted after the player closes (or the tab
-      // remounted), and the set is idempotent. Only a *landed* save proves
-      // Stash took the position, so the success check stays.
+      // The prune names the scene the snapshot describes, so it must not wait
+      // for that scene to still be on screen: a queue advance or close happens
+      // before the write lands. The App owning the shelf outlives the player and
+      // the set is idempotent, so no component is needed. Only a *landed* save
+      // proves Stash took the position, hence the success check.
       if (res.ok && snapshot.completed) onCompleted?.(snapshot.id);
 
       if (mounted) {
         if (res.ok) {
           syncError = null;
           onSync('saved');
-          // Only while this is still the scene the values describe. Otherwise
-          // a late success would stamp the old position over the new scene's
-          // `lastSaved` (skipping its first save) and drain watch time it has
-          // already begun accruing.
+          // Only while this is still the scene the values describe: a late
+          // success would stamp the old position over the new scene's
+          // `lastSaved` and drain watch time it has begun accruing.
           if (sceneId === snapshot.id) {
             lastSaved = snapshot.t;
-            // Decremented, not zeroed: any time counted after this snapshot
-            // was captured is still owed and, under the old zeroing, was
-            // discarded on every save that landed while playback continued.
+            // Decremented, not zeroed: time counted after this snapshot was
+            // captured is still owed and would otherwise be discarded.
             played = Math.max(0, played - snapshot.played);
           }
         } else {
-          // Deliberately not clearing played: the watch time stays owed, and
-          // the next attempt carries it. Likewise lastSaved, so the position
-          // is retried too.
+          // Deliberately not clearing played or lastSaved: the watch time stays
+          // owed and the position is retried with the next attempt.
           syncError = res.error;
           onSync('failed');
         }
       }
 
       // The queued write for this scene carried the same watch time this one
-      // just sent — `played` is only reduced after a success — so strip what
-      // has now landed or the delta is counted twice. A failed send leaves the
-      // queued amount whole.
+      // sent (`played` shrinks only after a success), so strip what landed or
+      // it is counted twice. A failed send leaves the queued amount whole.
       const sameScene = queuedSaves.get(snapshot.id);
       if (sameScene) {
         queuedSaves.delete(snapshot.id);
@@ -119,9 +106,8 @@ export function createProgressReporter({
         });
         return;
       }
-      // Otherwise the oldest entry, whatever scene it belongs to: ordering
-      // between scenes is the order the exits happened in, which is what the
-      // Map preserves.
+      // Otherwise the oldest entry, whatever scene it belongs to: the Map
+      // preserves the order the exits happened in.
       const next = queuedSaves.entries().next();
       if (!next.done) {
         queuedSaves.delete(next.value[0]);
@@ -131,26 +117,23 @@ export function createProgressReporter({
   }
 
   /**
-   * Report the current scene. The id is passed in rather than read from the
-   * latch: every caller closes over the scene it belongs to, and the teardown
-   * needs to name the *outgoing* scene even though the queue has moved on.
+   * Report the current scene. The id is passed in because the teardown must
+   * name the *outgoing* scene even though the queue has moved on.
    */
   function saveScene(id) {
     if (!id) return;
     const t = completed ? 0 : lastTime;
     const owed = played;
-    // Nothing to report: the position has not moved and no watch time
-    // accrued. Both halves matter — without the second, a scene watched to a
-    // standstill would stop saving its play_duration. After a completion save
-    // lands, `lastSaved` is 0, so the teardown that follows is a no-op rather
-    // than a second write of the end position.
+    // Nothing to report: neither the position nor the watch time moved. Both
+    // halves matter — without the second, a scene watched to a standstill would
+    // stop saving its play_duration. After a completion save `lastSaved` is 0,
+    // so the following teardown is a no-op rather than a second end write.
     if (Math.abs(t - lastSaved) < 2 && owed < PLAY_CREDIT_MIN_S) return;
 
     const snapshot = { id, t, played: owed, completed };
     if (saveInFlight) {
-      // Latest wins. A pause, an `ended` and a teardown can all land inside
-      // one 30 s request, and the last of them carries the most truthful
-      // position for that scene.
+      // Latest wins: a pause, an `ended` and a teardown can all land inside one
+      // 30 s request, and the last carries the most truthful position.
       queuedSaves.set(id, snapshot);
       return;
     }
@@ -162,32 +145,28 @@ export function createProgressReporter({
     setScene(id) { sceneId = id ?? null; },
 
     /**
-     * The per-scene reset. The clock values belong to the scene that was on
-     * screen a moment ago; carrying them over would report the outgoing
-     * scene's position for the incoming one.
+     * The per-scene reset: the clock values belong to the outgoing scene, and
+     * carrying them over would report its position for the incoming one.
      */
     resetScene() {
       lastTime = 0;
       lastSaved = 0;
-      // Watch time is per scene too, and for a sharper reason: carrying it
-      // over would add the outgoing scene's minutes to the incoming scene's
-      // play_duration, and Stash adds that field to a running total rather
-      // than replacing it, so the error would be permanent.
+      // Watch time is per scene too: carrying it over would add the outgoing
+      // scene's minutes to the incoming play_duration, and Stash *adds* that
+      // field to a running total, so the error would be permanent.
       played = 0;
       lastTick = 0;
       completed = false;
     },
 
     /**
-     * One `timeupdate`. The caller has already dropped ticks that belong to a
-     * stale source (`sourceFresh`); the credit rule here is what separates
-     * playback from seeks.
+     * One `timeupdate`. The caller has dropped ticks from a stale source; the
+     * credit rule here separates playback from seeks.
      */
     tick(t, paused) {
-      // Credit only what the clock advanced by itself — see
-      // PLAY_CREDIT_MAX_S. A skim of ±15s, a marker jump and the resume seek
-      // all arrive here as one oversized step and are ignored; everything in
-      // between is playback. Backwards steps fall out of the `delta > 0` test.
+      // Credit only what the clock advanced by itself: a skim, marker jump or
+      // resume seek is one oversized step and is ignored (see
+      // PLAY_CREDIT_MAX_S). Backwards steps fall out of `delta > 0`.
       const delta = t - lastTick;
       if (!paused && delta > 0 && delta <= PLAY_CREDIT_MAX_S) played += delta;
       lastTick = t;
@@ -196,9 +175,8 @@ export function createProgressReporter({
 
     /**
      * A seek that took. The clock values record where the *element* actually
-     * is, so the caller moves them only when the seek succeeded; a
-     * non-seekable stream must not have a position written for it that the
-     * element never reached.
+     * is, so the caller moves them only on success: a non-seekable stream must
+     * not be given a position the element never reached.
      */
     seek(t) {
       lastTick = t;
@@ -212,26 +190,21 @@ export function createProgressReporter({
     reopen() { completed = false; },
 
     /**
-     * The play counter, once per scene per player session. `playing` also
-     * fires again after every buffer stall, so the latch is load-bearing
-     * rather than tidy, and `play` would be worse still since it fires on
-     * every resume from a pause.
+     * The play counter, once per scene per player session. `playing` also fires
+     * after every buffer stall, so the latch is load-bearing; `play` would be
+     * worse, firing on every resume. `playing` and not mount, because mounting
+     * says nothing about whether the file was watchable.
      *
-     * `playing` and not mount: mounting says nothing about whether the file
-     * was watchable, and a scene that 404s should not count as watched.
-     *
-     * A set of ids rather than one remembered id: the player can revisit a
-     * scene it already showed in this session, and a one-slot latch would
-     * count that scene twice.
+     * A set of ids, not one remembered id: a revisited scene must not count
+     * twice.
      */
     countPlay(id) {
       if (!id || countedPlay.has(id)) return;
       countedPlay.add(id);
       addPlay(id).then((res) => {
         if (res.ok || !mounted) return;
-        // A failed play count is reported through the same chip as a failed
-        // save: both mean "this app is not reaching Stash", and the user needs
-        // one place to look, not two.
+        // Reported through the same chip as a failed save: both mean "this app
+        // is not reaching Stash", and the user needs one place to look.
         syncError = res.error;
         onSync('failed');
       });

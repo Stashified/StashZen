@@ -1,6 +1,5 @@
-/* Full-bleed and opaque, unlike the other overlays: the app has no scrim
-   convention for a full-screen surface, and a picture behind a translucent
-   backdrop would be read against a live grid rather than against black. */
+/* Full-bleed and opaque, unlike the other overlays: a translucent backdrop
+   would read the picture against a live grid rather than against black. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -12,7 +11,7 @@
 }
 
 /* The picture takes every pixel the bars do not. `min-height: 0` is
-   load-bearing, same as the grids: a flex child will not shrink below its
+   load-bearing, as in the grids: a flex child will not shrink below its
    content, and an image's content is its intrinsic size. */
 .stage {
   flex: 1;
@@ -90,9 +89,8 @@
   font-weight: 600;
 }
 
-/* The two header buttons travel together on the right. `margin-left: auto`
-   lives on the group, not on each button, so Play and Info stay adjacent
-   rather than splitting the free space between them. */
+/* `margin-left: auto` sits on the group, not each button, so Play and Info
+   stay adjacent rather than splitting the free space between them. */
 .actions {
   margin-left: auto;
   align-self: center;
@@ -121,14 +119,14 @@
   color: #fff;
 }
 
-/* Play/Pause share the Info button's look. The width is pinned so the button
-   does not jump when the label changes during a slideshow. */
+/* Play/Pause share Info's look. Width pinned so the button does not jump when
+   the label changes mid-slideshow. */
 .playBtn {
   min-width: 92px;
 }
 
-/* Read-only panel over the picture. It is inside `.stage`, whose
-   `position: relative` is otherwise only used for the spinner. */
+/* Inside `.stage`, whose `position: relative` otherwise only anchors the
+   spinner. */
 .infoPanel {
   position: absolute;
   top: 24px;

@@ -1,12 +1,11 @@
 /**
- * videoService.js — Fetch scenes from a Stash GraphQL endpoint
+ * videoService.js — fetch scenes from a Stash GraphQL endpoint.
  *
- * URL, API key, and Test/Live mode are read at request time from
- * the settings store (see ../utils/settings.js) so the user can
- * configure them at runtime via the Settings panel.
+ * URL, API key and Test/Live mode are read at request time from the settings
+ * store so the user can configure them at runtime.
  *
- * Sort keys are passed through directly to Stash — UI keys MUST match
- * Stash's GraphQL sort enum values (created_at, title, rating, etc).
+ * Sort keys pass straight through to Stash — UI keys MUST match Stash's GraphQL
+ * sort enum values (created_at, title, rating, etc).
  */
 
 import { getSettings } from './settings.js';
@@ -19,10 +18,9 @@ import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
 
-// The two scene sort values whose mock field has another name. `duration` is
-// the formatter's output on a card, not a number — the seconds live in
-// `durationSeconds`; `resolution` is a named server enum, and the nearest
-// honest ordering a mock can offer is its pixel height.
+// The two scene sort values whose mock field has another name: `duration` is
+// the card's formatted string (seconds live in `durationSeconds`), and
+// `resolution`, a server enum, is best approximated by pixel height.
 const MOCK_SORT_ALIAS = {
   duration: 'durationSeconds',
   resolution: 'height',
@@ -35,9 +33,8 @@ const MOCK_SORT_ALIAS = {
 // ═══════════════════════════════════════════════════════════
 // MOCK DATA (Test mode — see mockLibrary.js and mockArt.js)
 // ═══════════════════════════════════════════════════════════
-// Everything below is invented, and none of it is random per call: the
-// numbers come from a PRNG seeded on the scene's id, so a scene keeps its
-// duration, rating and cover for as long as the app is pointed at Test mode.
+// Everything below is invented but stable: a PRNG seeded on the scene's id, so
+// a scene keeps its duration, rating and cover while the app is in Test mode.
 // That is what makes a layout change comparable before and after.
 function generateMockVideos(count = 48) {
   const now = Date.now();
@@ -59,9 +56,8 @@ function generateMockVideos(count = 48) {
       date: 1962 + Math.floor(rng() * 60),
       created_at: now - i * 86400000,
       updated_at: now - i * 43200000,
-      // Some scenes are unrated and some have never been watched, because a
-      // card has to render both of those states and Test mode is where the
-      // difference gets looked at.
+      // Some scenes are unrated and some never watched: a card renders both
+      // states, and Test mode is where the difference gets looked at.
       rating: rng() > 0.25 ? (rng() * 3.5 + 6).toFixed(1) : null,
       o_counter: rng() > 0.6 ? Math.floor(rng() * 9) : 0,
       play_count: plays,
@@ -141,11 +137,9 @@ function formatDuration(seconds) {
 /**
  * The release year, read off the date string.
  *
- * `date` is a date-only value ("2019-05-04"), which `new Date()` parses as UTC
- * midnight — so `getFullYear()` in any negative-offset timezone answers the
- * year *before*, and a 2019 scene card read 2018 for everyone west of
- * Greenwich. The year is the first four characters; there is nothing to
- * compute.
+ * `date` is date-only ("2019-05-04"), which `new Date()` parses as UTC
+ * midnight, so `getFullYear()` west of Greenwich answers the year before. The
+ * year is the first four characters; do not parse a Date.
  */
 function yearOf(date) {
   const m = /^(\d{4})/.exec(date || '');
@@ -165,17 +159,12 @@ function normalizeScene(scene) {
     year,
     rating: scene.rating100 != null ? (scene.rating100 / 10).toFixed(1) : null,
     category: scene.studio?.name || scene.tags?.[0]?.name || 'Untagged',
-    // Every one of these except `stream` arrives from Stash without the API
-    // key; `stream` already has it. withApiKey is a no-op on the latter.
+    // Every one of these except `stream` arrives without the API key;
+    // withApiKey is a no-op on `stream`.
     //
-    // `preview` is carried again as of 0.6.0. It was dropped when the focus
-    // preview was, with the note "nothing renders it" — true at the time and
-    // no longer. What made that note sound was that `paths.preview` is a
-    // non-empty URL for *every* scene even when no preview file exists, so a
-    // card that trusted it always took the preview branch and sat on a black
-    // tile. The URL is still advertised unconditionally; the difference is
-    // that VideoCard now treats the <video> element as its own probe and
-    // keeps the cover until that element reports a frame. See its header.
+    // `preview` is non-empty for *every* scene, even with no preview file, so
+    // a card must not trust it alone: VideoCard treats the <video> element as
+    // its probe and keeps the cover until a frame arrives. See its header.
     thumbnail: withApiKey(scene.paths?.screenshot) || null,
     stream: withApiKey(scene.paths?.stream) || null,
     sprite: withApiKey(scene.paths?.sprite) || null,
@@ -187,10 +176,8 @@ function normalizeScene(scene) {
     tags: scene.tags?.map(t => t.name) || [],
     width: file?.width,
     height: file?.height,
-    // Carried for the *player*, not for any card: a file the TV's <video>
-    // cannot decode is playing-edition information, and the card has no use
-    // for it. See playbackSource.js for what is done with them, and why
-    // "unknown" is a different answer from "known bad".
+    // Carried for the *player*, not the card: see playbackSource.js for how
+    // these decide a transcode, and why "unknown" differs from "known bad".
     videoCodec: file?.video_codec || null,
     audioCodec: file?.audio_codec || null,
     container: file?.format || null,
@@ -213,13 +200,15 @@ export function clearScenePages() {
 }
 
 /**
- * Cached page fetch. Switching tabs, or coming back to a sort you already
- * looked at, renders from here instead of re-showing the spinner — the
- * request itself is only ~28 ms (see [[stash-image-serving-facts]]), so the
- * win is the perceived one, not the wall-clock one.
+ * Cached page fetch. Switching tabs or returning to a sort already seen renders
+ * from here instead of re-showing the spinner — the request is only ~28 ms, so
+ * the win is perceived, not wall-clock.
  *
  * The key carries the full request identity, and listCacheKey folds in the
- * data source, so Test and Live can't be served each other's pages.
+ * data source, so Test and Live cannot serve each other's pages.
+ *
+ * `mode` is Test-mode only: it filters the mock library and feeds the random
+ * seed; the GraphQL branch ignores it.
  */
 export async function fetchVideos({
   mode = 'all',
@@ -230,10 +219,9 @@ export async function fetchVideos({
   page = 1,
   limit = 40,
 } = {}) {
-  // `random` re-shuffles on every request server-side, so page 2 would overlap
-  // page 1 and the no-progress stop could end a short list early (the review's
-  // R8). Seed it from the listing's identity — never the page number — so one
-  // listing is one permutation across every page. See randomSort.js.
+  // `random` re-shuffles server-side on every request, so page 2 would overlap
+  // page 1 and the no-progress stop could end a short list early. Seed from the
+  // listing's identity, never the page number. See randomSort.js.
   const requestSort = stableSort(sort, 'scenes', mode, filter, q);
   return sceneCache.get(
     listCacheKey('scenes', mode, requestSort, order, filter, q, page, limit),
@@ -241,10 +229,8 @@ export async function fetchVideos({
   );
 }
 
-// (this was `fetchVideos` before the list cache was added; the cache wrapper
-// above is the only caller)
 async function loadVideos({
-  mode = 'all',
+  mode = 'all',   // mock-only; ignored by the GraphQL branch below
   sort = 'created_at',
   order = 'desc',
   filter = null,
@@ -277,9 +263,8 @@ async function loadVideos({
       sort,                                          // ← straight pass-through
       direction: order === 'asc' ? 'ASC' : 'DESC',
     },
-    // Translated here, at query time, rather than in filterService: the caller's
-    // `filter` stays in the raw stored shape, so the listCache key it was built
-    // from is unchanged and cached pages survive this fix.
+    // Translated at query time, not in filterService: the caller's `filter`
+    // stays in the raw stored shape, so the listCache key is unchanged.
     scene_filter: translateFilter(filter, 'SceneFilterType'),
   };
 
@@ -294,26 +279,18 @@ async function loadVideos({
 }
 
 /**
- * Fetch the live state of a single scene — used when reopening a
- * scene to pick up the latest resume_time, since the grid's cached
- * scene object may be stale (the position was saved to Stash but
- * the grid wasn't refetched).
+ * Fetch the live state of one scene — used when reopening it to pick up the
+ * latest resume_time, since the grid's cached object may be stale.
  *
- * The scene's markers ride along on the same request. They are needed the
- * moment the scene opens (the player's progress bar draws one tick per
- * marker) and per-scene, so a second request would be a second round trip
- * on every open for data the player always wants at the same time as the
- * resume point. `Scene.scene_markers` is unpaginated — a scene's markers
- * are a handful, not a listing.
+ * Markers ride along on the same request: the player's progress bar needs them
+ * the moment the scene opens, so a second call would be another round trip for
+ * data always wanted with the resume point. `Scene.scene_markers` is
+ * unpaginated — a handful, not a listing.
  *
- * Sorted here rather than trusted from the server: the player's "previous /
- * next marker" buttons binary-search by position, and Stash does not
- * promise an order.
- *
- * Each marker carries its primary tag so the "add marker" form can default to
- * the tag this scene is already tagged with. Deriving it from markers the
- * player has already fetched avoids a fourth request (`sceneMarkerTags`)
- * purely to guess a default.
+ * Sorted here, not trusted from the server: the previous/next-marker buttons
+ * binary-search by position, and Stash promises no order. Each carries its
+ * primary tag so the "add marker" form can default to this scene's tag without
+ * a fourth request.
  */
 export async function fetchSceneState(id) {
   if (getSettings().useMock) return null;
@@ -351,17 +328,15 @@ const SCENE_STREAMS_QUERY = `
 
 /**
  * The endpoints Stash will serve this scene from — its own file first, then
- * whatever transcodes the server is configured to offer.
+ * the configured transcodes.
  *
- * Only asked for when the direct file is not going to work (see
- * playbackSource.js) or when it has already failed, never on the ordinary
- * play path: it is a second round trip, and 94% of this library is h264/mp4
- * where the direct stream is not merely adequate but better — no server CPU,
- * no transcode startup, and full-range seeking rather than a growing file.
+ * Only asked for when the direct file will not work (see playbackSource.js) or
+ * has already failed: it is a second round trip, and 94% of this library is
+ * h264/mp4 where the direct stream is better — no server CPU, no transcode
+ * startup, and full-range seeking.
  *
- * Returns `[]` rather than throwing. A server with transcoding switched off
- * answers with an empty list, and "no transcodes available" is a fact the
- * caller acts on, not an error.
+ * Returns `[]` rather than throwing: an empty list is a fact the caller acts
+ * on, not an error.
  */
 export async function fetchSceneStreams(id) {
   if (getSettings().useMock) return [];
@@ -375,16 +350,6 @@ export async function fetchSceneStreams(id) {
   }
 }
 
-// fetchRandomVideos() lived here until 0.7.6. It fed RandomPage, which the
-// 0.7.0 left-rail rework deleted, and it went on sitting here unreferenced for
-// five releases — the last caller of `Math.random()` in the Test-mode path,
-// and so the one place in the app that still contradicted the "a seed is
-// always the same picture" guarantee mockArt.js and mockLibrary.js are built
-// on. The "Random" left in the UI is a *sort key* — one option in App.jsx's
-// SCENE_SORT_GROUPS, served by fetchVideos above — a different thing that
-// never used this. Nothing to bring back: if a Random surface returns, it
-// should be a sort on the existing paged fetch, not a second unpaged one.
-
 // ═══════════════════════════════════════════════════════════
 // MUTATIONS
 // ═══════════════════════════════════════════════════════════
@@ -395,11 +360,9 @@ const SCENE_SAVE_ACTIVITY_MUTATION = `
   }
 `;
 
-// `[Timestamp!]`, not `[Time!]`. Both scalars exist in this Stash's schema, which
-// is what makes the wrong one easy to write and hard to notice: the request
-// validates as *declared*, so the mismatch only shows up as a validation error
-// naming the position, and on a TV that error is a console.warn nobody sees.
-// Confirmed against the live schema.
+// `[Timestamp!]`, not `[Time!]`. Both scalars exist in this schema, so the
+// wrong one is easy to write: it surfaces only as a validation error naming a
+// position — i.e. a console.warn nobody sees on a TV.
 const SCENE_ADD_PLAY_MUTATION = `
   mutation SceneAddPlay($id: ID!, $times: [Timestamp!]) {
     sceneAddPlay(id: $id, times: $times) {
@@ -422,23 +385,18 @@ const FIND_SCENE_QUERY = `
 `;
 
 /**
- * Save the current playback position, and the watch time that has accrued since
- * the last save that landed.
+ * Save the current playback position, and the watch time accrued since the last
+ * save that landed.
  *
  * **`playDuration` is a delta, not a position.** Stash's `SaveActivity` adds it
- * to a running total (`play_duration = play_duration + ?`) while it *overwrites*
- * `resume_time`. Passing the position would re-add the whole elapsed position on
- * every save: a 40-minute scene saves roughly 80 times over a sitting, so the
- * library's play_duration would end up in the tens of hours for it. The caller
- * is responsible for sending seconds actually watched — see VideoPlayer.
+ * to a running total while *overwriting* `resume_time`. Passing the position
+ * would re-add the whole elapsed position on every save: a 40-minute scene
+ * saves roughly 80 times over a sitting, so play_duration would reach tens of
+ * hours. The caller sends seconds actually watched — see VideoPlayer.
  *
- * Resume position is the half that was already working, verified on the TV: the
- * card's resume bar appears after a partial watch, which means this write lands,
- * the page cache is dropped, and the grid refetches.
- *
- * Returns `{ok}` rather than throwing, because a failed save must never
- * interrupt playback — but it must not be invisible either. The caller shows it.
- * No-op in mock mode.
+ * Returns `{ok}` rather than throwing: a failed save must never interrupt
+ * playback, but must not be invisible either. The caller shows it. No-op in
+ * mock mode.
  */
 export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
   if (getSettings().useMock) return { ok: true };
@@ -449,10 +407,8 @@ export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
       resume_time: resumeTime,
       playDuration,
     });
-    // The cached pages now hold a stale resume_time for this scene, and the
-    // grid draws that as the resume bar on the card. Drop them so returning
-    // to the grid refetches rather than showing where you *were*. Cheap: the
-    // player only saves every RESUME_SAVE_INTERVAL_MS, and Map.clear is O(1).
+    // Cached pages now hold a stale resume_time, which the card draws as its
+    // resume bar. Drop them; the player saves rarely and Map.clear is O(1).
     clearScenePages();
     return { ok: true };
   } catch (e) {
@@ -466,22 +422,20 @@ export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
 /**
  * Record a play.
  *
- * In Stash a play count is not a counter that gets nudged — it is the length of
- * a list of view dates, and `sceneAddPlay` is the only supported way to append
- * to it. (`sceneUpdate`'s `play_count` and `o_counter` fields are deprecated and
- * the resolver logs them and drops them.) The sibling mutations `sceneAddO` /
- * `sceneDeleteO` / `sceneResetO` are the same shape for the like counter.
+ * A play count in Stash is the length of a list of view dates, not a nudged
+ * counter, and `sceneAddPlay` is the only supported way to append to it.
+ * (`sceneUpdate`'s `play_count`/`o_counter` are deprecated; the resolver logs
+ * and drops them.) `sceneAddO`/`sceneDeleteO`/`sceneResetO` are the same shape
+ * for the like counter.
  *
- * `times` carries one explicit timestamp rather than `null`. `null` is what the
- * deprecated `sceneIncrementPlayCount` passed, and it most likely means "one
- * play, now" — but *likely* is not good enough for a write the app cannot undo:
- * one explicit time is one row under either reading, and the harness can assert
+ * `times` carries one explicit timestamp rather than `null` (what the
+ * deprecated `sceneIncrementPlayCount` passed): "likely one play, now" is not
+ * good enough for a write the app cannot undo, and the harness can assert
  * exactly what left the client.
  *
- * Called once per scene per playback session, from the `playing` event. Not on
- * mount, because mounting says nothing about whether the file was watchable, and
- * not per save, because that would make the count track the save timer rather
- * than the act of watching.
+ * Called once per scene per playback session, from the `playing` event — not on
+ * mount (which says nothing about watchability) and not per save (which would
+ * make the count track the save timer, not the act of watching).
  */
 export async function addScenePlay(id, at = new Date()) {
   if (getSettings().useMock) return { ok: true };

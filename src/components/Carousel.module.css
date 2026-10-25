@@ -1,19 +1,11 @@
-/* =========================================================
-   Carousel — Horizontal carousel layout
-   ========================================================= */
+/* `--slot-w` is the width of ONE slot, gap included; `.slot` pads 12px each
+   side and the focused card is scaled 2x. So 360px draws a card 336px wide and
+   189px tall (16:9), which at 2x is 378px of stage height.
 
-/* `--slot-w` is the width of ONE slot, gap included, and the two other
-   numbers here are derived from it: `.slot` pads 12px each side, and the
-   focused card is scaled 2x. So the 360px default draws a card 336px wide
-   and 189px tall (16:9), which at 2x is 378px of stage height.
-
-   A section whose art is not 16:9 overrides it rather than living with the
-   mismatch. Portrait art is the case that exists: 3:4 at the same focused
-   HEIGHT is 189 * 3/4 = 142px of content, so 166px of slot. Matching height
-   rather than width is the point — the hero sits above the stage and the
-   loading line below it, so a section that grew its focused card would push
-   both, and the strip would sit differently depending on which tab you were
-   on. See PERFORMER_VIEW in carouselViews.js. */
+   Non-16:9 art overrides it. Portrait 3:4 at the same focused HEIGHT is
+   189 * 3/4 = 142px of content, so 166px of slot. Matching height rather than
+   width is the point: the hero above and the loading line below would both
+   shift if a section grew its focused card. See PERFORMER_VIEW. */
 .carouselWrapper {
   --slot-w: 360px;
   --slot-gap: 24px;
@@ -25,7 +17,6 @@
   position: relative;
 }
 
-/* ── Hero (info above the strip) ────────────────────────── */
 .hero {
   padding: 0 48px 24px;
   display: grid;
@@ -121,31 +112,23 @@
   color: var(--text-secondary);
 }
 
-/* ── Stage (clipping viewport for the carousel) ─────────── */
 .stage {
   position: relative;
   flex: 1;
   width: 100%;
   overflow: hidden;
-  /* Generous vertical padding so scaled-up focused card has breathing
-     room and its glow isn't clipped */
+  /* Room for the scaled-up focused card and its glow. */
   padding: 32px 0;
   display: flex;
   align-items: center;
 }
 
-/* ── Track (the strip of slots) ─────────────────────────── */
 .track {
   position: absolute;
   left: 50%;
-  /* The inline transform on this element provides translateX so the
-     focused slot lands on the stage's horizontal centre. Vertical
-     centering is handled by .stage's flex alignment (which centers
-     this absolutely-positioned element… via parent flex it doesn't,
-     so we set top: 50% and let translateX override safely because
-     our inline transform combines: see note in JSX). To make this
-     simple, we set top:0 and bottom:0 and use flex-align center on
-     the track itself. */
+  /* The inline transform supplies translateX. Vertical centring cannot come
+     from .stage's flex alignment (this is absolutely positioned), so pin
+     top/bottom and centre the track's own flex children. */
   top: 0;
   bottom: 0;
   display: flex;
@@ -154,7 +137,6 @@
   will-change: transform;
 }
 
-/* Slot — fixed width, holds a VideoCard or empty */
 .slot {
   flex: 0 0 var(--slot-w);
   width: var(--slot-w);
@@ -165,9 +147,8 @@
   transform-origin: center center;
 }
 
-/* The focused slot is naturally on top thanks to inline z-index,
-   but bump its visual prominence with a subtle accent glow. The
-   actual focus ring comes from VideoCard itself. */
+/* The focused slot is on top via inline z-index; the focus ring itself comes
+   from the card. */
 .slot[data-offset="0"] {
   filter: none;
 }

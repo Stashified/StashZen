@@ -1,7 +1,5 @@
-/**
- * NavRail — left navigation. Width comes from --sidebar-w, which is the one
- * place the content column's offset is decided.
- */
+/* Width comes from --sidebar-w, the one place the content column's offset is
+ * decided. */
 
 .rail {
   position: relative;
@@ -10,17 +8,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  /* Trimmed from 16px as the rail grew for Inter's wider letterforms — see
-     --sidebar-w. The label gets the pixels, not the margins. */
+  /* Trimmed for Inter's wider letterforms (see --sidebar-w): the label gets
+     the pixels, not the margins. */
   padding: 20px 12px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
 }
 
-/* Sits at the rail's own left edge, which is the screen edge — the rail's
-   background is at x=0 anyway, so anything that clips the marker clips the
-   rail with it. Inset vertically so it reads as a marker on the row rather
-   than a full-height column rule. */
+/* At the screen edge, since anything clipping the marker clips the rail with
+   it. Inset vertically so it marks the row rather than reading as a rule. */
 .slidingIndicator {
   position: absolute;
   left: 0;
@@ -67,8 +63,8 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Where you are, which survives the focus ring landing on top of it — the
-   same relationship the app menu's rows and the player rail's `.active` use. */
+/* Where you are, surviving the focus ring on top of it — as in the app menu's
+   rows and the player rail's `.active`. */
 .item.active {
   color: var(--text-primary);
   background: var(--bg-elevated);
@@ -88,7 +84,7 @@
   white-space: nowrap;
 }
 
-/* Pushes Settings to the bottom of the rail. */
+/* Pushes Settings to the bottom. */
 .spacer {
   flex: 1;
 }

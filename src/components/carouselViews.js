@@ -1,19 +1,16 @@
 /**
- * carouselViews.js — what each section's carousel shows
+ * carouselViews.js — what each section's carousel shows.
  *
- * `Carousel` is one component that draws any section; these descriptors are
- * the part that cannot generalize, because a scene and a performer genuinely
- * have different fields and different art. One per section, kept together so
- * the differences are visible side by side rather than scattered across three
- * pages — the four things that vary (card, service, id prefix, hero fields)
- * are the same four the old scene-only carousel had hardcoded.
+ * `Carousel` draws any section; these descriptors are the part that cannot
+ * generalize, because scenes and performers have different fields and art.
+ * Kept together so the differences are visible side by side.
  *
  * Each `hero` returns fields, not markup: `{ title, meta: [{ text, kind }] }`
- * with `kind` in 'tag' | 'rating' | undefined. The strip owns what a tag or a
- * rating looks like; the descriptor owns which fields a section has. Adding a
- * section means a descriptor here and nothing else.
+ * with `kind` in 'tag' | 'rating' | undefined. The strip owns what a tag or
+ * rating looks like; the descriptor owns which fields a section has, so a new
+ * section is one descriptor and nothing else.
  *
- * These live in `components/` rather than `utils/` because they name card
+ * They live in `components/` rather than `utils/` because they name card
  * components — the same reason `tvActions.jsx` is here.
  */
 
@@ -33,20 +30,17 @@ export const SCENE_VIEW = {
   focusPrefix: 'video',
   noun: 'videos',
   ariaLabel: 'Video carousel',
-  // List-mode row art. A scene's list row is landscape, like its card.
+  // List-mode row art; a scene's row is landscape, like its card.
   aspect: 'landscape',
   rowImage: (scene) => scene.thumbnail,
-  // The list row's activation has to reproduce the card's argument list, not
-  // invent one: VideoCard hands the *whole listing* (including `fetchPage`) up
-  // so a play queue can continue past the loaded rows. The index is unused by
-  // scenes, which look the scene up in the listing by id.
+  // Must reproduce VideoCard's argument list, not invent one: it hands up the
+  // *whole listing* (including `fetchPage`) so a play queue can continue past
+  // the loaded rows. Scenes ignore the index and look the scene up by id.
   rowSelect: (item, index, list, onSelect) => onSelect?.(item, list),
   // Long-press is a scene-only action (Play / Play all / Details); the other
-  // descriptors deliberately omit it. VideoCard's signature is
-  // `(item, list, index)`.
+  // descriptors omit it. VideoCard's signature is `(item, list, index)`.
   rowLongPress: (item, index, list, onLongPress) => onLongPress?.(item, list, index),
-  // The fields the scene carousel has always printed, in the order it printed
-  // them: year, duration, the primary tag, then the rating.
+  // Year, duration, the primary tag, then the rating.
   hero: (scene) => ({
     title: scene.title,
     meta: [
@@ -65,14 +59,13 @@ export const PERFORMER_VIEW = {
   focusPrefix: 'performer',
   noun: 'performers',
   ariaLabel: 'Performer carousel',
-  // Portrait art, so a list row's thumbnail is portrait too.
+  // Portrait art, so the list row is portrait too.
   aspect: 'portrait',
   rowImage: (performer) => performer.image_path,
   // PerformerCard takes only the item.
   rowSelect: (item, index, list, onSelect) => onSelect?.(item),
-  // Portrait art, so the slot is sized to keep the focused card the same
-  // HEIGHT as a focused scene card rather than the same width. See the note on
-  // `--slot-w` in Carousel.module.css for the arithmetic.
+  // Sized so the focused card is the same HEIGHT as a focused scene card, not
+  // the same width. See `--slot-w` in Carousel.module.css.
   slotWidth: 166,
   hero: (performer) => ({
     title: performer.name,
@@ -94,17 +87,16 @@ export const MARKER_VIEW = {
   focusPrefix: 'marker',
   noun: 'markers',
   ariaLabel: 'Marker carousel',
-  // A marker's art is a scene screenshot — landscape, and `screenshot`, not
-  // `thumbnail`, which is the field MarkerCard reads.
+  // A marker's art is a scene screenshot: `screenshot`, not `thumbnail`, which
+  // is the field MarkerCard reads.
   aspect: 'landscape',
   rowImage: (marker) => marker.screenshot,
   // MarkerCard takes only the item.
   rowSelect: (item, index, list, onSelect) => onSelect?.(item),
-  // And the same arguments for its menu, which is built from the markers in
-  // the listing. See actionMenus.js.
+  // Same arguments for its menu, which is built from the listing's markers.
+  // See actionMenus.js.
   rowLongPress: (item, index, list, onLongPress) => onLongPress?.(item, list, index),
-  // Marker thumbnails are scene screenshots, so this one is landscape and
-  // takes the default slot width.
+  // Screenshots are landscape, so this one takes the default slot width.
   hero: (marker) => ({
     title: marker.title,
     meta: [

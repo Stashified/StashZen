@@ -1,15 +1,13 @@
 /**
  * restorePending — "focus is on its way".
  *
- * A listing that remounts after Back focuses its first card after 50 ms so
- * the D-pad always has somewhere to go. When Back is also restoring a
- * specific card, that first card is the *wrong* one: it flashes into focus
- * and the cursor jumps off it again when the restore lands. This flag lets
- * the auto-focus step aside for the duration.
+ * A remounted listing focuses its first card after 50 ms so the D-pad has
+ * somewhere to go. When Back is restoring a specific card, that first card is
+ * the *wrong* one: it flashes into focus and jumps off when the restore lands.
+ * This flag lets auto-focus step aside.
  *
- * Its own module rather than a flag in focus.js because both focus.js (which
- * raises it) and useFocusable.js (which reads it) would otherwise import each
- * other.
+ * Its own module because focus.js (raises it) and useFocusable.js (reads it)
+ * would otherwise import each other.
  */
 
 let pending = 0;

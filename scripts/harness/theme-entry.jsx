@@ -1,26 +1,17 @@
 /**
  * Headless driver for the user-selectable OLED theme.
  *
- * Two claims are under test, and they fail in different ways:
+ * Two claims: module init applies the saved theme, and the Settings row is a
+ * draft. The first seeds localStorage then imports `settings.js` dynamically
+ * (a relaunch, not a `setSettings` call): the theme must be on `<html>` before
+ * React renders, because AppLock and FirstRun mount App's siblings and unmount
+ * App, so a React effect would leave the PIN and setup screens un-themed.
  *
- *   1. **Module init applies the saved theme.** This is the same single-shot
- *      observation `boot-entry.jsx` makes: the driver seeds localStorage, then
- *      imports `settings.js` dynamically, so the module evaluates *after* the
- *      fixture exists — a relaunch, not a `setSettings` call. The theme must be
- *      on `<html>` before any React tree renders, because AppLock and FirstRun
- *      mount App's siblings and unmount App itself; a React effect would leave
- *      the PIN and setup screens un-themed.
+ * The second exercises Standard→Cancel (nothing changes), then Standard→Save
+ * and OLED→Save (applied immediately and persisted).
  *
- *   2. **The Settings row is a draft.** Choosing OLED and pressing Cancel must
- *      leave the document and the store exactly as they were; choosing it and
- *      pressing Save must apply it immediately and persist it.
- *
- * The two directions are exercised from a boot state of OLED: Standard→Cancel
- * proves the draft, then Standard→Save and OLED→Save prove both transitions.
- *
- * Everything that imports settings.js is imported dynamically. A static import
- * would evaluate the module before the seed line runs — the trap boot-entry
- * exists to avoid.
+ * Every settings.js import is dynamic: a static one would evaluate before the
+ * seed line, the trap boot-entry.jsx exists to avoid.
  */
 
 import '../../src/index.css';
@@ -83,11 +74,9 @@ async function enter(el) {
 const dialogButtons = () => [...document.querySelectorAll('[role="dialog"] button')];
 const byLabel = (label) => dialogButtons().find(b => b.textContent.trim() === label);
 
-// The prompt's `autoFocus` lands 50 ms after it mounts (useFocusable's timer).
-// A `focus()` issued before that is stolen back, and the Enter that follows
-// activates "Keep editing" instead of the button this driver meant to press —
-// which is a passing-looking dismissal, not a failing click. Wait for the
-// timer to have fired before addressing any other button in the prompt.
+// The prompt's `autoFocus` lands 50 ms after mount (useFocusable's timer); a
+// focus() before that is stolen back, so the following Enter hits "Keep
+// editing". Wait for the timer before addressing another prompt button.
 const promptReady = () =>
   waitFor(() => document.activeElement === byLabel('Keep editing'), 1000);
 
@@ -123,8 +112,8 @@ async function run() {
   check('T2 accent and text colours do not change with the panel',
     cssVar('--accent') === '#48aff0'
       && cssVar('--text-primary') === '#f5f8fa'
-      // Computed custom properties substitute their var() references, so the
-      // ring arrives with the accent's hex already in it.
+      // Computed custom properties substitute var(), so the ring carries the
+      // accent hex already.
       && cssVar('--focus-ring').includes('#48aff0'),
     `--accent=${cssVar('--accent')} --focus-ring=${cssVar('--focus-ring')}`);
 
@@ -178,8 +167,8 @@ async function run() {
     `data-theme=${JSON.stringify(htmlTheme())} store=${mod.getSettings().theme} saved=${stored()?.theme} closed=${!!window.__closed}`);
   panel.unmount();
 
-  // The Back route: the question appears, Back again keeps editing and puts
-  // the cursor back where it was. The draft must survive the question.
+  // The Back route: the question appears, Back again keeps editing with the
+  // draft intact and the cursor restored.
   window.__closed = false;
   const panelBack = await mountPanel();
   await enter(byLabel('Standard'));
@@ -245,10 +234,8 @@ async function run() {
     `store=${mod.getSettings().theme} saved=${stored()?.theme}`);
   panel3.unmount();
 
-  // A theme-only write. This is the path the persist condition exists for:
-  // the panel's Save always carries the connection fields too, so the
-  // condition itself is otherwise never exercised — removing it would still
-  // persist here by accident.
+  // A theme-only write: the panel's Save always carries the connection
+  // fields, so the persist condition is otherwise never exercised.
   mod.setSettings({ theme: 'standard' });
   check('T6 a theme-only write reaches storage',
     stored()?.theme === 'standard' && htmlTheme() === null,

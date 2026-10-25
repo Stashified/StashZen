@@ -1,15 +1,12 @@
 /**
- * VideoCoverflow — 3D coverflow layout
+ * VideoCoverflow — 3D coverflow layout.
  *
- * Cards arranged on a virtual rail. Center card sits flat and forward;
- * neighbours rotate around the Y axis toward the camera. A floor
- * reflection sells the depth. Same focus-tracking pattern as the
- * carousel — listens to focusin and recenters on the focused index.
+ * Cards on a virtual rail: the centred card flat and forward, neighbours
+ * rotated around Y with a floor reflection for depth. Follows focus via
+ * `focusin` and recentres, like the carousel.
  *
- * Reuses VideoCard. Reads sort/order from `controls`.
- *
- * The paging itself lives in usePagedList; this component supplies the
- * request and the trigger (the focused index nearing the end of the rail).
+ * Paging lives in usePagedList; this component supplies the request and the
+ * trigger (the focused index nearing the end of the rail).
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -23,7 +20,6 @@ import styles from './VideoCoverflow.module.css';
 const PAGE_SIZE = 40;
 const LOAD_MORE_THRESHOLD = 8;
 
-// Layout constants — tweak to taste
 const SLOT_W       = 460;   // base card width in px
 const X_SPACING    = 320;   // horizontal distance between adjacent card centres
 const SIDE_ROT     = 55;    // degrees neighbours rotate around Y
@@ -36,8 +32,8 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
   const [focusedIndex, setFocusedIndex] = useState(0);
 
-  // Named, not inline: the play queue is handed the same closure, so a
-  // queue started here pages the listing the rail is showing.
+  // Named, not inline: the play queue is handed the same closure, so a queue
+  // started here pages the rail's listing.
   const fetchPage = useCallback(
     (page) =>
       fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
@@ -52,25 +48,22 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // The scene id a Back or a player-close restores (`video-<id>`) lives in
-    // this view too. Without the registration the restore could only find a
-    // card on the first page; with it, the listing pages forward — see
+    // A restore by `video-<id>` must page forward past the first page — see
     // utils/focus.js.
     focusPrefix: 'video',
   });
 
-  // Same memoized identity as the grid: focus moves restyle the slot wrappers,
-  // but the cards inside them can skip the render when their props hold still.
+  // Stable identity, as in the grid: focus restyles the slots, but the cards
+  // inside can skip when their props hold still.
   const listing = useMemo(
     () => ({ items: videos, total, page, fetchPage }),
     [videos, total, page, fetchPage],
   );
 
-  // Reset the focused slot when the list underneath is replaced — otherwise
-  // the rail would try to centre an index that no longer exists.
+  // Reset the focused slot when the list is replaced, or the rail would centre
+  // an index that no longer exists.
   useEffect(() => { setFocusedIndex(0); }, [sort, order, objectFilter, searchQuery]);
 
-  // ── Fetch more when focus approaches the end ──────────────
   useEffect(() => {
     if (videos.length === 0) return;
     if (videos.length - focusedIndex <= LOAD_MORE_THRESHOLD) loadMore();
@@ -78,7 +71,6 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
   const [isFocusInGrid, setIsFocusInGrid] = useState(false);
 
-  // ── Track which card is focused ───────────────────────────
   useEffect(() => {
     const onFocus = () => {
       const fid = getCurrentFocusId();
@@ -94,7 +86,6 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   }, [videos, focusedIndex]);
   
 
-  // ── Render ────────────────────────────────────────────────
   if (loading) return (
     <div className={styles.state}>
       <div className={styles.spinner} aria-label="Loading videos" />
@@ -118,7 +109,6 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
   return (
     <div className={styles.wrapper}>
-      {/* Hero info above the stage */}
       <div className={styles.hero}>
         <h2 className={styles.heroTitle}>{focused.title}</h2>
         <div className={styles.heroMeta}>
@@ -142,19 +132,15 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
             if (abs > RENDER_RANGE) return null;
 
             const sign = Math.sign(offset);
-            // Rotation: 0 at center, ±SIDE_ROT for first neighbours,
-            // increasing slightly further out (capped near 70°).
+            // 0 at centre, ±SIDE_ROT for first neighbours, capped near 70°.
             const rotY = sign * Math.min(70, SIDE_ROT + Math.max(0, abs - 1) * 4);
-            // Z depth: focused card is closest, neighbours recede.
             const z = abs === 0 ? 0 : SIDE_Z_BASE * (0.6 + abs * 0.4);
             const x = offset * X_SPACING;
             const cardScale = abs === 0 && isFocusInGrid ? 1.05 : 1;
             const opacity   = abs === 0 ? 1 : Math.max(0.4, 1 - abs * 0.15);
 
-            // The slot is anchored at top:50% with translateY(-50%) in
-            // CSS (vertical centring). The inline transform handles
-            // X position, Z depth, Y rotation, and uniform scale —
-            // all relative to the slot's centred anchor.
+            // The slot's CSS anchors it at top:50%; this transform is applied
+            // relative to that centre.
             const transform =
               abs === 0
                 ? `translateY(-50%) translate3d(${x}px, 0, ${z}px) scale(${cardScale})`
@@ -179,10 +165,8 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
                   onSelect={onVideoSelect}
                   onLongPress={onVideoLongPress}
                 />
-                {/* Reflection — flipped clone of the thumbnail fades
-                    into the floor. Only the central few cards get one;
-                    far-side cards aren't large enough on screen to
-                    benefit. */}
+                {/* Only the central few get a reflection; far cards are too
+                    small on screen to benefit. */}
                 {abs <= 2 && video.thumbnail && (
                   <div
                     className={styles.reflection}
@@ -195,7 +179,6 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
           })}
         </div>
 
-        {/* Floor gradient */}
         <div className={styles.floor} aria-hidden="true" />
       </div>
 

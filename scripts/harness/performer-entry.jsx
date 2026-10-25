@@ -1,30 +1,28 @@
 /**
  * Headless verification driver for PerformerDetailPage's profile fields.
  *
- * Mounts the real component with the real hooks, and points the real service
- * layer at the fake GraphQL endpoint on the same origin. So the query text,
- * `runQuery`, `loadPerformerDetail` and the normaliser are all the shipped
- * code — only the server is a stand-in.
+ * Mounts the real component and hooks, with the real service layer pointed at
+ * the fake GraphQL endpoint on the same origin: query text, `runQuery`,
+ * `loadPerformerDetail` and the normaliser are shipped code; only the server is
+ * a stand-in.
  *
- * What makes the checks real rather than "something rendered":
- *   • The card says gender FEMALE and the fake detail answer says NON_BINARY,
- *     so the card-first paint and the adopted server value are distinguishable.
- *   • The card is unrated and unfavourited while the detail answer says 75 and
- *     favourite, so "the write starts from Stash's value, not the card's" is a
- *     state the page has to reach rather than one it began in.
- *   • `career_length` is deliberately nonsense ("99 years") while the bounds
- *     are real, so a formatter that prefers the wrong field is visible.
- *   • The links list has two URLs on one host and four hosts in total, so a
- *     chip-per-URL (the naive fix) repeats a label, a host-only chip cannot
- *     pass by echoing the raw string, and the 3-chip cap plus "+1" is visible.
- *   • Every string carries VERIFY, so no fact check can pass on incidental
- *     page text.
- *   • The fake logs the operation, its id, the query text and every update
- *     input, so "one narrow query", "the deprecated `url` is gone" and "the
- *     write carried the right value" are asserted on the wire, not inferred.
+ * The fixture makes the checks real:
+ *   • The card says FEMALE and the detail answer NON_BINARY, so card-first
+ *     paint and the adopted server value are distinguishable.
+ *   • The card is unrated and unfavourited while the answer says 75 and
+ *     favourite, so the write must start from Stash's value.
+ *   • `career_length` is nonsense ("99 years") while the bounds are real, so a
+ *     formatter preferring the wrong field is visible.
+ *   • Two URLs share a host and there are four hosts, so a chip-per-URL repeats
+ *     a label, a host-only chip cannot echo the raw string, and the 3-chip cap
+ *     plus "+1" is visible.
+ *   • Every string carries VERIFY, so no fact check passes on incidental text.
+ *   • The fake logs the operation, id, query text and update inputs, so "one
+ *     narrow query", "the deprecated `url` is gone" and "the write carried the
+ *     right value" are asserted on the wire.
  *
- * What this cannot tell you: how the hero reads on a real panel, or whether TV
- * overscan clips a wrapping chip. That is the TV pass.
+ * It cannot tell you how the hero reads on a real panel or whether TV overscan
+ * clips a wrapping chip; that is the TV pass.
  */
 
 import '../../src/index.css';
@@ -50,8 +48,8 @@ const api = (path, body) => fetch(`http://127.0.0.1:${PORT}${path}`, {
 const getJSON = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
 const setMode = (key, value) => api('/mode', { [key]: value });
 const clearLogs = () => api('/clear');
-// Enter on whatever the driver just focused — the same keydown a remote sends,
-// through the real useFocusable handler.
+// Enter on whatever was just focused — the keydown a remote sends, through the
+// real useFocusable handler.
 function press(key, keyCode) {
   (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', {
     key, keyCode, which: keyCode, bubbles: true, cancelable: true,
@@ -76,12 +74,10 @@ async function waitForAsync(fn, ms = 4000) {
   return false;
 }
 
-// The card the user "pressed Enter on". Its gender is the listing's value, so
-// the page paints Female before the detail answer replaces it; its rating and
-// favourite are the listing's too, and deliberately disagree with the detail
-// answer (75 / unfavourited on the card vs 75 / favourited on the server) so
-// the adoption is visible. "Unrated" on the card is not a mistake: the listing
-// carries `rating100` as a display string, and the page must not write from it.
+// The card the user pressed Enter on: its gender, rating and favourite are the
+// listing's and deliberately disagree with the detail answer, so the adoption
+// is visible. "Unrated" is not a mistake — the listing carries `rating100` as a
+// display string and the page must not write from it.
 const CARD = {
   id: '8701',
   name: 'VERIFY performer detail harness',
@@ -94,8 +90,7 @@ const CARD = {
   gender: 'FEMALE',
   birthdate: '1990-01-01',
   // 182 cm is 5 ft 11.65 in: rounding only the inch remainder prints 5′12″.
-  // The card carries the height (the profile query deliberately does not), so
-  // this is the value the hero renders.
+  // The card carries the height (the profile query does not) for the hero.
   height_cm: 182,
   details: 'VERIFY bio. '.repeat(40),
 };
@@ -137,9 +132,9 @@ const detailFetches = async () => (await getJSON('/performerfetches'));
 const updateFetches = async () => (await getJSON('/performerupdates'));
 const graphqlCalls = async () => (await getJSON('/graphqlcalls'));
 
-// The registry keys whose elements live inside `el` — the only honest way to
-// ask "did this block add a D-pad stop", because a plain button that never
-// went through useFocusable is not reachable from a remote.
+// Registry keys inside `el` — the honest signal for "did this block add a
+// D-pad stop", because a plain button never wired through useFocusable is
+// unreachable from a remote.
 const idsInside = (el) => (el ? [...registry.entries()]
   .filter(([, entry]) => entry.el && el.contains(entry.el))
   .map(([id]) => id) : []);
@@ -250,12 +245,10 @@ async function run() {
 
   // ── The write authority (item 6) ────────────────────────
   // The card was unrated and unfavourited; the detail answer is 75 and
-  // favourite, so both readings here are adopted values, not the card's.
-  //
-  // Wait for the adoption: the profile renders the aliases, then an effect
-  // copies `rating100`/`favorite` into the edit state, so the stepper lands one
-  // commit later. Reading straight after the alias group can catch the frame
-  // between the two and see the card's 0 — a race, not a stale answer.
+  // favourite, so both readings are adopted values. The profile renders the
+  // aliases, then an effect copies `rating100`/`favorite` into edit state one
+  // commit later, so reading straight after the alias group can catch the
+  // card's 0 — a race, not a stale answer.
   await waitFor(() => ratingStars() === 8, 4000);
   check('P1 the rating and favourite come from the detail answer',
     ratingStars() === 8 && !!favoriteStar()
@@ -277,9 +270,8 @@ async function run() {
   check('P1 the query is the profile selection, enriched and still narrow',
     wanted.every(f => q.includes(f)) && avoided.every(f => !q.includes(f)),
     `missing=${wanted.filter(f => !q.includes(f))}; leaked=${avoided.filter(f => q.includes(f))}`);
-  // `url` is a substring of `urls`, so a plain includes() here could never
-  // fail. The word boundary is what makes "the deprecated field is gone" a
-  // claim the check can refute.
+  // `url` is a substring of `urls`, so a plain includes() could never fail; the
+  // word boundary makes "the deprecated field is gone" refutable.
   check('P1 the deprecated `url` field is not asked for',
     !/(^|[^A-Za-z0-9_])url([^A-Za-z0-9_]|$)/.test(q),
     `urls present=${q.includes('urls')}`);
@@ -290,11 +282,8 @@ async function run() {
 
   // ── P2: the wrapping profile block fits the hero ────────────
   //
-  // The bound moved deliberately: when the hero carried one facts row it was
-  // poster + 64 (the hero's own padding). It now carries aliases, facts,
-  // links, tags, the action row and a clamped bio, each capped in code. The
-  // cap is what this check is for — an uncapped bio or tag list would blow
-  // past it by hundreds of pixels, while the capped rows stay within ~four
+  // Every block is capped in code — an uncapped bio or tag list would blow past
+  // the bound by hundreds of pixels, while the capped rows stay within ~four
   // extra chip rows.
   const h = header();
   const poster = h?.querySelector('img') || h?.querySelector('[class*="imageFallback"]');
@@ -326,8 +315,8 @@ async function run() {
   const sparseFetched2 = await waitFor(
     () => (document.body.textContent.includes(CARD.name) && document.querySelector('[aria-label^="Gender:"]')),
     4000);
-  // Wait for the sparse answer to have been logged and painted (the page has
-  // nothing new to show, so the fetch log is the settle signal).
+  // Wait for the sparse answer to be logged and painted — the page shows
+  // nothing new, so the fetch log is the settle signal.
   await waitForAsync(
     async () => (await getJSON('/performerfetches')).some(f => f.id === '8702'), 4000);
   await sleep(150);
@@ -348,9 +337,9 @@ async function run() {
   check('P4 ...while the card identity stays, including its gender',
     hText.includes(CARD.name) && hText.includes('4 scenes') && !!genderEl('Female'),
     `name=${hText.includes(CARD.name)} scenes=${hText.includes('4 scenes')} gender=${!!genderEl('Female')}`);
-  // The write controls exist but are seeded from the sparse answer: no stars
-  // and nothing favourited. They are not hidden, because a real performer with
-  // no profile text is still a row the user may rate.
+  // The write controls exist but are seeded empty from the sparse answer; they
+  // stay visible because a performer with no profile text is still a row the
+  // user may rate.
   check('P4 the write controls are present and seeded empty',
     !!actionsGroup() && ratingStars() === 0
       && favoriteButton()?.getAttribute('aria-pressed') === 'false' && !favoriteStar(),
@@ -375,12 +364,10 @@ async function run() {
 
   // ── P6: the chips are inert; the write controls are the only new stops ──
   //
-  // The contract is not "Back owns the autofocus": this page also renders the
-  // performer's video grid, whose first card autofocuses and wins the race (as
-  // it did before this change). What must not change is that the profile block
-  // itself is inert — no chip is registered with the D-pad, and none carries a
-  // tabindex/button role — and that the row of controls adds exactly the three
-  // stops it means to.
+  // The contract is not "Back owns the autofocus": the page's video grid
+  // autofocuses its first card and wins that race. What must hold is that the
+  // profile block is inert — no chip registered with the D-pad, none carrying a
+  // tabindex/button role — and the control row adds exactly its three stops.
   await setMode('performerDetail', 'ok');
   mount(CARD);
   const chipsLoaded = await waitFor(
@@ -409,9 +396,9 @@ async function run() {
     + `"${(active?.getAttribute('aria-label') || active?.textContent || '').trim().slice(0, 40)}"`);
 
   // ── P7: rating and favourite are optimistic and roll back ───
-  // The stepper works in whole stars; the detail answer is 75, which it shows
-  // as 8. One press up is 90, and that is the value the mutation must carry —
-  // the number the server stores, not the rounded star count.
+  // The stepper works in whole stars; the detail answer is 75, shown as 8. One
+  // press up is 90, the value the mutation must carry — the number the server
+  // stores, not the rounded star count.
   const focusPress = async (id) => {
     const entry = registry.get(id);
     if (!entry) throw new Error(`focus target ${id} is not registered`);
@@ -427,9 +414,8 @@ async function run() {
   check('P7a the rating paints one star up before the server answers',
     ratingStars() === 9, `stars=${ratingStars()}`);
   await waitForAsync(async () => (await updateFetches()).length === 1, 4000);
-  // The `slow` arm logs the request, then holds the answer for 1.2 s. Waiting
-  // it out is what makes the next press a new write rather than a second
-  // press while the first is still in flight.
+  // The `slow` arm logs the request, then holds the answer for 1.2 s; waiting
+  // it out makes the next press a new write rather than one in flight.
   await sleep(1400);
   const slowRating = await updateFetches();
   check('P7b the write sends the stored 0–100 value, from the server\'s rating',

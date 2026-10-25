@@ -1,37 +1,25 @@
 /**
- * appLock.js — Optional PIN gate for the whole app
+ * appLock.js — optional PIN gate for the whole app.
  *
- * Stores a salted SHA-256 of a 4-digit PIN under its own localStorage key.
+ * Stores a salted SHA-256 of a 4-digit PIN under its own localStorage key,
+ * deliberately not in settings.js: `persistToStorage()` writes a whitelist of
+ * three fields (a new field would silently never persist), and
+ * `clearSettings()` wipes `tvapp.settings.v1` wholesale, so "Clear saved"
+ * would silently remove the user's PIN. A separate key rules that out by
+ * construction with no guard in the Clear path.
  *
- * Why a SEPARATE key rather than a field in settings.js:
- *   1. `persistToStorage()` in settings.js writes an explicit whitelist of
- *      three fields, so a new settings field would silently never persist.
- *   2. `clearSettings()` wipes `tvapp.settings.v1` wholesale, and the
- *      panel's "Clear saved" is a destructive two-step action aimed at the
- *      *connection config*. Wiring the lock in there would mean that button
- *      silently removed the user's PIN. A separate key makes that
- *      impossible by construction, with no guard in the Clear path.
+ * The PIN is a deterrent, not encryption. A 4-digit PIN is 10⁴ combinations,
+ * so anyone who can read localStorage recovers it offline almost instantly;
+ * the digest only keeps it out of plaintext. The Stash API key written by
+ * settings.js is not even held to that standard (see README Security notes).
+ * The PIN deters someone with the remote, not anyone with the installer.
  *
- * Threat model — be honest about it. A 4-digit PIN is 10⁴ combinations, so
- * anyone who can read localStorage can recover it offline almost instantly.
- * The digest is not a defence against that; it only keeps the PIN from
- * sitting in storage in plaintext.
- *
- * The Stash API key stored beside it is NOT held to that standard and must
- * not be described as if it were: settings.js writes it unencrypted. Anyone
- * who can read this app's storage gets the key whether or not a PIN is set.
- * See the README's Security notes. The PIN deters someone picking up the
- * remote; it is not encryption and not protection from anyone with the
- * installer.
- *
- * No iteration stretching (PBKDF2) on purpose: it would cost unlock latency
- * on a TV CPU and buy nothing against a 10⁴ keyspace. Against the on-device
- * attacker, the cheap defence that does work is `attemptPin()`'s escalating
- * delay below — it makes pressing the D-pad 10⁴ times impractical.
+ * No PBKDF2 stretching on purpose: it would cost unlock latency on a TV CPU
+ * and buy nothing against a 10⁴ keyspace. The defence that works against the
+ * on-device attacker is `attemptPin()`'s escalating delay.
  *
  * FAIL OPEN: if storage is unreadable or the blob is corrupt, `isLockSet()`
- * reports false and the app opens. A corrupt blob must never be able to
- * brick the app into a state the user cannot unlock.
+ * reports false and the app opens; a corrupt blob must never brick the app.
  */
 
 import { useEffect, useState } from 'react';
@@ -47,15 +35,11 @@ const PIN_RE = /^\d{4}$/;
 // ── In-memory state ──────────────────────────────────────
 let state = loadFromStorage();   // { v, salt, hash } | null
 
-// Wrong-PIN backoff. Deliberately in memory, not storage: relaunching the
-// app to clear the delay is itself the "force quit and try again" the lock
-// exists to make inconvenient, and a persisted timestamp can brick an
-// unlocked device after a clock change. Losing the counter on restart is the
-// fail-open behaviour the rest of this module already promises.
-//
-// Indexed by consecutive failures: the first three misses are free (typing
-// the wrong PIN by accident is common on a numeric pad), then 1s, 5s and
-// finally 30s per miss. 10⁴ tries at 30s is about 3.5 days.
+// Wrong-PIN backoff, deliberately in memory: a persisted timestamp can brick
+// an unlocked device after a clock change, and relaunching to clear the delay
+// should stay inconvenient. Losing the counter on restart is the same
+// fail-open promise as the rest of the module. Indexed by consecutive
+// failures: first three misses free, then 1s, 5s and 30s (10⁴ tries ≈ 3.5 days).
 const FAIL_DELAYS_MS = [0, 0, 0, 1000, 1000, 5000, 5000, 5000, 30000];
 
 let failures = 0;
@@ -103,10 +87,10 @@ function digest(salt, pin) {
 /**
  * A random hex salt.
  *
- * `crypto.getRandomValues` is deliberately used over `crypto.subtle` — it
- * is NOT secure-context gated, so it works over `file://` in the packaged
- * widget. Guarded anyway: failing to set a PIN because an RNG is missing
- * would be a worse outcome than a weaker salt.
+ * `crypto.getRandomValues` is used over `crypto.subtle` because it is not
+ * secure-context gated, so it works over `file://` in the packaged widget.
+ * Guarded anyway: failing to set a PIN over a missing RNG is worse than a
+ * weaker salt.
  */
 function randomSalt() {
   try {
@@ -141,9 +125,8 @@ export function isLockSet() {
 /**
  * Set (or replace) the PIN. Returns true on success.
  *
- * Replacing does not require the old PIN: the app is already unlocked at
- * that point, so the caller has demonstrably passed the gate. That is a
- * deliberate v1 scope decision, not an oversight.
+ * Replacing does not require the old PIN: the app is already unlocked, so
+ * the caller has passed the gate. Deliberate v1 scope, not an oversight.
  */
 export function setPin(pin) {
   if (typeof pin !== 'string' || !PIN_RE.test(pin)) return false;
@@ -159,9 +142,9 @@ export function setPin(pin) {
 /**
  * Check a PIN against the stored digest.
  *
- * The comparison is a plain `===` and that is not a weakness worth fixing:
- * an attacker who can call this can also read the hash out of localStorage
- * and brute-force it offline, where no comparison timing is observable.
+ * The plain `===` is not a weakness worth fixing: an attacker who can call
+ * this can read the hash out of localStorage and brute-force it offline,
+ * where no comparison timing is observable.
  */
 export function verifyPin(pin) {
   if (!state) return false;
@@ -170,10 +153,8 @@ export function verifyPin(pin) {
 }
 
 /**
- * How long the caller must wait before another PIN may be checked, in ms.
- *
- * Exposed so the lock screen can phrase the message; the enforcement is in
- * `attemptPin`.
+ * How long before another PIN may be checked, in ms. Exposed so the lock
+ * screen can phrase the message; enforcement lives in `attemptPin`.
  */
 export function pinRetryDelayMs() {
   const wait = blockedUntil - Date.now();
@@ -181,19 +162,12 @@ export function pinRetryDelayMs() {
 }
 
 /**
- * Check a PIN through the retry limiter. The lock screen must use this
- * rather than `verifyPin` — the latter is the raw comparison and would
- * bypass the delay.
+ * Check a PIN through the retry limiter; the lock screen must use this
+ * rather than `verifyPin`, which bypasses the delay.
  *
- * Returns `{ ok, retryAfterMs, blocked, failures? }`:
- *   - `ok: true`                     — correct PIN; the counter is reset.
- *   - `blocked: true`                — still cooling down; the PIN was NOT
- *                                      checked and the counter was not
- *                                      incremented.
- *   - `ok: false, blocked: false`    — checked and wrong. `retryAfterMs` is
- *                                      the delay that now applies (0 for the
- *                                      first three misses) and `failures` is
- *                                      the new consecutive count.
+ * Returns `{ ok, retryAfterMs, blocked, failures? }`. `blocked: true` means
+ * the PIN was not checked and the counter not incremented. `failures` is the
+ * new consecutive count.
  */
 export function attemptPin(pin) {
   const wait = pinRetryDelayMs();
@@ -226,8 +200,8 @@ export function subscribeLock(fn) {
 }
 
 /**
- * React hook — returns whether a lock is set, re-rendering on change.
- * Used by the settings section so it reflects set/change/remove.
+ * React hook: whether a lock is set, re-rendering on change. Used by the
+ * settings section so it reflects set/change/remove.
  */
 export function useAppLock() {
   const [snapshot, setSnapshot] = useState(isLockSet());

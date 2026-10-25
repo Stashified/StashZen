@@ -1,20 +1,16 @@
-/* =========================================================
-   SceneDetailPage — scene detail overlay
-   =========================================================
-   Sized for the 1280x720 Tizen viewport. The two columns are 46/54 rather
-   than even: the hero only needs to be readable, while the right column
-   carries the title, every chip row and all five controls, and it is the
-   side that actually overflows on a long scene. */
+/* Sized for the 1280x720 Tizen viewport. The columns are 46/54 rather than
+   even: the hero only needs to be readable, while the right column carries the
+   title, every chip row and all five controls, and is the side that overflows
+   on a long scene. */
 
 .overlay {
   position: fixed;
   inset: 0;
-  /* Same band as SettingsPanel (900), below LockScreen/ExitPrompt/PinPad.
-     Nothing here should ever out-stack those: this page traps Back, so a
-     prompt behind it would be unreachable. */
+  /* Same band as SettingsPanel (900), below LockScreen/ExitPrompt/PinPad:
+     this page traps Back, so a prompt behind it would be unreachable. */
   z-index: 900;
-  /* Flat scrim, not a backdrop-filter blur — see the note in
-     SettingsPanel.module.css. This opens over a grid of full-HD covers. */
+  /* Flat scrim, not a backdrop-filter blur — see SettingsPanel.module.css.
+     This opens over a grid of full-HD covers. */
   background: rgba(var(--scrim-rgb), 0.88);
   display: flex;
   align-items: center;
@@ -43,7 +39,6 @@
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
 }
 
-/* ── Left column: hero ──────────────────────────────────── */
 .heroCol {
   position: relative;
   align-self: start;
@@ -96,10 +91,9 @@
 }
 
 .badgeRating {
-  /* The one amber element on the page, matching the star colour the
-     PerformerDetailPage hero already uses for its own rating. Opaque, not the
-     92%-alpha it was: the badge sits on the hero still, and a dark ink over a
-     background the image can show through has no fixed contrast ratio. */
+  /* The one amber element on the page, matching PerformerDetailPage's rating
+     star. Opaque, not a translucent fill: the badge sits on the hero still, so
+     dark ink over a see-through background has no fixed contrast ratio. */
   background: var(--rating);
   color: #201400;
   text-shadow: none;
@@ -122,7 +116,6 @@
   background: var(--accent);
 }
 
-/* ── Right column ───────────────────────────────────────── */
 .body {
   display: flex;
   flex-direction: column;
@@ -139,8 +132,8 @@
   font-weight: 700;
   line-height: 1.15;
   color: var(--text-primary);
-  /* Two lines at most: a scene title can be a whole filename, and letting
-     it run pushes the controls off a 720p screen. */
+  /* Two lines max: a title can be a whole filename, and letting it run pushes
+     the controls off a 720p screen. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -174,7 +167,6 @@
   color: var(--text-muted);
 }
 
-/* ── Load state ─────────────────────────────────────────── */
 .loading {
   display: flex;
   align-items: center;
@@ -205,7 +197,6 @@
   font-size: 15px;
 }
 
-/* ── Chips ──────────────────────────────────────────────── */
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -268,7 +259,6 @@
   background: var(--accent-dim);
 }
 
-/* ── Markers ────────────────────────────────────────────── */
 .markers {
   display: flex;
   flex-wrap: wrap;
@@ -333,7 +323,6 @@
   color: var(--text-muted);
 }
 
-/* ── Actions ────────────────────────────────────────────── */
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -393,7 +382,6 @@
   font-size: 15px;
 }
 
-/* ── Rating stepper ─────────────────────────────────────── */
 .stepper {
   display: flex;
   align-items: center;
@@ -443,9 +431,8 @@
   color: var(--amber);
 }
 
-/* ── Status line ────────────────────────────────────────── */
-/* The key legend. Same treatment as the player's own hint row — the app's
-   convention for "here is a key that does something you cannot guess". */
+/* The key legend, matching the player's hint row: the app's convention for a
+   key that does something you cannot guess. */
 .hint {
   margin: 10px 0 0;
   display: flex;

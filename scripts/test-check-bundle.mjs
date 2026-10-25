@@ -2,8 +2,8 @@
 /**
  * Tests for scripts/check-bundle.mjs.
  *
- * Fixtures are written to a temp directory, not to dist/. The fake token is
- * assembled from fragments so this file never contains a JWT-shaped literal.
+ * Fixtures go to a temp directory, not dist/. The fake token is assembled from
+ * fragments so this file never contains a JWT-shaped literal.
  */
 
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -120,9 +120,9 @@ try {
   }
 
   {
-    // The documented example address is in every bundle: FirstRun's input
-    // placeholder. Warning on it would make the warning meaningless. The
-    // `.20` case above is the red control that proves the guard is still on.
+    // The documented example is in every bundle (FirstRun's placeholder), so
+    // warning on it would make the warning meaningless. The `.20` case above is
+    // the red control proving the guard is still on.
     const placeholderDist = join(root, 'placeholder');
     mkdirSync(placeholderDist, { recursive: true });
     writeFileSync(join(placeholderDist, 'app.js'), 'const url = "http://192.168.1.10:9999";');

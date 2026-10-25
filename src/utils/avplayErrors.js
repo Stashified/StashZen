@@ -1,14 +1,12 @@
 /**
  * avplayErrors — what an AVPlay failure means, decided by *when* it happened.
  *
- * AVPlay reports almost everything as a generic code. The Phase 0 probe found
- * that a codec this panel cannot decode surfaces as
- * `PLAYER_ERROR_CONNECTION_FAILED` — the same family a dropped network stream
- * would use — so the code alone cannot separate "this file is not playable
- * here" from "the engine is broken". Getting that wrong is expensive in both
- * directions: treating a refusal as an engine fault trips the session kill
- * switch after two scenes, and treating a broken engine as a refusal leaves
- * the player retrying AVPlay forever.
+ * AVPlay reports almost everything as a generic code. The probe found a codec
+ * this panel cannot decode surfaces as `PLAYER_ERROR_CONNECTION_FAILED` — the
+ * same family as a dropped stream — so the code alone cannot separate "file
+ * not playable here" from "engine broken". Both mistakes are expensive:
+ * treating a refusal as an engine fault trips the session kill switch after
+ * two scenes, and treating a broken engine as a refusal retries forever.
  *
  * The phase is the reliable signal:
  *
@@ -19,11 +17,11 @@
  *   seek      | a seek failed while playback continued → transient (degraded)
  *   lifecycle | suspend/restore failed → engine
  *
- * Named errors for genuine engine faults win over the phase rule, because
- * "invalid state" during prepare is an engine bug, not a bad file. Unknown
- * errors fall back to the phase. The numeric table is a second fallback for
- * panels that report numbers without names; it is never preferred, because
- * the numeric values have never been promised stable across Tizen versions.
+ * Named errors for genuine engine faults win over the phase rule: "invalid
+ * state" during prepare is an engine bug, not a bad file. Unknown errors fall
+ * back to the phase. The numeric table is a second fallback for panels that
+ * report numbers without names, never preferred because those values have not
+ * been stable across Tizen versions.
  */
 
 export const AVPLAY_PHASES = ['open', 'prepare', 'play', 'runtime', 'seek', 'lifecycle'];
@@ -130,11 +128,10 @@ export function describeAvplayFailure(result) {
 /**
  * The resolution band a refusal is scoped to.
  *
- * A panel can decode 1080p AV1 and refuse 4K AV1, so resolution belongs in
- * the key; exact pixels would fragment the cache into one entry per file
- * without telling it anything new. The short edge classifies both orientations
- * the same way. Empty when Stash has not reported dimensions — callers keep
- * that as a distinct, coarser key rather than pretending to know.
+ * A panel can decode 1080p AV1 and refuse 4K, so resolution belongs in the key;
+ * exact pixels would fragment the cache per file. The short edge treats both
+ * orientations alike. Empty when Stash reports no dimensions — callers keep
+ * that as a coarser key rather than pretending to know.
  */
 export function resolutionBand({ width, height } = {}) {
   const w = Number(width);
@@ -155,18 +152,15 @@ export function resolutionBand({ width, height } = {}) {
 /**
  * The negative cache key for a direct-play refusal.
  *
- * Container + video codec + audio codec, because that triple is what a panel
- * actually refuses: WMV2 in AVI and WMV2 in ASF can behave differently, and
- * H.264 + pcm_s32le fails where H.264 + AAC does not. Resolution is appended
- * when Stash reports it, so one refused 4K file cannot exile the same codec
- * at 1080p.
+ * Container + video codec + audio codec is what a panel actually refuses:
+ * WMV2 in AVI and in ASF can behave differently, and H.264 + pcm_s32le fails
+ * where H.264 + AAC does not. Resolution is appended when known, so a refused
+ * 4K file cannot exile the codec at 1080p.
  *
- * `null` unless **both codecs are known**. A partial key is worse than no key:
- * `mp4||` would be shared by every scene Stash has not probed yet, so the
- * first refusal would become a blanket verdict — the exact thing the
- * controller's comments promise cannot happen. A file with a known video but
- * unknown audio (metadata still arriving, a silent track Stash did not name)
- * is retried instead of cached.
+ * `null` unless **both codecs are known**: `mp4||` would be shared by every
+ * unprobed scene, turning the first refusal into a blanket verdict. A file
+ * with a known video but unknown audio (metadata still arriving, an unnamed
+ * silent track) is retried rather than cached.
  */
 export function avplayFormatKey({ container, videoCodec, audioCodec, width, height } = {}) {
   const v = String(videoCodec || '').trim().toLowerCase();

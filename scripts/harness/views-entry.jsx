@@ -1,58 +1,16 @@
 /**
- * Headless driver for per-section view modes (0.10.0's P3).
+ * Headless driver for per-section view modes.
  *
- * Mounts the whole `App`, like rail-entry, and for the same reason: the claim
- * is about App owning the mode, a page reading it and a section's cards
- * rendering under it. No single component can be asked any of it alone.
- *
- * Two claims, and they are separate.
- *
- * 1. THE CAROUSEL IS GENERAL. It was `VideoCarousel` and knew about scenes in
- *    four places — the service, the card, the `video-` id prefix and the
- *    fields it printed in the hero. All four are now the `view` descriptor.
- *    The failure mode that matters is the *silent* one: a wrong `focusPrefix`
- *    renders a perfectly good strip that never tracks the focus, so the hero
- *    freezes on row 1 and nothing throws. V2 walks the strip and watches the
- *    hero move, and V1 asserts the prefix is one the cards actually use rather
- *    than merely non-empty. `itemsKey` is the same class of mistake — it would
- *    yield an empty list and the "No performers found." state, which V0 reads
- *    before anything else.
- *
- * 2. THE MODE IS PER SECTION AND IT SURVIVES A RESTART. `viewModes` is keyed
- *    by tab, so setting Performers to Carousel must leave Scenes alone; the
- *    absent-key-means-classic rule is what makes that work without a migration
- *    entry per section. And it is a persisted field, which in settings.js is a
- *    known trap: a field that is written to state but left out of
- *    `persistToStorage` or of `setSettings`' guard list appears to work for
- *    the rest of the session and is gone on the next launch. That is exactly
- *    what happened to `previewsEnabled`, and to `useMock` before it. V4 reads
- *    localStorage directly, so it covers the guard list rather than the state.
- *
- * Seeding happens through `setSettings` *before* the first render.
- *
- * **That is not what a relaunch does, and the sentence that used to stand here
- * claiming otherwise is what let 0.10.0 ship a blank screen.** It read: "a
- * pre-mount write is the same observable thing as a saved value". It is not.
- * A relaunch writes storage and *then* evaluates `settings.js`; `setSettings`
- * runs *after* evaluation, so it can only exercise functions that already
- * have their module scope fully initialised. 0.10.0's `readViewModes` read a
- * `const` declared below the module-init call that reached it, so it threw for
- * any device with a saved `viewModes` — and every check in this file passed,
- * because none of them ever loaded the module the way a launch does. See
- * `boot-entry.jsx`, which does exactly that and nothing else.
- *
- * 3. THE HERO'S ENRICHMENT IS PRESENT, AND STAYS BOUNDED. Tag descriptions and
- *    studio details became the strip's third hero row, and aliases / a studio's
- *    parent became meta entries (0.29.0). V8 walks tags 1, 2, 3 and 4 and
- *    studios 1, 3, 4 and 5 to reach every populated/empty combination, and
- *    measures the two-line clamp on deliberately overlong fixture text rather
- *    than trusting the rule to be applied. Empty values must draw nothing —
- *    an empty row on half the library reads as a layout bug.
- *
- * What this cannot tell you: whether the portrait slots look right. V3 asserts
- * the override is applied and nothing more; 166px is arithmetic (see the note
- * on `--slot-w` in Carousel.module.css), not taste, and the strip is built for
- * a 1080p stage this window only approximates.
+ * Mounts the whole App: App owns the mode, a page reads it and a section's cards
+ * render under it. 1) The carousel is general — the `view` descriptor supplies
+ * service, card, `focusPrefix` and hero fields; a wrong prefix renders a good
+ * strip that never tracks focus, so V2 walks and V1 asserts the prefix. 2) The
+ * mode is per section and survives a restart: `viewModes` is persisted, so V4
+ * reads localStorage and V6 pins the validator. 3) The hero's tag/studio
+ * enrichment is bounded: V8 walks every populated/empty combination and measures
+ * the two-line clamp; empty values must draw nothing. Seeding uses `setSettings`
+ * before the first render, which is NOT a relaunch — see boot-entry.jsx.
+ * Not answerable here: whether portrait slots look right (V3 asserts 166px only).
  */
 
 import '../../src/index.css';
@@ -109,36 +67,27 @@ const focus = (id) => {
 };
 
 // ── Reading what is on screen ───────────────────────────────
-// The strip is identified by structure rather than by a class name — CSS
-// modules hash those. `--slot-w` is a custom property, which is not hashed
-// and is the one thing V3 needs to read.
+// Identified by structure, not class (CSS modules hash them). `--slot-w` is a
+// custom property, unhashed, and the one thing V3 reads.
 const heroTitle = () => document.querySelector('[class*="heroTitle"]')?.textContent ?? null;
 const stripWrapper = () => document.querySelector('[class*="carouselWrapper"]');
-// ItemList deliberately keeps `role="grid"` (see its header), so a check for
-// the Classic grid has to exclude it — otherwise List would read as "still a
-// grid" and V5's shape assertions would pass for the wrong reason.
+// ItemList keeps `role="grid"` (see its header), so the Classic check must
+// exclude it — otherwise List reads as "still a grid" and V5 passes for the
+// wrong reason.
 const gridEl = () => document.querySelector('[role="grid"]:not([data-list-mode])');
 const listEl = () => document.querySelector('[role="grid"][data-list-mode]');
 const stripEl = () => document.querySelector('[role="region"][aria-label$="carousel"]');
 
 const cardIds = (prefix) => [...registry.keys()].filter(k => k.startsWith(prefix));
 
-// The Mode control is not a <select> — it is a button that opens a listbox
-// (SelectControl in ControlsPanel), so the value on screen is its text, which
-// is the selected option's label. Read through the focus registry because the
-// button carries no DOM id and CSS modules hash the class names; `useDropdown`
-// registers it under the id its caller passes.
-//
-// This is the app's own statement of which mode it is in, which is a different
-// claim from the settings store's — V0/V1/V5 are checking that the control and
-// the section agree, not that the store holds a string.
+// The Mode control is a button opening a listbox (SelectControl), so its text is
+// the selected label. Read via the registry (no DOM id, hashed classes); this is
+// the app's own statement of its mode, not the store's.
 const modeControlText = () => registry.get('ctrl-mode')?.el.textContent?.trim() ?? null;
 
 // ── What is on screen ───────────────────────────────────────
-// Coverflow has no role of its own to match on, so "is this coverflow" is
-// answered by the control saying so plus the absence of the two shapes that do
-// have roles. Weak on its own; specific enough taken together, and V5 asserts
-// all three rather than the disjunction a single grep would give.
+// Coverflow has no role to match, so it is "control says so" plus the absence of
+// the two shapes that do. V5 asserts all three rather than the disjunction.
 const isCoverflow = () =>
   modeControlText() === 'Coverflow' && !gridEl() && !stripEl();
 
@@ -167,10 +116,9 @@ async function switchTab(rowId) {
 
 // ── The run ─────────────────────────────────────────────────
 async function run() {
-  // Seed: performers → carousel, and nothing at all for scenes. The sparse map
-  // is the point of V0/V5 — an unset tab must fall back to classic on its own.
-  // (The scene listing moved from Home to Scenes in 0.15.0; Home is the
-  // showroom and has no mode control at all, so Scenes is the unset tab.)
+  // Seed performers → carousel, nothing for scenes. The sparse map is the point:
+  // an unset tab must fall back to classic. Home is the showroom with no mode
+  // control, so Scenes is the unset tab.
   setSettings({ stashUrl: `http://127.0.0.1:${window.__PORT__}`, stashKey: 'harness', useMock: false, onboarded: 'live' });
   setSettings({ viewModes: { performers: 'carousel' } });
 
@@ -179,13 +127,8 @@ async function run() {
   if (!started) return;
 
   // ── 1. An unset tab is classic, and only the seeded one is not ──
-  // Scenes, not Home: Home is the showroom since 0.15.0 and carries no
-  // controls bar at all, so its (absent) mode would answer a different
-  // question. Switched the way a remote does it.
-  //
-  // Waiting on the first card rather than on the page: an empty tab renders
-  // the loading state, which has neither a grid role nor a strip, so an
-  // immediate read would call a working grid "neither".
+  // Scenes, not Home (the showroom has no controls bar). Wait on the first card:
+  // a loading tab has neither a grid role nor a strip, so an early read miscalls it.
   const scenesTab = await switchTab('nav-scenes');
   const scenesLoaded = await waitFor(() => cardIds('video-').length > 0, 6000);
   check('V0 scenes loaded its listing', scenesTab && scenesLoaded,
@@ -223,10 +166,9 @@ async function run() {
     typeof firstTitle === 'string' && firstTitle.length > 0 && !/^VERIFY scene/.test(firstTitle),
     `hero reads "${firstTitle}"`);
 
-  // Read the prefix `out of the descriptor` rather than naming 'performer-'
-  // here. Writing the literal would make this check insensitive to the very
-  // field it is about: the descriptor could say `video` and this would still
-  // find performer cards on screen and pass.
+  // Read the prefix out of the descriptor rather than naming 'performer-': the
+  // literal would make this insensitive to the field it tests — `video` would
+  // still find performer cards on screen and pass.
   const prefix = PERFORMER_VIEW.focusPrefix;
   check('V1 the descriptor\'s focusPrefix is one its cards actually register',
     cardIds(`${prefix}-`).length > 0,
@@ -239,9 +181,8 @@ async function run() {
     slotW === '166px', `--slot-w = "${slotW}" (16:9 default is 360px)`);
 
   // ── 4. Focus tracking: the thing a wrong prefix breaks silently ──
-  // Careful to compare against a *different* row: if focus never moves, the
-  // hero stays on row 1 and a check that only asserted "a title is present"
-  // would pass on the broken build.
+  // Compare against a different row: if focus never moves, the hero stays on row
+  // 1, so "a title is present" would pass on the broken build.
   const row1 = heroTitle();
   const walked = [];
   for (let i = 0; i < 4; i++) {
@@ -258,16 +199,8 @@ async function run() {
     `focus = ${getCurrentFocusId()}`);
 
   // ── 5. Changing one section's mode leaves the others alone ──
-  // Driven through the real Mode control, not by writing the store: the claim
-  // is about what App does when the user changes a mode, and a check that
-  // called setSettings with the same spread App uses would be testing the
-  // driver's copy of the line.
-  //
-  // The trap: writing `{ [activeTab]: mode }` instead of spreading the current
-  // map resets every OTHER section to classic — and since classic is also what
-  // an absent key means, the section you did not touch looks fine unless it was
-  // the one carrying a non-default mode. Performers is carrying one (seeded
-  // above), which is what makes the wipe visible at all.
+  // Driven through the Mode control: the claim is what App does. The trap is
+  // writing `{[activeTab]: mode}` instead of spreading, resetting the others.
   check('V5 the Mode control is reachable in the bar',
     !!registry.get('ctrl-mode'), `registry has ctrl-mode: ${!!registry.get('ctrl-mode')}`);
 
@@ -287,11 +220,9 @@ async function run() {
       && getSettings().viewModes.scenes === 'coverflow',
     JSON.stringify(getSettings().viewModes));
 
-  // List is the fourth mode and the only one that adds a renderer, so it is
-  // driven through the same control rather than written straight to the store:
-  // the claim is that App selects the list renderer, not that the string
-  // validates. Scenes is the tab whose other three modes have all been seen,
-  // which makes the transition the interesting one.
+  // List is the fourth mode and the only one that adds a renderer, so drive it
+  // through the control: the claim is that App selects the renderer, not that the
+  // string validates. Scenes has already shown the other three.
   await switchTab('nav-scenes');
   await waitFor(() => !!registry.get('ctrl-mode') && cardIds('video-').length > 0, 6000);
   const droveList = await driveMode('list');
@@ -331,11 +262,8 @@ async function run() {
     `stashUrl=${JSON.stringify(stored?.stashUrl)} onboarded=${JSON.stringify(stored?.onboarded)}`);
 
   // ── 7. An unknown stored mode is refused at the boundary ──
-  // A downgrade, a hand-edited value or a corrupt read must not reach a page,
-  // where an unrecognised string falls through to the grid with the Mode
-  // control showing nothing selected — degraded silently, which is the part
-  // worth refusing. Asserted on the validator rather than by writing storage
-  // and relaunching, because the validator is the boundary and it is pure.
+  // A downgrade or corrupt read must not reach a page, where an unknown string
+  // falls through to the grid with nothing selected. The validator is pure.
   check('V6 an unrecognised mode is dropped, keeping the valid ones',
     JSON.stringify(readViewModes({ home: 'hologram', performers: 'carousel' }))
       === JSON.stringify({ performers: 'carousel' }),
@@ -352,20 +280,9 @@ async function run() {
     + `${JSON.stringify(readViewModes('classic'))} ${JSON.stringify(readViewModes(['classic']))}`);
 
   // ── 8. Tag and Studio heroes: blurb and meta, bounded ─────
-  // Items 8/9 of the enrichment batch. The hero grew a third row (the blurb)
-  // and two new meta entries (aliases; a studio's parent). Three things can go
-  // wrong and none of them throws:
-  //
-  //   • an empty description renders an empty row instead of nothing — the
-  //     hero then looks like a layout bug on half the library;
-  //   • the blurb is unbounded, so the strip moves whenever the focus crosses
-  //     a described entity → undescribed one;
-  //   • a list (aliases) is printed in full, so a tag with thirty aliases
-  //     pushes everything else off the screen.
-  //
-  // The fixture makes each decidable by walking a few rows: 1 has nothing,
-  // 2 has a description only, 3 aliases only, and 10 a deliberately overlong
-  // description (studio 5 likewise) whose clamp is measurable in pixels.
+  // Three silent failures: an empty description draws an empty row, an unbounded
+  // blurb moves the strip, full aliases push everything off screen. Fixture rows
+  // 1–4 and 10 cover each populated/empty combination and the overlong clamp.
   const metaText = () => document.querySelector('[class*="heroMeta"]')?.textContent || '';
   const blurbEl = () => document.querySelector('[class*="heroBlurb"]');
   const blurbText = () => blurbEl()?.textContent || '';
@@ -378,10 +295,9 @@ async function run() {
     return drove && up;
   }
 
-  /** The blurb's two-line budget, measured rather than read off the source:
-   *  a clamp that is declared but not applied (display changed, overflow
-   *  re-set) still computes to two lines here, and oversized text still
-   *  overflows, so `scrollHeight > clientHeight` is what proves the cut. */
+  /** The blurb's two-line budget, measured not read off source: a declared but
+   *  unapplied clamp still computes to two lines, so `scrollHeight > clientHeight`
+   *  is what proves the cut. */
   const clampProbe = (el) => {
     if (!el) return { clamp: '(no blurb)', line: 0, height: 0, scroll: 0 };
     const cs = getComputedStyle(el);

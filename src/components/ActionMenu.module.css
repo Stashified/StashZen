@@ -1,6 +1,5 @@
-/* ActionMenu — see the note in ExitPrompt.module.css: a flat scrim, not a
-   backdrop-filter blur. The blur costs a full-screen composite on a TV CPU
-   and buys nothing over an opaque layer. */
+/* A flat scrim, not a backdrop-filter blur (see ExitPrompt): the blur costs
+   a full-screen composite on a TV CPU and buys nothing over an opaque layer. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -43,7 +42,7 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text-primary);
-  /* The card's title, whatever length it happens to be — one line, clipped. */
+  /* One line, clipped, whatever the title's length. */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -83,9 +82,8 @@
   color: var(--text-primary);
 }
 
-/* No box-shadow transition here — same reason as VideoCard.module.css: on
-   Tizen the transition makes the ring trail the key. The ring itself comes
-   from the token so every surface agrees. */
+/* No box-shadow transition — on Tizen it makes the ring trail the key (see
+   VideoCard). The ring token keeps every surface consistent. */
 .item.focused {
   background: var(--bg-elevated);
   border-color: var(--accent);

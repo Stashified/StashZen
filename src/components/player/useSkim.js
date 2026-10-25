@@ -1,10 +1,9 @@
 /**
  * useSkim — the ±15 s jumps and their two indicators.
  *
- * The flash is the arrow that says which way the press went; the preview is
- * the thumbnail strip over the progress bar, kept alive while the user keeps
- * pressing and hidden after a pause. Both are per-gesture, so their timers
- * live here rather than in the player shell.
+ * The flash is the direction arrow; the preview is the thumbnail strip over the
+ * progress bar, kept alive while the user keeps pressing and hidden after a
+ * pause. Both are per-gesture, so their timers live here.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,12 +18,10 @@ export function useSkim({ mediaRef, duration, showControls, setCurrentTime }) {
   const skim = useCallback((delta) => {
     const v = mediaRef.current;
     if (!v) return;
-    // The element's duration is not always usable: a Stash MP4 transcode
-    // reports none (or a short placeholder), and `(NaN || 0)` made every
-    // forward skim clamp to 0 — a press that jumped *back*. The UI's own
-    // timeline has the right number in exactly that case (see
-    // timelineDuration), so clamp to whichever bound is real and to neither
-    // when neither is.
+    // The element's duration is not always usable: a Stash MP4 transcode reports
+    // none (or a short placeholder), and `(NaN || 0)` made a forward skim jump
+    // *back* to 0. The UI timeline has the right number there, so clamp to
+    // whichever bound is real, or to neither.
     const elementMax = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : Infinity;
     const timelineMax = duration > 0 ? duration : Infinity;
     const max = Math.min(elementMax, timelineMax);
@@ -35,8 +32,8 @@ export function useSkim({ mediaRef, duration, showControls, setCurrentTime }) {
     clearTimeout(skimFlashTimerRef.current);
     skimFlashTimerRef.current = setTimeout(() => setSkimFlash(null), 600);
 
-    // Skim-preview lifecycle: show on first skim, keep alive while
-    // user keeps pressing, hide after SKIM_PREVIEW_HIDE_DELAY of inactivity.
+    // Show on first skim, keep alive while the user presses, hide after
+    // SKIM_PREVIEW_HIDE_DELAY of inactivity.
     setSkimPreviewVisible(true);
     clearTimeout(skimPreviewTimerRef.current);
     skimPreviewTimerRef.current = setTimeout(

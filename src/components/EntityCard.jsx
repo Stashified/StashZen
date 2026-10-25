@@ -1,40 +1,25 @@
 /**
  * EntityCard — one card for Tags, Studios, Galleries and Images.
  *
- * The four sections genuinely differ (a Tag has no rating at all, a Studio has
- * one, a Gallery has a cover and an Image has a thumbnail), but none of that
- * difference lives here: the card asks its `view` descriptor for a title, a
- * subtitle, a badge and an image, and lays them out the same way. Eight bespoke
- * components would have re-derived this layout four times over and drifted.
+ * The sections differ, but the difference lives in the `view` descriptor
+ * (title, subtitle, badge, image, aspect) rather than here, so the layout is
+ * written once instead of four times.
  *
- * The descriptor carries a CSS class choice rather than the component knowing
- * which section it is in — `aspect` is the one thing that changes the *shape*
- * of the card, and it is a property of the art rather than of the section.
+ * `onLongPress` is only wired when `view.longPress` asks: Images and Galleries
+ * have a menu, Tags and Studios have nothing, and leaving those as plain taps
+ * keeps their Enter firing on keydown.
  *
- * `onLongPress` is part of the shared card contract (Carousel passes it). It is
- * only wired when the descriptor asks for it (`view.longPress`): Images and
- * Galleries have a menu — the viewer, slideshows — while a Tag or a Studio has
- * nothing to offer, and leaving their presses as plain taps keeps their Enter
- * firing on keydown as it always has.
- *
- * ## What `onSelect` is called with
- *
- * `(item, index, list)` — three arguments where the other cards in the tree
- * pass one. The Images section needs the other two: its selection opens a viewer
- * that steps through the listing, so it has to know where in the listing the
- * press happened and what the listing was. Tag, Studio and Gallery activation
- * ignores both. `list` is whatever the view handed down (`{ items, total }`
- * from a grid, the full listing object from a Carousel), so the third argument
- * is left as `list?.items` — a section that wants the rest can ask later.
+ * `onSelect` takes `(item, index, list)`: the Images viewer steps through the
+ * listing and needs the position and the listing. Other sections ignore both;
+ * `list` is `list?.items` here, and a section wanting the rest can ask later.
  */
 
 import { useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './EntityCard.module.css';
 
-/** One or two initials, for when there is no picture. `image_path` is a
- *  non-empty string for every tag and studio in this library, so this is
- *  reached by a failed load rather than by a missing field — see tagService. */
+/** One or two initials for when there is no picture: a failed load, since
+ *  `image_path` is non-empty for every tag and studio — see tagService. */
 function initialsOf(text) {
   return String(text || '?')
     .split(/\s+/)
@@ -48,28 +33,23 @@ function initialsOf(text) {
 export default function EntityCard({
   item, index, list, onSelect, onLongPress, view,
   autoFocus = index === 0,
-  // The same explicit edge VideoCard takes. Only the Home shelf passes one:
-  // it lets the top visible shelf send Up to the rail. Every existing caller
-  // leaves it undefined, which is the spatial default.
+  // Only the Home shelf passes this, to send Up to the rail; undefined is the
+  // spatial default.
   nextId = null,
-  // Home fixes every shelf card to one height; `fill` drops the descriptor's
-  // aspect ratio so the cover takes that height. Listings pass nothing.
+  // Home fixes shelf cards to one height; `fill` drops the aspect ratio so the
+  // cover takes that height. Listings pass nothing.
   fill = false,
 }) {
   const [imgError, setImgError] = useState(false);
 
-  // One closure for both the Enter key and the click, so the two cannot drift
-  // apart — see the note on the argument list above.
+  // One closure for both Enter and click, so the two cannot drift apart.
   const select = () => onSelect?.(item, index, list?.items);
-  // The listing itself, not just its items: the menu's subtitle reports the
-  // position in the listing ("12 of 40"), which needs its total. The viewer
-  // opener takes `list.items` from the record it is handed.
+  // The whole listing: the menu's subtitle needs its total for "12 of 40".
   const longPress = () => onLongPress?.(item, index, list);
 
   const { ref, focused } = useFocusable({
-    // The prefix comes from the descriptor, not from the component: it is also
-    // the id scheme the Carousel matches on to know which slot the D-pad is on,
-    // so the two have to agree. See the note in carouselViews.js.
+    // The Carousel matches on this same prefix to know which slot the D-pad is
+    // on; see carouselViews.js.
     id: `${view.focusPrefix}-${item.id}`,
     zone: 'grid',
     onEnter: select,

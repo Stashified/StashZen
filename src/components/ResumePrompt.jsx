@@ -1,29 +1,16 @@
 /**
  * ResumePrompt — "resume, or start from the beginning?"
  *
- * Raised by the player when a scene opens with a saved position, before anything
- * plays. Without it the position is applied silently, which is the wrong default
- * for the one case where intent is genuinely split: reopening a scene you were
- * halfway through is usually a resume, but it is just as often a rewatch or a
- * jump to one part, and nothing visible distinguishes them.
+ * Raised before anything plays, because intent is genuinely split: reopening a
+ * half-watched scene is usually a resume, but often a rewatch.
  *
- * ## Why it is a dialog
+ * It is a dialog so the player stands down: the player consumes every key it
+ * does not yield, and `foreignDialogOpen` is what it yields to. That also buys
+ * the focus trap, so ←/→ cannot wander onto the rail behind.
  *
- * `role="dialog"` is what makes the player stand down. The player's key handler
- * runs in the capture phase and consumes everything it does not deliberately
- * yield, so a prompt that wants the D-pad has to be something the player already
- * knows to yield to — and the test it uses (foreignDialogOpen) is exactly the
- * presence of a dialog that is not its own overlay. That also buys the focus
- * trap: the app's handler confines its candidate search to the innermost open
- * dialog, so ←/→ walks these two buttons and cannot wander onto the rail behind
- * them, which is still mounted.
- *
- * ## Keys
- *
- * Back takes the default rather than dismissing. "Dismiss" has no third meaning
- * here — the scene has to either resume or start — and a prompt whose default is
- * unreachable by the remote's most reflexive button is a prompt that traps
- * people. Nothing is written by either answer, so there is nothing to undo.
+ * Back takes the default rather than dismissing — there is no third meaning,
+ * and an unreachable default would trap people. Neither answer writes
+ * anything, so there is nothing to undo.
  */
 
 import { useCallback } from 'react';
@@ -56,9 +43,8 @@ export default function ResumePrompt({ sceneTitle, seconds, onChoose }) {
   const resume = useCallback(() => onChoose?.('resume'), [onChoose]);
   const at = formatTime(seconds, { padMinutes: true });
 
-  // Backspace is Back here, unlike in MarkerModal: there is no text field for
-  // it to belong to, and the player itself already treats it as Back. That is
-  // exactly `isBackKey`'s default rule.
+  // Backspace is Back here, unlike in MarkerModal: there is no text field, and
+  // the player already treats it that way. `isBackKey`'s default rule.
   useBackKey(resume);
 
   return (
@@ -70,9 +56,8 @@ export default function ResumePrompt({ sceneTitle, seconds, onChoose }) {
           You stopped at <span className={styles.at}>{at}</span>.
         </p>
         <div className={styles.buttons}>
-          {/* The cursor starts here, and the label carries the position so the
-              default is a decision the user can see rather than a blind
-              Enter. */}
+          {/* Focus starts here and the label carries the position, so the
+              default is a visible decision rather than a blind Enter. */}
           <PromptButton id="resume-prompt-resume" primary autoFocus onEnter={resume}>
             Resume from {at}
           </PromptButton>

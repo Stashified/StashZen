@@ -1,25 +1,14 @@
 /**
- * SettingsPanel — Full-screen settings modal
+ * SettingsPanel — full-screen settings modal.
  *
- * Opens from the hamburger menu. Shows:
- *   - Test (mock) / Live mode switch
- *   - When Live: Stash URL + API key text fields (persisted)
- *   - Connection setup: reopen the first-run screen
- *   - App lock: set / change / remove an optional PIN
- *   - Save / Close actions
+ * Composes the sections in `settings/`; this file is the shell that orders
+ * them and owns the drafts, Save and the Back guard. Everything round-trips
+ * through localStorage, including Test/Live mode — a mode that reverted on
+ * launch made a configured device look unconfigured.
  *
- * Everything here round-trips through localStorage via the settings store,
- * including the Test/Live mode. (This comment used to say the mode was
- * in-memory and reset to Test on cold load. That was true, and it was the bug
- * 0.8.0 removed: flipping to Live and back on the next launch silently
- * reverted, so a configured device looked unconfigured.)
- *
- * The sections it composes live in `settings/`; this file is the shell that
- * orders them and owns the drafts, Save and the Back guard.
- *
- * Keyboard: Backspace / Esc / Tizen Back closes the modal — except while
- * the PIN keypad is open, which owns those keys itself. See the guard on
- * the handler below; it is load-bearing, not defensive.
+ * Keyboard: Backspace / Esc / Tizen Back closes the modal, except while the
+ * PIN keypad is open, which owns those keys itself. That guard is
+ * load-bearing, not defensive.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -39,20 +28,18 @@ import { useSettingsDraft } from '../hooks/useSettingsDraft.js';
 import { useSettingsBack } from '../hooks/useSettingsBack.js';
 import { readForcedBrowser } from './player/usePlayerEngine.js';
 
-// Short enough to read as "saved, closing" rather than the 5.6s of dead
-// air this used to sit through with no feedback at all.
+// Long enough to read as "saved, closing", short enough not to feel stalled.
 const SAVE_CLOSE_DELAY_MS = 1200;
 
-// ── Main component ───────────────────────────────────────
 export default function SettingsPanel({ onClose }) {
   const settings = useSettings();
-  // The build-level rollback makes the setting inert, so the row shows the
-  // engine in use rather than a lever that cannot move. A compile-time
-  // constant, so it is not state.
+  // A build-level rollback makes the setting inert, so the row shows the engine
+  // in use rather than a lever that cannot move. Compile-time constant, not
+  // state.
   const forcedBrowser = readForcedBrowser();
 
-  // Local draft state — only commits to the store on Save. See the hook for
-  // why every field, appearance included, is a draft.
+  // Drafts: only committed to the store on Save. See the hook for why every
+  // field, appearance included, is a draft.
   const {
     useMock, setUseMock,
     stashUrl, setStashUrl,
@@ -67,12 +54,11 @@ export default function SettingsPanel({ onClose }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
-  // A test can take up to the client's 12 s timeout, and the panel can close
-  // or switch to Test mode in that window. Results are keyed to the attempt
-  // that asked for them: a late answer must not paint a status line for a
-  // question nobody is looking at any more, and two presses must not resolve
-  // out of order. Re-armed in the effect body for the StrictMode double mount
-  // — a cleanup-only latch is false for the rest of a dev session.
+  // A test can take up to the client's 12 s timeout, during which the panel can
+  // close or switch to Test mode. Results are keyed to their attempt, so a late
+  // answer paints nothing and two presses cannot resolve out of order. Re-armed
+  // in the effect body: a cleanup-only latch is false after StrictMode's double
+  // mount for the rest of a dev session.
   const aliveRef = useRef(true);
   const testAttemptRef = useRef(0);
   useEffect(() => {
@@ -101,22 +87,17 @@ export default function SettingsPanel({ onClose }) {
 
   const urlFieldRef = useRef(null);
 
-  // Set by AppLockSection while its PIN keypad is open. Declared here
-  // rather than lifted into this component's state because nothing here
-  // renders differently for it — the handler below only needs to know
-  // whether to stay out of the way.
+  // Set by AppLockSection while its PIN keypad is open. A ref, not state: this
+  // component renders nothing different for it; the Back handler only needs to
+  // stay out of the way.
   const pinFlowRef = useRef(null);
 
-  // When the user flips to Live, jump focus straight into the URL
-  // field. Otherwise spatial nav from the toggle drops focus on the
-  // nearest element below, which is "Save" — a confusing landing.
-  //
-  // This focuses the field's *wrapper*, not its input: focusing the input
+  // Flipping to Live jumps focus into the URL field; otherwise spatial nav
+  // lands on "Save". It focuses the field's *wrapper*, not its input, which
   // would raise the on-screen keyboard before the user asked to type.
   useEffect(() => {
     if (!useMock) {
-      // Defer one tick so the field has mounted and registered its wrapper
-      // before the focus call lands.
+      // Defer one tick so the field has registered its wrapper.
       const t = setTimeout(() => {
         urlFieldRef.current?.focus();
       }, 0);
@@ -124,13 +105,12 @@ export default function SettingsPanel({ onClose }) {
     }
   }, [useMock]);
 
-  // Leaving with unsaved drafts asks first. Reported from the TV, 2026-10-24:
-  // backing out silently threw the change away, and the panel looked identical
-  // to one that had saved ("I sometimes forget to go press save"). The prompt
-  // is the only place a discard can happen now, and it names the alternative.
+  // Leaving with unsaved drafts asks first — backing out silently would throw
+  // the change away, indistinguishably from a save. The prompt is the only
+  // place a discard can happen, and it names the alternative.
   //
-  // `leavePrompt` is state, but the Back listener reads the freshest closure
-  // through useBackKey's ref, so the open flag is never stale.
+  // Back reads the freshest closure through useBackKey's ref, so the flag is
+  // never stale.
   const [leavePrompt, setLeavePrompt] = useState(false);
   // Where the cursor was when Back raised the prompt. Restored if the user
   // keeps editing, so dismissing the question does not also move them.
@@ -145,9 +125,9 @@ export default function SettingsPanel({ onClose }) {
 
   const requestClose = () => {
     // Back while the prompt is open answers "keep editing" rather than
-    // re-opening it. The prompt registers no Back handler of its own: this
-    // listener runs first, and two sibling capture listeners cannot suppress
-    // each other — see the note in useSettingsBack.
+    // re-opening it. The prompt registers no Back handler: this listener runs
+    // first, and sibling capture listeners cannot suppress each other — see
+    // useSettingsBack.
     if (leavePrompt) {
       dismissLeavePrompt();
       return;
@@ -160,25 +140,21 @@ export default function SettingsPanel({ onClose }) {
     onClose?.();
   };
 
-  // Trap Back / Esc to close — except when the user is typing in
-  // a text field, where Backspace should delete a character normally, and
-  // while the PIN keypad is open. See the hook.
+  // Trap Back / Esc to close, except while typing (Backspace deletes) or while
+  // the PIN keypad owns the keys. See the hook.
   useSettingsBack(requestClose, pinFlowRef);
 
   useEffect(() => { setTestResult(null); }, [stashUrl, stashKey]);
 
   const [saved, setSaved] = useState(false);
-  // Held in a ref so it can be cleared on unmount. Previously the timer
-  // was fire-and-forget: saving and then reopening the panel within the
-  // delay let the stale timeout close the *newly opened* panel.
+  // Held in a ref so it can be cleared on unmount — a stale timeout would
+  // close a panel reopened within the delay.
   const closeTimerRef = useRef(null);
 
   // The scrolling body. The footer is a sibling, so moving Down to Save does
   // not scroll it: the last focusable in the body is the PIN button, and the
-  // explanatory hint below it has no D-pad stop of its own. The focus landed
-  // on Save with that hint clipped at the fold (TV report 2026-10-24 — only
-  // the first pixels of "A forgotten PIN cannot be recovered…" were visible).
-  // The footer is the end of the panel, so it brings the body's end with it.
+  // hint below it has no D-pad stop, so it stayed clipped at the fold. The
+  // footer is the panel's end, so it brings the body's end with it.
   const bodyRef = useRef(null);
   const revealBodyEnd = () => {
     const body = bodyRef.current;
@@ -194,9 +170,8 @@ export default function SettingsPanel({ onClose }) {
     closeTimerRef.current = setTimeout(() => onClose?.(), SAVE_CLOSE_DELAY_MS);
   };
 
-  // The prompt's answers. Save goes through the normal path so the footer
-  // reports "Saved ✓" and the panel closes on the same timer as always;
-  // discard is the only route that leaves the drafts behind.
+  // Save goes through the normal path so the footer reports "Saved ✓" and the
+  // usual close timer runs; discard is the only route that drops the drafts.
   const saveAndClose = () => {
     setLeavePrompt(false);
     handleSave();
@@ -242,13 +217,9 @@ export default function SettingsPanel({ onClose }) {
         <div className={styles.body} ref={bodyRef}>
           <ModeToggle value={useMock} onChange={setUseMock} />
 
-          {/* Live-mode fields. Unmounted in Test mode rather than dimmed:
-              the previous version only added a `.disabled` class, so the
-              D-pad could still land on the endpoint and key, Enter still
-              raised the TV keyboard and the values could still be edited —
-              while the visible hint said they were not editable. The values
-              themselves live in panel state, so toggling back to Live
-              restores them. */}
+          {/* Unmounted in Test mode, not dimmed: a `.disabled` class leaves the
+              fields reachable by D-pad and editable while the hint says they
+              are not. The values live in panel state, so Live restores them. */}
           <div className={styles.liveFields}>
             {!useMock && (
               <>
@@ -297,11 +268,10 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
-          {/* Re-runs the first-run screen. Not a convenience duplicate of the
-              fields above: it is the only route back to the "skip and use
-              sample data" choice, and the only place a connection is verified
-              before it is saved. It sets a flag rather than clearing
-              `onboarded`, so Back can cancel the re-run and return here. */}
+          {/* Not a duplicate of the fields above: it is the only route back to
+              "skip and use sample data", and the only place a connection is
+              verified before saving. A flag, not clearing `onboarded`, so Back
+              can cancel and return here. */}
           <div className={styles.section}>
             <div className={styles.sectionRow}>
               <div className={styles.sectionText}>
@@ -330,8 +300,8 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
-          {/* Playback preferences. A draft like everything else in this panel —
-              committed by Save, so backing out leaves it as it was. */}
+          {/* A draft like everything here — committed by Save, so backing out
+              leaves it as it was. */}
           <div className={styles.section}>
             <div className={styles.sectionRow}>
               <div className={styles.sectionText}>
@@ -359,12 +329,10 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
-          {/* Playback engine. Auto is the browser first with the TV's own
-              pipeline for what the browser cannot take; TV player is the A/B
-              lever; Browser is exactly the previous player and the rollback
-              lever. The hint deliberately does not promise better picture
-              quality: the Phase 0 probe measured hardware decode on par with
-              the browser for 4K, not better. */}
+          {/* Auto is browser first, TV pipeline for what it cannot take; TV
+              player is the A/B lever; Browser is the rollback lever. The hint
+              does not promise better quality: the Phase 0 probe measured
+              hardware decode on par with the browser for 4K, not better. */}
           <div className={styles.section}>
             <EngineToggle
               value={playbackEngine}
@@ -386,9 +354,8 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
-          {/* Appearance. The hint is the whole explanation a user needs at
-              ten feet: what changes, and why the cards do not go fully black
-              with the page. */}
+          {/* The hint is the whole ten-foot explanation: what changes, and why
+              the cards do not go fully black with the page. */}
           <div className={styles.section}>
             <ThemeToggle value={theme} onChange={setTheme} />
             <p className={styles.hint}>

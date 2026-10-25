@@ -4,15 +4,12 @@
  *
  *   node scripts/test-progress-reporter.mjs
  *
- * The progress reporter can write permanently wrong data: `play_duration` is
- * added server-side, so a delta sent twice, a position read after the source
- * was swapped, or a queued save that re-reads the live values all corrupt the
- * user's library rather than merely misdrawing a screen. The full sweep drives
- * the player through the DOM, but timing-dependent cases (a second save while
- * one is in flight, a response landing after a queue advance) are much easier
- * to hold still here, with the network calls as controllable promises.
- *
- * No framework, same as test-play-queue.mjs.
+ * The reporter can write permanently wrong data: `play_duration` is added
+ * server-side, so a delta sent twice, a position read after a source swap, or a
+ * queued save that re-reads live values all corrupt the library rather than
+ * misdrawing a screen. The DOM sweep covers the player, but timing-dependent
+ * cases are easier to hold still here with the network calls as controllable
+ * promises.
  */
 
 import { createProgressReporter } from '../src/components/player/progressReporter.js';
@@ -44,8 +41,8 @@ function deferred() {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-// A reporter whose writes never settle until the test says so, plus the log
-// of everything it was asked to do.
+// A reporter whose writes never settle until the test says so, logging
+// everything it was asked to do.
 function rig({ playOk = true, playError = 'play failed' } = {}) {
   const writes = [];
   const pending = [];

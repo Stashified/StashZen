@@ -1,48 +1,36 @@
 /**
  * engineController — the session's memory about playback engines.
  *
- * `enginePolicy.js` answers "what should be tried, in what order" for a scene.
- * It is pure and stateless. This module is the other half: what the player has
- * *learned* during this session, and how that changes the answer for the next
- * scene.
+ * `enginePolicy.js` is pure and stateless: what to try, in what order. This
+ * module holds what the player has *learned* this session and how that
+ * changes the answer for the next scene.
  *
- * Four pieces of memory, each with a different lifetime and a different job:
- *
- *   1. **The kill switch.** Two engine-level failures on different scenes turn
- *      AVPlay off for the rest of the session. Content refusals never count —
- *      those are what the fallback exists for — and one scene's transcodes
- *      failing repeatedly says nothing about the engine. See
- *      `createEngineHealth` in enginePolicy.js for the counting rule.
- *
- *   2. **The per-format negative cache for AVPlay.** AVPlay refusing a file is
- *      normally content-level: one codec it cannot decode. The cache remembers
- *      `container|video|audio` so the next scene of that format does not spend
- *      another attempt (and another ~110–276 ms) being refused. It is keyed by
- *      the format, never by the URL, and it is only ever written for **direct**
- *      play. A refused transcode says nothing about the codec — Stash produced
- *      that file — so caching it would skip AVPlay on a format it plays fine
- *      when handed the original.
- *
- *   3. **The matching cache for the browser.** The browser is first under
- *      `Auto`, and its refusals are the expensive kind: a codec it cannot
- *      decode usually errors in under a second, but a source it accepts and
- *      sits on only reveals itself to the stall watchdog. Either way the
- *      format is remembered, so the second scene of that format goes straight
- *      to AVPlay instead of paying the watchdog again. Same key, same
- *      direct-only rule — and never written when AVPlay is not available,
- *      because there would be nothing better to skip to.
- *
- *   4. **The reason AVPlay is not active**, for the stats panel and the failure
- *      message. `Auto` silently falling back is indistinguishable from a bug
- *      unless the panel says why.
+ * Four pieces of memory:
+ *   1. **Kill switch.** Two engine-level failures on different scenes turn
+ *      AVPlay off for the session. Content refusals never count — they are
+ *      what the fallback exists for — and repeated transcode failures on one
+ *      scene say nothing about the engine. Counting lives in
+ *      `createEngineHealth`.
+ *   2. **Per-format negative cache for AVPlay.** Remembers `container|video|
+ *      audio` so the next scene of a refused format spends no further attempt
+ *      (~110–276 ms). Keyed by format, never URL, and only written for
+ *      **direct** play: a refused transcode says nothing about the codec
+ *      (Stash produced that file).
+ *   3. **Matching cache for the browser.** The browser is first under `Auto`,
+ *      and its refusals are expensive: an undecodable codec errors in under a
+ *      second, but an accepted source that stalls only shows up via the stall
+ *      watchdog. Remembering the format sends the next scene straight to
+ *      AVPlay. Same key, same direct-only rule; never written when AVPlay is
+ *      unavailable, because there would be nothing to skip to.
+ *   4. **Why AVPlay is not active**, for the stats panel and failure message;
+ *      a silent `Auto` fallback otherwise looks like a bug.
  *
  * ## Why an instance and not module state
  *
- * This must be created once per player session (a ref inside the player), not
- * exported as a module singleton. Module-level caches survive the `dataKey`
- * remount the app uses when the server or API key changes, and a negative
- * cache from one Stash server's library would then suppress AVPlay on another
- * server's files. The lifetime should match the session it describes.
+ * Create once per player session (a ref inside the player), never a module
+ * singleton: module caches survive the `dataKey` remount on server or API-key
+ * change, so one server's negative cache would suppress AVPlay on another
+ * server's files.
  */
 
 import { createEngineHealth, readPlaybackEngine } from './enginePolicy.js';
@@ -102,17 +90,14 @@ export function createEngineController({ healthLimit = 2 } = {}) {
   const keyOf = (video) => (video ? avplayFormatKey(video) : null);
 
   /**
-   * Why AVPlay is or is not in play right now, for this scene.
+   * Why AVPlay is or is not in play for this scene.
    *
-   * `setting` is already the persisted value; `available` is the resolved
-   * availability question from usePlayerEngine; `video` is this scene's codec
-   * triple, so the per-format cache can explain a scene that never reached
-   * AVPlay. The order is the order the resolver itself applies: a build flag
-   * or the setting overrides everything, then the session kill switch, then
-   * availability, and only then this scene's format. That order matters to
-   * the panel: after the kill switch trips, "refused this format" would be a
-   * true sentence about a scene that was never attempted, and the wrong
-   * explanation for why.
+   * `setting` is the persisted value, `available` the resolved availability
+   * from usePlayerEngine, `video` this scene's codec triple. The checks run in
+   * the resolver's order: build flag/setting, session kill switch,
+   * availability, then this scene's format. That order matters to the panel —
+   * after the kill switch trips, "refused this format" would be true but the
+   * wrong explanation for a scene that was never attempted.
    */
   function status({
     setting = 'auto', available = false, forcedBrowser = false, video = null,
@@ -124,10 +109,9 @@ export function createEngineController({ healthLimit = 2 } = {}) {
     if (!available) return ENGINE_STATUS.UNAVAILABLE;
     const key = keyOf(video);
     if (key != null && refusedFormats.has(key)) return ENGINE_STATUS.FORMAT_REFUSED;
-    // `Auto` reaches here with AVPlay available and no reason to skip it, so
-    // the browser being the one playing is the policy, not a fallback. That is
-    // still information — without the note the user cannot tell this apart
-    // from a browser-only build.
+    // AVPlay is available here, so the browser playing under `Auto` is policy,
+    // not a fallback — but still worth noting, or it looks like a
+    // browser-only build.
     return mode === 'auto' ? ENGINE_STATUS.BROWSER_FIRST : ENGINE_STATUS.ACTIVE;
   }
 
@@ -141,10 +125,9 @@ export function createEngineController({ healthLimit = 2 } = {}) {
     },
 
     /**
-     * Record that AVPlay refused this format on a **direct** attempt. Safe to
-     * call with a video whose codecs are unknown: `avplayFormatKey` returns
-     * null and nothing is cached, because "unknown format" must not become a
-     * blanket refusal.
+     * Record that AVPlay refused this format on a **direct** attempt. Safe
+     * with unknown codecs: the key is null and nothing is cached, because
+     * "unknown format" must not become a blanket refusal.
      */
     refusedDirect(video) {
       const key = keyOf(video);
@@ -152,10 +135,9 @@ export function createEngineController({ healthLimit = 2 } = {}) {
     },
 
     /**
-     * True when the browser failed this format directly earlier in the
-     * session, so the resident AVPlay should be asked before it is. Callers
-     * must also check that AVPlay is available — skipping the browser with
-     * nowhere to go is a transcode the user did not ask for.
+     * True when the browser failed this format directly earlier this session,
+     * so AVPlay should be asked first. Callers must also check availability —
+     * skipping the browser with nowhere to go is an unasked-for transcode.
      */
     browserBlockedFormat(video) {
       const key = keyOf(video);
@@ -163,11 +145,10 @@ export function createEngineController({ healthLimit = 2 } = {}) {
     },
 
     /**
-     * Record a browser refusal of a **direct** attempt: a media error whose
-     * source the element could not decode (3 or 4). Not for a watchdog stall —
-     * a slow start is not a format verdict — not for transcode failures (Stash
-     * produced that file), and not for network errors, which say nothing
-     * about the format.
+     * Record a browser refusal of a **direct** attempt: a media error the
+     * element could not decode (3 or 4). Not for a watchdog stall (a slow
+     * start is not a format verdict), transcode failures (Stash produced that
+     * file) or network errors.
      */
     browserRefused(video) {
       const key = keyOf(video);
@@ -176,9 +157,9 @@ export function createEngineController({ healthLimit = 2 } = {}) {
 
     /**
      * Record a failure. Only `level === 'engine'` counts toward the kill
-     * switch; `content` is what the per-format cache and the fallback are for.
-     * Returns true when this failure disabled AVPlay — the caller surfaces the
-     * reason once, rather than on every later scene.
+     * switch; `content` is what the per-format cache and fallback are for.
+     * Returns true when this failure disabled AVPlay, so the caller surfaces
+     * the reason once rather than on every later scene.
      */
     fail({ sceneId, level = 'content', reason = 'engine error' } = {}) {
       if (level !== 'engine') return false;

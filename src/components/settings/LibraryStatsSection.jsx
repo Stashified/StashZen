@@ -4,11 +4,8 @@ import { formatBytes, formatCount, formatHours } from '../../utils/format.js';
 import { useSectionLoader } from '../../hooks/useSectionLoader.js';
 import styles from '../SettingsPanel.module.css';
 
-// ── Library stats ─────────────────────────────────────────
-//
-// Read-only aggregates. The tiles are deliberately inert: they are display,
-// not controls, and making them focusable would add twelve dead D-pad stops
-// to a modal the user is trying to navigate.
+// Read-only aggregates. The tiles are inert on purpose: focusable display would
+// add twelve dead D-pad stops to a modal the user is navigating.
 const STAT_TILES = (stats) => [
   { key: 'scenes',     label: 'Scenes',       value: formatCount(stats.sceneCount) },
   { key: 'images',     label: 'Images',       value: formatCount(stats.imageCount) },

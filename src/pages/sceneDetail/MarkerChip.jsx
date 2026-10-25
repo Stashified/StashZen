@@ -2,12 +2,9 @@ import { useFocusable } from '../../hooks/useFocusable.js';
 import { formatTime } from '../../utils/format.js';
 import styles from '../SceneDetailPage.module.css';
 
-// ── Marker chip ─────────────────────────────────────────────
-//
-// A jump target, not decoration: Enter opens the player at this marker's
-// timestamp through the same queue-of-one path the Play button uses. Not
-// autofocus — Play remains the page's landing spot, and the chips are an
-// optional row above the actions.
+// A jump target: Enter opens the player at this marker through the same
+// queue-of-one path as Play. Not autofocus — Play is the landing spot, and the
+// chips are an optional row above the actions.
 export function MarkerChip({ marker, onPlayAt }) {
   const { ref, focused } = useFocusable({
     id: `scene-marker-${marker.id}`,

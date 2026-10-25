@@ -1,20 +1,15 @@
-/* =========================================================
-   FilterBuilder — full-screen overlay, three nesting levels
-   =========================================================
-   Both FilterBuilder itself and EntityPicker/FieldPicker import this file, so
-   the `.pick*` block below is shared by every nested layer rather than
-   duplicated per component. The nesting is DOM nesting (see EntityPicker's
-   header for why it must not be a portal), so the inner layers are sized
-   against the outer panel rather than the viewport.
-   ========================================================= */
+/*
+ * FilterBuilder and EntityPicker/FieldPicker all import this file, so the
+ * `.pick*` block below is shared by every nested layer. The nesting is DOM
+ * nesting (no portal — see EntityPicker), so inner layers size against the
+ * outer panel, not the viewport.
+ */
 
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 900;
-  /* Opaque scrim, not a backdrop blur — the same reasoning SettingsPanel
-     records: a blur re-composites the live grid and previews behind it every
-     frame, and over a dark UI a flat scrim is visually close for free. */
+  /* Opaque scrim, not a backdrop blur — see SettingsPanel's note. */
   background: rgba(var(--scrim-rgb), 0.88);
   display: flex;
   align-items: center;
@@ -28,9 +23,8 @@
 }
 
 .panel {
-  /* Wider than SettingsPanel: a criterion row is a label, a modifier and an
-     operand side by side, and at 640px the operand wraps under its own
-     label on a long field name. */
+  /* Wider than SettingsPanel: at 640px a criterion's operand wraps under its
+     own label on a long field name. */
   width: min(1000px, 94vw);
   max-height: 88vh;
   background: var(--bg-surface);
@@ -48,7 +42,6 @@
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-/* ── Header ─────────────────────────────────────────────── */
 .header {
   padding: 24px 32px 18px;
   border-bottom: 1px solid var(--border);
@@ -70,7 +63,6 @@
   color: var(--text-muted);
 }
 
-/* ── Body ───────────────────────────────────────────────── */
 .body {
   flex: 1;
   padding: 20px 32px;
@@ -78,8 +70,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* Rows reflow as criteria are added and removed under a held D-pad key;
-     anchoring scroll to the top keeps the panel from shifting under focus. */
+  /* Rows reflow under a held D-pad key; instant scroll keeps the panel from
+     shifting under focus. */
   scroll-behavior: auto;
 }
 
@@ -93,9 +85,8 @@
   margin: 0 auto;
 }
 
-/* A criterion in the saved filter that this build's schema snapshot does not
-   know. Amber rather than red: nothing is broken, but the user is about to
-   save something the builder did not show them. */
+/* A criterion the schema snapshot does not know. Amber, not red: nothing is
+   broken, but the user is about to save something the builder did not show. */
 .warn {
   padding: 10px 14px;
   border-radius: 8px;
@@ -106,7 +97,6 @@
   line-height: 1.5;
 }
 
-/* ── One criterion ──────────────────────────────────────── */
 .row {
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -154,7 +144,6 @@
   gap: 10px;
 }
 
-/* ── Dropdown ───────────────────────────────────────────── */
 .choice {
   position: relative;
   display: flex;
@@ -234,7 +223,6 @@
   font-weight: 600;
 }
 
-/* ── Value editors ──────────────────────────────────────── */
 .value {
   flex: 1;
   min-width: 180px;
@@ -258,10 +246,9 @@
   color: var(--text-muted);
 }
 
-/* The value box is a wrapper rather than the input itself, because the D-pad
-   focuses the wrapper and Enter then raises the TV's IME — see
-   useEditableField. So focus and editing are two different states and the
-   user has to be able to tell them apart. */
+/* The D-pad focuses the wrapper and Enter raises the TV's IME (see
+   useEditableField), so focus and editing are distinct states the user must
+   be able to tell apart. */
 .editing {
   border-color: var(--accent);
   background: var(--bg-surface);
@@ -284,9 +271,8 @@
   cursor: pointer;
 }
 
-/* ── Focus ──────────────────────────────────────────────── */
-/* Applied to buttons, wrapper divs and options alike, so it sets only what is
-   common; anything element-specific is overridden above. */
+/* Applied to buttons, wrappers and options alike, so it sets only the common
+   parts; element-specific rules override it. */
 .multiBtn:disabled {
   opacity: 0.45;
   cursor: default;
@@ -302,7 +288,6 @@
   opacity: 0.45;
 }
 
-/* ── Footer ─────────────────────────────────────────────── */
 .footer {
   display: flex;
   align-items: center;
@@ -337,10 +322,8 @@
   color: var(--text-primary);
 }
 
-/* ── Nested layers: field picker, entity picker, name prompt ──
-   Same three-layer look. These are DOM children of `.panel`, so they cover it
-   rather than the viewport — which is also what makes `focusScopeOf` find them
-   as the nearest dialog. */
+/* DOM children of `.panel`, so they cover it rather than the viewport — which
+   is also what makes `focusScopeOf` find them as the nearest dialog. */
 .pickOverlay {
   position: absolute;
   inset: 0;
@@ -513,7 +496,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* ── Field-picker tabs ──────────────────────────────────── */
 .tabs {
   display: flex;
   gap: 6px;

@@ -60,17 +60,15 @@ export function queueItemFromMarker(marker) {
  * The queue rows for a run of markers, one per scene.
  *
  * The Markers tab lists markers, but the player plays scenes: two markers on
- * one scene are two ways into the same video, not two videos. Keeping both
- * would make the queue walk into a scene it has just left, and the player's
- * own dedupe (`usePlayQueue`'s `seen` set) would drop the second one a moment
- * later anyway — silently, so the counter would disagree with what plays.
+ * one scene are two ways into the same video. Keeping both would make the
+ * queue walk into a scene it has just left, and the player's dedupe would drop
+ * the second a moment later — silently, so the counter would disagree.
  * First occurrence wins, in listing order.
  *
- * Each row also carries `startSeconds`. Only the item the session *starts* on
- * ever has its timestamp read (`VideoPlayer`'s `index === startIndex` rule),
- * so a later row's value is inert — but keeping it on the row means "Play
- * from here" can start on the marker it was invoked from without a second
- * code path.
+ * Each row also carries `startSeconds`. Only the starting row's timestamp is
+ * read (`VideoPlayer`'s `index === startIndex` rule), so a later value is
+ * inert — but keeping it lets "Play from here" start on its marker without a
+ * second code path.
  */
 export function markerQueueItems(markers) {
   const seen = new Set();
@@ -88,14 +86,12 @@ export function markerQueueItems(markers) {
 /**
  * A play queue seeded from the Markers listing.
  *
- * `markers` is the run to start with — the whole loaded listing for "Play
- * all", or the rows from the pressed marker onward for "Play from here". The
- * queue's own paging continues the *marker* listing from the page it had
- * loaded, mapping each page through `markerQueueItems` so the dedupe also
- * applies to rows that arrive while playing. `total` is the marker count
- * rather than the scene count: it is an upper bound (some markers share a
- * scene), and the queue treats an overcount as "maybe there is more" —
- * extension asks, finds only duplicates, and gives up. See usePlayQueue.
+ * `markers` is the run to start with — the whole loaded listing for "Play all",
+ * or rows from the pressed marker onward for "Play from here". Paging continues
+ * the *marker* listing, mapping each page through `markerQueueItems` so the
+ * dedupe also applies to rows arriving while playing. `total` is the marker
+ * count, an upper bound over scenes: the queue treats an overcount as "maybe
+ * there is more", asks, finds only duplicates, and gives up.
  */
 export function queueFromMarkers(list, markers) {
   const items = markerQueueItems(markers);

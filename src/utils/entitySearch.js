@@ -1,22 +1,14 @@
 /**
  * entitySearch.js — name lookup for the filter builder's multi-selects.
  *
- * A multi-select criterion stores `{items: [{id, label}]}` — Stash's own shape
- * — so the builder needs id→label for whichever entity a field names. This is
- * deliberately *not* the paged listing services: a picker wants 40 rows that
- * match a typed prefix, not a cached, sorted, filterable page with a total,
- * and putting it through `usePagedList` would drag the whole grid machinery
- * into a modal.
+ * A criterion stores `{items: [{id, label}]}` (Stash's shape), so the builder
+ * needs id→label for whichever entity a field names. Deliberately not the
+ * paged services: a picker wants 40 prefix matches, not cached pages with
+ * totals, and `usePagedList` would drag the grid machinery into a modal.
  *
- * One table drives all eight sources, because the queries differ only in the
- * root, the argument name and the label field — the same reason
- * `filterCriteria.js` derives its editors from the schema rather than listing
- * fields.
- *
- * The app's other services select full entity shapes for a grid to render.
- * These select an id and a name and nothing else, which is also the
- * conservatism the project's probing rule asks for: the builder never needs
- * the body of a performer to let the user pick one.
+ * One table drives all eight sources; the queries differ only in root,
+ * argument name and label field. Only id and name are selected — the builder
+ * never needs an entity's body to let the user pick one.
  */
 
 import { getSettings } from './settings.js';
@@ -33,12 +25,11 @@ function lastSegment(path) {
  * The last `n` segments of a path, joined — the part of a folder path that
  * identifies it.
  *
- * One segment is not enough on this library: gallery folders run
- * `/media/library/<Model>/Photos/<year>`, so the tail segment alone gives
- * "2002", which several models share. Three gives "Studio Alpha/Photos/2002"
- * — and on a shallower tree, "Summer Shoot/Country House" — which is what the
- * user would recognise. Four would start dragging the archive root into every
- * label.
+ * One segment is not enough: gallery folders run
+ * `/media/library/<Model>/Photos/<year>`, so the tail alone gives "2002",
+ * which several models share. Three gives "Studio Alpha/Photos/2002", or
+ * "Summer Shoot/Country House" on a shallower tree. Four would drag the
+ * archive root into every label.
  */
 function tailSegments(path, n = 3) {
   const parts = String(path || '').split('/').filter(Boolean);
@@ -51,13 +42,11 @@ function tailSegments(path, n = 3) {
  * `label` is the GraphQL field to *sort* and select; `name(row)` turns the row
  * into what the user reads.
  *
- * Galleries are why `name` exists at all. On this server every gallery's
- * `title`, `code` and `date` are empty — measured, not assumed: the first 200
- * sorted by title are blank, 200 of 200. A picker labelling them by title
- * would be a wall of "#101", "#102", "#2938". What actually identifies a
- * gallery is the folder it lives in, so the query pulls `folder.path` and
- * shows its last segment. Without this the gallery criterion would be
- * buildable, selectable, and useless.
+ * Galleries are why `name` exists: on this server every gallery's `title`,
+ * `code` and `date` are empty (200/200 checked), so a title-labelled picker
+ * would be a wall of "#101". What identifies a gallery is its folder, so the
+ * query pulls `folder.path` and shows its tail. Without this the criterion
+ * would be buildable, selectable and useless.
  */
 const SOURCES = {
   tags: {
@@ -98,13 +87,10 @@ const SOURCES = {
     select: 'id title files { basename }',
     name: (r) => r.title || lastSegment(r.files?.[0]?.basename),
   },
-  // Galleries carry `parent_folder` and `folders_filter` as hierarchical
-  // criteria, and those records are folders. Without this source the picker
-  // opened, queried nothing (no entry meant `searchEntities` returned an empty
-  // list), and said "this library has none" — a criterion that could never be
-  // given a value. Verified on the live 0.31.1 schema: `findFolders` takes
-  // `folder_filter` and returns `folders { id basename path }`, and
-  // `basename` is a valid sort key there.
+  // Galleries' `parent_folder` and `folders_filter` criteria are folder
+  // records; without this source the picker queried nothing and claimed the
+  // library had none. `findFolders` takes `folder_filter` and returns
+  // `folders { id basename path }`, with `basename` a valid sort key.
   folders: {
     root: 'findFolders', rows: 'folders', label: 'basename',
     select: 'id basename path',
@@ -127,10 +113,8 @@ export function isSearchable(entity) {
 
 // ── Mock ──────────────────────────────────────────────────
 //
-// Test mode has no saved filters, so nothing here is load-bearing for the
-// existing screens — but the builder is reachable in Test mode too, and a
-// picker that opens onto an error would be a worse answer than a short list
-// of obvious fakes.
+// The builder is reachable in Test mode too; a short list of obvious fakes
+// beats a picker that opens onto an error.
 function mockRows(entity, q) {
   const names = {
     tags: Array.from({ length: 30 }, (_, i) => `Tag ${i + 1}`),
@@ -155,12 +139,11 @@ function mockRows(entity, q) {
 /**
  * Search one entity kind by name.
  *
- * `q` is passed as Stash's free-text filter rather than a criterion: what the
- * user types in a picker is a name fragment, and Stash's own `q` already means
- * "match this against the entity's name".
+ * `q` is Stash's free-text filter, not a criterion: a picker input is a name
+ * fragment, which is what `q` already matches.
  *
- * Returns `[{id, label}]`, capped at `limit`. Never throws for an unknown
- * entity — it returns nothing, and `isSearchable` is how a caller asks first.
+ * Returns `[{id, label}]` capped at `limit`; an unknown entity yields nothing
+ * (ask `isSearchable` first) rather than throwing.
  */
 export async function searchEntities(entity, q = '', limit = 40) {
   const src = SOURCES[entity];
@@ -198,10 +181,8 @@ export async function searchEntities(entity, q = '', limit = 40) {
 /**
  * Resolve `[{id, label}]` for ids the builder already holds.
  *
- * A saved filter stores its own labels, so reopening one needs no lookup at
- * all — this exists for the case where a label is missing or stale (an entity
- * renamed or deleted since the filter was saved), where showing the raw id is
- * better than showing nothing.
+ * Saved filters store their own labels, so this only fills in a missing or
+ * stale one (entity renamed or deleted), where the raw id beats nothing.
  */
 export function labelForIds(items) {
   return (items || []).map(i => ({

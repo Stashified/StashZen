@@ -1,17 +1,12 @@
-/**
- * Pure formatters for the performer detail hero.
- *
- * Extracted so they can be unit-tested without a DOM, and so the page stays a
- * composition of state and markup.
- */
+// Pure formatters for the performer detail hero; separate so they can be
+// unit-tested without a DOM.
 
 /**
  * Calendar parts of a Stash date string, or null.
  *
- * Deliberately not `new Date(iso)`: a plain `YYYY-MM-DD` is parsed as UTC
- * midnight, and reading it back with the local getters shifts the day west of
- * Greenwich. That is the same defect videoService.yearOf avoids by matching
- * the string instead of constructing a Date.
+ * Deliberately not `new Date(iso)`: a plain `YYYY-MM-DD` parses as UTC midnight,
+ * and local getters shift the day west of Greenwich. Match the string instead,
+ * as `videoService.yearOf` does.
  */
 function dateParts(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
@@ -24,12 +19,9 @@ function dateParts(value) {
 }
 
 /**
- * Age in whole years, measured to the death date when there is one.
- *
- * The hero already prints a "Died …" fact, so measuring a deceased performer
- * to today would leave "Age 81" next to "Died 2009" and keep growing it. The
- * reference date is injected so the day-boundary rule can be tested without
- * moving the machine's clock or timezone.
+ * Age in whole years, measured to the death date when there is one: measuring
+ * a deceased performer to today would leave "Age 81" next to "Died 2009" and
+ * keep growing it. `now` is injected so tests need not move the clock.
  */
 export function ageFromBirthdate(iso, deathDate = null, now = new Date()) {
   const birth = dateParts(iso);
@@ -49,17 +41,16 @@ export function ageFromBirthdate(iso, deathDate = null, now = new Date()) {
 
 export function formatHeight(cm) {
   if (!cm) return null;
-  // Round to whole inches first, then split. Rounding only the remainder
-  // prints 5′12″ for, say, 182 cm; carrying the 12 is the same mistake a
-  // careless clock makes at 59.6 minutes.
+  // Round to whole inches first, then split: rounding only the remainder prints
+  // 5′12″ for some centimetres.
   const totalInches = Math.round(cm / 2.54);
   const ft = Math.floor(totalInches / 12);
   const inches = totalInches % 12;
   return `${cm} cm · ${ft}′${inches}″`;
 }
 
-// GenderEnum is SCREAMING_SNAKE and is not meant to be read raw. Unknown
-// values (a newer Stash adds one) fall back to words rather than disappearing.
+// GenderEnum is SCREAMING_SNAKE and not meant to be read raw. Unknown values
+// (a newer Stash adds one) fall back to words rather than disappearing.
 export function formatGender(value) {
   if (!value) return null;
   const labels = {
@@ -97,13 +88,10 @@ function hostOf(url) {
 }
 
 /**
- * One chip per host, in the order Stash returned them. A performer can list
- * the same site more than once (`urls` is a plain list), and a chip per URL
- * would repeat the same label; the first URL for a host wins.
- *
- * Returns `{ links: [{ url, host }], omitted }`, where `omitted` counts the
- * distinct hosts past `max`. Invalid URLs fall back to the raw string as the
- * host, so a malformed entry is still readable rather than silently dropped.
+ * One chip per host, in Stash's order: `urls` is a plain list that can repeat a
+ * site, so the first URL for a host wins. Returns `{ links, omitted }`, where
+ * `omitted` counts the distinct hosts past `max`. Invalid URLs use the raw
+ * string as the host rather than being dropped.
  */
 export function webLinks(urls, max = 3) {
   const seen = new Set();
@@ -127,9 +115,9 @@ export function formatDeathDate(value) {
 }
 
 /**
- * The grid's `rating` is `(rating100 / 10).toFixed(1)`, so this round-trip is
- * exact. It seeds the hero on the first paint; the detail query's `rating100`
- * replaces it as soon as it lands, and every write uses that value.
+ * The grid's `rating` is `(rating100 / 10).toFixed(1)`, so the round-trip is
+ * exact. Seeds the hero on first paint; the detail query's `rating100` replaces
+ * it as soon as it lands, and every write uses that value.
  */
 export function ratingFromCard(performer) {
   if (!performer?.rating) return 0;

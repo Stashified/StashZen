@@ -1,13 +1,9 @@
-// ── Formatting ──────────────────────────────────────────────
-// Local rather than shared: `videoService` has its own `formatDuration` for
-// the card's "1h 24m" label, and the two differ (this one wants seconds
-// precision under an hour). A shared module for four one-line functions
-// would be more indirection than it saves.
+// Local rather than shared: `videoService` has its own `formatDuration` for the
+// card's "1h 24m" label, and this one keeps seconds under an hour.
 export function fmtDuration(seconds) {
   if (!seconds) return null;
-  // Round the total before splitting it. Rounding the remainder alone lets a
-  // value like 3599.6 s become "59m 60s" — and, with the hours branch taken
-  // first, 3599.7 s used to print "59m 60s" rather than rolling over to 1h 0m.
+  // Round the total before splitting it: rounding the remainder alone turns
+  // 3599.6 s into "59m 60s" instead of rolling over to 1h 0m.
   const total = Math.round(seconds);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);

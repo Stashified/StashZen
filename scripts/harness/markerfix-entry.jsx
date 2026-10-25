@@ -1,22 +1,15 @@
 /**
  * Headless driver for the marker grid's screenshot source.
  *
- * What was wrong was not a crash or a blank tile — it was that every tile
- * showed the *same* picture. Stash does not 404 an ungenerated marker
- * screenshot; it answers 200 with a built-in "Pending Generate" placeholder,
- * and on the live server all 332 markers returned it, byte for byte. So the
- * fallback in `normalizeMarker` — `m.screenshot || m.scene.paths.screenshot`,
- * marker's own frame first — never fell through, and the grid rendered one
- * identical stub for the whole library while a real 1920x1080 frame of the
- * parent scene sat in the same query result, unused.
+ * Stash answers an ungenerated marker screenshot with a 200 "Pending
+ * Generate" placeholder, not a 404, so the `normalizeMarker` fallback
+ * (`m.screenshot || m.scene.paths.screenshot`, marker frame first) never fell
+ * through: every tile showed one identical stub while the parent scene's real
+ * 1920x1080 frame went unused. `server.py` therefore serves covers coloured by
+ * scene id and one fixed placeholder per marker frame.
  *
- * That shapes the checks. "An image loaded" would pass on the broken build, and
- * so would "the src is a URL". The observable is that **different markers show
- * different pictures**, which is only assertable if the fake serves different
- * bytes per scene — which is why server.py generates covers coloured by scene
- * id and one fixed placeholder for every marker frame.
- *
- *   marker 9001 → scene 1's frame     marker 9002 → scene 2's frame
+ * "An image loaded" and "the src is a URL" both pass on the broken build; the
+ * observable is that different markers show different bytes.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -47,10 +40,8 @@ const CONTROLS = {
 /**
  * Fetch a list of URLs and keep every body as a Uint8Array.
  *
- * Bodies, not lengths, because the difference being asserted is *which picture*
- * a tile shows. These images are all the same size — see the note at the check
- * that uses this — so anything measuring them would be measuring the wrong
- * thing.
+ * Bodies, not lengths: the images are all the same size, so length would
+ * measure the wrong thing.
  */
 const fetchBytes = (urls) => Promise.all(urls.map(url =>
   fetch(url).then(r => r.arrayBuffer()).then(b => new Uint8Array(b)).catch(() => new Uint8Array())));
@@ -72,8 +63,8 @@ const shotEl = (id) => {
 const shotSrc = (id) => shotEl(id)?.getAttribute('src') ?? null;
 
 function Harness() {
-  // Spatial nav and the grid's own key handling come from this; without it the
-  // page never renders a usable tree.
+  // Supplies spatial nav and the grid's key handling; without it the page
+  // never renders a usable tree.
   useKeyHandler({ onBack: () => {} });
   return (
     <MarkerGrid
@@ -86,8 +77,8 @@ function Harness() {
 }
 
 async function run() {
-  // Wait for the grid to leave its loading state rather than guessing: the
-  // fetch goes through the real service layer and the real list cache.
+  // Wait for the grid to leave its loading state: the fetch goes through the
+  // real service layer and list cache.
   for (let i = 0; i < 40 && !registry.get('marker-9001'); i++) await sleep(100);
 
   check('the grid rendered the markers the server returned',
@@ -99,8 +90,8 @@ async function run() {
   check('every marker tile carries an image, not the letter fallback',
     srcs.every(Boolean), `srcs=${JSON.stringify(srcs)}`);
 
-  // The fix itself: the parent scene's frame, not the marker's own — which is
-  // the URL that returns the placeholder.
+  // The fix: the parent scene's frame, not the marker's own (which returns
+  // the placeholder).
   check('each tile is sourced from its parent scene\'s screenshot',
     MARKERS.every((m, i) => (srcs[i] || '').includes(`/scene/${m.sceneId}/thumb.png`)),
     `expected /scene/{1,2}/thumb.png, got ${JSON.stringify(srcs)}`);
@@ -109,26 +100,18 @@ async function run() {
     MARKERS.every((m, i) => !(srcs[i] || '').includes('scene_marker')),
     `srcs=${JSON.stringify(srcs)}`);
 
-  // The user-visible symptom, stated the way the bug report stated it: two
-  // markers, two pictures.
+  // The user-visible symptom: two markers, two pictures.
   //
-  // This one is weaker than it looks and is kept only for its diagnostic value.
-  // Under the reverted bug it still passes — the two marker-frame URLs differ
-  // as strings even though both return the same picture — so it is the byte
-  // comparison below, not this, that holds the line. A check named after the
-  // symptom that cannot see the symptom is worth having only if the file says
-  // so.
+  // Kept only for diagnostics: under the reverted bug this still passes, as
+  // the two marker-frame URLs differ as strings though both return the same
+  // picture. The byte comparison below holds the line.
   check('two markers on two scenes render two different images',
     srcs[0] && srcs[1] && srcs[0] !== srcs[1],
     `srcs=${JSON.stringify(srcs)}`);
 
-  // …and the bytes really are different, which is what makes the above more
-  // than a string comparison.
-  //
-  // Compared by content, not by length: these are 8x8 solid-colour PNGs, and
-  // *every* one of them is 74 bytes whatever the colour. A length check would
-  // report two identical images here and pass — which it did, on the first run
-  // of this file.
+  // The bytes really differ, which makes the above more than a string check.
+  // Compared by content, not length: these are 8x8 solid-colour PNGs, 74 bytes
+  // whatever the colour, so a length check would pass on identical images.
   const shotBytes = await fetchBytes(srcs);
   check('the two images are genuinely different bytes',
     shotBytes.every(b => b.length) && !sameBytes(shotBytes[0], shotBytes[1]),

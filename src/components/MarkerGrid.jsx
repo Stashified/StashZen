@@ -1,10 +1,9 @@
 /**
- * MarkerGrid — Infinite-scroll grid of marker cards
- * Reads sort/order/cols from `controls` prop.
+ * MarkerGrid — infinite-scroll grid of marker cards, reading sort/order/cols
+ * from `controls`.
  *
- * The paging itself lives in usePagedList; this component supplies the
- * request and the trigger (a sentinel observed from inside the scroll
- * container). Same division of labour as VideoGrid.
+ * As in VideoGrid, usePagedList owns paging and this supplies the request and
+ * the trigger.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -14,7 +13,7 @@ import { fetchMarkers } from '../utils/markerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { useStableListing } from '../hooks/useStableListing.js';
 import { pageRequestKey } from '../utils/requestKey.js';
-import styles from './VideoGrid.module.css'; // reuse VideoGrid styles for grid layout
+import styles from './VideoGrid.module.css'; // grid layout is shared
 
 const PAGE_SIZE = 40;
 
@@ -34,19 +33,16 @@ export default function MarkerGrid({
     items: markers, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be in the key
+    // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // Closing the player returns to the marker card of the scene last viewed,
-    // and a queue keeps playing through markers this grid has not loaded. The
-    // restore asks the listing for the missing pages — see utils/focus.js.
+    // A restore by `marker-<id>` pages forward through unloaded markers — see
+    // utils/focus.js.
     focusPrefix: 'marker',
   });
 
-  // The listing travels to every card so the long-press menu can offer "Play
-  // all" and "Play from here"; the queue reads `fetchPage` from here to
-  // continue past the loaded markers. Same shape Carousel hands down —
-  // `useStableListing`, so the prop's identity survives a page append (the
-  // review's R6).
+  // The listing travels to every card so the menu can offer "Play all" and
+  // "Play from here", and the queue reads its `fetchPage`. `useStableListing`
+  // keeps the identity across page appends.
   const listing = useStableListing({ items: markers, total, page, fetchPage });
 
   const scrollRef = useRef(null);

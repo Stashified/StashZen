@@ -2,10 +2,8 @@
 /**
  * Guards the seam between scripts/compat-floor.mjs and vite.config.js.
  *
- * The floor is measured once and consumed in two spellings: doiuse and
- * eslint-plugin-compat take `chrome 94`, Vite's `build.target` takes
- * `chrome94`. They used to be independent — the config said `es2015` while
- * the manifest and README claimed Tizen 6.5 — so this test imports the config
+ * The floor is consumed in two spellings: doiuse and eslint-plugin-compat take
+ * `chrome 94`, Vite's `build.target` takes `chrome94`. This imports the config
  * and compares the value the build actually uses, not a string in a comment.
  */
 

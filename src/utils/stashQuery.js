@@ -2,15 +2,9 @@
  * stashQuery.js — `graphqlRequest`, bound to whatever the settings store
  * currently holds.
  *
- * `stashClient.js` is deliberately pure: it takes the endpoint and key as
- * arguments so that `settings.js` can use its `fetchWithTimeout` without
- * creating a `stashClient → settings → stashClient` import cycle. That
- * purity means every caller has to look the settings up itself — and all
- * four service modules ended up with their own byte-identical three-line
- * copy of exactly that lookup.
- *
- * This is that lookup, once. It sits *above* both modules in the
- * dependency graph, which is what keeps the cycle from coming back:
+ * `stashClient.js` is pure, so every caller must look the settings up itself.
+ * This is that lookup, once, sitting *above* both modules so the import cycle
+ * cannot return:
  *
  *     stashClient.js  (no imports)
  *            ↑
@@ -20,9 +14,9 @@
  *            ↑
  *     videoService / markerService / performerService / filterService
  *
- * The settings are read per call, not captured at import time, so a
- * Test↔Live switch or an endpoint change takes effect on the very next
- * request — including the first one after the settings modal saves.
+ * Settings are read per call, not captured at import, so a Test↔Live switch or
+ * endpoint change takes effect on the next request — including the first after
+ * the settings modal saves.
  */
 
 import { getSettings } from './settings.js';

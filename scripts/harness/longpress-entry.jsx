@@ -2,30 +2,25 @@
  * Headless driver for the long-press menus on Markers, Images and Galleries,
  * and for the slideshow the viewer's menu entries open.
  *
- * Mounts the real App, because all of this is wiring: which card hands its
- * listing to which menu, where the queue's first timestamp comes from, and
- * which card focus goes back to when an overlay closes. A driver that
- * re-created those handlers would test a copy of the thing under test.
+ * Mounts the real App: all of this is wiring — which card hands its listing to
+ * which menu, where the queue's first timestamp comes from, and which card
+ * focus returns to when an overlay closes. A driver re-creating those handlers
+ * would test a copy.
  *
  * The endpoint is fake (scripts/harness/server.py); everything else is shipped
- * code. One runner, three sections, in the order the TV's rail has them.
+ * code. One runner, three sections, in the TV rail's order.
  *
- * ## What the fixture does and does not make observable
+ * Fixture:
+ * - Marker `seconds` sit inside the 60 s tone every scene streams, so "started
+ *   at the marker" is a real seek rather than a clamp to duration.
+ * - A gallery's pictures are served only under `/mode galleryImages=populate`;
+ *   the default gallery-filtered image listing is empty for Sections S6, so
+ *   this driver asks for the populated answer.
+ * - Markers each belong to a distinct scene. Dedupe of two markers on one scene
+ *   belongs to test-play-queue.mjs; this driver sees that the player walks
+ *   scenes rather than markers: Play all starts on scene 1 and Down reaches 2.
  *
- * - The marker listing's `seconds` sit inside the 60 s tone every scene
- *   streams, so "started at the marker" is a real seek rather than a clamp to
- *   duration. See listing_marker in server.py.
- * - A gallery's pictures are served only under `/mode galleryImages=populate`.
- *   The default answer for a gallery-filtered image listing is empty, because
- *   Sections S6 depends on that; this driver asks for the populated answer so
- *   the slideshow has something to advance through.
- * - Markers in the listing each belong to a distinct scene, so the *dedupe* of
- *   two markers on one scene is covered by test-play-queue.mjs instead. What
- *   this driver can see is that the player walks scenes rather than markers:
- *   Play all starts on scene 1 and Down reaches scene 2.
- *
- * The slideshow advances on a 6 s timer. That is a real wait twice, not a
- * mockable clock: the cadence is the feature.
+ * The slideshow's 6 s timer is a real wait, twice: the cadence is the feature.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -59,11 +54,10 @@ function release(key, keyCode) {
   }));
 }
 
-// ↓ is a two-stop ladder in the player: with the seek bar up and no cursor on
-// it, the first press returns to the buttons and only the second steps. The
-// player opens with the bar up, so a queue step needs both. The reveal is
-// visible as the cursor landing on the rail's ⏯; blurring afterwards leaves
-// the next call in the same state this one started from.
+// ↓ is a two-stop ladder: with the seek bar up and no cursor on it, the first
+// press returns to the buttons and only the second steps. The player opens with
+// the bar up, so a queue step needs both. Blurring afterwards restores the
+// starting state.
 const railFocused = () =>
   ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
 
@@ -122,10 +116,9 @@ const focusId = (id) => {
   return !!el;
 };
 
-// Every overlay is a `role="dialog"`, but the player is not modal — see
-// VideoPlayer, whose dialog exists for the focus trap rather than for a
-// backdrop. Querying only aria-modal dialogs hid the player from this driver
-// and made every title assertion read "".
+// Every overlay is a `role="dialog"`, but the player is not modal — VideoPlayer
+// uses the role for its focus trap, not a backdrop. Querying only aria-modal
+// dialogs hid the player and made every title assertion read "".
 const dialogs = () => [...document.querySelectorAll('[role="dialog"]')];
 const isMenu = (d) => (d.getAttribute('aria-label') || '').startsWith('Actions for');
 const menuEl = () => dialogs().find(isMenu) || null;
@@ -156,8 +149,8 @@ const viewerButton = (label) =>
     .find(b => b.textContent.trim() === label) || null;
 
 const infoPanel = () => viewerEl()?.querySelector('[aria-label="Image info"]') || null;
-// The stage's <img>. The info panel holds no images, so the first one inside
-// the viewer is the picture under test.
+// The stage's <img>; the info panel holds none, so the viewer's first image is
+// the picture under test.
 const viewerImageSrc = () => viewerEl()?.querySelector('img')?.getAttribute('src') || null;
 
 const playingTitle = () => playerEl()?.querySelector('h2')?.textContent || '';
@@ -189,11 +182,10 @@ async function chooseMenuRow(id) {
 /**
  * Close the player in however many Backs it actually needs.
  *
- * The first Back only hides the control bar *when the bar is up*; after the
- * slideshow-length waits in this driver it has auto-hidden, so a fixed
- * two-press close lands the second press on the app underneath and raises the
- * exit prompt. Press until the player is gone instead — that also keeps the
- * focus assertions below pointed at the card rather than at Cancel.
+ * The first Back only hides the control bar when it is up, and it auto-hides
+ * during this driver's long waits; a fixed two-press close then hits the app
+ * underneath and raises the exit prompt. Press until the player is gone, which
+ * also keeps focus on the card rather than on Cancel.
  */
 async function closePlayer() {
   for (let i = 0; i < 3 && playerEl(); i++) {
@@ -210,8 +202,7 @@ async function goToTab(tab, readyId) {
   press('Enter', 13);
   await sleep(80);
   release('Enter', 13);
-  // Home's own autoFocus timer is the race every driver documents: a focus
-  // set before it fires gets pulled back.
+  // Home's autoFocus timer: a focus set before it fires gets pulled back.
   await sleep(300);
   return waitFor(() => registry.has(readyId), 6000);
 }
@@ -271,10 +262,9 @@ async function runMarkers() {
     (mediaEl()?.currentTime ?? 99) < 3,
     `currentTime ${mediaEl()?.currentTime?.toFixed(1)}s on scene 2`);
   await closePlayer();
-  // Back returns to the marker card for the scene last viewed — scene 2 is
-  // marker 2 — not the marker the queue was started from. A marker queue
-  // plays scenes, so the scene id alone names no card here; the row's
-  // `markerId` is what the restore reads.
+  // Back returns to the marker of the scene last viewed — scene 2, marker 2 —
+  // not the one the queue started from. A marker queue plays scenes, so the
+  // scene id names no card here; the row's `markerId` is what the restore reads.
   check('M3 closing the player returns to the marker of the scene last viewed',
     active() === registry.get('marker-2')?.el,
     `focus ${active()?.tagName} ${active()?.textContent?.trim().slice(0, 30)}`);
@@ -351,23 +341,20 @@ async function runImages() {
     `viewer "${viewerTitle()}", buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
 
   // Press Left in the same microtask as the advance's DOM commit, not a task
-  // later. The key listener is re-registered for the new index on every step;
-  // with a passive effect that re-registration lands a task after the commit,
-  // so a press in between runs the previous closure — index 0, whose
-  // `canPrev` is false — and is silently ignored. This driver used to wait
-  // for the title and then press, which sampled that window unreliably: the
-  // same check read 36/40 and 40/40 on identical trees. A MutationObserver
-  // callback runs at the microtask checkpoint, *after* the commit and after
-  // layout effects but *before* a passive effect's task, so the press below is
-  // deterministic and the red control is real.
+  // later. The key listener re-registers for the new index every step, and
+  // with a passive effect that lands a task after the commit; a press in
+  // between runs the previous closure (index 0, `canPrev` false) and is
+  // silently ignored. A MutationObserver callback runs after the commit and
+  // layout effects but before the passive effect's task, making this press
+  // deterministic and the red control real.
   let focusWasSurface = false;
   const advanced = await new Promise((resolve) => {
     const viewer = viewerEl();
     const obs = new MutationObserver(() => {
       if (viewerTitle() !== 'VERIFY image 2') return;
       obs.disconnect();
-      // The arrows are the viewer's to take only while the surface holds
-      // focus; record that at press time rather than after the fact.
+      // The arrows are the viewer's only while the surface holds focus;
+      // record that at press time.
       focusWasSurface = active() === viewerEl();
       press('ArrowLeft', 37);
       resolve(true);
@@ -392,10 +379,8 @@ async function runImages() {
   press('Backspace', 10009);
   await waitFor(() => !viewerOpen(), 1500);
   await sleep(250);
-  // The menu opened on image 2, but the slideshow moved and a manual step
-  // left the viewer showing image 1 — and that is the card Back returns to.
-  // "The picture you were looking at" beats "the card you started from",
-  // which is the same rule the images listing uses.
+  // The menu opened on image 2, but a manual step left the viewer on image 1;
+  // "the picture you were looking at" beats "the card you started from".
   check('I3 closing the viewer returns focus to the image last viewed',
     active() === registry.get('image-1')?.el,
     `focus ${active()?.tagName} ${(active()?.textContent || '').trim().slice(0, 30)}`);
@@ -483,9 +468,9 @@ setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'h
 
 createRoot(root).render(<App />);
 
-// The marker listing has to cross a page boundary for "40+ scenes" and for
-// the queue to walk past the loaded page; the default fixture is the two
-// markerfix rows. See the note on FindSceneMarkers in server.py.
+// The marker listing must cross a page boundary for "40+ scenes" and for the
+// queue to walk past the loaded page; the default fixture is markerfix's two
+// rows. See FindSceneMarkers in server.py.
 setMode({ markers: 'paged' })
   .then(runMarkers)
   .then(runImages)

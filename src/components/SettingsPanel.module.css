@@ -1,16 +1,10 @@
-/* =========================================================
-   SettingsPanel — Modal overlay
-   ========================================================= */
-
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 900;
-  /* Deliberately opaque rather than a backdrop-filter blur. This panel opens
-     over a live grid of full-HD covers and playing preview videos, so a
-     full-screen blur re-composites every frame behind it — by far the most
-     expensive thing the menu ever did on the TV. A flat scrim is visually
-     close over a dark UI and costs nothing to keep on screen. */
+  /* Opaque, not a backdrop-filter blur: this opens over a live grid and
+     playing previews, so a full-screen blur re-composites every frame behind
+     it. A flat scrim is visually close on a dark UI and free. */
   background: rgba(var(--scrim-rgb), 0.86);
   display: flex;
   align-items: center;
@@ -41,15 +35,13 @@
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-/* ── Header ─────────────────────────────────────────────── */
 .header {
   padding: 28px 32px 20px;
   border-bottom: 1px solid var(--border);
 }
 
-/* The brand lockup, restated from FirstRun.module.css — the two screens that
-   name the product should name it the same way. See that file for why this is
-   a copy rather than a shared rule. */
+/* Restated from FirstRun.module.css so both screens name the product the same
+   way; see that file for why it is a copy, not a shared rule. */
 .brand {
   display: flex;
   align-items: baseline;
@@ -86,7 +78,6 @@
   margin-top: 4px;
 }
 
-/* ── Body ───────────────────────────────────────────────── */
 .body {
   flex: 1;
   padding: 24px 32px;
@@ -96,7 +87,6 @@
   gap: 24px;
 }
 
-/* ── Mode toggle row ────────────────────────────────────── */
 .toggleRow {
   display: flex;
   align-items: center;
@@ -150,7 +140,6 @@
   box-shadow: var(--focus-ring);
 }
 
-/* ── Live-mode fields ───────────────────────────────────── */
 .liveFields {
   display: flex;
   flex-direction: column;
@@ -186,9 +175,9 @@
   border-color: var(--border-strong);
 }
 
-/* Focus lives on the field wrapper, not the input — see useEditableField —
-   so these style the input from the field's state. `.input:focus` stays
-   because while editing the input really is the focused element. */
+/* Focus lives on the field wrapper (see useEditableField), so these style the
+   input from its state; `.input:focus` stays because while editing it really
+   is focused. */
 .field.focused .input,
 .field.editing .input,
 .input:focus {
@@ -196,21 +185,21 @@
   border-color: var(--accent);
 }
 
-/* Selected, not yet being edited: deliberately quieter than the real focus
-   ring, so "ready to type" doesn't read the same as "typing". */
+/* Selected but not editing: quieter than the real ring, so "ready to type"
+   doesn't read as "typing". */
 .field.focused .input {
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
 }
 
-/* Same specificity as the rule above, so source order is what makes the
-   stronger ring win while editing. */
+/* Same specificity as the rule above, so source order lets the stronger ring
+   win while editing. */
 .field.editing .input,
 .input:focus {
   box-shadow: var(--focus-ring);
 }
 
-/* Rendered whether or not it is visible: one that appeared on focus would
-   shove the buttons below it down a line and back on every selection. */
+/* Always rendered: one appearing on focus would shove the buttons below down a
+   line and back on every selection. */
 .fieldHint {
   font-size: 11px;
   line-height: 1;
@@ -244,7 +233,6 @@
   font-weight: 600;
 }
 
-/* ── Footer ─────────────────────────────────────────────── */
 .footer {
   padding: 20px 32px;
   border-top: 1px solid var(--border);
@@ -273,8 +261,7 @@
   color: var(--text-muted);
 }
 
-/* ── Setting sections ───────────────────────────────────────
-   Shared by App lock and the playback preferences. `.lockNotice` below is
+/* Shared by App lock and the playback preferences; `.lockNotice` below is
    genuinely lock-specific and stays named for it. */
 .section {
   display: flex;
@@ -317,9 +304,8 @@
   color: var(--green);
 }
 
-/* ── Library stats & server status ─────────────────────────
-   Both are read-only snapshots. Nothing here is focusable: the button in the
-   section row is the only control, so the D-pad never lands on a number. */
+/* Read-only snapshots. Nothing here is focusable: the section row's button is
+   the only control, so the D-pad never lands on a number. */
 .statGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

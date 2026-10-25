@@ -15,22 +15,15 @@
   background: #000;
 }
 
-/*
- * While AVPlay owns the picture it draws *behind* the page, not inside it, so
- * the overlay must not paint its black background over the plane. The
- * transparent page underneath is arranged by index.css; this is the last
- * opaque layer between the two.
- */
+/* AVPlay draws behind the page, not inside it, so this overlay must not paint
+   black over the plane; index.css makes the page underneath transparent. */
 .overlay.avplay {
   background: transparent;
 }
 
-/*
- * The stand-in for the missing <video> between `open()` and the first frame.
- * It brings its own black underlay: the page around it is transparent in plane
- * mode, so a thumbnail that has not arrived yet — or that 404s — would show the
- * shell and the listing through the video area.
- */
+/* Stands in for the missing <video> between `open()` and the first frame. It
+   draws its own black: in plane mode the page is transparent, so a missing or
+   404ing thumbnail would show the shell and listing through the video area. */
 .poster {
   position: absolute;
   inset: 0;
@@ -40,7 +33,6 @@
   background: #000;
 }
 
-/* ── Buffering ─────────────────────────────────────────── */
 .buffering {
   position: absolute;
   inset: 0;
@@ -63,7 +55,6 @@
   to { transform: rotate(360deg); }
 }
 
-/* ── Error ─────────────────────────────────────────────── */
 .errorState {
   position: absolute;
   inset: 0;
@@ -82,12 +73,9 @@
   letter-spacing: 0.05em;
 }
 
-/*
- * The post-write confirmation. Below the top bar and outside `.controls`, so it
- * is readable whether or not the rail is up — a marker write is silent by
- * nature (the only other evidence is a 2px tick appearing on the progress bar)
- * and silencing it is the one outcome the form exists to prevent.
- */
+/* Post-write confirmation, outside `.controls` so it shows whether or not the
+   rail is up. A marker write is otherwise silent but for a 2px tick on the
+   progress bar; hiding it is the one outcome the form exists to prevent. */
 .toast {
   position: absolute;
   top: 100px;
@@ -106,7 +94,6 @@
   pointer-events: none;
 }
 
-/* ── Skim flash indicators ─────────────────────────────── */
 .skimFlash {
   position: absolute;
   top: 50%;
@@ -140,7 +127,6 @@
   100% { opacity: 0; transform: translateY(-50%) scale(1); }
 }
 
-/* ── Controls overlay ──────────────────────────────────── */
 .controls {
   position: absolute;
   inset: 0;
@@ -164,7 +150,6 @@
   pointer-events: auto;
 }
 
-/* ── Top bar ───────────────────────────────────────────── */
 .topBar {
   display: flex;
   align-items: center;
@@ -228,7 +213,6 @@
   font-size: 16px;
 }
 
-/* ── Center indicator ──────────────────────────────────── */
 .centerIndicator {
   flex: 1;
   display: flex;
@@ -250,7 +234,6 @@
   padding-left: 8px;
 }
 
-/* ── Bottom bar ────────────────────────────────────────── */
 .bottomBar {
   padding: 0 40px 32px;
 }
@@ -272,9 +255,8 @@
   transition: width 0.15s linear;
 }
 
-/* One per marker on the current scene. Taller than the track and drawn over
-   the fill, so a marker that is already behind the playhead still reads as a
-   marker rather than disappearing into the accent colour. */
+/* One per marker. Taller than the track and drawn over the fill, so a marker
+   already behind the playhead still reads as a marker, not accent colour. */
 .markerTick {
   position: absolute;
   top: 50%;
@@ -291,8 +273,8 @@
   top: 50%;
   width: 16px;
   height: 16px;
-  /* The handle, not a focused control: it takes the same step as the bar it
-     rides on (`.progressFill`) and the white ring is what separates them. */
+  /* The handle, not a focused control: same step as the bar it rides on, and
+     the white ring is what separates them. */
   background: var(--accent);
   border: 2px solid #fff;
   border-radius: 50%;
@@ -343,8 +325,8 @@
   color: #fff;
 }
 
-/* Sync state. Mounted only while a save is in flight, has just landed, or is
-   failing — so the ordinary case adds nothing to the row. */
+/* Mounted only while a save is in flight, just landed, or failing, so the
+   ordinary case adds nothing to the row. */
 .syncChip {
   flex: 0 0 auto;
   padding: 3px 10px;
@@ -364,11 +346,9 @@
   color: #ffd9d9;
 }
 
-/* Direct or transcoded, next to the title. Worded first and coloured second:
-   the tint is for the glance from across the room, the words are what makes
-   it unambiguous up close. Amber for a transcode because that is the state in
-   which the server is doing work, and the one worth noticing when a scene
-   starts slowly or cannot be skimmed as freely. */
+/* Direct or transcoded. Worded first, coloured second: the tint is for a
+   glance across the room, the words for up close. Amber for a transcode,
+   where the server is doing work and playback starts slower. */
 .sourceChip {
   flex: 0 0 auto;
   padding: 5px 12px;

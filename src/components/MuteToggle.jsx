@@ -1,12 +1,8 @@
 /**
- * MuteToggle — Speaker icon that toggles preview audio app-wide.
+ * MuteToggle — speaker icon toggling preview audio app-wide; muted by default,
+ * persisted via the settings store.
  *
- * When unmuted, focused video cards play their previews with sound.
- * When muted (default), previews stay silent. The setting is
- * persisted across sessions via the settings store.
- *
- * Lives in the ControlsPanel; uses the controls focus zone so D-pad
- * navigation reaches it naturally.
+ * Lives in ControlsPanel and uses the controls zone so the D-pad reaches it.
  */
 
 import { useFocusable } from '../hooks/useFocusable.js';
@@ -23,10 +19,9 @@ export default function MuteToggle({ muted, onToggle }) {
   return (
     <button
       ref={ref}
-      // Muted is the base .btn styling (dim muted-grey icon); only the
-      // unmuted state needs a modifier. This used to reference
-      // `styles.muted`, which no stylesheet defines — so the class list
-      // gained a literal "undefined" whenever previews were muted.
+      // Muted is the base .btn styling, so only the unmuted state needs a
+      // modifier — and it must name a class that exists, or the list gains a
+      // literal "undefined".
       className={`${styles.btn} ${focused ? styles.focused : ''} ${muted ? '' : styles.unmuted}`}
       onClick={onToggle}
       aria-label={muted ? 'Unmute previews' : 'Mute previews'}
@@ -34,13 +29,11 @@ export default function MuteToggle({ muted, onToggle }) {
       title={muted ? 'Previews muted' : 'Previews unmuted'}
     >
       {muted ? (
-        // Speaker with slash
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M3 7v6h3l4 3V4L6 7H3z" fill="currentColor"/>
           <path d="M14 6l5 8M19 6l-5 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
         </svg>
       ) : (
-        // Speaker with sound waves
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M3 7v6h3l4 3V4L6 7H3z" fill="currentColor"/>
           <path d="M13 7c1.2 1 1.2 5 0 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>

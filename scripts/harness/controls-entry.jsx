@@ -1,25 +1,19 @@
 /**
- * Headless verification driver for the player's transport rail and its
- * add-marker form.
+ * Headless verification driver for the player's transport rail and add-marker
+ * form.
  *
- * Mounts `VideoPlayer` directly — not the App — because everything under test
- * is inside it: the key routing, the rail, and the form. The queue is a prop,
- * so the scene, its markers and its duration are all fixed by this file rather
- * than arrived at by driving a grid. What is *not* re-composed is anything that
- * matters: the real key handler, the real focus registry, the real service
- * layer against a fake endpoint (scripts/harness/server.py).
+ * Mounts `VideoPlayer` directly: everything under test is inside it — key
+ * routing, rail and form — with the real key handler, focus registry and
+ * service layer against the fake endpoint (scripts/harness/server.py). The queue
+ * is a prop, so the scene, markers and duration are fixed here.
  *
- * `useKeyHandler` is mounted with a counting `onBack`, which is the whole point
- * of several checks below: the player is a capture-phase window listener that
- * calls `stopPropagation`, so "did this key reach the app" is a question only
- * this arrangement can answer.
+ * `useKeyHandler` is mounted with a counting `onBack`: the player is a
+ * capture-phase listener that calls `stopPropagation`, so only this arrangement
+ * can answer "did this key reach the app".
  *
- * The two things no DOM can tell you, and which are therefore TV checks:
- *   - whether this remote emits play/pause as keyCode 415/19/10252 at all;
- *   - whether a *synthetic* keydown triggers a focused <button>'s native
- *     activation on Space. It does not, so the double-fire this code guards
- *     against cannot be reproduced here — only the `preventDefault` that
- *     suppresses it can be asserted, which is what R8 does.
+ * TV-only: whether the remote emits play/pause as 415/19/10252, and whether a
+ * synthetic keydown triggers a focused button's native Space activation. It
+ * does not, so only the `preventDefault` can be asserted here (R8).
  */
 
 import { createRoot } from 'react-dom/client';
@@ -56,47 +50,39 @@ const SCENE = {
   resume_time: 0,
 };
 
-// A one-scene queue, which is the ordinary case — the detail page's Play
-// button, a marker activation. `total: 1` makes `exhausted` immediately true,
-// which is what MK2's disabled-buttons check needs.
+// A one-scene queue: the ordinary case (detail-page Play, marker activation).
+// `total: 1` makes `exhausted` true, which MK2's disabled buttons need.
 const QUEUE = { items: [SCENE], total: 1, page: 1, startIndex: 0, startSeconds: 0 };
 
 /**
- * The same scene three times over, under three titles. The stepping checks need
- * a queue with somewhere to go, and the title is the observable rather than the
- * index: the overlay carries it in its `aria-label`, so "did the scene change"
- * is answered by reading what is playing rather than by trusting a counter that
- * could agree with a hook that moved its index without moving the video.
+ * The same scene three times under three titles. The title, carried in the
+ * overlay's `aria-label`, is the observable: reading it proves the scene
+ * changed rather than only a cursor.
  */
 const threeScenes = () => ['one', 'two', 'three'].map((name, i) => ({
   ...SCENE,
   id: `4242${i}`,
   title: `VERIFY scene ${name}`,
-  // A distinct URL per scene, so a step really is a source change: the
-  // player's "a new scene inherits nothing from the outgoing playhead" rule
-  // only has a source-change effect to run when the URL differs, and three
-  // scenes sharing one URL would let a carry-over pass unseen.
+  // A distinct URL per scene, so a step is a real source change: the
+  // "inherit nothing from the outgoing playhead" rule only runs on a URL change.
   stream: `http://127.0.0.1:${PORT}/tone${i + 1}.wav`,
 }));
 const QUEUE3 = { items: threeScenes(), total: 3, page: 1, startIndex: 0, startSeconds: 0 };
 
 /**
- * A scene the StrictMode probe plays, kept off QUEUE's id so its teardown save
- * cannot be read as one of the player checks' writes.
+ * Played by the StrictMode probe; off QUEUE's id so its teardown save cannot be
+ * read as one of the player checks' writes.
  */
 const STRICT_SCENE = { ...SCENE, id: '9201', title: 'VERIFY — strict mount' };
 const STRICT_QUEUE = { ...QUEUE, items: [STRICT_SCENE] };
 
 /**
- * The real player, mounted the way `src/main.jsx` mounts the app.
+ * The real player, mounted as `src/main.jsx` mounts the app.
  *
- * StrictMode mounts an effect, tears it down and mounts it again against the
- * same refs. Every latch in the player and in `usePlaybackSource` is therefore
- * false after the simulated unmount unless the effect body re-arms it — a
- * dev-only failure that no other driver can see, because they all render bare.
- * Two observables cover both latches: a source that never arrives (the
- * playback-source latch), and a pause whose save is never acknowledged (the
- * player's latch, which gates the chip).
+ * StrictMode tears an effect down and mounts it again against the same refs; a
+ * latch not re-armed by the effect body stays false, a dev-only failure the
+ * bare-rendering drivers cannot see. Two observables cover both latches: a
+ * source that never arrives, and a pause whose save is never acknowledged.
  */
 function StrictProbe() {
   return <VideoPlayer queue={STRICT_QUEUE} onClose={() => {}} onActivityChange={() => {}} />;
@@ -144,9 +130,8 @@ async function runStrictProbe() {
 }
 
 /**
- * Focusables outside the player, in normal flow. Same registry as the player's,
- * so "the arrow did not move focus out there" is evidence of a scope rather
- * than of there being nothing out there to reach.
+ * Focusables outside the player. Same registry, so "focus did not move out
+ * there" proves a scope rather than an empty target.
  */
 function Outside() {
   const a = useFocusable({ id: 'outside-a', zone: 'outside' });
@@ -166,12 +151,9 @@ function Harness() {
     onBack: () => { window.__backSeen = (window.__backSeen || 0) + 1; },
   });
 
-  // The queue is stateful, and swapped by the stepping checks below. The `key`
-  // is the load-bearing part: `usePlayQueue` seeds its items, total and cursor
-  // from the prop with `useState`, which reads it on the first render and
-  // never again — so handing the *same* player a different queue would be
-  // silently ignored and the checks would be reading the one-scene queue while
-  // believing they had a three-scene one.
+  // The queue is swapped by the stepping checks. The `key` is load-bearing:
+  // `usePlayQueue` seeds `useState` from the prop once, so a different queue
+  // handed to the same player would be ignored.
   const [mount, setMount] = useState({ queue: QUEUE, gen: 0 });
   useEffect(() => {
     window.__mountQueue = (queue, gen) => setMount({ queue, gen });
@@ -185,9 +167,8 @@ function Harness() {
         key={mount.gen}
         queue={mount.queue}
         onClose={() => { closedCount++; }}
-        // The completion report the App uses to prune Continue Watching. A spy
-        // rather than the App, because what is under test here is whether the
-        // player *announces* it at all.
+        // The completion report the App uses to prune Continue Watching; a spy
+        // tests only whether the player announces it at all.
         onActivityChange={(id, patch) => {
           (window.__activity = window.__activity || []).push({ id, ...patch });
         }}
@@ -207,13 +188,9 @@ const inRail = () => !!(rail() && rail().contains(document.activeElement));
 const inModal = () => !!(modal() && modal().contains(document.activeElement));
 
 /**
- * The title of the scene the player says it is showing.
- *
- * Read from the overlay's `aria-label` rather than from the queue counter: the
- * counter is rendered from the hook's `index`, so a check that trusted it would
- * pass if the cursor moved while the video did not. The accessible name is
- * derived from the scene the player actually holds, which is the thing the
- * question is about.
+ * The title the player says it is showing, from the overlay's `aria-label`.
+ * The queue counter comes from the hook's `index` and would pass on a cursor
+ * move without a video move; the accessible name comes from the held scene.
  */
 const playingTitle = () => {
   const label = player()?.getAttribute('aria-label') || '';
@@ -221,11 +198,9 @@ const playingTitle = () => {
 };
 
 /**
- * Marker ticks on the progress bar. Matched on the CSS-module local name,
- * which survives hashing as `_<local>_<hash>_<line>` — the same technique the
- * detail harness uses for its `[role=group]` selectors. Returns null rather
- * than 0 when the progress track itself is missing, so a broken selector
- * fails the check instead of quietly reporting "no ticks".
+ * Marker ticks, matched on the CSS-module local name (`_<local>_<hash>_<line>`).
+ * Null rather than 0 when the track is missing, so a broken selector fails
+ * instead of quietly reporting "no ticks".
  */
 const tickCount = () => {
   if (!player()) return null;
@@ -236,9 +211,8 @@ const tickCount = () => {
 const progressTrack = () => player()?.querySelector('[class*="_progressTrack_"]') || null;
 
 /**
- * The controls container, found by walking up from the rail. `_controls_`
- * deliberately does not match `_controlsVisible_` (the trailing underscore),
- * and every caller treats null as a failure so a rename cannot pass silently.
+ * The controls container, found by walking up from the rail. `_controls_` does
+ * not match `_controlsVisible_`; null is a failure, so a rename cannot pass.
  */
 function controlsEl() {
   let el = rail() && rail().parentElement;
@@ -254,13 +228,9 @@ const controlsOpacity = () => {
 };
 
 /**
- * The player's own status line — the marker confirmation, and not the sync chip.
- *
- * Both carry `role="status"` and the chip comes first in document order (it
- * lives in the time row, while the toast is a sibling of the whole controls
- * block), so "the first status outside the modal" quietly starts reading the
- * chip's text instead. Excluded by class rather than by wording, so MK10 stays
- * a question about *which element* announced something.
+ * The player's marker-confirmation status, not the sync chip. Both carry
+ * `role="status"` with the chip first, so exclude it by class — MK10 is about
+ * which element announced something.
  */
 const notice = () => {
   const el = [...document.querySelectorAll('[role="status"]')]
@@ -278,9 +248,8 @@ const resumePrompt = () =>
   document.querySelector('[role="dialog"][aria-label="Resume playback"]');
 
 /**
- * The modal's own `role=status` line, which is where a failed write speaks.
- * Read from the button's sibling rather than by text match, so the check is
- * about the message being *announced* rather than about wording.
+ * The modal's `role=status` line, where a failed write speaks. Found as the
+ * button's sibling, so the check is that it is announced, not its wording.
  */
 const modalStatus = () => modal()?.querySelector('[role="status"]')?.textContent.trim() ?? null;
 
@@ -292,12 +261,9 @@ const chipLabels = () => modal()
   : [];
 
 /**
- * Dispatch one keydown. Enter is the default rather than a required argument
- * because `press(el)` with no key builds a KeyboardEvent whose `key` is the
- * string "undefined" — which no handler matches, so the press is silently
- * inert. That is the worst possible failure mode for a check like "the nudge
- * did not move the playhead": it passes for the wrong reason, and four checks
- * in this file were doing exactly that before the default existed.
+ * Dispatch one keydown. Enter is the default: `press(el)` without a key builds
+ * `key: "undefined"`, which no handler matches, so a nudge check would pass
+ * for the wrong reason. Four checks here did exactly that before the default.
  */
 function press(el, key = 'Enter', keyCode = 13) {
   const e = new KeyboardEvent('keydown', {
@@ -341,15 +307,10 @@ async function clearLogs() {
 }
 
 /**
- * Put the media element into a known play state, without touching the cursor.
- *
- * Every check about resuming is a check about a *transition*, so the state on
- * entry has to be established rather than inherited from whatever the previous
- * section happened to leave behind. Pressing Space to do it — the obvious way —
- * is also the thing under test, and it depends on where the cursor is: with the
- * rail up the player claims it, without the rail the player claims it too, but
- * a check that preconditions itself with the mechanism it is testing can only
- * ever agree with itself.
+ * Put the media element into a known play state without touching the cursor.
+ * Resume checks are transition checks, so entry state must be established, not
+ * inherited. Space is the mechanism under test and cursor-dependent; using it
+ * to precondition would let the check agree with itself.
  */
 async function setPlaying(on) {
   const v = video();
@@ -385,17 +346,15 @@ async function run() {
   const playing = await waitFor(() => v && !v.paused && v.readyState >= 2, 4000);
   check('T0 the media element is actually playing', playing,
     `paused=${v?.paused} readyState=${v?.readyState} duration=${v?.duration}`);
-  // The scene has no saved position, so there is nothing to ask about — and the
-  // fact that it is already playing is half the evidence, since the prompt holds
-  // playback back for as long as it is up.
+  // No saved position means nothing to ask; already playing is half the
+  // evidence, since the prompt holds playback back while it is up.
   check('T0 ...and nothing interrupted it with a resume question',
     !resumePrompt(), `prompt=${!!resumePrompt()}`);
   if (!playing) { await finish(); return; }
 
   // ── Precondition: the controls hide on their own ────────
-  // Not just setup. This is what makes R1's "OK reveals them" and R4's "the
-  // arrow reveals them" differentials rather than claims about something that
-  // was on screen the whole time — and it is the same 3s timer R9 tests.
+  // This makes R1's and R4's reveals differentials rather than claims about an
+  // always-visible bar; it is the same 3 s timer R9 tests.
   await sleep(3400);
   check('P0 the controls auto-hid after ~3s', controlsOpacity() === 0,
     `opacity=${controlsOpacity()} (guard: ${controlsEl() ? 'found' : 'NOT FOUND'})`);
@@ -415,11 +374,9 @@ async function run() {
   check('R1 setup: it really was hidden before this press', railHidden && !inRail.call(null) === false);
 
   // ── R2: the three-press pause, and the element that survives it ──
-  //
-  // The rail's header claims the ⏯ button must be ONE element because a
-  // remount would drop focus to <body> and the third press would re-focus
-  // instead of resuming. That is exactly what is asserted: same node, and the
-  // icon changed under it.
+  // The ⏯ button must be one element: a remount would drop focus to <body> and
+  // the third press would re-focus instead of resuming. Assert same node with
+  // the icon changed under it.
   const ppNode = entered;
   const labelBefore = ppNode.getAttribute('aria-label');
   ok(ppNode);
@@ -438,12 +395,9 @@ async function run() {
     `paused=${v.paused}, sameNode=${document.activeElement === ppNode}`);
 
   // ── R10: the media keys, in both states ────────────────
-  // Tizen's three: 10252 is the play/pause key and toggles, 19 is *pause* and
-  // 415 is *play*. They are not three names for one toggle, and the check is
-  // written as three separate outcomes so a mapping that folded them together
-  // could not pass — which is exactly what it did before this check existed.
-  // Whether this particular TV emits them at all is the one thing only the
-  // device can answer.
+  // Tizen's three: 10252 toggles, 19 is pause, 415 is play. Three separate
+  // outcomes, so folding them into one toggle cannot pass. Only the TV can say
+  // whether this remote emits them at all.
   await setPlaying(true);
   press(document.activeElement, 'Unidentified', 19);      // pause
   await sleep(150);
@@ -466,12 +420,10 @@ async function run() {
   check('R10 play/pause (10252) toggles', v.paused === true, `paused=${v.paused}`);
 
   // ── R6/R3: the rail's exits and entry ─────────────────────
-  //
-  // The vertical keys walk a two-stop ladder (2026-10-24): on the buttons ↓
-  // steps to the next scene and ↑ goes to the seek bar; on the seek bar ↓
-  // returns to the buttons and ↑ steps back. This is a one-scene queue, so ↓
-  // has nowhere to step and must leave the cursor in place; ↑ still reaches
-  // the seek bar. Back still dismisses the bar (see S9).
+  // Vertical keys walk a two-stop ladder: on the buttons ↓ steps and ↑ goes to
+  // the seek bar; on the seek bar ↓ returns to the buttons and ↑ steps back.
+  // This queue has one scene, so ↓ must leave the cursor in place; ↑ still
+  // reaches the bar. Back still dismisses it (S9).
   const beforeUpTitle = playingTitle();
   press(document.activeElement, 'ArrowUp', 38);
   const upLeftWithBar = await waitFor(
@@ -511,8 +463,8 @@ async function run() {
   await sleep(140);
 
   // ── R5: inside the rail, ←/→ move the cursor and do not seek ──
-  // Horizontal nav is zone-confined, so it can only walk the rail — and the
-  // player must not also be skimming while it happens. The control for R4.
+  // Horizontal nav is zone-confined, so it walks the rail; the player must not
+  // also skim. The control for R4.
   await seekTo(30);
   const pp2 = byLabel('Pause', rail()) || byLabel('Play', rail());
   pp2.focus();
@@ -526,9 +478,8 @@ async function run() {
     Math.abs(v.currentTime - 30) < 0.5, `currentTime=${v.currentTime.toFixed(2)} (was 30.0)`);
 
   // ── R4: from behind the rail, ←/→ skim and reveal the rail ──
-  // Back is the exit used here. ↑ would also leave the rail (R6 owns that),
-  // but ↓ steps the queue from the buttons; this block is about what the
-  // bare player does once the cursor is out of the row.
+  // Back is the exit here (↑ is R6's); ↓ would step from the buttons. This is
+  // what the bare player does once the cursor is out of the row.
   press(document.activeElement, 'Backspace', 10009);   // leave the rail
   await sleep(3400);                              // let the controls hide again
   const hiddenAgain = controlsOpacity() === 0;
@@ -545,11 +496,9 @@ async function run() {
     `activeElement="${document.activeElement?.tagName}"`);
 
   // ── R4b: a forward skim with no usable element duration ──
-  // A Stash MP4 transcode reports none (or a short placeholder), which is the
-  // case the clamp exists for. The shipped bug was `Math.min(v.duration || 0,
-  // …)`: NaN fell through to 0, so → from 50 s jumped *backwards to the start*.
-  // The UI's own timeline carries the scene's real duration in exactly this
-  // case, so the bound is whichever of the two is real.
+  // A Stash MP4 transcode reports none or a placeholder. `Math.min(v.duration
+  // || 0, …)` made → from 50 s jump backwards to the start; bound by whichever
+  // of the element and the UI timeline duration is real.
   await seekTo(50);
   Object.defineProperty(v, 'duration', { configurable: true, get: () => NaN });
   press(document.body, 'ArrowRight', 39);
@@ -560,10 +509,8 @@ async function run() {
   delete v.duration;
 
   // ── R11: on a lone scene, ↑/↓ raise the rail ────────────
-  // There is no neighbouring scene to step to, so without this both keys were
-  // claimed and did nothing — a dropped press. They open the transport
-  // instead. S2/S3 below are the other half: on a queue with somewhere to go,
-  // the same keys still step scenes.
+  // With no neighbouring scene both keys were claimed and did nothing. They
+  // open the transport instead; S2/S3 show they still step when there is one.
   await sleep(3400);                              // let the timers hide the rail
   check('R11 setup: the rail is hidden again', controlsOpacity() === 0,
     `opacity=${controlsOpacity()}`);
@@ -588,9 +535,8 @@ async function run() {
   await sleep(140);
 
   // ── R8: the player claims the keys it handles ───────────
-  // preventDefault is the mechanism that stops a focused <button> from also
-  // firing on Space — a synthetic keydown has no native activation to observe,
-  // so the claim itself is what can be checked here.
+  // preventDefault stops a focused <button> also firing on Space. A synthetic
+  // keydown has no native activation to observe, so assert the claim itself.
   const spaceHeld = press(document.body, ' ', 32);
   await sleep(150);
   check('R8 Space is claimed from behind the rail', spaceHeld.defaultPrevented,
@@ -650,13 +596,10 @@ async function run() {
     `prev.disabled=${byLabel('Previous scene', rail())?.disabled}, next.disabled=${byLabel('Next scene', rail())?.disabled}`);
 
   // ── MK2b: the ⓘ page's marker chips jump too ────────────
-  // The same SceneDetailPage is reachable from the player, and its chips used
-  // to be focus stops that consumed OK and did nothing: the player rendered
-  // the page without an `onPlayAt`, so `onPlayAt?.()` was a no-op. The fake
-  // serves this one marker *inside* the 60 s tone (see `sceneMarkers: early`)
-  // because the detail fixture's own markers are at 125/640/1905 s, where a
-  // seek clamps to the end and "jumped" is indistinguishable from "did
-  // nothing".
+  // The player renders SceneDetailPage without `onPlayAt`, so its chips were
+  // focus stops that consumed OK and did nothing. The fake serves this marker
+  // inside the 60 s tone (`sceneMarkers: early`): the detail markers at
+  // 125/640/1905 s clamp to the end, where a jump looks like a no-op.
   await setMode({ sceneMarkers: 'early' });
   await seekTo(30);
   focusRailButton('player-rail-details');
@@ -684,8 +627,7 @@ async function run() {
   await setMode({ sceneMarkers: 'ok' });
 
   // ── MK3: the form opens, and pauses what it covers ───────
-  // Playing, stated: MK10 asserts the form hands playback back, and a form
-  // opened over a scene that was already stopped is not the same claim.
+  // The scene is playing first: MK10's hand-back claim needs it.
   await seekTo(30.7);
   await setPlaying(true);
   check('MK3 setup: the scene is playing before the form opens', v.paused === false,
@@ -695,27 +637,23 @@ async function run() {
   await sleep(400);   // the tag fetch
   check('MK3 OK on add-marker opens the form', !!modal());
   check('MK3 opening the form pauses the scene', v.paused === true, `paused=${v.paused}`);
-  // The second the form captured. Held rather than hardcoded: the form takes
-  // the playhead at the moment it opens, and the scene was playing until
-  // then, so the exact value depends on how long the press took. MK9 is about
-  // the nudge moving it, which is a difference, not an absolute.
+  // The captured second is held, not hardcoded: it depends on how long the
+  // press took. MK9 asserts the nudge as a difference, not an absolute.
   const formOpenedAt = v.currentTime;
   check('MK3 the cursor moved into the form', inModal(),
     `activeElement="${document.activeElement?.getAttribute('aria-label')}"`);
 
   // ── MK5: the recent row, in the order the server gave ────
-  // (C, B) is an order no slice of the library listing produces, so a recent
-  // row that was really the library list would fail here rather than match
-  // by coincidence. Exact labels, because the recent chips carry no count.
+  // (C, B) is no slice of the library listing, so a library row cannot match
+  // by coincidence. Exact labels: the recent chips carry no count.
   check('MK5 the recent row is shown', modal().textContent.includes('Recently used'));
   check('MK5 ...in the server\'s recency order, not the library\'s',
     chipLabels().slice(0, 2).join(' | ') === 'Harness Tag C | Harness Tag B',
     `first chips: ${chipLabels().slice(0, 3).join(' | ')}`);
 
   // ── MK6: the default tag is this scene's, not the library's ──
-  // The library's most-used tag is C and it leads the tag row; the scene's own
-  // markers use A twice. Opening on C would file the marker under a tag this
-  // scene has never used.
+  // Library-most-used C leads the tag row; this scene's markers use A twice.
+  // Opening on C would file the marker under a tag this scene never used.
   check('MK6 the form opens on the scene\'s own most-used tag',
     selectedChip()?.getAttribute('aria-label') === 'Harness Tag A, 40 markers',
     `selected="${selectedChip()?.getAttribute('aria-label')}"`);
@@ -735,9 +673,8 @@ async function run() {
     controlsOpacity() === 1, 'the form draws its own panel; this is the player not acting');
 
   // ── MK4: the nudge moves the form's number, not the playhead ──
-  // Both halves asserted. "The playhead did not move" alone is satisfied by a
-  // nudge that never fired, which is precisely how this check passed while the
-  // buttons were dead.
+  // Both halves: "the playhead did not move" alone passes on a nudge that
+  // never fired, which is how this passed while the buttons were dead.
   const timeBefore = formTime();
   press(byLabel('Back 5 seconds', modal()));
   await sleep(120);
@@ -786,9 +723,8 @@ async function run() {
     `paused=${v.paused}`);
 
   // ── MK12: the form is not a play button ─────────────────
-  // A scene that was already paused when the form opened must stay paused.
-  // Same input, opposite outcome from MK10 — which is what makes MK10's
-  // resume meaningful rather than "the video always plays after this button".
+  // A scene paused before the form opened stays paused. Same input, opposite
+  // outcome from MK10, so its resume is meaningful.
   await setPlaying(false);
   check('MK12 setup: the scene is paused before the form opens', v.paused === true);
   focusRailButton('player-rail-marker-add');
@@ -813,25 +749,20 @@ async function run() {
     `closed=${closedCount - closedBeforeForm}`);
   check('MK7 ...without reaching the App-level handler',
     window.__backSeen === 0, `App onBack fired ${window.__backSeen}×`);
-  // The opener is the rail button the form was raised from, and the rail's
-  // own auto-hide refuses to run while it holds focus — so this also proves
-  // the cursor did not end up on <body>.
+  // The opener must regain focus; the rail's auto-hide refuses to run while it
+  // holds focus, so this also proves the cursor did not land on <body>.
   check('MK7 ...and the cursor returns to the button that opened it',
     document.activeElement === byLabel('Add marker', rail()),
     `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
 
   // ── D1–D4: the detail page over the player ───────────────
-  //
-  // The page is rendered by the player itself, so it is reachable from here
-  // with no App around it. Its `scene` prop is the card the player already
-  // has; the page then runs its own `findScene` — the fake endpoint answers
-  // `FindSceneDetail` with the same SCENE the listing uses.
+  // The player renders the page itself, so no App is needed. Its `scene` prop
+  // comes from the player, and its own `findScene` gets the same SCENE from the
+  // fake's `FindSceneDetail`.
   const detailsPage = () => [...document.querySelectorAll('[role="dialog"]')]
     .find(el => el !== player() && el !== modal()) ?? null;
-  // By registry id, not by accessible name. The page's ActionButtons carry no
-  // `aria-label` — their name is the visible text, icon span included — and the
-  // registry is the deterministic handle this file already uses for the rail's
-  // buttons for the same reason.
+  // By registry id, not accessible name: the page's ActionButtons carry no
+  // `aria-label`, and the registry is the deterministic handle used throughout.
   const scenePlay = () => registry.get('scene-play')?.el ?? null;
 
   await seekTo(30);
@@ -847,9 +778,8 @@ async function run() {
   check('D1 ...with the cursor inside it, on Play', document.activeElement === scenePlay(),
     `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
 
-  // The player must own nothing while the page is up. Same key, same cursor
-  // position as R4 — where it skimmed — so a pass here is the yield and not
-  // the absence of a binding.
+  // The player must own nothing while the page is up. Same key and cursor
+  // position as R4, where it skimmed, so this is a yield, not a missing binding.
   await seekTo(30);
   press(document.activeElement, 'ArrowRight', 39);
   await sleep(140);
@@ -861,9 +791,8 @@ async function run() {
     v.paused === true && !spaceOverPage.defaultPrevented,
     `paused=${v.paused}, claimed=${spaceOverPage.defaultPrevented}`);
 
-  // Back closes the page — and the cursor has to come back off it, or the
-  // rail it returns to is one the user cannot see (the auto-hide re-arms on
-  // close, so an invisible button is exactly what "no restore" would produce).
+  // Back closes the page and the cursor must return, or the rail auto-hides
+  // and the returned-to button is invisible.
   press(document.activeElement, 'Backspace', 10009);
   await sleep(300);
   check('D3 Back closes the page', !detailsPage());
@@ -873,9 +802,8 @@ async function run() {
   check('D3 ...and the scene stays paused (no auto-resume)', v.paused === true,
     `paused=${v.paused}`);
 
-  // D4 is D3's control. Same page, same close, same scene state on entry —
-  // the only difference is which button was pressed, so "still paused" above
-  // cannot be satisfied by a page that never had the power to resume.
+  // D4 is D3's control: same page, close and entry state, only the button
+  // differs, so D3's "still paused" cannot come from a page unable to resume.
   ok(document.activeElement);
   await sleep(600);
   check('D4 setup: the page is open again, on the same paused scene',
@@ -888,12 +816,8 @@ async function run() {
     `currentTime=${v.currentTime.toFixed(2)} (the page must not rebuild the session)`);
 
   // ── R7b: Back puts the controls away before it closes the player ──
-  //
-  // The user's 2026-10-18 report: "when video is playing and controls are
-  // shown, pressing back does first close the control bar before closing
-  // video". After D4 the bar was just shown (Play on the ⓘ page calls
-  // `showControls`) and the cursor is behind it, which is exactly the state in
-  // question. One Back hides the bar, the next closes the player.
+  // After D4 the bar is up (Play on the ⓘ page calls `showControls`) with the
+  // cursor behind it: one Back hides the bar, the next closes the player.
   document.activeElement?.blur?.();
   await sleep(120);
   check('R7 setup: the bar is up, the cursor is off the rail and no page is up',
@@ -913,19 +837,15 @@ async function run() {
     `closed += ${closedCount - closedMid}`);
 
   // ── S: ↑/↓ step scenes, in every state ───────────────────
-  //
-  // Everything above ran on a one-scene queue, so there was nothing to step to
-  // and the two scene keys could not be told from dead ones. The player is
-  // replaced with a three-scene queue here; see the `key` on <VideoPlayer> for
-  // why a prop change would not have done it.
+  // Above ran on a one-scene queue, so the scene keys were indistinguishable
+  // from dead ones. Replace the player with a three-scene queue (hence `key`).
   window.__useThreeScenes();
   await sleep(900);
   check('S1 setup: a three-scene queue, on scene one, rail down',
     playingTitle() === 'VERIFY scene one' && !inRail() && !modal() && !detailsPage(),
     `title="${playingTitle()}" inRail=${inRail()}`);
-  // The remount starts with the bar on screen, so put it away explicitly: the
-  // hidden state is the resting one the first press tests (and the one the
-  // user is in after the three-second timer).
+  // The remount starts with the bar up, so hide it: hidden is the resting
+  // state the first press tests.
   if (controlsOpacity() !== 0) {
     press(document.body, 'Backspace', 10009);
     await waitFor(() => controlsOpacity() === 0, 1000);
@@ -938,8 +858,8 @@ async function run() {
   check('S2 ↓ steps to the next scene with the rail down',
     playingTitle() === 'VERIFY scene two', `title="${playingTitle()}"`);
 
-  // The step above showed the controls, so the cursor is on the seek bar. ↑
-  // there is the scene step — the seek bar is the lower stop of the ladder.
+  // The step showed the controls, so the cursor is on the seek bar; ↑ there is
+  // the scene step (the seek bar is the ladder's lower stop).
   check('S3 setup: the step showed the bar', controlsOpacity() === 1,
     `opacity=${controlsOpacity()}`);
   press(document.body, 'ArrowUp', 38);
@@ -948,14 +868,11 @@ async function run() {
     playingTitle() === 'VERIFY scene one', `title="${playingTitle()}"`);
 
   // ── S3b: the outgoing playhead is not inherited ──────────
-  // A fallback source is a reload of the *same* scene, and resuming where the
-  // user was is the point. A different scene is exactly the opposite: its
-  // first source starts from the resume decision, never from the clock the
-  // previous scene was on when the queue stepped. The two share one ref, so
-  // the discriminator is the scene id captured alongside the time.
-  // The cursor is off the rail on the seek bar. ↓ there returns to the
-  // buttons without stepping, and the second ↓ steps — the two-press rule
-  // this check needs before it measures the new scene's playhead.
+  // A fallback source reloads the same scene and resumes; a different scene
+  // starts from its resume decision, never the previous clock. Both share one
+  // ref, so the discriminator is the scene id captured with the time.
+  // The cursor is on the seek bar: ↓ returns to the buttons without stepping,
+  // the next ↓ steps.
   await seekTo(25);
   await sleep(400);            // let a save settle so it cannot be mistaken for the seek
   press(document.body, 'ArrowDown', 40);
@@ -981,10 +898,9 @@ async function run() {
     playingTitle() === 'VERIFY scene one' && !inRail(),
     `title="${playingTitle()}" inRail=${inRail()}`);
 
-  // The vertical keys walk a two-stop ladder (2026-10-24): on the buttons ↓
-  // steps to the next scene in one press; on the seek bar ↓ returns to the
-  // buttons first and the second ↓ steps. ↑ is the mirror. The entry target
-  // is play/pause, the one rail button that is never disabled.
+  // Two-stop ladder: on the buttons ↓ steps in one press; on the seek bar ↓
+  // returns to the buttons first. ↑ mirrors it. The entry target is play/pause,
+  // the one rail button never disabled.
   press(document.body, 'Enter', 13);
   await sleep(350);
   check('S4 the rail is up with the cursor in it',
@@ -1037,10 +953,9 @@ async function run() {
     leftAndHid && closedCount === closedBeforeRailBack,
     `inRail=${inRail()} opacity=${controlsOpacity()} closed += ${closedCount - closedBeforeRailBack}`);
 
-  // S10 is the half that keeps Back's hide from being the *auto-hide timer*
-  // wearing a disguise: S9's wait allows one second, well short of the 3 s
-  // delay, so a bar left to the timer could not have satisfied it. After the
-  // delay has passed, nothing may re-show it or close the player either.
+  // S10 keeps S9's hide from being the auto-hide timer: S9 waits one second,
+  // short of the 3 s delay. After the delay, nothing may re-show the bar or
+  // close the player.
   check('S10 the bar is down at once, not after a timer',
     controlsOpacity() === 0, `opacity=${controlsOpacity()} immediately after Back`);
   await sleep(3400);
@@ -1049,20 +964,12 @@ async function run() {
     `opacity=${controlsOpacity()} closed += ${closedCount - closedBeforeRailBack}`);
 
   // ── W: what the player writes back ───────────────────────
-  //
-  // Two writes with two unrelated contracts, so they are asserted separately.
-  //
-  // The play count is a *count of requests*: `sceneAddPlay` appends a row to
-  // scenes_view_dates, so "incremented" means "fired once" — and the request log
-  // is the only place that is visible, because a version that fired on every
-  // buffer stall or every resume would still leave a plausible number in the
-  // database. `play_duration` is a *sum of deltas* that Stash adds to a running
-  // total, so its failure mode is inflation, and the number to compare it
-  // against is the position: after a 30-second seek, a save that reported the
-  // position as the duration would be wrong by an order of magnitude.
-  //
-  // A fresh player, because both counters are per-session refs and the run
-  // above has been pausing and resuming this scene for a minute.
+  // Two unrelated contracts. The play count is a request count (`sceneAddPlay`
+  // appends a row), visible only in the log: firing on every stall or resume
+  // would still leave a plausible total. `play_duration` is a sum of deltas,
+  // so its failure is inflation: after a 30 s seek, reporting the position as
+  // duration would be wrong by an order of magnitude. A fresh player, because
+  // both counters are per-session refs.
   const PLAY_SCENE = {
     ...SCENE,
     id: '9090',
@@ -1082,9 +989,8 @@ async function run() {
     `title="${playingTitle()}" paused=${pv?.paused}`);
   await sleep(500);
 
-  // Pause, resume, pause, seek, play. Each transition is a separate `play`
-  // event and a separate save, which is what makes "exactly once" an assertion
-  // rather than a restatement of the code.
+  // Pause, resume, pause, seek, play: each transition is a separate `play`
+  // event and save, making "exactly once" an assertion, not a restatement.
   await setPlaying(false);
   await setPlaying(true);
   await setPlaying(false);
@@ -1103,10 +1009,8 @@ async function run() {
     `times=${JSON.stringify(adds[0]?.times)} — the column is scenes_view_dates, one ` +
     'row per entry, so the count is the length of what gets sent');
 
-  // The skim: 30 seconds of the scene that were never watched, taken in a single
-  // step. This is the shape the user reported — "played a few seconds and
-  // skipped around" — and the one a position-as-duration bug would report as
-  // half a minute of viewing.
+  // The skim: 30 unwatched seconds in one step. A position-as-duration bug
+  // would report this as half a minute of viewing.
   await setPlaying(false);
   await seekTo(30);
   await setPlaying(true);
@@ -1127,10 +1031,8 @@ async function run() {
     `${furthest.toFixed(1)}s; position-as-duration would sum to well over 30`);
 
   // ── W6/W7: a rejected write is visible ───────────────────
-  //
-  // The chip is the only place a user can learn that nothing is reaching Stash,
-  // so it is asserted in both directions. Appearance alone would also pass on a
-  // chip that latched on forever.
+  // The chip is the only signal that nothing reaches Stash, so assert both
+  // directions: appearance alone would pass on a chip latched forever.
   await setMode({ save: 'fail' });
   await setPlaying(true);
   await seekTo(42);
@@ -1151,12 +1053,9 @@ async function run() {
     /^saved$/i.test(syncText() || ''), `chip="${syncText()}"`);
 
   // ── W8: a finished scene leaves Continue Watching ────────
-  //
-  // Stash *overwrites* resume_time, so the last write a finished scene makes
-  // is the one that decides whether it stays on the shelf — and the shelf's
-  // filter is `resume_time > 0`. `ended` is dispatched rather than waited for:
-  // the file is 60 s long, so the natural event would take a minute to arrive,
-  // and waiting would also stop the transport the checks above use.
+  // Stash overwrites `resume_time`, and the shelf filters `resume_time > 0`, so
+  // the last write decides. `ended` is dispatched: the file is 60 s, and
+  // waiting would also stop the transport used above.
   const END_SCENE = {
     ...SCENE,
     id: '9093',
@@ -1191,11 +1090,9 @@ async function run() {
     JSON.stringify(window.__activity));
 
   // ── W9: a failed per-open state read is announced ───────
-  //
-  // The read supplies the resume point, the play count and the markers, so a
-  // failure means those are *unknown*, not absent. Swallowed, it looked
-  // exactly like a scene nobody had watched: no prompt, no ticks, silence.
-  // The chip is the same one a failed write uses (one place to look).
+  // The read supplies resume point, play count and markers, so failure means
+  // unknown, not absent; swallowed it looks like an unwatched scene. It uses
+  // the same sync chip as a failed write.
   const STATE_SCENE = {
     ...SCENE,
     id: '9094',
@@ -1214,12 +1111,10 @@ async function run() {
   await setMode({ findSceneState: 'ok' });
 
   // ── Q8: a scene ending while the next page is arriving ───
-  //
-  // The prefetch starts three rows before the end, so a short scene can end
-  // while the extension is still in flight. `goNext` used to ask `extend()`,
-  // be told "already running" → false, and stop on the last frame of the page
-  // with the next page about to arrive. The deferred `fetchPage` here is what
-  // makes that window reachable on demand rather than by luck.
+  // Prefetch starts three rows before the end, so a short scene can end while
+  // the extension is in flight. `goNext` asked `extend()`, got "already
+  // running" → false, and stopped on the page's last frame. The deferred
+  // `fetchPage` makes that window reachable on demand.
   const PAGE_A = { ...SCENE, id: '9300', title: 'VERIFY page one' };
   const PAGE_B = { ...SCENE, id: '9301', title: 'VERIFY page two' };
   let pageFetches = 0;
@@ -1250,12 +1145,9 @@ async function run() {
     pageFetches === 1, `${pageFetches} page fetch(es)`);
 
   // ── RS: resume, or start over ────────────────────────────
-  //
-  // The position has to sit inside the usable window by construction: the
-  // thresholds are 10s from the start and 30s from the end against this 60s
-  // file, so only 11–29 is ever asked about. 22 is in the middle of that, and
-  // the endpoint is told the same number so the per-open refresh cannot be what
-  // makes the difference.
+  // The thresholds are 10 s from the start and 30 s from the end of this 60 s
+  // file, so only 11–29 is asked about. Use 22, and tell the endpoint 22 so the
+  // per-open refresh cannot be what makes the difference.
   const RESUME_SCENE = {
     ...SCENE,
     id: '9091',
@@ -1280,8 +1172,8 @@ async function run() {
     /0:22/.test(resumePrompt()?.textContent || ''),
     `prompt="${resumePrompt()?.textContent?.replace(/\s+/g, ' ').trim()}"`);
 
-  // Same key, same cursor position as R4 — where it skimmed the scene. A pass
-  // here is the player yielding, not the absence of a binding.
+  // Same key and cursor position as R4, where it skimmed: a pass here is the
+  // player yielding, not a missing binding.
   press(document.activeElement, 'ArrowRight', 39);
   await sleep(250);
   check('RS3 an arrow over the prompt moves the cursor instead of skimming',
@@ -1290,34 +1182,26 @@ async function run() {
     `activeElement="${document.activeElement?.textContent?.trim()}" ` +
     `currentTime=${video()?.currentTime?.toFixed(2)}`);
 
-  // Back is the remote's most reflexive button, so it takes the default rather
-  // than dismissing: "dismiss" has no third meaning here — the scene has to
-  // either resume or start — and nothing is written by either answer.
-  //
-  // The question has to be up *before* the Back, or "Back answered it" also
-  // passes on a build where it was never raised at all — which is exactly what
-  // disabling the prompt produces, so this half is what keeps RS4 from being
-  // satisfied by the absence of the feature.
+  // Back takes the default rather than dismissing: the scene must resume or
+  // start, and no third meaning exists. Assert the question is up *before* the
+  // Back, or "Back answered it" also passes when the prompt was never raised.
   const upBeforeBack = !!resumePrompt();
   press(document.activeElement, 'Backspace', 10009);
   await sleep(400);
   check('RS4 Back answers the question rather than dismissing it',
     upBeforeBack && !resumePrompt(),
     `up before=${upBeforeBack} after=${!!resumePrompt()}`);
-  // Waited for, not slept through. A seek is a request to the media element and
-  // completes on its own schedule, so a fixed sleep reads whatever the element
-  // happened to be reporting — and a seek still in flight reports a position
-  // *between* the two, which is a number that would look like a plausible
-  // failure of the assertion rather than of the app.
+  // Wait, don't sleep: a seek completes on its own schedule, and one still in
+  // flight reports a position between the two — a plausible-looking failure of
+  // the assertion rather than of the app.
   const resumed = await waitFor(() => (video()?.currentTime || 0) > 20, 2500);
   check('RS4 ...by resuming from the saved position and playing',
     resumed && video()?.paused === false,
     `paused=${video()?.paused} currentTime=${video()?.currentTime?.toFixed(2)}`);
 
-  // The control for RS4, and the reason RS5 is a differential rather than a
-  // second helping of the same claim: same scene, same saved position, same
-  // mount — only the answer differs. It also covers the late-arriving live
-  // value, which must not drag a scene the user restarted back to 22.
+  // RS4's control: same scene, saved position and mount; only the answer
+  // differs. Also covers the late live value, which must not drag a restarted
+  // scene back to 22.
   window.__mountQueue(RQ, 5);
   await sleep(1200);
   check('RS5 setup: the question is up again on the same scene',
@@ -1332,15 +1216,11 @@ async function run() {
     `paused=${video()?.paused} currentTime=${video()?.currentTime?.toFixed(2)} ` +
     '(the live refresh must not re-apply the position it just declined)');
 
-  // RS6 is the other half of the design and the control RS5's guard needs.
-  //
-  // The *question* is decided from the grid's own value — that is why opening a
-  // scene never waits on a request — while the per-open fetch still supplies the
-  // position that gets applied. So a card that says "unwatched" but a server
-  // that says 22 plays straight through to 22: no prompt, and the freshly
-  // fetched value is what moved it. Without this, RS5's "stays at 0" would also
-  // be satisfied by a build where the live value never arrived at all, which is
-  // the one way that check could pass for the wrong reason.
+  // RS6 is the other half and RS5's control. The question uses the grid's value
+  // (opening never waits on a request), while the per-open fetch supplies the
+  // applied position: an "unwatched" card against a server at 22 plays to 22
+  // with no prompt. Without this, RS5's "stays at 0" would also pass if the
+  // live value never arrived.
   const STALE_SCENE = {
     ...SCENE,
     id: '9092',
@@ -1362,8 +1242,8 @@ async function run() {
   await finish();
 }
 
-// The probe owns the document first: it unmounts before the harness exists so
-// the selectors below keep meaning exactly one player.
+// The StrictMode probe owns the document first and unmounts before the harness
+// exists, so the selectors below match exactly one player.
 (async () => {
   try {
     await runStrictProbe();

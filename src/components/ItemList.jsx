@@ -1,28 +1,20 @@
 /**
  * ItemList — one full-width row per item, for every listing tab.
  *
- * The fourth view mode, alongside Classic, Carousel and Coverflow. It is a
- * *listing* component in the same family as VideoGrid and EntityGrid, and it
- * deliberately keeps their contracts rather than inventing new ones:
+ * The fourth view mode, and a listing component on the grids' contracts:
  *
- *   - `usePagedList` owns paging; this component supplies the request and the
- *     same IntersectionObserver sentinel, observed from inside the scroller.
- *   - Focus ids are `${view.focusPrefix}-${item.id}` — exactly the ids the
- *     grids and the play queue already use. A list-specific prefix would break
- *     the queue, the check harness and every surface that looks a card up by
- *     id.
- *   - `role="grid"` on a one-column list is intentional. ARIA allows a grid to
- *     have any number of columns, and keeping the role means existing
- *     consumers (the harness's page helpers, anything that finds the listing
- *     by role) do not need a second branch.
+ *   - `usePagedList` owns paging; the IntersectionObserver sentinel is
+ *     observed from inside the scroller.
+ *   - Focus ids stay `${view.focusPrefix}-${item.id}`. A list-specific prefix
+ *     would break the play queue, the harness and anything looking a card up
+ *     by id.
+ *   - `role="grid"` on one column is intentional: ARIA allows it, and existing
+ *     consumers need no second branch.
  *
- * What the descriptor supplies is in `carouselViews.js` and `entityViews.jsx`:
- * the hero model for title/meta/badge (already written for the carousel), the
- * row's art field, and — the part that genuinely differs per section — the
- * argument list its activation uses. That last one is a descriptor function
- * (`rowSelect`) rather than a guess here, because scenes hand the *whole*
- * listing up (a play queue needs `fetchPage`) while entities hand
- * `(item, index, items)` to the image viewer.
+ * Activation differs per section, so the descriptor supplies `rowSelect`:
+ * scenes hand the whole listing up (a play queue needs `fetchPage`), entities
+ * hand `(item, index, items)` to the image viewer. Hero model and art field
+ * come from the descriptors too.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,9 +41,8 @@ function initialsOf(text) {
 function Row({ item, index, list, onSelect, onLongPress, view }) {
   const [imgError, setImgError] = useState(false);
 
-  // The hero model already separates a rating from the other meta fields
-  // (`kind: 'rating'`), which is exactly the split a row needs: the rating is
-  // the right-aligned badge, everything else is the muted meta line.
+  // The hero model splits the rating out, which is what a row needs: rating
+  // right-aligned as a badge, everything else on the muted meta line.
   const hero = view.hero(item);
   const meta = hero.meta || [];
   const title = hero.title || view.getTitle?.(item) || 'Untitled';
@@ -61,8 +52,7 @@ function Row({ item, index, list, onSelect, onLongPress, view }) {
   const src = view.rowImage ? view.rowImage(item) : view.getImage?.(item);
   const portrait = view.aspect === 'portrait';
 
-  // One closure for Enter, click and long-press argument-building, so the
-  // three cannot drift apart.
+  // One closure for Enter and click, so the two cannot drift apart.
   const activate = () => {
     if (view.rowSelect) view.rowSelect(item, index, list, onSelect);
     else onSelect?.(item);
@@ -129,16 +119,14 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
     items, total, page, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be in the key
+    // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
     focusPrefix,
   });
 
-  // `fetchPage` is included even for sections whose select ignores it: the
-  // scene queue reads it, and handing every row the same listing shape keeps
-  // `rowSelect` from having to know which section it is in. The object's
-  // identity is fixed (`useStableListing`) so a page append does not re-render
-  // every row through a new prop (the review's R6).
+  // `fetchPage` is included even where the select ignores it, so every row gets
+  // one shape. `useStableListing` fixes the identity so a page append does not
+  // re-render every row through a new prop.
   const listing = useStableListing({ items, total, page, fetchPage });
 
   const scrollRef = useRef(null);

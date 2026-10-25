@@ -1,6 +1,5 @@
-/* The column that holds the count line and the scroller. `min-height: 0` is
-   load-bearing: without it a flex child refuses to shrink below its content,
-   which is exactly the overflow this app never wants (see App.module.css). */
+/* `min-height: 0` is load-bearing: without it a flex child refuses to shrink
+   below its content, which is the overflow this app never wants. */
 .page {
   flex: 1;
   display: flex;
@@ -13,8 +12,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 32px 48px 48px;
-  /* Instant, not smooth: see the note in useFocusable.js. useFocusable also
-     passes behavior:'auto' explicitly, so this is belt-and-braces. */
+  /* Instant, not smooth (useFocusable also passes behavior:'auto'). */
   scroll-behavior: auto;
 }
 
@@ -23,7 +21,6 @@
   gap: 20px;
 }
 
-/* ── Sentinel (infinite-scroll trigger) ─────────────────── */
 .sentinel {
   height: 80px;
   display: flex;
@@ -62,7 +59,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* ── Initial states ─────────────────────────────────────── */
 .state {
   flex: 1;
   display: flex;

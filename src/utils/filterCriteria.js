@@ -2,24 +2,21 @@
  * filterCriteria.js — what the generated schema cannot know.
  *
  * `stashFilterSchema.js` knows every field, its GraphQL input type, the fields
- * each criterion declares, and the enums they take. It does not know that
- * `rating100` should be labelled "Rating", read 0–10 at scale 10, or that its
- * multi-select should offer the Tag list. That is this file, and only that.
+ * each criterion declares and its enums. It does not know that `rating100`
+ * means "Rating" on a 0–10 scale, or that its multi-select offers the Tag
+ * list. That is this file.
  *
- * THE DISCIPLINE, WHICH IS THE WHOLE POINT. Nothing here enumerates *fields*.
- * The editor for a criterion is derived from its declared input type name, and
- * the modifiers from the fields that type declares. A field list is how the
- * `has_markers` / `is_missing` bug happened the first time — both are `String`
- * in the schema, and the `organized` next to them is `Boolean`, so a list of
- * "the boolean fields" was wrong the moment Stash added one. Add a field to
- * Stash, regenerate the schema, and it appears in the builder with no edit
- * here; get its type wrong and `coverage()` fails loudly rather than shipping
- * an editor that emits a 422.
+ * THE DISCIPLINE. Nothing here enumerates *fields*: the editor is derived from
+ * the declared input type name, and modifiers from the fields that type
+ * declares. A field list is how the `has_markers`/`is_missing` bug happened —
+ * both are `String` in the schema while the `organized` beside them is
+ * `Boolean`. Add a field to Stash and regenerate: it appears here with no edit,
+ * and a wrong type makes `coverage()` fail loudly rather than shipping a 422.
  *
- * WHAT "REACHABLE" MEANS. Every field of a filter type is either buildable or
- * deliberately listed as not, with a reason the user can read. `coverage()` is
- * the assertion; `scripts/verify-criteria.mjs` runs it against every filter
- * type the app can send, so "all fields" is proved rather than claimed.
+ * WHAT "REACHABLE" MEANS. Every field is either buildable or deliberately
+ * listed as not, with a user-readable reason. `coverage()` is the assertion;
+ * `scripts/verify-criteria.mjs` runs it against every filter type the app can
+ * send, so "all fields" is proved rather than claimed.
  */
 
 import {
@@ -35,9 +32,8 @@ const BASE = (t) => String(t).replace(/[[\]!]/g, '');
 
 // ── Editor kinds ──────────────────────────────────────────
 //
-// Named for the widget, not the type: two criterion types can share one editor
-// (Int and Float are both `number`), and one type can need two (a phash
-// distance is a value plus a distance).
+// Named for the widget, not the type: Int and Float share `number`, while one
+// type can need two editors (a phash distance is a value plus a distance).
 export const EDITOR = {
   TEXT: 'text',
   NUMBER: 'number',
@@ -54,12 +50,11 @@ export const EDITOR = {
 };
 
 /**
- * criterionTypeName → editor kind. This is the table that replaces a field
- * list, so it is deliberately keyed by *type*.
+ * criterionTypeName → editor kind. This table replaces a field list, so it is
+ * deliberately keyed by *type*.
  *
- * `Boolean` and `String` are the two bare scalars that appear as filter fields
- * rather than inside a criterion, and they are NOT interchangeable: `organized`
- * is a real Boolean, while `has_markers` / `is_missing` are String and are
+ * The bare `Boolean` and `String` scalars are not interchangeable: `organized`
+ * is a real Boolean, while `has_markers`/`is_missing` are String and
  * tri-state in practice ("true" / "false" / unset). Coercing the latter to a
  * boolean is the recorded bug, so they get their own editor.
  */
@@ -71,9 +66,9 @@ const EDITOR_BY_TYPE = {
   TimestampCriterionInput: EDITOR.TIMESTAMP,
   ResolutionCriterionInput: EDITOR.ENUM,
   GenderCriterionInput: EDITOR.ENUM,
-  // `circumcised` is the one enum-valued criterion whose `value` is a *list*
-  // (see LIST_VALUED_CRITERIA), so it takes several answers rather than one.
-  // Same editor, `listValued` set — see the descriptor below.
+  // `circumcised` is enum-valued but its `value` is a *list* (see
+  // LIST_VALUED_CRITERIA), so it takes several answers: same editor,
+  // `listValued` set.
   CircumcisionCriterionInput: EDITOR.ENUM,
   MultiCriterionInput: EDITOR.MULTI,
   HierarchicalMultiCriterionInput: EDITOR.HIERARCHICAL,
@@ -93,9 +88,8 @@ const ENUM_BY_TYPE = {
 
 // ── Unreachable, with the reason shown ────────────────────
 //
-// These are listed in the builder rather than hidden. "All fields" that
-// silently means "all fields except seven" is worse than one that says which
-// seven and why.
+// Listed in the builder rather than hidden: "all fields" silently meaning
+// "all fields except seven" is worse than saying which and why.
 const NESTED_REASON =
   'Combining filters — a tree editor is its own project, and a half-built one that silently drops a branch is worse than none.';
 const CUSTOM_FIELD_REASON =
@@ -110,8 +104,8 @@ const EXOTIC_REASON = {
 };
 
 /**
- * Why a field cannot be built, or null if it can.
- * `fieldType` is the GraphQL type NAME as it appears in FILTER_TYPES.
+ * Why a field cannot be built, or null if it can. `fieldType` is the GraphQL
+ * type NAME as it appears in FILTER_TYPES.
  */
 export function unreachableReason(field, fieldType) {
   if (field === 'AND' || field === 'OR' || field === 'NOT') return NESTED_REASON;
@@ -131,11 +125,10 @@ export function editorFor(field, fieldType) {
 // ── Modifiers ─────────────────────────────────────────────
 //
 // Derived from the criterion's declared shape, then checked against the real
-// CriterionModifier enum. Two rules carry the weight:
-//   - BETWEEN needs a second operand, so it is offered only where the type
-//     declares `value2`. Offering it elsewhere produces a criterion the
-//     translator drops as empty.
-//   - a type with no `modifier` field gets none. Emitting one is a 422.
+// CriterionModifier enum. Two rules carry the weight: BETWEEN needs a second
+// operand, so it is offered only where the type declares `value2` (elsewhere
+// the translator drops the criterion as empty); and a type with no `modifier`
+// field gets none — emitting one is a 422.
 const MODIFIERS = {
   [EDITOR.TEXT]: ['EQUALS', 'NOT_EQUALS', 'INCLUDES', 'EXCLUDES', 'MATCHES_REGEX', 'NOT_MATCHES_REGEX', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.NUMBER]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN', 'IS_NULL', 'NOT_NULL'],
@@ -160,13 +153,10 @@ const RANGE = new Set(['BETWEEN', 'NOT_BETWEEN']);
 /**
  * The modifiers a given field can actually take.
  *
- * Takes only the field's own type, and that is enough: `BASE` strips the input
- * suffix, which is what resolves the one ambiguity that matters — `String`
- * appears as both `StringCriterionInput` and the bare `String` scalar, and
- * those two share no declared fields. (An earlier version of this took the
- * enclosing filter type as a third argument as well. It was never read; the
- * disambiguation was always `BASE`. Removed rather than left as a parameter
- * that suggests a dependency it does not have.)
+ * The field's own type is enough: `BASE` strips the input suffix, resolving
+ * the ambiguity that matters — `String` is both `StringCriterionInput` and the
+ * bare `String` scalar, and those share no declared fields. Do not add the
+ * enclosing filter type as a parameter; it has no effect.
  */
 export function modifiersFor(field, fieldType) {
   const editor = editorFor(field, fieldType);
@@ -180,8 +170,8 @@ export function modifiersFor(field, fieldType) {
 
   return all.filter((m) => {
     if (RANGE.has(m) && !declared.includes('value2')) return false;
-    // Every modifier we can emit must be a real enum member. This is the guard
-    // that catches a typo here at build time rather than as a 422 on the TV.
+    // Every emitted modifier must be a real enum member, catching a typo here
+    // rather than as a 422 on the TV.
     return ENUMS.CriterionModifier.includes(m);
   });
 }
@@ -196,7 +186,7 @@ const ACRONYMS = new Set(['id', 'url', 'cm', 'hd', 'zip', 'phash', 'oshash']);
 
 /**
  * `audio_codec` → "Audio codec". The fallback for every field without a
- * hand-written label, which is why it has to be good rather than clever.
+ * hand-written label, so it must be good rather than clever.
  */
 export function humanise(field) {
   return field
@@ -206,8 +196,8 @@ export function humanise(field) {
 }
 
 /**
- * Labels where the mechanical form is wrong or ambiguous. Keyed by field name
- * because that is genuinely what these are — exceptions, not a mapping.
+ * Labels where the mechanical form is wrong or ambiguous. Keyed by field name:
+ * these are exceptions, not a mapping.
  */
 const LABELS = {
   rating100: 'Rating',
@@ -277,9 +267,9 @@ export function labelFor(field) {
 
 // ── Entity sources for multi-selects ──────────────────────
 //
-// Which list the picker draws from. Derived from the field name, with the
-// aliases that are genuinely not the same word as their entity: a Tag's
-// `parents` are tags, a group's `sub_groups` are groups.
+// Which list the picker draws from, derived from the field name with the
+// aliases that do not share their entity's word: a Tag's `parents` are tags,
+// a group's `sub_groups` are groups.
 const ENTITY_ALIASES = {
   parents: 'tags',
   children: 'tags',
@@ -300,12 +290,11 @@ const ENTITIES = new Set([
  * The entity a multi-select draws from, or null when there isn't one.
  *
  * `filterTypeName` is needed because a field name is not always enough: a
- * tag's `parents` are tags, and a studio's `parents` are studios. The alias
- * table above is keyed by field name, so without this the Studio builder
- * offered the Tag picker and wrote tag ids into a Studio criterion — the
- * server accepts the mutation and returns nothing, which looks like an empty
- * library rather than a bad query. Every other aliased name means the same
- * thing in every filter type it appears in.
+ * tag's `parents` are tags, a studio's `parents` are studios. Without this the
+ * Studio builder offers the Tag picker and writes tag ids into a Studio
+ * criterion — the server accepts it and returns nothing, which looks like an
+ * empty library rather than a bad query. Other aliases mean the same thing in
+ * every filter type.
  */
 export function entitySource(field, filterTypeName) {
   if (field === 'parents' && filterTypeName === 'StudioFilterType') return 'studios';
@@ -315,8 +304,8 @@ export function entitySource(field, filterTypeName) {
 
 // ── The Common group ──────────────────────────────────────
 //
-// ~12 pinned criteria per type. Everything else is reachable under "All
-// fields"; this is only about which ones are worth not scrolling for.
+// ~12 pinned criteria per type; everything else is reachable under "All
+// fields". This is only about which are worth not scrolling for.
 export const COMMON = {
   SceneFilterType: [
     'title', 'path', 'tags', 'performers', 'studios', 'rating100',
@@ -352,12 +341,11 @@ export const COMMON = {
 
 /**
  * Every field of `filterTypeName`, as a descriptor:
- *
  *   { field, type, editor, label, common, reason, modifierOptions,
  *     enumOptions, entity, hierarchical }
  *
- * `reason` is set exactly when `editor` is null, and the builder renders those
- * in a disabled group. Nothing is dropped.
+ * `reason` is set exactly when `editor` is null; the builder renders those in
+ * a disabled group. Nothing is dropped.
  */
 export function criteriaFor(filterTypeName) {
   const fields = FILTER_TYPES[filterTypeName];
@@ -383,30 +371,29 @@ export function criteriaFor(filterTypeName) {
         ? entitySource(field, filterTypeName)
         : null,
       hierarchical: editor === EDITOR.HIERARCHICAL,
-      // `value2` is declared by Int/Float/Date/Timestamp — the types where a
-      // range is meaningful. Read off the schema, not from a list.
+      // `value2` is declared by Int/Float/Date/Timestamp, where a range is
+      // meaningful. Read off the schema, not from a list.
       supportsRange: (CRITERION_FIELDS[base] || []).includes('value2'),
       // A criterion whose `value` is declared as a list takes several
-      // answers. Read off the schema: `circumcised` and the orientation
-      // criterion are the two, and the latter is unreachable.
+      // answers. Schema-derived: `circumcised` and orientation (unreachable).
       listValued: LIST_VALUED_CRITERIA.has(base),
     };
   });
 }
 
 /**
- * Reachable vs not, for the verify script and for the builder's own summary
- * line. Every field lands in exactly one list — that is the assertion, and a
- * new Stash field with an unfamiliar type fails it rather than disappearing.
+ * Reachable vs not, for the verify script and the builder's summary line.
+ * Every field lands in exactly one list — the assertion — so a new Stash field
+ * with an unfamiliar type fails it rather than disappearing.
  */
 export function coverage(filterTypeName) {
   const all = criteriaFor(filterTypeName);
   return {
     reachable: all.filter((c) => c.editor),
     unreachable: all.filter((c) => !c.editor),
-    // A field whose type is unknown to EDITOR_BY_TYPE and whose reason is also
-    // null would be silently unbuildable. There is no such case today; this
-    // reports it the moment there is.
+    // A type unknown to EDITOR_BY_TYPE with a null reason would be silently
+    // unbuildable; there is no such case today, and this reports it if one
+    // appears.
     unexplained: all.filter((c) => !c.editor && !c.reason),
   };
 }

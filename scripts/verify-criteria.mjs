@@ -4,19 +4,17 @@
  *
  *   node scripts/verify-criteria.mjs
  *
- * P2 claims two things that are easy to assert and hard to mean:
+ * Two claims that are easy to assert and hard to mean:
  *
- *   1. "All fields" really is all fields — every field of every filter type
- *      the app can send is either buildable or listed as unreachable *with a
- *      reason*. No field may be silently absent, and no field may be
- *      unbuildable for an unexplained reason.
- *   2. What the builder writes is what the translator reads. The builder
- *      emits Stash's *stored* envelope; `filterTranslate` converts it to
- *      GraphQL at query time. That seam is where a filter can validate and
- *      match nothing, which is the worst failure in this problem space, so it
- *      is round-tripped here rather than trusted.
+ *   1. "All fields" really is all fields — every field of every sendable filter
+ *      type is either buildable or listed as unreachable *with a reason*. No
+ *      field may be silently absent or unbuildable for an unexplained reason.
+ *   2. What the builder writes is what the translator reads. The builder emits
+ *      Stash's *stored* envelope; `filterTranslate` converts it to GraphQL at
+ *      query time. That seam is where a filter can validate and match nothing,
+ *      so it is round-tripped rather than trusted.
  *
- * Exits non-zero on the first failure, like test-translate.mjs.
+ * Exits non-zero on the first failure.
  */
 
 import { coverage, criteriaFor, COMMON, EDITOR } from '../src/utils/filterCriteria.js';
@@ -41,8 +39,8 @@ function eq(label, actual, expected) {
 
 // ── 1. Coverage ───────────────────────────────────────────
 //
-// Every filter type the three services can send. P4 widens this list; until
-// then, these are the ones App.jsx can reach through TAB_CONTROL_CONFIG.
+// Every filter type the three services can send — the ones App.jsx reaches
+// through TAB_CONTROL_CONFIG.
 const SENDABLE = [
   'SceneFilterType',
   'SceneMarkerFilterType',
@@ -66,8 +64,8 @@ for (const ft of SENDABLE) {
   console.log(`  ${ft}: ${cov.reachable.length} buildable, ${cov.unreachable.length - cov.unexplained.length} documented unreachable, ${cov.unexplained.length} unexplained (of ${total})`);
 }
 
-// Every unreachable field must carry a reason a user could read, since the
-// builder shows it in the disabled group rather than hiding the field.
+// Unreachable fields need a user-readable reason: the builder shows them in a
+// disabled group rather than hiding them.
 for (const ft of SENDABLE) {
   for (const c of coverage(ft).unreachable) {
     ok(`${ft}.${c.field}: unreachable with a stated reason`,
@@ -78,8 +76,8 @@ for (const ft of SENDABLE) {
 
 // ── 2. Every COMMON field is a real field ─────────────────
 //
-// A typo here silently drops a pinned criterion — the builder would render 11
-// cards where the plan says 12 and nothing would look wrong.
+// A typo here silently drops a pinned criterion: the builder renders 11 cards
+// where the plan says 12, and nothing looks wrong.
 console.log('\nCommon groups');
 
 for (const [ft, fields] of Object.entries(COMMON)) {
@@ -104,9 +102,8 @@ for (const ft of SENDABLE) {
       c.modifierOptions.every(m => ENUMS.CriterionModifier.includes(m)),
       c.modifierOptions.filter(m => !ENUMS.CriterionModifier.includes(m)).join(', '));
 
-    // BETWEEN needs a second operand. Offering it where `value2` is not
-    // declared produces a criterion the translator drops as empty — a filter
-    // that silently widens.
+    // BETWEEN needs a second operand; offering it where `value2` is undeclared
+    // produces a criterion the translator drops as empty, silently widening.
     const base = String(c.type).replace(/[[\]!]/g, '');
     const declaresValue2 = (CRITERION_FIELDS[base] || []).includes('value2');
     const offersRange = c.modifierOptions.some(m => m === 'BETWEEN' || m === 'NOT_BETWEEN');
@@ -143,9 +140,9 @@ ok('PerformerFilterType.circumcised is flagged list-valued',
 
 // ── 5. The builder's envelope round-trips ─────────────────
 //
-// These are the exact shapes FilterBuilder writes. Each must reach GraphQL
-// carrying the same meaning. A criterion that translates to `{}` is the
-// silent-widening bug; one that keeps a nested `value.value` is the 422.
+// The exact shapes FilterBuilder writes; each must reach GraphQL meaning the
+// same. Translating to `{}` is the silent-widening bug; a nested `value.value`
+// is the 422.
 console.log('\nRound trip: builder envelope → GraphQL');
 
 const rt = (name, stored, expected) =>
@@ -199,18 +196,16 @@ rt('an empty value is dropped',
   { title: { modifier: 'INCLUDES', value: { value: '' } } },
   {});
 
-// IS_NULL takes no operand, so an empty value beside it is normal and must
-// not be dropped as an unset criterion. This is the shape the BUILDER emits:
-// `value: {}`, with no inner key at all, which translates to a criterion
-// carrying only its modifier.
+// IS_NULL takes no operand, so an empty value beside it must not be dropped as
+// unset. The builder emits `value: {}` with no inner key, which translates to a
+// criterion carrying only its modifier.
 rt('IS_NULL with no operand translates clean',
   { details: { modifier: 'IS_NULL', value: {} } },
   { details: { modifier: 'IS_NULL' } });
 
-// The other shape — what Stash's own UI stores, with an empty inner value —
-// also survives, but carries the empty string through. Asserted so the
-// difference is on the record rather than discovered later: the builder emits
-// `{}` deliberately, and this is why.
+// What Stash's own UI stores — an empty inner value — also survives but carries
+// the empty string through. On the record so the difference is not rediscovered
+// later; the builder emits `{}` deliberately.
 rt('IS_NULL with an empty inner value keeps it',
   { details: { modifier: 'IS_NULL', value: { value: '' } } },
   { details: { value: '', modifier: 'IS_NULL' } });

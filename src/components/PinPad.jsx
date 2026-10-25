@@ -1,45 +1,35 @@
 /**
- * PinPad — on-screen numeric keypad for the app lock
- *
- * Used in three places with identical behaviour: the lock screen (unlock),
- * the settings panel (set / confirm / remove), and since 0.12.0 the first-run
- * flow's optional PIN step. Factored out so they cannot drift apart.
+ * PinPad — on-screen numeric keypad for the app lock, shared by the lock
+ * screen (unlock), Settings (set/confirm/remove) and FirstRun's optional PIN
+ * step, so the three cannot drift.
  *
  * ## Controls
- *   - D-pad + Enter: the `1` key takes focus on open; the grid is evenly
- *     sized so `findBestCandidate`'s geometric scoring gives the obvious
- *     D-pad order with no manual wiring.
- *   - Remote number keys work too, via a capture-phase listener below.
- *   - Backspace deletes one digit. Escape / hardware Back calls onCancel.
- *   - Enter is deliberately NOT handled globally here: useFocusable already
- *     fires `onEnter` on the focused element (useFocusable.js:75-80), so
- *     adding a global Enter handler would submit twice.
+ *   - D-pad + Enter: `1` takes focus on open; the even grid gives
+ *     `findBestCandidate` the obvious order with no manual wiring.
+ *   - Remote number keys, via the capture-phase listener below.
+ *   - Backspace deletes one digit; Escape / hardware Back calls onCancel.
+ *   - Enter is NOT handled globally: useFocusable already fires `onEnter` on
+ *     the focused element, and a global handler would submit twice.
  *
- * ## onDecline — an optional way out, and a correctness requirement where used
- * Passing `onDecline` renders one extra focusable action below the grid. The
- * lock screen and the settings section pass nothing and are unchanged.
- *
- * It exists because a caller can need an exit the pad has no other way to
- * offer. The first-run PIN step is that caller: Back returns to the connection
- * step, and the connection step's Skip returns here, so without a third option
- * the two steps form a cycle with no exit — and the pad has no button of its
- * own to put it on. Rendered *inside* this dialog rather than beside it,
- * because `modalScopeOf` scopes nav to the nearest enclosing `role="dialog"`,
- * so a sibling button would be unreachable from the pad.
+ * ## onDecline
+ * Renders one extra focusable action below the grid; the lock screen and
+ * Settings pass nothing. FirstRun's PIN step needs it: Back returns to the
+ * connection step and Skip returns here, so without a third exit the two form
+ * a cycle. It lives *inside* this dialog because `modalScopeOf` scopes nav to
+ * the nearest `role="dialog"`, making a sibling button unreachable.
  *
  * ## onSubmit contract
- * `onSubmit(pin)` must be SYNCHRONOUS and may return either:
- *   - `true` / `undefined` — accepted; the caller takes it from here
- *     (unlock, or advance to the confirm phase).
- *   - a `string`           — rejected; the string is shown as the error
- *     line, the entry is cleared, and focus stays on the keypad.
- * The entry is cleared either way. A Promise would satisfy neither branch
- * and would silently read as "accepted", which is why this must stay sync —
- * the digest is a plain SHA-256 with no stretching, so it is.
+ * Must be SYNCHRONOUS and may return:
+ *   - `true` / `undefined` — accepted; the caller takes it from here.
+ *   - a `string`           — rejected; shown as the error line, the entry is
+ *                            cleared, and focus stays on the keypad.
+ * The entry is cleared either way. A Promise satisfies neither branch and
+ * would read as "accepted"; the digest is a plain SHA-256 with no stretching,
+ * so it stays sync.
  *
  * ## Focus trapping
- * Free: `modalScopeOf` (useKeyHandler.js:40-47) walks up to the nearest
- * `role="dialog"`, and spatial nav is confined to it while this is open.
+ * Free: `modalScopeOf` walks up to the nearest `role="dialog"` and confines
+ * spatial nav to it.
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -56,9 +46,9 @@ const LABELS = { clear: 'Clear', ok: 'OK' };
 /**
  * The digit a keydown represents, or null.
  *
- * `e.key` is the reliable source ('0'-'9' for both the number row and the
- * numpad on any engine that implements it). The 96-105 keyCode range is a
- * fallback for engines that report numpad digits as 'Unidentified'.
+ * `e.key` is reliable ('0'-'9' for both number row and numpad); the 96-105
+ * keyCode range is the fallback for engines that report numpad digits as
+ * 'Unidentified'.
  */
 function digitFromEvent(e) {
   const k = e.key;
@@ -71,10 +61,9 @@ function digitFromEvent(e) {
 /**
  * The optional way out (see `onDecline` in the header).
  *
- * Same zone as the keys so the D-pad can reach it — `Down` from the bottom row
- * lands on it by the same geometric scoring the grid relies on. It is NOT a
- * thirteenth cell in that grid: it leaves the pad rather than entering a digit,
- * and giving it a key's shape would say otherwise.
+ * Same zone as the keys so Down from the bottom row reaches it by the same
+ * geometric scoring. NOT a thirteenth grid cell: it leaves the pad rather than
+ * entering a digit, and a key's shape would say otherwise.
  */
 function DeclineButton({ id, label, onPress }) {
   const { ref, focused } = useFocusable({ id, zone: 'pinpad', onEnter: onPress });
@@ -121,21 +110,20 @@ export default function PinPad({
   onDecline,
   declineLabel = 'Not now',
 }) {
-  // One registry id namespace per instance. Verified PINs are cheap to
-  // compute but a Map collision between two mounted pads would silently
-  // break nav, so the ids are unique rather than assumed-unique.
+  // One registry id namespace per instance: a Map collision between two
+  // mounted pads would silently break nav.
   const uid = useId();
 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
-  // The entry also lives in a ref: the window listener below and a burst
-  // of held keys can both run before React re-renders, and reading `pin`
-  // from a stale closure there would drop or duplicate a digit.
+  // The entry also lives in a ref: the listener and a burst of held keys can
+  // run before React re-renders, and a stale `pin` would drop or duplicate a
+  // digit.
   const pinRef = useRef('');
 
-  // Guards a second submit while one is in flight. Redundant while
-  // onSubmit is synchronous, kept so a stray double-press of OK is inert.
+  // Redundant while onSubmit is synchronous; kept so a stray double-press of
+  // OK is inert.
   const submittingRef = useRef(false);
 
   // Latest props for the once-registered listeners below.
@@ -158,8 +146,8 @@ export default function PinPad({
 
     let next = pinRef.current;
     if (k !== 'ok') {
-      // Held keys and the 4th-digit auto-submit can race; never append
-      // past the required length.
+      // Held keys and the final-digit auto-submit can race; never append past
+      // the required length.
       if (next.length >= length) return;
       next += k;
       update(next);
@@ -184,8 +172,8 @@ export default function PinPad({
 
   useEffect(() => {
     const handler = (e) => {
-      // Never steal keys from a text field. The pad takes focus on open,
-      // so this should not be reachable — it is a safety net, not a path.
+      // Never steal keys from a text field. Unreachable in practice since the
+      // pad takes focus on open — a safety net, not a path.
       if (isTextInput(e.target)) return;
 
       const digit = digitFromEvent(e);
@@ -199,9 +187,9 @@ export default function PinPad({
       }
 
       if (e.key === 'Backspace') {
-        // Delete one digit, not the whole entry. stopPropagation keeps
-        // the global handler (and the settings panel's own Back handler)
-        // from reading this as "go back".
+        // One digit, not the whole entry. stopPropagation keeps the global
+        // handler and the settings panel's Back handler from reading this as
+        // "go back".
         e.preventDefault();
         e.stopPropagation();
         setError('');
@@ -216,9 +204,8 @@ export default function PinPad({
       }
     };
 
-    // Capture phase: this has to win over useKeyHandler's bubble-phase
-    // listener, and over the settings panel's capture-phase one the guard
-    // in SettingsPanel keeps out of the way.
+    // Capture phase: must win over useKeyHandler's bubble-phase listener and
+    // the settings panel's capture-phase one (which its guard keeps clear).
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
   }, [update]);
@@ -240,9 +227,8 @@ export default function PinPad({
           ))}
         </div>
 
-        {/* Always mounted so the live region exists before it has anything
-            to announce — a region added at the same time as its text is
-            not reliably read out. */}
+        {/* Always mounted so the live region exists before it has text — a
+            region added with its text is not reliably read out. */}
         <p className={styles.error} role="status" aria-live="polite">{error}</p>
 
         <div className={styles.grid}>

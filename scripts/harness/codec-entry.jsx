@@ -1,41 +1,15 @@
 /**
  * Headless driver for playback of files the TV cannot decode.
  *
- * Written for one report from the sofa: "file with codec msmpeg4v3 doesn't
- * want to play on this app, possible to get it playing?" It is not one file —
- * this library holds 456 scenes in codecs no browser engine decodes (see
- * playbackSource.js for the census), and the fix is to play them through
- * Stash's transcoder instead of their own bytes.
- *
- * Two halves, because the feature has two halves and they fail differently:
- *
- *   K — the classification, which is pure and can be asserted exhaustively.
- *       A codec list is a table of judgements, and the risk is not that it is
- *       wrong in a way a test can see but that it is quietly *incomplete*;
- *       so the table is written out from the library's real census rather
- *       than from the examples that happened to be in the bug report.
- *
- *   I — the player, mounted against the fake endpoint. What is asserted is
- *       ultimately one thing — *which URL the element was pointed at* — plus
- *       whether it managed to load. That is deliberately the only observable
- *       used: a check written against the hook's state would pass on a build
- *       that decided correctly and then handed the element something else.
- *
- *   K6 — the timeline rule, which is here for a different reason: it is the
- *       one part of the second TV report that could not be reproduced
- *       off-device at all. See the note above those checks.
- *
- * The case the whole design turns on is I3/I5: a codec the engine *rejects*
- * raises an error, and a codec it merely never decodes raises nothing at all.
- * Only the second one needs the stall watchdog, and only a server that hangs
- * can produce it — hence `/hang/` in server.py.
- *
- * **What this driver cannot say.** Two things, and both are load-bearing:
- * whether the Tizen engine plays an HLS playlist (headless Firefox cannot, so
- * every HLS candidate here fails and the scene lands on the MP4 fallback), and
- * whether the TV's engine would have got the duration wrong in the first
- * place. The requests the player *makes* are observable and are asserted;
- * what the TV does with the answer is checked on the TV, by the user.
+ * This library holds 456 scenes in codecs no browser engine decodes (see
+ * playbackSource.js), so they play through Stash's transcoder instead. K is the
+ * pure classification, written from the library census; I mounts the player and
+ * asserts which URL the element was pointed at and whether it loaded. K6 pins
+ * the timeline rule, the one part of the TV report unreproducible off-device.
+ * I3/I5 are the design's pivot: a rejected codec raises an error, one it never
+ * decodes raises nothing, and only the latter needs the stall watchdog.
+ * Not observable here: whether the Tizen engine plays HLS (headless Firefox
+ * cannot) and whether the TV's engine would have mis-measured duration.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -84,22 +58,11 @@ const videoEl = () => document.querySelector('video');
 /** The URL the element is really on, resolved — not what React was passed. */
 const currentSrc = () => videoEl()?.src || '';
 /**
- * The URL the element *accepted*, which is not the same as the one it was
- * given.
- *
- * `src` is the attribute; `currentSrc` is what the element resolved it to. On
- * its own that is *not* enough of a difference, which is what control 3
- * taught: a build that hands the element a list — a missing expansion in
- * runFrom — sets `src` to the array's stringified form, and the browser
- * resolves that faithfully into a URL whose commas are percent-encoded but
- * whose path still contains `…/stream.m3u8%2C…%2C/stream.mp4…`. So a check
- * written as `currentSrc.includes(path)` finds its path in the middle of it
- * and passes on a build where nothing loads at all.
- *
- * Hence the comma rejection, which is the artifact's signature rather than a
- * guess about it: every URL this harness produces is comma-free, and a single
- * source can never be more than one. Empty means "not on one addressable
- * source", which is what a check reading this is entitled to assume.
+ * The URL the element *accepted*. `src` is the attribute, `currentSrc` what the
+ * element resolved — but that is not enough: handing the element a list sets
+ * `src` to the array's stringified form, whose percent-encoded commas still
+ * contain the path, so `includes(path)` passes on a build where nothing loads.
+ * Every URL here is comma-free, so a comma means "not one addressable source".
  */
 const acceptedSrc = () => {
   const s = videoEl()?.currentSrc || '';
@@ -193,14 +156,10 @@ const AUDIO = [
 ];
 
 /**
- * The endpoints a live Stash advertises, in the server's own order.
- *
- * Captured from the real API on 2026-10-16 — all fourteen, because the two
- * that are *not* transcodes are the trap this table exists to catch. `Direct
- * stream` is the scene's own file and `MKV` is a remux of the same codecs;
- * both are labelled `video/mp4` and neither carries a `resolution`. A
- * resolver that filtered on mime type would pick `Direct stream` and hand the
- * element back the bytes it had just refused.
+ * The fourteen endpoints a live Stash advertises, in its own order. The two
+ * that are not transcodes are the trap: `Direct stream` is the scene's own file
+ * and `MKV` a remux, both `video/mp4` with no `resolution`, so filtering on mime
+ * type hands back the bytes the element refused.
  */
 const REAL = [
   ['Direct stream',       'video/mp4',                    '/stream',       null],
@@ -261,25 +220,8 @@ function checkClassification() {
     unknown === false && unknown2 === false, `{} → ${unknown}, undefined → ${unknown2}`);
 
   // ── Which endpoint, and in what order ──
-  // Identity against the real entries, not substrings: the trap this pins
-  // down is choosing the *first* thing that looks like an MP4, and of the real
-  // server's answers only the third is a transcode — the first is the scene's
-  // own file under another name and the second a remux of the same codecs.
-  //
-  // These are the only checks that can pin the choice down, which is worth
-  // knowing before deleting one for being redundant with I2. A filter on mime
-  // type alone picks the wrong entry only when no ORIGINAL tier is offered;
-  // the integration fixture has to offer one, because otherwise there is no
-  // transcoded URL for playback to be observed through. So I2 passes on a
-  // resolver that is subtly wrong, and these do not.
-  //
-  // HLS first is a *reversal* of this file's original order, made after
-  // probing the live server (see playbackSource.js): the MP4 transcode is a
-  // linear stream with no length and no byte-range support, so a scene played
-  // through it has a timeline that stops at ten seconds and a transport that
-  // cannot move. Ordering is the whole fix, hence the checks on positions and
-  // not merely on membership — a list that contained the HLS URL anywhere
-  // would play MP4 on the TV and look identical from here.
+  // Identity, not substrings: only the third real MP4 is a transcode. HLS first
+  // is the fix — the MP4 transcode has no length or ranges, so assert positions.
   const urls = pickTranscodeUrls(REAL);
   check('K5 the HLS playlist is preferred ahead of every MP4 transcode',
     urls[0] === REAL[8].url, `first is ${labelOf(urls[0])}`);
@@ -322,17 +264,8 @@ function checkClassification() {
     `[] → [${pickTranscodeUrls([]).join(', ')}]`);
 
   // ── The timeline ──
-  //
-  // The second report — "timeline only shows first 10 secs, video continues to
-  // play past it" — cannot be reproduced here at all, which is why these are
-  // assertions on the rule rather than on a rendering. Every source shape that
-  // could plausibly defeat a duration measurement was tried against headless
-  // Firefox (a fragmented MP4 with an empty `moov`, a live WebM with no
-  // Duration element, an endless chunked stream that never closes) and the
-  // engine reported the true duration for all of them, because it measures the
-  // media instead of trusting the container. The TV's engine does not. So the
-  // decision is isolated in `timelineDuration` and pinned here, and what the
-  // TV does with the answer is checked by the user on the TV and nowhere else.
+  // The TV report cannot be reproduced here: headless Firefox measures every
+  // fussy source shape truly, the TV's engine does not, so only the rule is pinned.
   const SCENE_S = 1827.24;   // the real msmpeg4v3 scene's own duration
   check('K6 an element that reports a real duration is believed',
     timelineDuration(1827.24, 9999) === 1827.24,
@@ -360,11 +293,8 @@ function checkClassification() {
     timelineDuration(42, 0) === 42, `got ${timelineDuration(42, 0)}`);
 
   // ── What the playback-info panel is allowed to print ──
-  //
-  // The credential rule is the one that has to be checked rather than merely
-  // intended: every transcode URL arrives with `?apikey=…` (see
-  // playbackSource.js), and this panel exists to be read aloud or photographed
-  // into a bug report.
+  // Every transcode URL carries `?apikey=…` (see playbackSource.js) and the
+  // panel is read aloud or photographed into bug reports, so the rule is checked.
   const keyed = 'http://192.168.1.10:8087/scene/1957/stream.m3u8'
     + '?apikey=SECRET&resolution=ORIGINAL';
   check('K7 the panel path strips the query and fragment',
@@ -477,19 +407,8 @@ async function runPlayer() {
     !statsPanel(), statsPanel() ? 'still up' : 'closed');
 
   // ── I2: the reported bug ─────────────────────────────────
-  // The direct URL here *works* — it is a playable WAV. That is the point: the
-  // only thing wrong with this scene is its codec, so a build that goes direct
-  // anyway would load it and pass any check that only asked "did it play".
-  //
-  // The second report — "timeline only shows first 10 secs" — changed what
-  // this has to observe. The format the player reaches for first is now the
-  // substance of the fix, and the element's final `src` cannot show it:
-  // headless Firefox has no HLS support, so it refuses the playlist and the
-  // scene lands on the MP4 fallback either way. **Whether HLS *plays* on the
-  // TV is therefore the one claim in this release no off-device run can
-  // make.** What is observable is the *order of the requests*, which is where
-  // the preference actually lives, and that the candidate behind HLS rescued
-  // the scene — the same degradation path a TV that dislikes HLS would take.
+  // The direct URL works — a playable WAV — so a direct build would pass "did it
+  // play". Firefox refuses HLS, so assert request order and that MP4 rescued it.
   await clearLog();
   await show(scene({
     id: '9102',
@@ -545,9 +464,8 @@ async function runPlayer() {
     errorText() === '', errorText());
 
   // ── I4: nothing works, and it says so ────────────────────
-  // Transcoding switched off, file dead, codec known-bad. The failure mode
-  // this guards is the one the bug report describes — a screen that never
-  // resolves and never explains itself.
+  // Transcoding off, file dead, codec known-bad. The guarded failure is a screen
+  // that never resolves and never explains itself.
   await setMode({ streams: 'empty' });
   await show(scene({
     id: '9104',
@@ -562,9 +480,8 @@ async function runPlayer() {
   await setMode({ streams: 'ok' });
 
   // ── I5: the silent failure ───────────────────────────────
-  // A source that is accepted and then never decodes. No error event, ever —
-  // the element simply sits there. This is what "doesn't want to play" looks
-  // like from the sofa, and the watchdog is the only thing that can see it.
+  // A source accepted and then never decoded: no error event, the element just
+  // sits there — "doesn't want to play" from the sofa. Only the watchdog sees it.
   await clearLog();
   await show(scene({
     id: '9105',
@@ -583,12 +500,8 @@ async function runPlayer() {
     errorText() === '', errorText());
 
   // ── I6: a failure mid-play keeps the playhead ────────────
-  //
-  // The refusal this whole feature exists for can arrive *after* the file has
-  // been playing — the element decodes until it reaches something it cannot
-  // handle. Re-sourcing from scratch would drop the user back to 0:00 of a
-  // scene they were a third of the way through. The playhead is the element's
-  // own last timeupdate, so no resume prompt is involved either way.
+  // The refusal can arrive after playback started; re-sourcing from scratch
+  // would drop the user to 0:00. The playhead is the element's last timeupdate.
   await setMode({ streams: 'ok' });
   await clearLog();
   await show(scene({
@@ -613,10 +526,9 @@ async function runPlayer() {
   check('I6 setup: playback reached the middle of the scene',
     sought && preError > 20, `seeked=${sought} currentTime=${preError.toFixed(1)}`);
 
-  // A real media failure: the guard reads `v.error`, not the event alone. The
-  // override is removed immediately after dispatch — the handler runs
-  // synchronously — so the injected error does not latch onto the element and
-  // drive the *following* attempts.
+  // The guard reads `v.error`, not the event alone. The override is removed
+  // immediately (the handler runs synchronously) so it does not latch onto the
+  // element and drive the following attempts.
   Object.defineProperty(v6, 'error', { configurable: true, value: { code: 4 } });
   v6.dispatchEvent(new Event('error'));
   delete v6.error;
@@ -627,11 +539,9 @@ async function runPlayer() {
   const at6 = videoEl()?.currentTime ?? 0;
   check('I6 a source that fails mid-play is replaced', beforeFailure && refell,
     `was ${at6.toFixed(1)}s when re-sourced: ${acceptedSrc()}`);
-  // The threshold is deliberately not "≈25". This fake server answers without
-  // `Accept-Ranges`, and Firefox clamps a forward seek to what the *new*
-  // source has buffered when its metadata arrives — observed at ~17 s here.
-  // The property under test is "the playhead was carried, not reloaded from
-  // zero", and a build without it lands at ~0.6 s and stays there.
+  // Not "≈25": this fake server has no `Accept-Ranges` and Firefox clamps a
+  // forward seek to the new source's buffer (~17 s here). The property is "the
+  // playhead was carried"; a reload from zero lands at ~0.6 s.
   check('I6 ...without losing the playhead',
     at6 >= 12, `currentTime=${at6.toFixed(1)}s after the fallback from ` +
     `${preError.toFixed(1)}s (forward seeks clamp to the fresh source's buffer; ` +
@@ -646,12 +556,8 @@ async function runPlayer() {
     sourceChipText() === 'Transcoded', `chip="${sourceChipText()}"`);
 
   // ── I7: play pressed before the transcode URL exists ─────
-  //
-  // A codec known-bad starts on the transcode, so the element has no `src`
-  // for as long as sceneStreams takes. Pressing play in that window answers
-  // NotSupportedError — a *state*, not a failure — and the old handler turned
-  // it into a permanent "Failed to load video" over a scene that was about to
-  // play underneath it.
+  // A known-bad codec starts on the transcode, leaving no `src` while
+  // sceneStreams runs; play then answers NotSupportedError, a state, not a failure.
   await setMode({ streams: 'slow' });
   await clearLog();
   await show(scene({
@@ -659,12 +565,9 @@ async function runPlayer() {
     stream: at('/tone9107.wav'),
     videoCodec: 'wmv3', audioCodec: 'wmav2', container: 'avi',
   }));
-  // Pause first. The mount effect has already called `play()` on the
-  // source-less element, which sets `paused` false even though its promise is
-  // still pending — so Play (415) alone would be a no-op here, and the path
-  // under test would never run. Pause is *not* a workaround, it is what a user
-  // does when the screen sits black: 19 puts the element back to paused, and
-  // the next 415 is the press that reaches `playQuietly`.
+  // Pause first: the mount effect already called play() on the source-less
+  // element, so Play alone is a no-op and the path under test never runs. Pause
+  // is what a user does on a black screen; the next Play reaches `playQuietly`.
   const pressMedia = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown', {
     key, keyCode, which: keyCode, bubbles: true, cancelable: true,
   }));

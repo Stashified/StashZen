@@ -1,8 +1,5 @@
-/* One-column list. Layout only — the row's colours come from the same tokens
-   as the cards, so the OLED theme applies without a list-specific override.
-
-   The scroller and count line are the EntityGrid arrangement: `min-height: 0`
-   is load-bearing so the flex child can shrink to the column. */
+/* Layout only: row colours come from the card tokens, so the OLED theme needs
+   no list override. `min-height: 0` is load-bearing, as in EntityGrid. */
 
 .page {
   flex: 1;
@@ -26,7 +23,6 @@
   gap: 8px;
 }
 
-/* ── Row ────────────────────────────────────────────────── */
 .row {
   display: flex;
   align-items: center;
@@ -111,7 +107,6 @@
   font-size: 18px;
 }
 
-/* ── Sentinel / end marker ──────────────────────────────── */
 .sentinel {
   height: 80px;
   display: flex;
@@ -150,7 +145,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* ── Initial states ─────────────────────────────────────── */
 .state {
   flex: 1;
   display: flex;

@@ -1,22 +1,20 @@
 /**
  * mockSort — the Test-mode ordering, shared by every mock listing.
  *
- * A sort *value* is Stash's vocabulary, and a mock row's field names are the
- * app's. The two are not always the same string, and when they differ the
- * comparator below looks up a key no row has, every comparison ties, and the
- * sort control does nothing at all — silently, in the one mode a user opens
- * to check that the controls work. `alias` is the map each service passes for
- * the names it knows both of (`duration` → `durationSeconds`, `height` →
+ * A sort *value* is Stash's vocabulary and a mock row's field names are the
+ * app's. When they differ the comparator looks up a key no row has, every
+ * comparison ties, and the sort control silently does nothing — in the one mode
+ * a user opens to check that the controls work. `alias` maps the names each
+ * service knows both of (`duration` → `durationSeconds`, `height` →
  * `height_cm`, `scenes_count` → `scene_count`).
  *
- * `random` is the second special case. The server's `random` orders a fresh
- * shuffle per request; a mock that reshuffled between pages would let the
- * grid page through a list that drops and duplicates rows — the order has to
- * be stable across the whole session, so each id gets a hash as its rank.
+ * `random` is the second special case: the server reshuffles per request, but a
+ * mock that reshuffled between pages would page through a list that drops and
+ * duplicates rows — the order must be stable, so each id gets a hash as rank.
  *
- * Numbers compare numerically and strings case-insensitively, and a null or
- * missing value sorts low rather than throwing, because a mock row is as
- * likely to be missing a date as to have one.
+ * Numbers compare numerically and strings case-insensitively; a null or missing
+ * value sorts low rather than throwing, because a mock row is as likely to be
+ * missing a date as to have one.
  */
 
 const RANKS = new Map();

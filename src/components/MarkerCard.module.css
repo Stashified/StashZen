@@ -1,15 +1,9 @@
 .card {
-  /* Keep every repaint caused by focusing a card inside that card.
-     A grid at 6 columns puts roughly twice as many full-HD scene frames on
-     screen as one at 4, and on the TV that was enough to make each D-pad press
-     sluggish in Live mode while Test mode (small inline SVG covers) stayed
-     smooth. The cost was not the key handler — it was the focused card
-     becoming `position: relative; z-index: 10`, which invalidates the paint
-     order of the whole grid and re-rasters every large image in it. Paint
-     containment (Chrome 52, so Tizen 4.0) stops the invalidation at the card.
-     The focus ring is inset for the same reason — an outside shadow paints
-     into the neighbours' area — and no longer needs a z-index to sit on top
-     of them. See the same rule in VideoCard.module.css. */
+  /* Keep every focus repaint inside the card. A focused card that became
+     `position: relative; z-index: 10` invalidated the paint order of the whole
+     grid, re-rastering every full-HD cover and making D-pad movement sluggish.
+     Paint containment (Chrome 52 / Tizen 4.0) stops it at the card; the inset
+     ring avoids painting into the neighbours' area. See VideoCard. */
   contain: content;
   display: flex;
   flex-direction: column;
@@ -36,29 +30,13 @@
 .card.focused {
   border-color: var(--accent);
   transform: scale(1.05) translateY(-4px);
-  /* `box-shadow` used to be declared twice in this rule: the shared
-     `var(--focus-ring)` first, then this custom glow. The later one wins
-     the cascade, so the first never rendered — the leftover of an in-place
-     edit, the same pattern VideoCard.module.css carried. Removed; the
-     rendering now matches upstream exactly — an earlier attempt to "restore"
-     the dropped ring here was wrong, and briefly shipped a 5px halo
-     (`rgba(79,142,247,.25)`) this card was never meant to have.
-
-     The two wide glow layers are now gone as well, leaving the 3px accent
-     ring the list above always started with. They were re-rastered on every
-     focus change and every scroll frame, and they were the most expensive
-     thing this card did.
-
-     Inset, and with no `position`/`z-index` on focus, for the reason in
-     `.card` above: an outside ring paints over the neighbouring cards and
-     the stacking change it required made the TV repaint the whole grid. The
-     scale does not reach the gap, so an outside ring bought nothing except
-     that invalidation. */
+  /* Inset, with no `position`/`z-index` on focus, for the reason in `.card`
+     above. The wide glow layers were re-rastered on every focus and scroll
+     frame, so the 3px ring carries the same signal for none of the cost. */
   outline: 3px solid var(--accent);
   outline-offset: -3px;
 }
 
-/* ── Thumb (16:9, marker screenshot) ───────────────────── */
 .thumb {
   position: relative;
   width: 100%;

@@ -11,10 +11,8 @@ import { TAG_VIEW, STUDIO_VIEW, GALLERY_VIEW, IMAGE_VIEW } from '../components/e
 import { FILTER_MODE } from '../utils/filterService.js';
 
 // The dropdown entry standing for a filter that exists only in memory. It is
-// not a saved-filter id — nothing on the server has it — so the lookup in
-// `activeFilter` misses and `workingFilter` is what gets applied. Giving it a
-// row in the dropdown is the honest UI: otherwise the bar reads "All" while a
-// filter is plainly in force.
+// not a saved-filter id, so `activeFilter` misses and `workingFilter` applies;
+// the row keeps the bar from reading "All" while a filter is in force.
 export const WORKING_FILTER_ID = '__working';
 
 
@@ -23,34 +21,28 @@ export const DEFAULT_CONTROLS = {
   order: 'desc',
   cols:  4,
   filterId: null,
-  // A filter composed in the builder and applied without saving. Stored in
-  // controls rather than beside them because it is per-tab UI state with the
-  // same lifetime as `filterId` — see the tab-change effect below.
+  // A filter composed in the builder and applied without saving. Per-tab UI
+  // state with the same lifetime as `filterId` — see the tab-change effect.
   workingFilter: null,
-  // What the dropdown calls it. `null` means "Custom filter" — the builder's
-  // case. Activating a tag or a studio sets this instead, because it *is* the
-  // more informative thing to say: landing on Scenes under a filter with no
-  // indication of which tag caused it reads as the app having a mind of its
-  // own, and "Custom filter" would be false.
+  // What the dropdown calls it. `null` means "Custom filter"; activating a tag
+  // or studio sets its name, because landing on Scenes under a filter with no
+  // indication of which tag caused it reads as the app's own doing.
   workingFilterLabel: null,
-  // Which tab this filter was composed against. This is what makes the
-  // tab-change effect idempotent — see the note there.
+  // Which tab this filter was composed against — what makes the tab-change
+  // effect idempotent.
   workingFilterFor: null,
-  // One-shot hand-off marker for the showroom's See-all tile. It names the
-  // tab the tile is opening, so the tab-change effect keeps the sort that
-  // `openShowroomListing` staged for that one arrival and adopts the tab's
-  // default on every other. State rather than a ref because the effect's
-  // updater must stay pure: StrictMode double-invokes it, and a ref consumed
-  // by the first run would be gone for the second.
+  // One-shot hand-off marker for the showroom's See-all tile: it names the tab
+  // being opened, so the tab-change effect keeps its staged sort for that one
+  // arrival. State, not a ref, because the effect's updater must stay pure
+  // under StrictMode's double invocation.
   sortForTab: null,
   search: '',
 };
 
 // The values are the persisted vocabulary in settings.js (`VIEW_MODES`).
-// Coverflow is scene-only and deliberately absent from the other two lists:
-// its mirror reflection is drawn for landscape 16:9 art, and performer and
-// marker cards are not that. Left out of the list rather than shown and
-// broken, so the Mode control never offers something it cannot draw.
+// Coverflow is scene-only: its mirror reflection is drawn for landscape 16:9
+// art and the other cards are not that, so it is omitted rather than offered
+// broken.
 const HOME_MODE_OPTIONS = [
   { value: 'classic',   label: 'Classic' },
   { value: 'coverflow', label: 'Coverflow' },
@@ -160,21 +152,16 @@ const MARKER_SORT_GROUPS = [
 
 // ── The four browse-only sections ────────────────────────
 //
-// EVERY VALUE BELOW WAS PROBED, NOT COPIED. Stash's `SortBy` is one enum
-// shared by every entity, so membership proves nothing about whether a given
-// resolver honours a value — and the four do not agree with each other. Tags
-// take `scenes_count` and `performers_count` (plural); Studios take
-// `tag_count` and `child_count` (singular) and reject `performers_count`
-// outright; Galleries and Images take `performer_count`/`tag_count` but
-// `images_count`. A menu built by pattern-matching across sections fails at
-// runtime with "invalid sort", so each list here was sent to its own resolver
-// and kept only if it came back. The rejected ones are worth knowing because
-// they are the tempting guesses: `performers_count` on Studios, and
-// `files_count`, `galleries_count`, `studios_count` and `tags_count` on Images.
+// Every value was probed against its own resolver, not copied: Stash's `SortBy`
+// is one enum shared by every entity, so membership proves nothing. Tags take
+// `scenes_count`/`performers_count` (plural); Studios take
+// `tag_count`/`child_count` (singular) and reject `performers_count`; Galleries
+// and Images take `performer_count`/`tag_count` but `images_count`. Rejected
+// guesses include `files_count`, `galleries_count`, `studios_count` and
+// `tags_count` on Images; pattern-matching fails at runtime with "invalid sort".
 //
-// These are the useful subset of the valid sorts, not all of them: Galleries
-// and Images also accept `path`, which sorts by folder path and means nothing
-// on a TV.
+// A useful subset, not all: Galleries and Images also accept `path`, which
+// means nothing on a TV.
 const TAG_SORT_GROUPS = [
   {
     group: 'General',
@@ -293,11 +280,9 @@ const IMAGE_SORT_GROUPS = [
   },
 ];
 
-// Tab → descriptor, for the four sections that share `EntityPage`. Kept
-// separate from TAB_CONTROL_CONFIG because that object is about the control
-// bar and this one is about the listing; a section can have one without the
-// other, and ImageViewer's routing below reads `activeTab` through this map
-// rather than through a chain of `if`s.
+// Tab → descriptor for the four sections that share `EntityPage`. Separate from
+// TAB_CONTROL_CONFIG because a section can have a control bar without being one
+// of these; ImageViewer routes `activeTab` through this map, not a chain of `if`s.
 export const ENTITY_VIEWS = {
   tags: TAG_VIEW,
   studios: STUDIO_VIEW,
@@ -305,22 +290,21 @@ export const ENTITY_VIEWS = {
   images: IMAGE_VIEW,
 };
 
-// `filterMode` is the saved-filter namespace Stash files a filter under;
-// `filterType` is the GraphQL input type the *criteria* belong to. They are
-// different things and both are needed: the builder works in the second, the
-// dropdown and the save mutation work in the first. Scene and Marker do not
-// share criteria — a marker has no resolution and a scene has no
-// primary_tag — so the two are genuinely separate field lists.
+// `filterMode` is the saved-filter namespace; `filterType` is the GraphQL input
+// type the *criteria* belong to. Both are needed: the builder works in the
+// second, the dropdown and save mutation in the first. Scene and Marker do not
+// share criteria (a marker has no resolution, a scene no primary_tag), so their
+// field lists differ.
 export const TAB_CONTROL_CONFIG = {
-  // Home is the showroom (four fixed shelves, no request state of its own),
-  // so it takes no controls. `showControls: false` is what hides the bar; it
-  // deliberately carries no `filterMode`/`filterType`, which keeps the hidden
-  // tab out of the saved-filter dropdown and the filter-origin machinery.
+  // Home is the showroom (four fixed shelves, no request state), so it takes no
+  // controls; `showControls: false` hides the bar. Carrying no
+  // `filterMode`/`filterType` keeps it out of the saved-filter dropdown and the
+  // filter-origin machinery.
   home: {
     showControls: false,
   },
-  // The full scene listing, moved off Home in 0.15.0. This is Home's old
-  // config, unchanged: grid/carousel/coverflow, scene filters, search.
+  // The full scene listing, moved off Home in 0.15.0: grid/carousel/coverflow,
+  // scene filters, search.
   scenes: {
     modeOptions: HOME_MODE_OPTIONS,
     sortGroups: SCENE_SORT_GROUPS,
@@ -336,8 +320,8 @@ export const TAB_CONTROL_CONFIG = {
     sortGroups: PERFORMER_SORT_GROUPS,
     showOrder: true,
     showGridSize: true,
-    // A 1,892-row name list is browsed A→Z, the same rule as Tags. Stash's
-    // performer sort value is `name`, not the `title` Markers use.
+    // A 1,892-row name list is browsed A→Z, as Tags. The value is `name`, not
+    // the `title` Markers use.
     defaultSort: 'name',
     defaultOrder: 'asc',
     filterMode: FILTER_MODE.performers,
@@ -349,8 +333,8 @@ export const TAB_CONTROL_CONFIG = {
     sortGroups: MARKER_SORT_GROUPS,
     showOrder: true,
     showGridSize: true,
-    // Title was already the default sort; 0.18.4 adds the direction, which
-    // was session-wide DESC and left the list Z→A.
+    // Title was already the default sort; without the direction, `order` is
+    // session-wide DESC and the list opens Z→A.
     defaultSort: 'title',
     defaultOrder: 'asc',
     filterMode: FILTER_MODE.markers,
@@ -358,28 +342,22 @@ export const TAB_CONTROL_CONFIG = {
     showSearch: true
   },
   // The four browse-only sections. `showGridSize` is true because their listing
-  // is a grid of small cards like the other three; the carousel ignores `cols`
-  // and the control is hidden for it, which `showGridSize &&` at the call site
-  // already handles.
+  // is a grid of small cards; the carousel ignores `cols` and the call site
+  // hides the control for it.
   //
-  // The default sorts differ, and not arbitrarily: Tags and Studios are
-  // name-shaped and a 533-row name list is browsable in the way a 31,251-row
-  // date list is not; Galleries and Images are file-shaped, where "newest
-  // first" is the order that means something.
+  // Tags and Studios are name-shaped — a 533-row name list is browsable, a
+  // 31,251-row date list is not — while Galleries and Images are file-shaped,
+  // where "newest first" means something.
   //
-  // `defaultSort` is adopted on **every arrival at the tab**, not only when
-  // the carried sort is invalid — see the tab-change effect. That is what
-  // makes the two name-shaped defaults true rather than aspirational: before
-  // 0.18.0 a valid `created_at` carried in from another tab survived onto
-  // Tags, so "Tags opens by Name" only held if the user had never left it.
+  // `defaultSort` is adopted on **every arrival at the tab**, not only when the
+  // carried sort is invalid (see the tab-change effect) — otherwise a valid
+  // `created_at` carried in from another tab would survive onto Tags and
+  // "Tags opens by Name" would only hold if the user had never left it.
   //
-  // Tags, Performers, Markers and Studios also declare `defaultOrder: 'asc'`:
-  // a name/title list is browsed A→Z. `order` is otherwise session-wide
-  // (`DEFAULT_CONTROLS` says desc), so without this those tabs opened on
-  // Name/Title *and* Descending — Z→A — which is what the 2026-10-17 TV pass
-  // caught on Tags and the 2026-10-18 pass caught on Performers and Markers,
-  // then on Studios. The arrival rule resets order alongside sort, so the asc
-  // cannot leak onto a date-sorted tab.
+  // The name-shaped tabs also declare `defaultOrder: 'asc'`: `order` is
+  // session-wide (`DEFAULT_CONTROLS` says desc), so without it they opened
+  // Name/Title *Descending*. Order resets alongside sort, so asc cannot leak
+  // onto a date-sorted tab.
   tags: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
     sortGroups: TAG_SORT_GROUPS,

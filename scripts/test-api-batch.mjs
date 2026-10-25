@@ -6,14 +6,12 @@
  *
  *   node scripts/test-api-batch.mjs
  *
- * These are the pieces the harness cannot see cheaply: every normaliser is a
- * pure mapping from a GraphQL answer to the shape a page draws, and the two
- * common failure modes — keeping a field the query no longer asks for, and
- * hiding an empty value behind truthiness the page then prints — are decided
- * here rather than at 1080p.
- *
- * No framework, same as test-request-key.mjs. The render paths (the hero's
- * blurb, the Stop button, the gallery chips) are the DOM harness's job.
+ * The pieces the harness cannot see cheaply: every normaliser is a pure mapping
+ * from a GraphQL answer to the shape a page draws. Two failure modes — keeping
+ * a field the query no longer asks for, and hiding an empty value behind
+ * truthiness the page then prints — are decided here rather than at 1080p.
+ * The render paths (hero blurb, Stop button, gallery chips) are the DOM
+ * harness's job.
  */
 
 import {
@@ -46,7 +44,7 @@ function check(name, cond, detail = '') {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Performer detail — items 4/5, plus the write authority fields (6)
+// Performer detail — profile and write authority fields
 // ═══════════════════════════════════════════════════════════
 const FULL_PERFORMER = {
   id: '8701',
@@ -200,7 +198,7 @@ const tzAge = execFileSync(process.execPath, ['--input-type=module', '-e', `
 check('age: the day boundary holds west of Greenwich', tzAge === '25,26', tzAge);
 
 // ═══════════════════════════════════════════════════════════
-// Gallery / tag / studio listings — items 8/9
+// Gallery / tag / studio listings
 // ═══════════════════════════════════════════════════════════
 const G = normalizeGallery({
   id: '4',
@@ -258,7 +256,7 @@ check('studio: a root studio has no parent',
   ST0.parentStudio === null && ST0.aliases.length === 0 && ST0.details === null);
 
 // ═══════════════════════════════════════════════════════════
-// Scene detail galleries — item 13
+// Scene detail galleries
 // ═══════════════════════════════════════════════════════════
 const sceneBase = {
   id: '4242', title: 'Scene', rating100: 0, o_counter: 0, play_count: 0,
@@ -278,7 +276,7 @@ check('scene: a missing galleries list is empty, not undefined',
     && normalizeSceneDetail(sceneBase).galleries.length === 0);
 
 // ═══════════════════════════════════════════════════════════
-// Image detail — item 7
+// Image detail
 // ═══════════════════════════════════════════════════════════
 const IM = normalizeImageDetail({
   id: '55',
@@ -379,7 +377,7 @@ check('info: long free text is marked for the clamp',
   capped.find(r => r.key === 'details').clamp === true);
 
 // ═══════════════════════════════════════════════════════════
-// Server jobs — item 10
+// Server jobs
 // ═══════════════════════════════════════════════════════════
 const STATUS = normalizeServerStatus({
   version: { version: '0.31.1' },

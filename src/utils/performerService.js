@@ -26,9 +26,8 @@ function generateMockPerformers(count = 60) {
   const now = Date.now();
   return Array.from({ length: count }, (_, i) => {
     const rng = makeRng(`performer-${i}`);
-    // A second stream for the fields added for Test-mode sorting. Drawn from
-    // the same source they would have shifted every value above, which would
-    // change the fixtures the harness already pins for no reason.
+    // A separate stream: drawing these from the same source would shift every
+    // value above and change the fixtures the harness pins.
     const extra = makeRng(`performer-sort-${i}`);
 
     return {
@@ -84,23 +83,18 @@ const FIND_PERFORMERS_QUERY = `
 `;
 
 // One performer, in full, for the detail page. Deliberately *not* folded into
-// the listing query above: that one runs 40 rows at a time, and nothing on a
-// card draws an alias or a tattoo.
+// the listing query: that runs 40 rows at a time, and nothing on a card draws
+// an alias or a tattoo.
 //
-// `rating100` and `favorite` are the exception to "the card already has it".
-// The card holds `rating`, a one-decimal display string; the page writes a
-// rating back, and a write must be based on the value Stash actually stores,
-// not on a string formatted for the grid. That is the same rule that makes
-// `canEdit` false until the scene detail lands (see useSceneDetailData).
+// `rating100` and `favorite` are the exception to "the card already has it":
+// the card holds `rating`, a one-decimal display string, and a write must be
+// based on the value Stash stores, not a formatted string — the same rule that
+// makes `canEdit` false until the scene detail lands.
 //
-// `url` is deprecated on Performer and is replaced by `urls`; selecting the
-// old field would keep the app on a path Stash has already moved away from.
-//
-// Every field was checked against the live 0.31.1 schema. `career_start` and
-// `career_end` are Strings (not years-as-Int), `alias_list` is `[String!]!`
-// so it is never null, `urls` is `[String!]!`, and `gender` is a GenderEnum
-// whose six values are MALE, FEMALE, TRANSGENDER_MALE, TRANSGENDER_FEMALE,
-// INTERSEX, NON_BINARY.
+// `url` is deprecated on Performer and replaced by `urls`. Schema facts:
+// `career_start`/`career_end` are Strings, `alias_list` and `urls` are
+// `[String!]!`, and `gender` is a GenderEnum of MALE, FEMALE,
+// TRANSGENDER_MALE, TRANSGENDER_FEMALE, INTERSEX, NON_BINARY.
 const FIND_PERFORMER_DETAIL_QUERY = `
   query FindPerformerDetail($id: ID!) {
     findPerformer(id: $id) {
@@ -162,12 +156,10 @@ export function normalizePerformerDetail(p) {
   };
 }
 
-// Mock performers are generated per request and have ids like `perf-7`, so
-// there is no server row to read. Echo the card's gender and leave the rest
-// null: the page stays on its real render path and simply hides the profile
-// block, the same trade `mockDetail` makes for scenes. `writable: false`
-// keeps the rating and favourite controls disabled in Test mode, where the
-// ids belong to generated data with no row behind them.
+// Mock performers are generated per request (`perf-7`), so there is no server
+// row. Echo the card's gender and leave the rest null: the page stays on its
+// real render path and hides the profile block. `writable: false` keeps the
+// rating and favourite controls disabled in Test mode.
 function mockPerformerDetail(performer) {
   if (!performer) return null;
   return {
@@ -198,9 +190,8 @@ function mockPerformerDetail(performer) {
 }
 
 /**
- * The profile fields for one performer, given the card the user opened it
- * from. Takes the card rather than a bare id because Test mode has to answer
- * with something: mock performers have no server row and no id to read one by.
+ * The profile fields for one performer, given the card it was opened from:
+ * Test mode needs the card because mock performers have no server row.
  *
  * Throws on transport or GraphQL errors so the page can say so.
  */
@@ -297,7 +288,6 @@ export async function fetchPerformers({
   );
 }
 
-// (this was `fetchPerformers` before the list cache was added)
 async function loadPerformers({
   sort = 'created_at',
   order = 'desc',

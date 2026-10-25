@@ -1,12 +1,10 @@
 import { useFocusable } from '../../hooks/useFocusable.js';
 import styles from '../SettingsPanel.module.css';
 
-// ── Playback engine ──────────────────────────────────────
-// Same radio shape as ThemeToggle. Values are the persisted vocabulary in
-// enginePolicy.js (`PLAYBACK_ENGINES`). Auto is the default: browser first,
-// the TV's engine for what it cannot take. TV player puts AVPlay first — an
-// on-panel A/B without a rebuild. Browser is the rollback lever and reproduces
-// the pre-0.36 player.
+// Same radio shape as ThemeToggle; the values are enginePolicy.js's persisted
+// `PLAYBACK_ENGINES`. Auto (default) is browser first, TV engine for what it
+// cannot take; TV player puts AVPlay first as an on-panel A/B; Browser is the
+// rollback lever.
 export function EngineToggle({ value, onChange, forcedBrowser = false }) {
   const { ref: autoRef, focused: autoFocused } = useFocusable({
     id: 'settings-engine-auto',
@@ -24,9 +22,9 @@ export function EngineToggle({ value, onChange, forcedBrowser = false }) {
     onEnter: () => onChange('browser'),
   });
 
-  // A build that forces the browser has no lever to offer: the setting would
-  // be ignored, and a radio that cannot change anything is a lie about what
-  // the build does. The name is still shown, so the row does not vanish.
+  // A forced-browser build has no lever to offer: a radio that changes nothing
+  // would misrepresent the build. The name still shows so the row does not
+  // vanish.
   if (forcedBrowser) {
     return (
       <div className={styles.toggleRow}>

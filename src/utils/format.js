@@ -3,26 +3,20 @@
  *
  * formatTime — seconds → "H:MM:SS" (or "M:SS" under an hour).
  *
- * Three components had their own near-identical copy of this arithmetic,
- * and they had drifted in exactly one place: the player floored at
- * "00:00" and padded the minutes, the two card badges floored at "0:00"
- * and didn't. The player's padding is the deliberate one — a padded
- * readout doesn't reflow when playback crosses the one-minute mark,
- * which is visible on a TV. So the difference is now an explicit flag
- * rather than two implementations that happened to disagree.
+ * `padMinutes` is a deliberate difference: the player pads so the readout does
+ * not reflow when playback crosses the one-minute mark (visible on a TV); the
+ * card badges do not.
  */
 
 /**
  * A file name without its extension: "DSC_0001.JPG" → "DSC_0001".
  *
- * For an image with no Stash title — common enough that the Images grid looked
- * bare — this is the file's own name, which is what the tile would otherwise
- * say if the title had been populated. Only the last extension is dropped, so
- * "holiday.2024.raw" → "holiday.2024"; a leading dot is not an extension
- * (".hidden" is a stem, not a file with no name).
+ * The fallback caption for an image with no Stash title. Only the last
+ * extension is dropped ("holiday.2024.raw" → "holiday.2024"), and a leading dot
+ * is not an extension (".hidden" is a stem).
  *
- * Returns null for anything that is not a non-empty string, so a caller can
- * keep its own fallback rather than print "null" or "undefined".
+ * Returns null for anything that is not a non-empty string, so callers keep
+ * their own fallback rather than print "null".
  */
 export function filenameStem(basename) {
   if (typeof basename !== 'string') return null;
@@ -82,14 +76,12 @@ export function formatBytes(bytes) {
 }
 
 /**
- * A job's start time as a wall clock, "HH:MM" in the TV's own timezone.
+ * A job's start time as "HH:MM" in the TV's own timezone.
  *
- * Deliberately not a date: a job in the queue started today, and the full date
- * is noise in a one-line footer. A date does appear for a job that started
- * before midnight — "Started 23:40" on a snapshot taken at 00:05 is still
- * true, and guessing at a date format would cost more than the ambiguity.
- * Returns null for anything the browser cannot parse, so a malformed value
- * hides the line rather than rendering "Invalid Date".
+ * Deliberately not a date: a queued job started today, and a date in a
+ * one-line footer is noise. "Started 23:40" at 00:05 is still true, and
+ * guessing a date format costs more than the ambiguity. Returns null for
+ * anything unparseable, hiding the line rather than rendering "Invalid Date".
  */
 export function formatJobStart(value) {
   if (!value) return null;

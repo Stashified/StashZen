@@ -1,44 +1,30 @@
 /**
- * serverService.js — A snapshot of the Stash server's version, health and
- * running jobs, plus the two actions Settings offers against it: starting a
- * library scan and stopping one of the jobs already in the queue.
+ * serverService.js — a snapshot of the Stash server's version, health and
+ * running jobs, plus starting a library scan and stopping a queued job.
  *
- * The status query is one request: `version`, `systemStatus` and `jobQueue`
- * are all zero-argument roots. Deliberately no polling — on a D-pad a
- * snapshot with a visible Refresh action is predictable, while a section that
- * re-renders on a timer moves under the cursor and spends requests while
- * Settings is open.
+ * The status query is one request: `version`, `systemStatus` and `jobQueue` are
+ * all zero-argument roots. Deliberately no polling — on a D-pad a snapshot with
+ * a visible Refresh is predictable, whereas a timer re-renders under the cursor
+ * and spends requests.
  *
- * `metadataScan` takes a `ScanMetadataInput` and returns the new job's `ID`.
- * The input is the instance's own saved scan options, read at press time at
- * the same two places Stash's own UI reads them (see
- * `normalizeScanDefaults`). Sending an empty input instead is Stash's "walk
- * the paths, generate nothing" behaviour, and that is what the app shipped
- * until 0.22.0: a scan started from the TV found the new scenes but skipped
- * every generation step the user had configured in Stash, so new covers and
- * previews were missing until someone opened the server UI.
+ * `metadataScan` takes a `ScanMetadataInput` and returns the new job's id. Send
+ * the instance's own saved scan options, read at press time: an empty input is
+ * Stash's "walk the paths, generate nothing", so a TV-started scan finds new
+ * scenes but skips every configured generation step. Read at press time because
+ * the options can change while the app is open, and the button's point is to do
+ * what Stash would have done.
  *
- * The options are read at press time rather than cached: they can change on
- * the server while the app is open, and the whole point of the button is to
- * do what Stash would have done.
+ * **Where the UI's toggles live.** Stash's scan-page checkboxes are saved into
+ * `configuration.ui.taskDefaults.scan` (its UI calls `saveUI({ taskDefaults })`
+ * on every toggle); `configuration.defaults.scan` is the older system-level
+ * default the UI does not write. Read `ui.taskDefaults.scan` first, then
+ * `defaults.scan`, matching Stash's `LibraryTasks.tsx` — otherwise a user who
+ * turned generation options off still gets covers, previews and phashes.
  *
- * **Where the UI's toggles actually live (0.22.1).** The checkboxes on
- * Stash's scan page are saved into `configuration.ui.taskDefaults.scan` —
- * Stash's UI calls `saveUI({ taskDefaults: ... })` on every toggle. The
- * `configuration.defaults.scan` block is the older, system-level default and
- * the UI does not write it. 0.22.0 read only `defaults.scan`, so a user who
- * turned every generation option off in Stash still got covers, previews and
- * phashes: the TV was faithfully copying a block that never changed. Read
- * `ui.taskDefaults.scan` first, `defaults.scan` as the fallback — the same
- * preference order as Stash's own `LibraryTasks.tsx`.
+ * `ScanMetadataOptions` and `ScanMetadataInput` share the boolean fields; the
+ * former lacks `paths` and `filter`, which this app deliberately never sends.
  *
- * `ScanMetadataOptions` (the result type under `configuration.defaults.scan`)
- * and `ScanMetadataInput` (the mutation's input) carry the same boolean
- * fields; the result type only lacks `paths` and `filter`, which this app
- * deliberately does not send — it scans the configured paths, it does not
- * choose them.
- *
- * `latestVersion` is not a Query field on 0.31.1; do not add it.
+ * `latestVersion` is not a Query field; do not add it.
  */
 
 import { getSettings } from './settings.js';
@@ -52,11 +38,10 @@ const SERVER_STATUS_QUERY = `
   }
 `;
 
-// The generation switches Stash exposes on both sides of this hand-off. The
-// query is built from this list so the selection and the input cannot drift:
-// a field added here but not to `ScanMetadataInput` fails on a real server,
-// and one sent in the mutation but never read back is missing from the
-// defaults.
+// The generation switches on both sides of this hand-off. The query is built
+// from this list so selection and input cannot drift: a field not on
+// `ScanMetadataInput` fails on a real server, and one never read back is
+// missing from the defaults.
 const SCAN_OPTION_FIELDS = [
   'rescan',
   'scanGenerateCovers',
@@ -69,10 +54,9 @@ const SCAN_OPTION_FIELDS = [
   'scanGenerateClipPreviews',
 ];
 
-// `ui` is a JSON scalar on `ConfigResult`, so it is selected whole: GraphQL
-// cannot reach into `ui.taskDefaults.scan` itself. It is also where Stash's
-// scan page stores the toggles, which is why reading only `defaults.scan`
-// missed the user's changes (see the header).
+// `ui` is a JSON scalar on `ConfigResult`, so it must be selected whole —
+// GraphQL cannot reach into `ui.taskDefaults.scan`. It is where Stash's scan
+// page stores the toggles (see the header).
 const SCAN_DEFAULTS_QUERY = `
   query ScanDefaults {
     configuration {
@@ -92,9 +76,8 @@ const LIBRARY_SCAN_MUTATION = `
   }
 `;
 
-// `stopJob(job_id: ID!): Boolean!` on Stash 0.31.1 (verified by
-// introspection). The Boolean is the whole answer: true means the stop was
-// requested, not that the job has already finished stopping.
+// `stopJob(job_id: ID!): Boolean!` (verified by introspection). True means the
+// stop was requested, not that the job has finished stopping.
 const STOP_JOB_MUTATION = `
   mutation StopJob($jobId: ID!) {
     stopJob(job_id: $jobId)
@@ -151,25 +134,16 @@ function parseUiSettings(ui) {
 }
 
 /**
- * The saved scan options, in the exact shape `ScanMetadataInput` takes.
+ * The saved scan options, in the shape `ScanMetadataInput` takes.
  *
- * Two sources, in the order Stash's own UI uses them:
+ * `defaults.scan` is applied first, then `ui.taskDefaults.scan` overrides it
+ * key by key (the UI block is what a user adjusting the checkboxes changed).
+ * Merging rather than replacing means a partial UI object cannot drop a step;
+ * `{}` is the honest answer when neither exists.
  *
- *   - `configuration.ui.taskDefaults.scan` — what the checkboxes on Stash's
- *     scan page save, on every toggle. This is the block a user who has
- *     adjusted the options actually changed.
- *   - `configuration.defaults.scan` — the older system-level default. Used
- *     when the UI has never saved scan options.
- *
- * The two are merged rather than replaced so a partial UI object (or one
- * written by an older Stash) cannot silently drop a step; the UI's values win
- * key by key. `{}` is the honest answer for a server that reports neither,
- * and it is also Stash's own empty-input behaviour.
- *
- * Only booleans are copied. A field the server answers `null` for is left out
- * rather than coerced to `false`: omitting it lets Stash apply its own
- * default, while sending `false` would actively turn that generation step
- * off.
+ * Only booleans are copied. A `null` field is omitted rather than coerced to
+ * `false`: omission lets Stash apply its default, while `false` actively turns
+ * that generation step off.
  */
 export function normalizeScanDefaults(raw) {
   const config = raw?.configuration;
@@ -184,10 +158,9 @@ export function normalizeScanDefaults(raw) {
   return input;
 }
 
-// Test mode has no server to stop a job on, so this stands in for the effect:
-// a stopped id disappears from the next snapshot, and starting a scan brings
-// the sample scan back. Module-level rather than component state because the
-// snapshot is rebuilt from scratch on every Refresh.
+// Test mode has no server to stop a job on: a stopped id disappears from the
+// next snapshot, and starting a scan brings the sample back. Module-level, not
+// component state, because the snapshot is rebuilt on every Refresh.
 const mockStoppedJobs = new Set();
 
 export function mockServerStatus() {
@@ -239,25 +212,20 @@ export async function loadServerStatus() {
 }
 
 /**
- * Ask Stash to scan its library with its own saved scan defaults. Resolves to
- * the job id; throws on a transport or GraphQL error so the panel can show
- * the message.
+ * Ask Stash to scan with its own saved scan defaults. Resolves to the job id;
+ * throws on a transport or GraphQL error so the panel can show the message.
  *
- * A mutation that answers without an id is treated as a failure rather than a
- * success: the caller's next step is to read `jobQueue`, and a scan that was
- * not actually enqueued would otherwise read as "started" with no progress
- * ever appearing.
+ * A mutation without an id is a failure, not a success: the caller next reads
+ * `jobQueue`, and an unqueued scan would read as "started" with no progress.
  *
- * A failed defaults read is a failure too, not a reason to fall back to an
- * empty input: the fallback is exactly the bug this exists to fix — the scan
- * succeeds, the app says so, and the artwork the user configured is silently
- * not generated.
+ * A failed defaults read is a failure too, not a reason to send an empty input
+ * — that fallback is the bug this exists to fix: the scan succeeds, the app
+ * says so, and the configured artwork is silently never generated.
  */
 export async function startLibraryScan() {
   if (getSettings().useMock) {
-    // The sample scan is the job Stop removes in Test mode; starting a scan
-    // is the one action that brings it back, so the two controls stay usable
-    // in either order.
+    // Starting a scan brings back the sample job Stop removes, so both
+    // controls stay usable in either order.
     mockStoppedJobs.delete('mock-scan');
     return 'mock-scan';
   }
@@ -271,16 +239,14 @@ export async function startLibraryScan() {
 
 /**
  * Ask Stash to stop one job. Resolves when the stop has been *requested* — the
- * job may still report RUNNING or STOPPING for a moment, which is why the
- * caller refreshes the snapshot rather than removing the row itself.
+ * job may still report RUNNING or STOPPING, so the caller refreshes the
+ * snapshot rather than removing the row itself.
  *
- * `stopJob` answers Boolean!, and a `false` is a refusal, not a success: the
- * job is still doing work and the caller must not say otherwise. Thrown
- * rather than returned so one `catch` in the panel covers every failure.
+ * A `false` answer is a refusal, not a success: the job is still working.
+ * Thrown rather than returned so one `catch` in the panel covers every failure.
  *
- * Test mode records the id so the next sample snapshot is missing it. The
- * mock resolves after a short delay so the button's in-flight label is
- * reachable in Test mode too.
+ * Test mode records the id for the next snapshot and delays briefly so the
+ * button's in-flight label is reachable there too.
  */
 export async function stopJob(jobId) {
   if (getSettings().useMock) {

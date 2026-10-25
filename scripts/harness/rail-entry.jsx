@@ -1,42 +1,23 @@
 /**
- * Headless driver for the left navigation rail (0.7.0's 4.2).
+ * Headless driver for the left navigation rail.
  *
- * Mounts the whole `App` — the first driver here to do so. Everything else
- * mounts one component with its props handed to it, which is right when the
- * question is about that component. The question here is not: it is whether
- * the rail and the card grid form one navigable surface, which is a property
- * of the two of them together and of nothing either one can be asked alone.
+ * Mounts the whole `App`: the claim is that the rail and the card grid form one
+ * navigable surface, which neither can answer alone.
  *
- * The claim under test is the one written into NavRail's header — that putting
- * the rail in zone 'grid' is what stops it being a focus trap. useKeyHandler
- * excludes cross-zone candidates for Left/Right (`isHorizontal && zone !==
- * currentZone` in findBestCandidate), so a rail in a zone of its own would
- * find nothing to its right and the entire library would be unreachable from
- * it. That is a one-line deduction from code I have read, and this file is
- * where it stops being a deduction: R4/R5 walk the crossing in both
- * directions, and the control is to change the rail's zone to 'nav' and watch
- * them go red.
+ * Putting the rail in zone 'grid' is what stops it being a focus trap:
+ * useKeyHandler excludes cross-zone Left/Right candidates, so a separate rail
+ * zone could never reach the library. R4/R5 walk the crossing both ways; the
+ * control is changing the zone to 'nav' and watching them go red.
  *
- * The second claim came later, from the user: Up out of the first card row
- * should reach the controls bar, and Left should return to the nav at the tab
- * you are on. Both come down to the fact that a zone is *symmetric* — the same
- * rule that keeps the grid out of the bar sideways also keeps the bar out of
- * the rail sideways — so the bar's zone has to be cut open in the two
- * directions that should be passable and left shut in the four that should not.
- * useFocusable carries the two flags that do it (`verticalOnly` for the rail's
- * inactive rows, `crossZone` for the bar) and useKeyHandler the three rules.
- * R7 asserts each edge separately: two up, two sideways out of the bar, and
- * two sideways into it, which is more than a hand-picked path would cover.
+ * Up out of the first card row must reach the controls bar, and Left must
+ * return to the active nav row. Zones are symmetric, so the bar is opened only
+ * upward/sideways-in and closed sideways-out (`verticalOnly`, `crossZone`). R7
+ * asserts each edge separately.
  *
- * Rectangles are asserted rather than eyeballed because the rail's 208px has
- * to hold "PERFORMERS" in Inter 17px/600 with 0.05em tracking (176px was
- * enough for Barlow Condensed, not for Inter), and
- * `.label` carries `text-overflow: ellipsis`. A label that does not fit is
- * therefore not an error, a wrap or an overflow — it is three dots, silently.
- * `scrollWidth > clientWidth` is the only cheap way to see that happen.
- *
- * What this cannot tell you: that any of it looks good. Geometry is not taste,
- * and the palette port in 4.1 has no behaviour to assert on at all.
+ * Rectangles are asserted because the 208px rail must hold "PERFORMERS" in
+ * Inter 17px/600 with 0.05em tracking, and `.label` ellipsises silently:
+ * `scrollWidth > clientWidth` is the only cheap way to see truncation.
+ * Geometry is not taste; whether it looks good is a TV pass.
  */
 
 import '../../src/index.css';
@@ -56,9 +37,8 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// A React render error unmounts the whole tree, which this driver would
-// otherwise see only as "the rail is gone" — a symptom that names neither the
-// component nor the reason. Collect the reasons as they happen.
+// A render error unmounts the tree, which otherwise reads only as "the rail is
+// gone"; collect the reasons as they happen.
 const errors = [];
 window.addEventListener('error', (e) => { errors.push(String(e.message)); });
 window.addEventListener('unhandledrejection', (e) => {
@@ -77,19 +57,14 @@ async function waitFor(pred, ms = 5000, step = 25) {
 }
 
 // ── Driving the remote ──────────────────────────────────────
-// `key` alone is enough: every handler in the app tests `e.key` before
-// `e.keyCode`, and a synthetic KeyboardEvent cannot carry a legacy keyCode
-// anyway (it is not in KeyboardEventInit, and Firefox leaves it 0).
+// `key` alone is enough: handlers test it before `e.keyCode`, which a synthetic
+// KeyboardEvent cannot carry anyway.
 //
-// Dispatched on the *focused element* rather than on window, because the two
-// listeners live at different levels: useKeyHandler is a window listener and
-// would take a window dispatch, but useFocusable's Enter handler is bound to
-// the element itself and a window-dispatched event never travels downwards to
-// it. Dispatching on the active element with `bubbles` reaches both.
+// Dispatch on the focused element with `bubbles`: useKeyHandler listens on
+// window, while useFocusable's Enter handler is bound to the element and a
+// window event never travels downwards to it.
 //
-// 150ms between presses is not padding: useKeyHandler throttles held arrows to
-// MIN_REPEAT_MS (90), so a faster driver would have presses silently dropped
-// and the walk would appear to stall for no reason.
+// 150 ms between presses clears useKeyHandler's 90 ms held-arrow throttle.
 async function press(key) {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', {
@@ -98,11 +73,9 @@ async function press(key) {
   await sleep(150);
 }
 
-// Enter needs a keyup too — but only on the cards. VideoCard is the one
-// focusable here that passes `onLongPress`, which moves its short action to
-// keyup by design (see useFocusable's long-press note). The rail rows don't,
-// so for them the keydown alone is the activation and a keyup is inert either
-// way; sending it unconditionally keeps one helper instead of two.
+// Enter needs a keyup only on cards: VideoCard passes `onLongPress`, moving its
+// short action to keyup. Rail rows activate on keydown, so sending both keeps
+// one helper.
 async function tapEnter() {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -128,12 +101,9 @@ const rowById = (id) => railRows().find(b => b.textContent.trim().toLowerCase().
 const labelEl = (btn) => btn?.querySelector('span:last-child');
 const rect = (el) => el?.getBoundingClientRect();
 
-// Four card families can be the thing beside a rail row as of 0.18.0: the
-// Scenes/Performers listings (`video-`), Home's showroom scene shelf
-// (`showroom-recent-scenes-video-1` and friends), and the studio, performer
-// and gallery cards on Home (`studio-1`, `performer-1`, `gallery-1`). The walk
-// below drives the Scenes tab, but R4 reads focus at rest on Home, so all of
-// them count.
+// Four card families can sit beside a rail row: Scenes/Performers (`video-`),
+// Home's showroom scene shelf, and Home's studio/performer/gallery cards. The
+// walk drives Scenes, but R4 reads focus at rest on Home, so all count.
 const idIsCard = (id) => typeof id === 'string'
   && (id.startsWith('video-') || id.startsWith('showroom-')
       || id.startsWith('studio-') || id.startsWith('performer-')
@@ -151,17 +121,14 @@ async function finish() {
 
 // ── The run ─────────────────────────────────────────────────
 async function run() {
-  // Home's first shelf arrives over the wire, so nothing about the layout is
-  // final until it does. Home is the showroom as of 0.15.0; the scene grid
-  // this driver's card walks use lives on the Scenes tab, reached below.
+  // Wait for Home's first shelf, or the layout is not final. The card walks
+  // below use the Scenes tab, reached later.
   await waitFor(() => registry.has('showroom-recent-scenes-video-1'));
   await sleep(300);
 
   // ── R1  the rail is there, with the right rows ──────────
-  // Nine rows as of 0.15.0: Scenes was split out of Home and sits directly
-  // below it, between Home and Performers. Written out rather than counted,
-  // because the *order* is the thing the `next` chain depends on and a count
-  // would pass on any permutation.
+  // Nine rows, Scenes between Home and Performers. Written out because the
+  // order is what the `next` chain depends on; a count passes on any permutation.
   const labels = railRows().map(b => b.textContent.trim());
   check('R1 the rail renders its nine rows',
     JSON.stringify(labels) === JSON.stringify([
@@ -170,9 +137,7 @@ async function run() {
     ]),
     labels.join(' · ') || '(no rail)');
 
-  // Reels is gone, and its absence is the point of the third user decision in
-  // this phase — assert it by name rather than trusting the list above to
-  // never grow it back.
+  // Reels must stay gone; assert by name rather than trusting the list above.
   check('R1 no Reels row survives', !labels.includes('Reels'), labels.join(' · '));
 
   // ── R2  geometry ────────────────────────────────────────
@@ -185,10 +150,8 @@ async function run() {
   check('R2 the content column starts at the rail, not under it',
     mainRect.left >= railRect.right - 1,
     `rail ends ${Math.round(railRect.right)}, main starts ${Math.round(mainRect.left)}`);
-  // The viewport is in the detail deliberately: every coordinate in the R7
-  // graph below, and therefore every edge this driver judges, is a function
-  // of it. A recorded graph whose size is not written down cannot be compared
-  // against a later run.
+  // The viewport is in the detail: every coordinate in the R7 graph, and every
+  // edge judged there, depends on it; an unrecorded size cannot be compared.
   check('R2 the rail spans the full height',
     Math.abs(railRect.height - window.innerHeight) <= 1,
     `${Math.round(railRect.height)} of ${window.innerHeight}  (viewport ${window.innerWidth}x${window.innerHeight})`);
@@ -203,10 +166,9 @@ async function run() {
     clipped.length ? `clipped: ${clipped.join(', ')}` : 'all labels fit');
 
   // ── R4  the resting place ───────────────────────────────
-  // Not asserted as a hard rule — both the rail's first row and the grid's
-  // first card autofocus, and which wins is a race between two 50ms timers.
-  // Recorded because a user who opens the app and presses Right immediately
-  // gets a different first move depending on the answer.
+  // Not a hard rule: the rail's first row and the grid's first card both
+  // autofocus, and which wins is a race between two 50 ms timers. Recorded
+  // because it changes the first Right move.
   const onLoad = getCurrentFocusId();
   check('R4 focus lands on something focusable at rest',
     idIsRail(onLoad) || idIsCard(onLoad), `focus is on ${onLoad}`);
@@ -224,15 +186,10 @@ async function run() {
   check('R5 Up walks it back', getCurrentFocusId() === 'nav-home', getCurrentFocusId());
 
   // ── R5b the whole chain, which is now nine deep ─────────
-  // The `next` chain exists because the geometry cannot find Settings past the
-  // spacer — see NavRail's ITEMS comment and the reported bug it was written
-  // for. With four more rows between the last tab and Settings there is more
-  // geometry for the chain to be defeated by, not less, and every entry has to
-  // name its own successor or it becomes a row Down cannot leave — which on a
-  // TV reads as a dead remote rather than as a missing edge.
-  //
-  // Walked end to end rather than spot-checked: a single missing link stops
-  // the walk at the row before it, so the walk's *length* is the assertion.
+  // The `next` chain exists because geometry cannot find Settings past the
+  // spacer. Every row must name its successor or it becomes a row Down cannot
+  // leave. Walk end to end: one missing link stops the walk, so its length is
+  // the assertion.
   focus('nav-home');
   await sleep(120);
   const walk = [getCurrentFocusId()];
@@ -249,21 +206,16 @@ async function run() {
     getCurrentFocusId() === 'nav-images', getCurrentFocusId());
 
   // ── R5c  the foot of the rail is the foot ───────────────
-  // Settings is the last row, and Down there must not do anything: the rail is
-  // a column and Right is the only way into the content. Without a declared
-  // edge the geometry found a grid card and Down dropped the user into the
-  // middle of the page — reported from the TV, 2026-10-17: "it should stay
-  // there unless pressed right".
+  // Settings is last; Down must do nothing, since Right is the way into the
+  // content. Without a declared edge, geometry dropped focus into the page.
   focus('nav-settings');
   await sleep(120);
   await press('ArrowDown');
   check('R5c Down on Settings leaves focus where it is',
     getCurrentFocusId() === 'nav-settings', getCurrentFocusId());
 
-  // Home became the showroom in 0.15.0 and the scene listing moved to Scenes,
-  // so the card walks and the controls-bar graph below are driven there. The
-  // rail itself is unchanged and identical on every tab — this is only the
-  // surface the rail is being probed against.
+  // The scene listing is on Scenes, so the card walks and bar graph are driven
+  // there. The rail is identical on every tab; this is only its probe surface.
   focus('nav-scenes');
   await sleep(120);
   await tapEnter();
@@ -273,17 +225,16 @@ async function run() {
   await sleep(120);
 
   // ── R6  the crossing — the load-bearing claim ───────────
-  // If the rail's zone were not 'grid', this is the assertion that fails:
-  // findBestCandidate returns null for Right and focus never leaves.
+  // In a separate zone, findBestCandidate returns null for Right and focus
+  // never leaves the rail.
   await press('ArrowRight');
   const afterRight = getCurrentFocusId();
   check('R6 Right leaves the rail', !idIsRail(afterRight),
     `${afterRight}${idIsRail(afterRight) ? '  ← the rail is a trap' : ''}`);
 
-  // A browse row leads into the grid. nav-markers sits beside the cards at a
-  // height where the nearest thing to its right is unambiguous; the top row
-  // shares its height with the bar, which is a pairing worth recording but a
-  // poor one to assert a general rule on.
+  // A browse row leads into the grid. nav-markers sits beside the cards at an
+  // unambiguous height; the top row shares its height with the bar, so it is a
+  // poor place to assert a general rule.
   focus('nav-markers');
   await sleep(120);
   await press('ArrowRight');
@@ -299,36 +250,25 @@ async function run() {
     `${afterLeft}${idIsRail(afterLeft) ? '' : '  ← no way back'}`);
 
   // ── R7  the D-pad graph around the rail ─────────────────
-  // A rail is only a good rail if everything else is still reachable from it
-  // *and* it is still reachable from everything else. Spatial nav is a graph
-  // and the zone rules are what shape it, so probe the edges rather than
-  // assert on one hand-picked path — the path I would have picked is exactly
-  // the one the geometry happens to agree with, which proves nothing about
-  // the ones it doesn't.
+  // Everything must reach the rail and the rail must reach everything. Spatial
+  // nav is a graph, so probe the edges rather than one hand-picked path that
+  // the geometry happens to agree with.
   //
-  // The controls bar is the case that matters. It is the thing the user asked
-  // to keep at the top, and it *was* the one thing outside the grid's zone —
-  // which made it reachable only through the rail (see ControlsPanel's header
-  // for the whole story). Seeing it in a zone-independent way matters here:
-  // the fix was to change the zone, so a probe that finds the bar by its zone
-  // would have silently tested nothing once the fix landed. Derive it from
-  // where it is instead — it is the element immediately above <main>.
+  // The controls bar is the case that matters: it was outside the grid's zone
+  // and reachable only through the rail. Find it by position — immediately
+  // above <main> — not by zone, or the probe would test nothing after the fix.
   const barEl = document.querySelector('[role="main"]')?.previousElementSibling;
   const barIds = barEl
     ? [...registry.entries()].filter(([, v]) => barEl.contains(v.el)).map(([id]) => id)
     : [];
 
-  // Card anchors down the first column and across the first row: the two
-  // walks that answer "where does Left go as you go down the page" and "where
-  // does Up go as you go right".
+  // Card anchors down the first column and across the first row: they answer
+  // "where does Left go down the page" and "where does Up go across it".
   const anchors = [
-    // Every rail row, so the graph below also answers "can the bar be reached
-    // from the rail" without a second, separately-buggy probe — and so R8 can
-    // read the whole `next` chain out of it. Listed rather than derived from
-    // `labels` on purpose: this is the list of rows the graph is *about*, and
-    // it going stale is exactly how R8 reported `nav-tags ↓undefined` after
-    // the four browse rows were added — the edges it wanted were never probed,
-    // which is a red the graph form is supposed to catch rather than cause.
+    // Every rail row, so the graph also answers "can the bar be reached from
+    // the rail" without a second probe, and R8 can read the whole `next` chain.
+    // Listed rather than derived from `labels`: a stale list is how R8 once
+    // reported `nav-tags ↓undefined` after rows were added.
     'nav-home', 'nav-scenes', 'nav-performers', 'nav-markers',
     'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images',
     'nav-settings',
@@ -339,11 +279,9 @@ async function run() {
     'video-5', 'video-9', 'video-13',     // first column, down
   ].filter(id => registry.has(id));
 
-  // Geometry is captured per anchor, at the moment its presses are judged.
-  // The grid scrolls as later anchors are focused, so a single dump taken
-  // after the walk describes a layout that only the last anchor ever saw —
-  // and spatial nav is decided entirely by these rectangles, which is why
-  // every guess about them so far has been wrong by enough to flip the answer.
+  // Capture geometry per anchor when its presses are judged: the grid scrolls
+  // as later anchors are focused, so one dump after the walk describes a layout
+  // only the last anchor saw. Spatial nav is decided entirely by these rects.
   const DIRS = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'];
   const edges = {};
   const where = {};
@@ -368,10 +306,8 @@ async function run() {
     anchors.map(a => `${a}@${where[a]}: ${row(a)}`).join('   |   '));
 
   // ── Where the bar actually is ───────────────────────────
-  // Two rounds of reasoning about the bar's geometry were wrong by enough to
-  // flip the answer to "why did Right go there", so it is measured and kept.
-  // The bar wraps to two rows at this width (`flex-wrap: wrap`), which is why
-  // `ctrl-*` ids appear at two different y values below.
+  // Measured, not reasoned: the bar wraps to two rows at this width
+  // (`flex-wrap: wrap`), so `ctrl-*` ids appear at two y values.
   const barRect = (id) => {
     const r = rect(registry.get(id)?.el);
     return r ? `${id}@${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}` : `${id}:MISSING`;
@@ -381,15 +317,9 @@ async function run() {
   const inBar = (id) => barIds.includes(id);
 
   // ── The bar is reachable from the cards ─────────────────
-  // The user's ask: "up from videos → filter row". The bar shares the grid's
-  // zone, so Up out of the first card row reaches it; it stays out of the
-  // sideways walk because every control in it is `verticalOnly`.
-  //
-  // Read from the graph above rather than from a second walk. The first
-  // version of this had its own probe loop and reported "unreachable" while
-  // the graph on the line above plainly showed `nav-home ↑ ctrl-search` — a
-  // duplicated measurement with its own bug, disagreeing with the good one.
-  // One walk, one answer.
+  // Up from the first card row reaches the bar; it stays out of the sideways
+  // walk because every control is `verticalOnly`. Read from the graph above,
+  // not a second walk: a duplicated probe once disagreed with the good one.
   const upFromTopRow = edges['video-1']?.ArrowUp;
   check('R7 Up from the first card row reaches the bar', inBar(upFromTopRow),
     `${upFromTopRow}${inBar(upFromTopRow) ? '' : '  ← the bar is not reachable from the cards'}`);
@@ -403,15 +333,9 @@ async function run() {
     barRoutes.join('   ') || 'no rail row leads into the bar in one press');
 
   // ── Left returns to the nav at the tab you are on ───────
-  // The user's other ask: "Left → home row". Implemented as the *active* row,
-  // which is the Scenes row while Scenes is the tab — the two are the same
-  // thing where the user was looking. Asserted as "the active row" because
-  // that is what generalises: on Performers, Left should land on the
-  // Performers row.
-  //
-  // The row that must NOT be droppable here is Settings: it sits at the foot of
-  // the rail, so before the flag it was the row nearest a lower card's centre
-  // and Left from those cards opened a modal on a sideways press.
+  // Left lands on the *active* row, which generalises to any tab. Settings must
+  // not be the drop: at the rail's foot it was nearest a lower card's centre,
+  // so Left opened a modal on a sideways press.
   const homeRow = () => railRows().find(b => b.getAttribute('aria-current') === 'page');
   const activeRowId = () => {
     const t = homeRow()?.textContent.trim().toLowerCase();
@@ -425,11 +349,8 @@ async function run() {
       .every(id => edges[id]?.ArrowLeft === activeRowId()),
     `${leftFromCards.join('   ')}   (active row is ${activeRowId()})`);
 
-  // Left from the bar's LEFTMOST control returns to the rail. Asserted on the
-  // leftmost one on purpose: Left from the middle of the bar moves along the
-  // bar (ctrl-search ← ctrl-filter), which is correct, and the first version
-  // of this check demanded the rail from whichever bar control happened to be
-  // an anchor and so failed on correct behaviour.
+  // Left from the bar's leftmost control returns to the rail. From the middle,
+  // Left correctly moves along the bar (ctrl-search ← ctrl-filter).
   const leftmostBar = barIds
     .map(id => ({ id, r: rect(registry.get(id)?.el) }))
     .filter(x => x.r)
@@ -440,11 +361,9 @@ async function run() {
   check('R7 Left from the bar\'s leftmost control returns to the rail',
     idIsRail(getCurrentFocusId()), `${leftmostBar} ← ${getCurrentFocusId()}`);
 
-  // And the mirror — the half the `verticalOnly` flag exists for. With the bar
-  // in zone 'grid' and nothing marking it, Right from video-2 went to the mute
-  // toggle, which sits 21px to its right and 166px up (score 21 + 1.5×166 =
-  // 269) and so beat video-3 at 276px right (276 + 1.5×4 = 282). Both halves
-  // come from one zone, so the flag is what separates them.
+  // The mirror half the `verticalOnly` flag exists for. With the bar in the
+  // grid's zone, Right from video-2 went to the mute toggle 21 px right and
+  // 166 px up (score 269), beating video-3 at 276 px right (282).
   const sidewaysIntoCards = ['video-1', 'video-2', 'video-4']
     .filter(id => registry.has(id))
     .map(id => `${id}: →${edges[id]?.ArrowRight} ←${edges[id]?.ArrowLeft}`)
@@ -454,12 +373,9 @@ async function run() {
       .every(id => !inBar(edges[id]?.ArrowRight) && !inBar(edges[id]?.ArrowLeft)),
     sidewaysIntoCards);
 
-  // The mirror of the Left rule, and not merely symmetric book-keeping: every
-  // rail row is level with or above the bar, and the bar's search box sits
-  // directly right of the top two rows. It is a control in the bar, so Right
-  // from the rail must not reach it — this is the check that caught the flag
-  // being dropped on the way through useEditableField, which builds its own
-  // useFocusable call and silently discarded an option it did not name.
+  // Right from the rail must not reach the bar's search box, which sits
+  // directly right of the top two rows. This caught the flag being dropped in
+  // useEditableField, whose own `useFocusable` call discarded unnamed options.
   check('R7 no rail row reaches the bar sideways',
     ['nav-home', 'nav-performers', 'nav-markers', 'nav-settings']
       .every(id => !inBar(edges[id]?.ArrowRight) && !inBar(edges[id]?.ArrowLeft)),
@@ -467,16 +383,9 @@ async function run() {
       .map(id => `${id} →${edges[id]?.ArrowRight} ←${edges[id]?.ArrowLeft}`).join('   '));
 
   // ── The bar is still a walkable row ─────────────────────
-  // The bar is nine controls the user moves across: Mode, Sort, Asc/Desc,
-  // Filter, Columns, Mute. An earlier cut of this opened the bar upward by
-  // marking every control `verticalOnly` — which is checked against the
-  // candidate, so it also shut Left/Right *inside* the bar and dumped the user
-  // back into the cards on the first sideways press. Every check above still
-  // passed; this is the one that catches it, so it is asserted rather than
-  // left to the recorded graph.
-  // Row 1 only — the bar wraps to two rows at this width, and row 2's
-  // neighbours are decided by the wrap, not by this rule. Row 1 is the
-  // controls sharing the topmost y.
+  // Marking every control `verticalOnly` opens the bar upward but also shuts
+  // Left/Right inside it, dropping focus into the cards on a sideways press.
+  // Assert row 1's horizontal walk; row 2 is shaped by the wrap.
   const barTop = Math.min(...barIds.map(id => rect(registry.get(id)?.el)?.top ?? Infinity));
   const rowOne = barIds
     .filter(id => Math.abs((rect(registry.get(id)?.el)?.top ?? -999) - barTop) <= 4)
@@ -488,20 +397,11 @@ async function run() {
     `${rowOne.map(id => `${id} →${edges[id]?.ArrowRight} ←${edges[id]?.ArrowLeft}`).join('   ')}`);
 
   // ── R8  Settings is reachable and opens ─────────────────
-  //
-  // The invariant first, read off the graph recorded in R7: each rail row's
-  // Down lands on the *next rail row*, with no way out of the rail in the
-  // middle of the walk. That is the property the user asked for and the one
-  // the layout cannot be trusted to produce on its own — Settings is pinned
-  // to the foot of the rail, so the row above it sits at the far end of a
-  // flexible spacer whose height is whatever the viewport leaves over.
-  //
-  // Written as three named edges rather than "you can get there in four
-  // presses", because that weaker form is what let this bug through: it was
-  // green at every window size where the geometry happened to agree, and the
-  // failure it missed only appears at the TV's 1080-pixel height (see
-  // run.sh's WINDOW). A check that can pass without the fix is worse than no
-  // check, since it reads as coverage.
+  // Each rail row's Down must land on the next rail row. The layout cannot
+  // guarantee it: Settings is pinned to the foot, and the row above sits at the
+  // far end of a flexible spacer. Assert named edges, not "reachable in four
+  // presses": the weaker form was green wherever geometry happened to agree and
+  // failed the bug at the TV's 1080 height.
   const railChain = ['nav-home', 'nav-scenes', 'nav-performers', 'nav-markers',
     'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images'];
   const nextRow = {
@@ -518,22 +418,16 @@ async function run() {
       ? broken.map(id => `${id} ↓${edges[id]?.ArrowDown} (wanted ${nextRow[id]})`).join('; ')
       : railChain.map(id => `${id} ↓${nextRow[id]}`).join('  '));
 
-  // The same edge, read the other way. Up out of Settings used to fall back to
-  // the geometry and land on a grid card, which made the rail an ordered
-  // column going down and a scatter going up — and Up is the only exit, since
-  // Settings is `verticalOnly`. Checked against the graph for the same reason
-  // R8 is: it is a property of the declared chain, not of the pixels.
+  // The same edge upwards. Up out of Settings used to fall back to geometry
+  // and land on a grid card; Up is the only exit, since Settings is
+  // `verticalOnly`. Check the graph: this is the declared chain, not pixels.
   check('R8 Up out of Settings returns to the rail',
     edges['nav-settings']?.ArrowUp === 'nav-images',
     `nav-settings ↑${edges['nav-settings']?.ArrowUp ?? '—'} (wanted nav-images)`);
 
-  // And the user's own path through it, from a cold focus, ending in the
-  // panel actually opening — the graph above proves the edges exist, this
-  // proves the walk and the thing at the end of it. The bound is
-  // `labels.length`, not a literal: it was a literal 4 when the rail had three
-  // tabs and Settings, and it is exactly the kind of number that goes stale
-  // into a *passing* check when rows are added — the loop would simply stop
-  // early and the tab assertion below would report whatever it landed on.
+  // The user's path from a cold focus, ending with the panel open: the graph
+  // proves edges, this proves the walk. Bound by `labels.length`, not a
+  // literal, which goes stale into a passing check when rows are added.
   focus('nav-home');
   await sleep(120);
   for (let i = 0; i < labels.length && getCurrentFocusId() !== 'nav-settings'; i++) {
@@ -545,10 +439,8 @@ async function run() {
   check('R8 the rail is still mounted before the press', rootAlive() && !!railEl(),
     `#root children ${document.getElementById('root')?.children.length}, rail ${!!railEl()}`);
 
-  // The user's panel had a PIN set, which is what makes the lock section
-  // render its second button and the body longer than the no-PIN layout this
-  // driver otherwise sees. Seed it before opening so the walk is the one they
-  // reported on; cleared again below so later checks see a fresh store.
+  // Seed a PIN: it changes the lock section's buttons and lengthens the body
+  // beyond the no-PIN layout. Clear it below so later checks see a fresh store.
   setPin('1234');
   await sleep(60);
 
@@ -559,28 +451,15 @@ async function run() {
            : `no dialog; rail ${!!railEl()}; errors: ${errorTail()}`);
 
   // ── R8b  Down exhausts the panel body before the footer ──
+  // The body is a scroll container and the footer is fixed below it. Geometry
+  // rated the footer nearer whenever the next option was below the fold, so
+  // Down jumped to Save and resumed scrolling afterwards. Assert the property:
+  // if a body control is still below focus, Down must not enter the footer.
+  // The body set comes from the registry by zone, because PIN buttons vary.
   //
-  // The panel's body is a scroll container (`max-height: 85vh`), and the
-  // footer is fixed below it. Geometry alone rated the footer as nearer than
-  // the next option whenever that option was still below the fold, so Down
-  // jumped to Save with options unvisited and resumed scrolling afterwards.
-  // Reported from the TV, 2026-10-17.
-  //
-  // Asserted as the property, not as a fixed list: at each press, if any body
-  // control is still below the focused one, Down must not land in the footer.
-  // A list would bake in today's controls and today's panel height; the
-  // property is what the user actually asked for.
-  //
-  // Honest record: this walk was GREEN with the fix's line deleted (the
-  // control experiment, 2026-10-17). It is kept as the end-to-end statement of
-  // the requirement, not as the check that proves the fix — R8b2 is that one,
-  // because at this window the scorer already favours the body. Do not read a
-  // green here as coverage of the container rule.
-  //
-  // The body set comes from the registry by zone rather than from ids written
-  // here: the PIN buttons appear only when a PIN is set, and hardcoding them
-  // would make this red on a device where the lock section renders "Set PIN"
-  // alone.
+  // This walk was GREEN with the fix deleted (control experiment): at this
+  // window the scorer already favours the body. It states the requirement;
+  // R8b2 is the check that proves the container rule.
   const activeId = () => {
     for (const [id, e] of registry) if (e.el === document.activeElement) return id;
     return document.activeElement?.tagName || 'body';
@@ -594,10 +473,9 @@ async function run() {
     .filter(e => e.zone === 'settings-footer' && e.el.offsetParent && document.contains(e.el))
     .map(e => e.el);
 
-  // Diagnostics: whether there is a scroll container at all, and how much of
-  // the body sits below the fold. A walk check can only have a failure mode if
-  // the panel actually scrolls; if this reads scrollHeight === clientHeight the
-  // harness is not exercising the reported layout and the check is vacuous.
+  // Diagnostics: is there a scroll container, and how much body is below the
+  // fold? If scrollHeight === clientHeight the panel does not scroll and the
+  // walk check is vacuous.
   const firstBodyEl = registry.get('settings-mode-test')?.el;
   let scrollInfo = 'no body element';
   if (firstBodyEl) {
@@ -617,13 +495,10 @@ async function run() {
   }
 
   // ── Scoring margins (diagnostic) ──
-  // Reproduces findBestCandidate's Down scoring for the two objects that can
-  // compete at the bottom of the body: the nearest body control below and the
-  // footer. The 2026-10-17 build scores the footer with the same +100000
-  // cross-zone penalty the PIN section pays; the container rule adds another
-  // million to anything outside the focused element's scroll box. Printing the
-  // margin here is what tells us whether the reported jump could have come
-  // from this scoring at all.
+  // Reproduce Down scoring for the nearest body control and the footer: the
+  // footer pays the +100000 cross-zone penalty, and the container rule adds a
+  // million outside the focused scroll box. The margin tells whether the
+  // reported jump could have come from this scoring.
   const downScore = (el, cur) => {
     const a = el.getBoundingClientRect();
     const b = cur.getBoundingClientRect();
@@ -656,18 +531,11 @@ async function run() {
   const margins = [];
 
   // ── R8b2  the crossing case, built rather than waited for ──
-  //
-  // The walk above passes on the pre-fix scoring *at this window* — it did
-  // when the container penalty was deleted for its control experiment. The
-  // margins say why: from the last body option above the PIN section, Save
-  // scores 100315 and the PIN row 100182, a 133px margin that is a property of
-  // today's font metrics, not of the rule. The TV's metrics put Save ahead,
-  // which is the jump the user reported. A check that only runs where the
-  // margin happens to fall the right way cannot fail, so this one builds the
-  // TV's side of the crossing: Save is moved to sit directly 60px under the
-  // focused option, the worst case any layout can produce. Under the rule,
-  // position cannot matter — Save is outside the body's scroll box and scores
-  // a million worse. Without it, Save wins here, which is the control.
+  // The walk above passes on pre-fix scoring at this window: Save 100315 vs
+  // the PIN row 100182, a 133 px margin from today's font metrics. The TV's
+  // metrics put Save ahead. Build the worst case: move Save directly 60 px
+  // under the focused option. Under the rule position cannot matter, since
+  // Save is outside the scroll box; without it, Save wins (the control).
   let crossing = null;
   if (dialog) {
     const saveEl = registry.get('settings-save')?.el;
@@ -732,13 +600,9 @@ async function run() {
         : `never reached the footer; ${scrollInfo}; walk ${panelWalk.join(' > ') || '<none>'}`);
 
   // ── R8c  reaching the footer reveals the end of the body ──
-  //
-  // The last focusable in the body is the PIN button; the "A forgotten PIN"
-  // hint below it has no D-pad stop of its own, and the footer is a sibling of
-  // the scroll container rather than inside it. Moving Down to Save therefore
-  // left that hint clipped at the fold — the TV report of 2026-10-24 saw only
-  // its first pixels. The panel now scrolls the body to its end when the
-  // footer takes focus; this check fails if that stops happening.
+  // The PIN button is the body's last focus stop; the "A forgotten PIN" hint
+  // below it has none. Moving to Save left it clipped at the fold. The panel
+  // must scroll the body to its end when the footer takes focus.
   let reveal = null;
   if (dialog && reachedFooter) {
     const firstEl = registry.get('settings-mode-test')?.el;
@@ -795,16 +659,13 @@ async function run() {
     `aria-current=${current?.getAttribute('aria-current')}; rail ${!!railEl()}; errors: ${errorTail()}`);
 
   // ── R10  the sliding indicator ──────────────────────────
-  // Two hand-computed numbers (`offsetTop + 7`, `offsetHeight - 14`) in an
-  // effect that measures the row rather than deriving the position from the
-  // item index, which is what makes it survive a rail whose rows are not all
-  // the same height. The transition is 0.28s, so this waits it out.
+  // `offsetTop + 7` and `offsetHeight - 14` are measured from the row, not
+  // derived from its index, so unequal row heights work. The 0.28 s transition
+  // is waited out.
   await sleep(450);
   const marker = railEl()?.firstElementChild;
-  // The *active* row, not a fixed one: R9 left the app on Performers, and the
-  // indicator tracks the active tab rather than the focused row. Asserting
-  // against Home here is what made this check fail the first time it ran —
-  // the app was right and the test was wrong.
+  // The *active* row: R9 left Performers active, and the indicator tracks the
+  // active tab, not the focused row. Asserting against Home was a test bug.
   const activeRow = railRows().find(b => b.getAttribute('aria-current') === 'page');
   if (!marker || !activeRow) {
     check('R10 the sliding indicator is measurable', false,
@@ -823,26 +684,19 @@ async function run() {
     parseFloat(cs?.opacity ?? '0') === 1, `opacity ${cs?.opacity}`);
 
   // ── R11  Down at the end of a listing stays in the content ─────────────
-  // Reported from the TV, 2026-10-18: holding Down through a page load put
-  // the cursor on Settings in the sidebar. Once the loaded content has
-  // nothing below the focused card — mid-load, or simply the end of the
-  // listing — the rail row is the nearest Down candidate, because the rail
-  // rows share the grid's zone and Settings is fixed at the foot of the
-  // screen. useKeyHandler's `skipRailRows` is the guard that keeps Down out.
-  //
-  // The fake server's `short` mode makes that state deterministic: one full
-  // first row, and a second row with a single card. The guard has to be
-  // *measured* here rather than reasoned about, because with any card still
-  // below the cursor the geometry never reaches the rail at all — the earlier
-  // check on the full listing stayed green with the guard deleted, which is
-  // what moved this one to a listing that has actually ended.
+  // With nothing below the focused card — mid-load or at the listing's end —
+  // a rail row is the nearest Down candidate, since the rows share the grid's
+  // zone and Settings is fixed at the foot. `skipRailRows` is the guard.
+  // The fake's `short` mode (one full row, then one card) makes this
+  // deterministic; with any card still below, geometry never reaches the rail,
+  // and the earlier full-listing check stayed green with the guard deleted.
   const shortMode = await fetch(`http://127.0.0.1:${PORT}/mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ findScenes: 'short' }),
   }).then(r => r.json()).catch(() => null);
-  // Leaving a tab clears every list cache (0.22.1), so away-and-back is how
-  // the short answer reaches the page the user is looking at.
+  // Leaving a tab clears every list cache, so away-and-back is how the short
+  // answer reaches the visible page.
   focus('nav-performers');
   await sleep(120);
   await tapEnter();
@@ -874,9 +728,8 @@ async function run() {
 const root = document.getElementById('root');
 document.body.style.margin = '0';
 
-// Before the render, so the first fetch already sees the fake endpoint —
-// `runQuery` reads the settings store per request, but the request goes out
-// from a mount effect, which React may flush before the next line.
+// Before render, so the first fetch sees the fake endpoint: `runQuery` reads
+// the store per request, but a mount effect may flush before the next line.
 setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
 
 createRoot(root).render(<App />);

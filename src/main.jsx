@@ -18,9 +18,8 @@ if (typeof window !== 'undefined' && window.tizen?.tvinputdevice) {
       try {
         window.tizen.tvinputdevice.registerKey(k);
       } catch (e) {
-        // This device does not expose that key. The app still receives the
-        // ones it does support, and each handler already treats a missing
-        // media key as "not pressed" — nothing else to do.
+        // This device lacks that key; the app still receives the ones it has,
+        // and handlers treat a missing media key as "not pressed".
       }
     });
   } catch (e) {
@@ -28,10 +27,9 @@ if (typeof window !== 'undefined' && window.tizen?.tvinputdevice) {
   }
 }
 
-// Last-resort logging for failures React cannot attribute to a render — a
-// rejected background fetch, a listener that throws. These must NOT take over
-// the screen (one failed thumbnail should not hide the library), but without
-// them a TV's only symptom is a feature that quietly does nothing.
+// Last-resort logging for failures React cannot attribute to a render. These
+// must NOT take over the screen (one failed thumbnail must not hide the
+// library), but without them the TV's only symptom is a silent nothing.
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (e) => {
     console.error('[StashZen] unhandled promise rejection:', e.reason);
@@ -42,20 +40,13 @@ if (typeof window !== 'undefined') {
 }
 
 // AppLock wraps App rather than sitting inside it: while locked, App is
-// unmounted entirely, so nothing behind the PIN is fetched or focusable.
-//
-// FirstRun sits inside AppLock and outside App for the same reason one level
-// down: until the device knows where its server is, there is no library to
-// show, so the app is not mounted at all rather than mounted and then hidden.
-// Order matters only in that a PIN is necessarily set from inside a running
-// app, so a device that has one has already been through setup — the two
-// gates cannot both want the screen.
-//
-// ErrorBoundary sits outside all of it: a throw in AppLock or FirstRun would
-// otherwise blank the screen just as thoroughly as one in App, and retrying
-// from the top is the only recovery that does not depend on which subtree
-// failed. Errors outside React (promise rejections) are logged, not trapped —
-// see the handlers above.
+// unmounted, so nothing behind the PIN is fetched or focusable. FirstRun sits
+// inside AppLock for the same reason one level down — with no server there is
+// no library to show, so App is not mounted rather than mounted and hidden.
+// A PIN can only be set from a running app, so the two gates cannot both want
+// the screen. ErrorBoundary wraps all of it: a throw in either gate would
+// blank the screen just as thoroughly, and retrying from the top is the only
+// recovery independent of which subtree failed.
 ReactDOM.createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>

@@ -1,19 +1,15 @@
 /**
  * input.js — shared remote-key constants and predicates.
  *
- * Both of these were copy-pasted into several files (useKeyHandler,
- * SettingsPanel, PerformerDetailPage, and the nav bar's own Back handler).
- * The copies had already drifted: PerformerDetailPage's version returned
- * early for *any* key while focus was in a text field, which swallowed
- * Escape and the hardware Back key and left the user stuck on the page.
+ * Deliberately small — only what more than one module needs. The per-direction
+ * arrow keyCodes stay inline: copies there are not identical (VideoPlayer also
+ * handles Tizen's 412/417 for left/right, useKeyHandler only 37/39), and
+ * folding them into constants would silently change spatial nav, so that stays
+ * a separate, testable change.
  *
- * Deliberately small — it holds only what more than one module actually
- * needs. The per-direction arrow keyCodes are still written inline at
- * their call sites, and the copies there are not identical: VideoPlayer
- * also handles Tizen's 412/417 for left/right, while useKeyHandler
- * handles only 37/39. Folding those into shared constants would silently
- * change which keys drive spatial nav, so that stays a deliberate,
- * separately-testable change rather than something this module assumes.
+ * `isTextInput` exists because a copy returned early for *any* key while focus
+ * was in a text field, swallowing Escape and hardware Back and trapping the
+ * user.
  */
 
 /** Hardware Back on a Samsung remote (as delivered to JS by hwkey-event). */
@@ -22,29 +18,19 @@ export const TIZEN_BACK = 10009;
 /**
  * The nearest ancestor that confines D-pad navigation, or null.
  *
- * Two things confine it: a modal overlay (`role="dialog"`) and an open
- * dropdown marked `data-focus-trap`. A dropdown's options are a closed set, so
- * stepping past the last one must not land on the grid behind the list — which
- * is what happened, because the cross-zone penalty in useKeyHandler only
- * *reorders* candidates. It never excludes them, so when nothing sits ahead in
- * the same zone the search happily takes a candidate from another one.
- *
- * The trap has to cover the trigger as well as the list, or Up from the first
- * option would find nothing and strand the user in the list.
+ * Two things confine it: a modal overlay (`role="dialog"`) and an open dropdown
+ * marked `data-focus-trap`. A dropdown's options are a closed set, so stepping
+ * past the last must not land on the grid behind — the cross-zone penalty in
+ * useKeyHandler only *reorders* candidates, never excludes them. The trap must
+ * cover the trigger as well as the list, or Up from the first option strands
+ * the user.
  *
  * Nearest wins, so a dropdown inside a dialog scopes to the dropdown.
  *
- * Two modules need this answer for different reasons: `useKeyHandler` scopes
- * its candidate search with it, and `VideoPlayer` decides whether to yield a
- * key at all by comparing the result against its own overlay element. That
- * second use is why it lives here rather than staying private to the hook — a
- * second, subtly different copy of "what counts as a dialog" is exactly the
- * drift this module exists to prevent.
- *
- * Note the consequence of starting at `el` and stopping at `body`: for an
- * element outside every dialog this returns null, and it returns null for
- * `body` itself. Callers depend on that — null is "no confinement", not
- * "unknown".
+ * Both `useKeyHandler` (candidate search) and `VideoPlayer` (whether to yield a
+ * key) need this, and a second "what counts as a dialog" copy is the drift this
+ * module prevents. It starts at `el` and stops before `body`, so it returns
+ * null outside every dialog — null means "no confinement", not "unknown".
  */
 export function focusScopeOf(el) {
   let n = el;
@@ -61,20 +47,15 @@ export function focusScopeOf(el) {
 /**
  * True when any modal layer is open, wherever focus is.
  *
- * `focusScopeOf` answers "what confines focus"; this asks a different
- * question — "is a modal layer up at all". The two differ exactly where a
- * layer deliberately leaves focus outside itself. The player is that case:
- * when its rail closes it blurs to <body> on purpose, because focusing its
- * own container would confine the arrows to the overlay and kill skimming
- * (see useControlsVisibility's leaveRail). A page-level Back guard that only
- * asked where focus is therefore saw nothing while the player was up, closed
- * the page underneath on the press the player handled, and left the user on
- * the listing when the player's own Back then closed it.
+ * `focusScopeOf` answers "what confines focus"; this asks "is a modal layer up
+ * at all". The player is where they differ: when its rail closes it blurs to
+ * <body> on purpose, so a page-level Back guard asking only where focus is saw
+ * nothing, closed the page underneath, and left the user on the listing when
+ * the player's Back then closed it.
  *
- * Presence is the right test for a page: anything carrying `role="dialog"`
- * is above the page by construction. `data-focus-trap` dropdowns are
- * deliberately excluded — they are not modals over the page but a layer
- * inside it, and they take focus, which the caller still checks with
+ * Presence is the right test for a page: anything with `role="dialog"` is above
+ * it. `data-focus-trap` dropdowns are excluded — a layer inside the page, not a
+ * modal over it, and they take focus, which the caller checks with
  * `focusScopeOf`.
  */
 export function dialogOpen() {
@@ -84,11 +65,11 @@ export function dialogOpen() {
 /**
  * True when focus is in something that consumes text input.
  *
- * Use this only to decide whether a *character* key (Backspace, arrows for
- * the caret) belongs to the field. It must never gate Escape or TIZEN_BACK:
- * those have no text-editing meaning and are the user's only way out.
- * `button`/`submit`/`checkbox`/`radio`/`range` inputs are excluded because
- * they are not text fields despite the INPUT tag.
+ * Use this only to decide whether a *character* key (Backspace, caret arrows)
+ * belongs to the field. It must never gate Escape or TIZEN_BACK: those have no
+ * text-editing meaning and are the user's only way out. `button`/`submit`/
+ * `checkbox`/`radio`/`range` inputs are excluded — not text fields despite the
+ * INPUT tag.
  */
 export function isTextInput(el) {
   if (!el) return false;
@@ -101,10 +82,9 @@ export function isTextInput(el) {
 /**
  * Escape and the hardware Back key only — Backspace is never Back here.
  *
- * `isBackKey` below treats Backspace as Back when no text field has focus.
- * Some layers are stricter on purpose: the filter builder's dialogs predate
- * that rule and never closed on Backspace, so adding a shared hook must not
- * quietly give them a new way to close. Pass this as `useBackKey`'s `isBack`.
+ * Some layers are stricter on purpose: the filter builder's dialogs predate the
+ * Backspace rule and never closed on it, so a shared hook must not quietly give
+ * them a new way to close. Pass this as `useBackKey`'s `isBack`.
  */
 export function isHardBackKey(e) {
   return e.key === 'Escape' || e.keyCode === TIZEN_BACK;
@@ -113,14 +93,13 @@ export function isHardBackKey(e) {
 /**
  * The Back keys, with Backspace belonging to a text field when one has focus.
  *
- * Escape and the hardware Back key always count: they have no text-editing
- * meaning, and if a text field swallowed them the user would be trapped with
- * the IME open. Backspace is the keyboard's delete key *and* the Tizen
- * keyboard's backwards move, so it is Back only where nothing is being typed.
+ * Escape and hardware Back always count: no text-editing meaning, and if a text
+ * field swallowed them the user would be trapped with the IME open. Backspace
+ * is the keyboard's delete key *and* the Tizen keyboard's backwards move, so it
+ * is Back only where nothing is being typed.
  *
- * Call sites that need a different rule (a modal that swallows every
- * Backspace, a layer that yields to a nested one) pass their own predicate to
- * `useBackKey` rather than editing this one.
+ * Call sites needing a different rule pass their own predicate to `useBackKey`
+ * rather than editing this one.
  */
 export function isBackKey(e) {
   if (e.key === 'Escape' || e.keyCode === TIZEN_BACK) return true;

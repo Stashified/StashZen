@@ -1,9 +1,9 @@
-/* Layout only — the card's own shape lives in EntityCard.module.css. Derived
-   from PerformerGrid.module.css; the `.gridFrame` and fade overlays in
-   VideoGrid.module.css are scene-specific and deliberately not carried over. */
+/* Layout only; the card's shape lives in EntityCard.module.css. The
+   `.gridFrame` and fade overlays in VideoGrid are scene-specific and
+   deliberately not carried over. */
 
-/* The count line and the scroller live in one column, and `min-height: 0` is
-   what lets the scroller shrink to the column instead of overflowing it. */
+/* The count line and scroller share one column; `min-height: 0` lets the
+   scroller shrink to it instead of overflowing. */
 .page {
   flex: 1;
   display: flex;

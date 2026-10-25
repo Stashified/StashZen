@@ -1,53 +1,29 @@
 /**
  * NavRail — the left navigation rail.
  *
- * Zone: 'grid'. That is load-bearing, not incidental. useKeyHandler excludes
- * cross-zone candidates for Left/Right (the `isHorizontal` guard in
- * findBestCandidate), which the nav hook's own notes state as "crossing zones
- * happens via Up/Down only" — correct for a horizontal tab strip, and exactly
- * backwards for a vertical rail. A rail in a zone of its own would be a trap:
- * Right would find no candidate at all and the content would be unreachable
- * from it. Joining the zone the cards already use (VideoCard via its legacy
- * `group` alias, MarkerCard and PerformerCard directly) makes Right walk into
- * the nearest card in the facing row and Left walk back, with no change to the
- * nav algorithm.
+ * Zone: 'grid'. Load-bearing: useKeyHandler excludes cross-zone candidates for
+ * Left/Right, so a rail in its own zone would trap the cursor (Right finds no
+ * candidate and the content is unreachable). Sharing the cards' zone makes
+ * Right walk into the nearest card in the facing row and Left walk back.
  *
- * Every row except the active one is also `verticalOnly` (see useFocusable),
- * so Left out of the content column can only ever land on the tab you are
- * already on. That is the user's "Left goes to the Home row" — stated as the
- * tab you are on, since that is the row the sliding indicator is under and the
- * one whose content is on screen. Rows stay reachable by Up/Down, which the
- * flag does not touch.
+ * Every row except the active one is `verticalOnly` (see useFocusable), so
+ * Left out of the content can only land on the tab you are already on — the one
+ * the sliding indicator is under and whose content is showing. Up/Down are
+ * unaffected.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './NavRail.module.css';
 
-// `next` is the row below, and it is declared rather than left to the layout.
-// Settings sits at the *bottom* of the rail with a flexible spacer between it
-// and the tabs, so how far below the tabs it lands is a function of the
-// viewport height — and past a certain height the nearest grid card, which is
-// only a couple of hundred pixels away diagonally, scores better than a
-// destination hundreds of pixels straight down. With Settings also
-// unreachable sideways (it is `verticalOnly`) that left it unreachable by
-// remote at all. Reported from the TV, 2026-10-16:
+// `next` is the row below, declared rather than left to the layout. Settings
+// sits across a flexible spacer, so past a certain viewport height the nearest
+// grid card scores better than a destination hundreds of pixels straight down
+// — and with Settings `verticalOnly` that left it unreachable by remote at all.
 //
-//   "home row -> scrolling down doesnt reach settings -> couldnt think of way
-//    to get there at all"
-//
-// Declaring the chain also says what the rail *is*: an ordered column, whose
-// order is the order it is rendered in. The geometry is a rendering detail of
-// that, and this is the one place where the difference shows.
-// Eight tab rows as of 0.15.0; Settings is the ninth rail row. The chain is
-// what makes each row reachable by Down, and every entry has to name its own
-// successor — an entry added without a `next` is a row Down cannot leave,
-// which on the TV reads as a dead remote. Settings names the other end
-// (`prev`, at its call site) because it sits on the far side of the spacer and
-// is the one row geometry cannot find.
-//
-// Scenes was split out of Home in 0.15.0: Home is now the showroom, and the
-// scene listing it used to be lives one row below it.
+// Every entry must name its own successor: one added without `next` is a row
+// Down cannot leave, which on the TV reads as a dead remote. Settings names the
+// other end (`prev`, at its call site) because geometry cannot find it.
 const ITEMS = [
   { id: 'home',       label: 'Home',       Icon: IconHome,       next: 'scenes' },
   { id: 'scenes',     label: 'Scenes',     Icon: IconScenes,     next: 'performers' },
@@ -59,10 +35,8 @@ const ITEMS = [
   { id: 'images',     label: 'Images',     Icon: IconImages,     next: 'settings' },
 ];
 
-// ── Icons ────────────────────────────────────────────────
-// Stroke-only and `currentColor`, so the focused/active rules below colour
-// them by setting `color` and nothing else. 20px box, 1.8 stroke, round caps
-// — the same idiom the app menu's hamburger already used.
+// Stroke-only and `currentColor`, so the focus/active rules colour them by
+// setting `color` alone. 20px box, 1.8 stroke, round caps.
 
 function Svg({ children }) {
   return (
@@ -82,8 +56,6 @@ function IconHome() {
   return <Svg><path d="M3 9.3 10 3.2l7 6.1V16a1.2 1.2 0 0 1-1.2 1.2h-3.3v-4.6H8.5v4.6H4.2A1.2 1.2 0 0 1 3 16z" /></Svg>;
 }
 
-// A film frame with a play mark: Scenes is the flat listing, and the play
-// triangle distinguishes it from the Images/Galleries frames below.
 function IconScenes() {
   return (
     <Svg>
@@ -154,14 +126,10 @@ function IconSettings() {
   );
 }
 
-// ── A rail row ───────────────────────────────────────────
-
 function RailItem({ id, label, Icon, active, onSelect, autoFocus, registerRef, next, prev }) {
-  // The rail's own order, which the spatial search cannot recover across the
-  // spacer above Settings. See ITEMS. Declared one edge at a time so a row can
-  // name the neighbour it has: the three tabs name the row below, Settings
-  // names the row above. An undeclared direction is absent from the map and
-  // falls through to the geometry, which is the old behaviour.
+  // The rail's own order, which spatial search cannot recover across the spacer
+  // above Settings (see ITEMS). Declared one edge at a time; an undeclared
+  // direction falls through to the geometry.
   const chain = {};
   if (next) chain.down = `nav-${next}`;
   if (prev) chain.up = `nav-${prev}`;
@@ -170,34 +138,27 @@ function RailItem({ id, label, Icon, active, onSelect, autoFocus, registerRef, n
     id: `nav-${id}`,
     zone: 'grid',
     nextId: chain,
-    // Left returns you to the nav at the tab you are already on — that is what
-    // `!active` buys. Every other row is unreachable by a Left/Right press, so
-    // pressing Left from a card lands on the active row rather than on
-    // whichever row happens to sit beside the card. Before this, Left from a
-    // card in the lower rows went to Settings (it is the row nearest those
-    // cards' vertical centre) and opened a modal on a sideways press.
-    //
-    // The cost is symmetrical and intended: Left from a card can never move
-    // *between* rail rows. Up/Down do that, and they are unguarded.
+    // Left returns you to the tab you are already on (`!active`); every other
+    // row is unreachable sideways, so Left from a card cannot land on a
+    // neighbour — in particular not on Settings, which opened a modal on a
+    // sideways press. Moving between rows is Up/Down, which is unguarded.
     verticalOnly: !active,
-    // And Down out of the content may not land here: while a listing's next
-    // page is loading there is nothing below the last loaded row, and this
-    // rail row was the only candidate — so a Down press during the load
-    // dropped the cursor into the sidebar. See useKeyHandler's `skipRailRows`.
-    // Declared on every row, so entering the rail from the *content* is the
-    // only thing the flag changes; rail-internal Down is the declared chain.
+    // Down out of the content must not land here: while a page is loading there
+    // is nothing below the last loaded row and this rail row is the only
+    // candidate, so Down would drop the cursor into the sidebar. See
+    // useKeyHandler's `skipRailRows`. Only content→rail Down is affected;
+    // rail-internal Down is the declared chain.
     railRow: true,
     onEnter: onSelect,
     autoFocus,
-    // The rail is where focus rests only until a tab's content claims it:
-    // the first card may replace this boot-time focus, but never a focus the
-    // user placed. See useFocusable's `autoFocusFallback`.
+    // Focus rests here only until a tab's content claims it: the first card may
+    // replace this boot-time focus, never a focus the user placed. See
+    // useFocusable's `autoFocusFallback`.
     autoFocusFallback: autoFocus,
   });
 
   // Merge the focusable ref with the registration callback so the rail can
-  // measure this row for the sliding indicator. The parent owns the element
-  // out of the ref, so keep it in step with whatever useFocusable holds.
+  // measure this row for the sliding indicator.
   const setRef = (el) => {
     ref.current = el;
     registerRef(id, el);
@@ -226,21 +187,16 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings }) {
 
   useEffect(() => {
     const el = itemRefs.current[activeTab];
-    // No row for this tab — hide rather than leave the bar parked on whatever
-    // row it was last on. Reachable only if a tab is ever added without a rail
-    // entry, since Settings is not one.
+    // No row for this tab: hide rather than park the bar on the last row. Only
+    // reachable if a tab is added without a rail entry.
     if (!el) {
       setIndicatorStyle((s) => ({ ...s, opacity: 0 }));
       return;
     }
-    // Inset vertically so the bar sits inside the row's rounded corner rather
-    // than running its full height. `opacity: 1` is what starts the fade-in:
-    // the initial state is 0 so the bar does not slide up from the top on
-    // first mount, and the CSS transitions top/height/opacity together.
-    //
-    // This was two effects once, and the second one — same [activeTab] deps,
-    // no `opacity` — ran last and replaced this state object, dropping the
-    // property so the fade never happened. Keep it in one place.
+    // Inset so the bar sits inside the row's rounded corner. `opacity: 1`
+    // starts the fade-in: the initial state is 0 so it does not slide in from
+    // the top on mount, and CSS transitions top/height/opacity together. Keep
+    // top, height and opacity in one setState — splitting them loses the fade.
     setIndicatorStyle({
       top: el.offsetTop + 7,
       height: el.offsetHeight - 14,
@@ -279,17 +235,13 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings }) {
         active={false}
         onSelect={handleSettings}
         // The other end of the same edge. Down into Settings is declared in
-        // ITEMS; without this, Up out of it fell back to the geometry and
-        // landed in the middle of the grid — the rail would be a column going
-        // down and a scatter going up. Up is the only way back, since
-        // Settings is `verticalOnly` and Left/Right cannot leave it.
+        // ITEMS; without `prev`, Up fell back to geometry and landed mid-grid.
+        // Up is the only way back, since Settings is `verticalOnly`.
         prev="images"
-        // Down *from* Settings is declared as itself. A forced edge that
-        // resolves to the element already focused is how a direction is
-        // blocked (see useKeyHandler): Down stays put, and Right — the
-        // sideways move into the content — is the only way out of the rail.
-        // Without it the geometry found a grid card and Down left the rail
-        // from its last row. Reported from the TV, 2026-10-17.
+        // Down *from* Settings is declared as itself: a forced edge resolving to
+        // the focused element blocks that direction (see useKeyHandler), so
+        // Down stays put and Right is the only way out. Otherwise geometry found
+        // a grid card and Down left the rail.
         next="settings"
         registerRef={registerItemRef}
       />

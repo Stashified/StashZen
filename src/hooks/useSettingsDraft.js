@@ -6,21 +6,18 @@ import { getSettings, setSettings, clearSettings } from '../utils/settings.js';
  *
  * Every field is local until `save()` commits it, which is what makes Cancel
  * mean cancel: choosing OLED and backing out must leave the page as it was,
- * not restyle it on the way out. `useMock` is a draft like the rest even
- * though it is not part of the saved object in the same way — `setSettings`
- * persists it, and the store owns how.
+ * not restyle it on the way out. `useMock` is a draft too even though
+ * `setSettings` persists it; the store owns how.
  *
- * `clear()` re-reads the store rather than assuming what clearing produced —
- * the store owns the defaults (notably useMock = ENV_MOCK), and guessing here
- * is what previously left the panel disagreeing with the store. It does not
- * touch the panel's other state (test results, PIN and so on); the caller
- * decides what else a clear invalidates.
+ * `clear()` re-reads the store rather than assuming what clearing produced:
+ * the store owns the defaults (notably useMock = ENV_MOCK). It does not touch
+ * the panel's other state (test results, PIN); the caller decides what else a
+ * clear invalidates.
  *
- * `dirty` is the panel's "you have not pressed Save" flag. It compares the
- * drafts with the last committed snapshot, not with the values this hook was
- * constructed with: after Save the baseline moves, or the panel would keep
- * claiming unsaved work and ask again on the way out. Text fields are compared
- * trimmed because Save trims them, so trailing whitespace is not a change.
+ * `dirty` compares the drafts with the last committed snapshot, not the
+ * values this hook was constructed with: after Save the baseline moves, or
+ * the panel would keep claiming unsaved work. Text fields are compared
+ * trimmed because Save trims them.
  */
 const snapshot = (s) => ({
   useMock: !!s.useMock,

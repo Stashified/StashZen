@@ -1,40 +1,33 @@
 /**
  * stashClient.js — the single HTTP transport for Stash.
  *
- * This module is deliberately *pure*: it imports nothing, and takes the
- * endpoint and API key as arguments. Callers read them from the settings
- * store (`getSettings()`) and pass them in. That keeps the dependency
- * graph one-way — settings.js can use `fetchWithTimeout` without the
- * cycle that `stashClient → settings → stashClient` would create.
+ * Deliberately *pure*: it imports nothing and takes endpoint and API key as
+ * arguments, keeping the dependency graph one-way — settings.js can use
+ * `fetchWithTimeout` without a `stashClient → settings → stashClient` cycle.
  *
- * Why this exists: every request used to be a bare `fetch` with no
- * timeout. On a TV, a request to an unreachable-but-routable host never
- * settles, so the UI sat on "Loading…" forever with no error and no
- * retry. Every request now fails within DEFAULT_TIMEOUT_MS and surfaces
- * a message the user can act on.
+ * Every request needs a timeout: on a TV a request to an unreachable-but-
+ * routable host never settles, leaving the UI on "Loading…" forever. Each
+ * request fails within DEFAULT_TIMEOUT_MS with a message the user can act on.
  *
- * Tizen compatibility note: `AbortController` landed in Chromium 66 and
- * `AbortSignal.timeout()` in Chromium 103. The app's floor is Tizen 6.5
- * (Chromium 94), so the controller exists there but the signal helper does
- * not. We therefore always race against a timer — which is what guarantees
- * the promise settles — and only *additionally* abort the socket when
- * AbortController happens to exist. The typeof guard is belt and braces:
- * `npm run check:compat` would flag the controller on an older engine.
+ * Tizen compatibility: `AbortController` is Chromium 66, `AbortSignal.timeout()`
+ * Chromium 103; the floor is Tizen 6.5 (Chromium 94), so the controller exists
+ * but the helper does not. We always race a timer — that is what settles the
+ * promise — and *additionally* abort the socket when a controller exists. The
+ * typeof guard is belt and braces: `check:compat` flags the controller on an
+ * older engine.
  */
 
 /** How long any single request may take before it is reported as failed. */
 export const DEFAULT_TIMEOUT_MS = 12000;
 
 /**
- * Error carrying a machine-readable `code` so callers can distinguish
- * "your config is wrong" from "the server is slow" without parsing prose.
- * `message` is written to be shown directly to the user — several pages
- * render `error.message` verbatim.
+ * Error carrying a machine-readable `code` so callers can distinguish a config
+ * problem from a slow server without parsing prose. `message` is shown
+ * directly to the user — several pages render it verbatim.
  *
- * `status` carries the HTTP status when `code` is 'http'. Callers that need to
- * tell a rejected API key (401/403) from any other server error would otherwise
- * have to parse the message, which is exactly the prose-sniffing `code` exists
- * to prevent. `status` is undefined for every other code.
+ * `status` is the HTTP status when `code` is 'http', so a rejected API key
+ * (401/403) is distinguishable from other server errors without prose-sniffing.
+ * Undefined for every other code.
  */
 export class StashError extends Error {
   constructor(message, code, status) {
@@ -49,11 +42,10 @@ export class StashError extends Error {
  * `fetch` that cannot hang. Resolves to a Response, or rejects with a
  * StashError whose code is 'timeout' or 'network'.
  *
- * `consume` runs *inside* the timeout, before the timer is cleared. That
- * matters for JSON: `fetch` resolves when the headers arrive, so a server (or
- * proxy) that sends headers and then stalls the body would otherwise leave the
- * caller's `res.json()` pending forever with no error. Passing the body read as
- * `consume` keeps it under the same budget and the same abort signal.
+ * `consume` runs *inside* the timeout, before the timer is cleared: `fetch`
+ * resolves when headers arrive, so a server that sends headers and stalls the
+ * body would leave `res.json()` pending forever. Passing the read as `consume`
+ * keeps it under the same budget and abort signal.
  */
 export async function fetchWithTimeout(
   url,
@@ -136,12 +128,11 @@ export async function graphqlRequest(query, variables, { url, key, timeoutMs } =
     body: JSON.stringify({ query, variables }),
   }, timeoutMs, async (res) => {
     if (!res.ok) {
-      // Stash returns a *rejected filter* — a criterion in the wrong shape — as
-      // a non-2xx status (400 in practice) whose body still carries a precise
-      // GraphQL error, e.g. `cannot use map as Boolean`. The old code threw on
-      // the status alone and never read the body, so every malformed filter
-      // reached the user as "GraphQL HTTP 400" with no indication of which
-      // criterion was wrong. Read the body before giving up on the detail.
+      // Stash returns a rejected filter (a criterion in the wrong shape) as a
+      // non-2xx status — 400 in practice — whose body still carries a precise
+      // GraphQL error, e.g. `cannot use map as Boolean`. Throw on status alone
+      // and the user sees only "GraphQL HTTP 400", with no idea which
+      // criterion was wrong, so read the body before giving up on the detail.
       let detail = null;
       try {
         const body = await res.json();

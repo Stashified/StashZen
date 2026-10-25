@@ -1,45 +1,30 @@
 /**
  * Carousel — a centred strip of cards, one row deep.
  *
- * Layout: the focused card sits in the middle of the stage scaled up, with
- * partial neighbours receding to either side; Left/Right move focus and the
- * strip translates to keep the focused slot centred.
- *
- * It was `VideoCarousel` and knew about scenes in four separate places: the
- * service it called, the card it rendered, the `video-` focus-id prefix, and
- * the four scene fields it printed in the hero. Every one of those is now part
- * of the `view` descriptor, which is what lets the same component draw
- * performers and markers — see the three descriptors in carouselViews.js.
- *
- * The paging itself lives in usePagedList; this component supplies the request
- * and the trigger (the focused index nearing the end of the strip).
+ * The focused card sits in the middle of the stage scaled up, with partial
+ * neighbours receding either side; Left/Right move focus and the strip
+ * translates to keep the focused slot centred. Paging lives in usePagedList;
+ * this component supplies the request and the trigger (focus nearing the end).
  *
  * ## What a `view` has to provide
  *
- *   Card        the card component. It must take `{ item, index, list,
- *               onSelect, onLongPress }` — the contract every card in the tree
- *               now shares, which is what makes this possible at all.
- *   service     the paged fetch, called as
- *               `service({ sort, order, filter, q, page, limit, hero })`,
- *               returning `{ <itemsKey>, total }`. `hero: true` asks for the
- *               heavier query that carries the free-text blurb; grids and
- *               lists fetch the lean one. Services without a hero variant
- *               ignore the flag.
- *   itemsKey    where the rows live in that response ('videos', 'performers'…).
- *   focusPrefix the cards' registry-id prefix ('video', 'performer'…). This is
- *               how the strip learns which slot the D-pad is on, so it has to
- *               match what the card passes to `useFocusable`. It is kept
- *               separate from `Card` rather than read off it because the prefix
- *               is also the app's cross-cutting id scheme — App parses it to
- *               decide what a selection means.
+ *   Card        must take `{ item, index, list, onSelect, onLongPress }`, the
+ *               contract every card in the tree shares.
+ *   service     `service({ sort, order, filter, q, page, limit, hero })` →
+ *               `{ <itemsKey>, total }`. `hero: true` asks for the heavier
+ *               query carrying the blurb; services without one ignore it.
+ *   itemsKey    where the rows live ('videos', 'performers'…).
+ *   focusPrefix the cards' registry-id prefix. The strip learns its slot from
+ *               it, so it must match what the card passes to `useFocusable`;
+ *               it is separate from `Card` because App also parses it to decide
+ *               what a selection means.
  *   noun        plural, for the loading and empty strings.
  *   ariaLabel   for the strip's `role="region"`.
- *   hero        `(item) => ({ title, meta })`, where each meta entry is
- *               `{ text, kind }` and `kind` is 'tag' | 'rating' | undefined.
- *               Fields, not markup: the strip owns how a tag or a rating
- *               looks, the page owns which fields a section has.
- *   slotWidth   optional px width for one slot, when the section's art is not
- *               16:9. See the note on `--slot-w` in Carousel.module.css.
+ *   hero        `(item) => ({ title, meta })`, each meta entry `{ text, kind }`
+ *               with kind 'tag' | 'rating' | undefined. Fields, not markup: the
+ *               strip owns how a tag looks, the page owns which fields exist.
+ *   slotWidth   optional px slot width when the art is not 16:9. See `--slot-w`
+ *               in Carousel.module.css.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -60,13 +45,13 @@ export default function Carousel({
 
   const [focusedIndex, setFocusedIndex] = useState(0);
 
-  // Named, not inline: the play queue is handed the same closure, so a
-  // queue started here pages the listing the carousel is showing.
+  // Named, not inline: the play queue gets the same closure, so a queue started
+  // here pages the listing the carousel shows.
   const fetchPage = useCallback(
     (page) =>
       service({
         sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE,
-        // The hero is the only consumer of the blurb — see the doc above.
+        // The hero is the only consumer of the blurb.
         hero: true,
       })
         .then(d => ({ items: d[itemsKey], total: d.total })),
@@ -77,29 +62,27 @@ export default function Carousel({
     items, total, page, loading, loadingMore, error, loadMore,
   } = usePagedList({
     fetchPage,
-    // A new request identity resets the list, and the focus along with it.
+    // A new request identity resets the list and the focus with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
     focusPrefix,
   });
 
-  // Stable identity with current values — see useStableListing. The carousel
-  // hands the same object to every card, so a page append must not replace
-  // it; only the slot that gained a card should render.
+  // Stable identity with current values (see useStableListing): every card gets
+  // the same object, so an append must not replace it — only the new slot
+  // should render.
   const listing = useStableListing({ items, total, page, fetchPage });
 
-  // Reset the focused slot when the list underneath is replaced — otherwise
-  // the strip would try to centre an index that no longer exists.
+  // Reset the focused slot when the list is replaced, or the strip centres an
+  // index that no longer exists.
   useEffect(() => { setFocusedIndex(0); }, [sort, order, objectFilter, searchQuery]);
 
-  // ── Fetch more when focus approaches the end ──────────────
   useEffect(() => {
     if (items.length === 0) return;
     if (items.length - focusedIndex <= LOAD_MORE_THRESHOLD) loadMore();
   }, [focusedIndex, items.length, loadMore]);
 
-  // ── Track which card is focused ───────────────────────────
-  // Cards register with id `${focusPrefix}-${id}` in zone `grid`; the D-pad
-  // moves focus itself, so this listens for the result rather than driving it.
+  // Cards register as `${focusPrefix}-${id}` in zone `grid`; the D-pad moves
+  // focus itself, so listen for the result rather than driving it.
   const idPrefix = `${focusPrefix}-`;
   useEffect(() => {
     const onFocus = () => {
@@ -113,7 +96,6 @@ export default function Carousel({
     return () => document.removeEventListener('focusin', onFocus);
   }, [items, focusedIndex, idPrefix]);
 
-  // ── Render ────────────────────────────────────────────────
   if (loading) return (
     <div className={styles.state}>
       <div className={styles.spinner} aria-label={`Loading ${noun}`} />
@@ -133,9 +115,8 @@ export default function Carousel({
     </div>
   );
 
-  // Each slot is a fixed width; the strip translates so the focused
-  // slot is centered. CSS handles the visual scaling for off-center
-  // cards via the depth indices on `.slot`.
+  // Fixed-width slots; the strip translates to centre the focused one, and CSS
+  // scales the off-centre cards via the depth indices.
   const focused = items[focusedIndex] || items[0];
   const { title, meta = [], blurb = null } = hero(focused);
 
@@ -144,7 +125,7 @@ export default function Carousel({
       className={styles.carouselWrapper}
       style={slotWidth ? { '--slot-w': `${slotWidth}px` } : undefined}
     >
-      {/* Hero info above the strip — title, meta, position */}
+      {/* Hero info above the strip */}
       <div className={styles.hero}>
         <h2 className={styles.heroTitle}>{title}</h2>
         <div className={styles.heroMeta}>
@@ -159,9 +140,8 @@ export default function Carousel({
             </span>
           ))}
         </div>
-        {/* A tag description or studio details can be paragraphs. The CSS
-            clamps this to two lines, which is what keeps the strip's height
-            from depending on the focused row. */}
+        {/* Clamped to two lines in CSS, which keeps the strip's height from
+            depending on the focused row. */}
         {blurb && <p className={styles.heroBlurb}>{blurb}</p>}
         <div className={styles.heroCounter}>
           <span className={styles.heroCounterCur}>{focusedIndex + 1}</span>
@@ -170,23 +150,21 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* The strip — shifted so the focused slot lands in the middle */}
+      {/* The strip, shifted so the focused slot lands in the middle */}
       <div className={styles.stage} role="region" aria-label={ariaLabel}>
         <div
           className={styles.track}
           style={{
-            // The track is positioned with `left: 50%` in CSS so its
-            // origin sits at the centre of the stage. We then shift it
-            // left by (focusedIndex + 0.5) slot widths so the focused
-            // slot's centre lands on the stage centre.
+            // The track's origin is the stage centre (`left: 50%`), so shift
+            // left by (focusedIndex + 0.5) slots to centre the focused one.
             transform: `translateX(calc(-1 * ${focusedIndex + 0.5} * var(--slot-w)))`,
           }}
         >
           {items.map((item, i) => {
             const offset = i - focusedIndex;
             const abs = Math.abs(offset);
-            // Cards more than 4 away aren't worth rendering — they're
-            // off-screen anyway and would just hold preview videos open
+            // Beyond 4 away is off-screen and would only hold preview videos
+            // open.
             const visible = abs <= 4;
             return (
               <div
@@ -194,7 +172,7 @@ export default function Carousel({
                 className={styles.slot}
                 data-offset={offset}
                 style={{
-                  // Fade and shrink as we move away from center
+                  // Fade and shrink with distance from centre.
                   opacity: visible ? Math.max(0.2, 1 - abs * 0.2) : 0,
                   transform: `scale(${i === focusedIndex ? 2 : 0.82})`,
                   zIndex: 100 - abs,
@@ -216,7 +194,7 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* Subtle loading indicator if pagination is in flight */}
+      {/* Pagination in flight */}
       {loadingMore && (
         <div className={styles.loadingMore}>
           <div className={styles.spinnerSm} />

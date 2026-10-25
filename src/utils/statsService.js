@@ -2,8 +2,8 @@
  * statsService.js — Library-wide aggregate numbers from Stash.
  *
  * One query, no arguments. `stats` is the aggregate Stash keeps for its own
- * dashboard; asking for the handful of fields we display is cheap and does not
- * touch the 40-row listing payloads.
+ * dashboard; the handful of fields displayed is cheap and does not touch the
+ * 40-row listing payloads.
  *
  * `group_count` and `movie_count` are deliberately absent: both measured 0 on
  * the 0.31.1 server this app targets, and neither is displayed.
@@ -37,8 +37,8 @@ function num(value) {
 }
 
 /**
- * `scenes_size` and `images_size` are byte sums. There is no total-bytes
- * field, so the two are added here; everything else is passed through with a
+ * `scenes_size` and `images_size` are byte sums and there is no total-bytes
+ * field, so the two are added here; everything else passes through with a
  * numeric fallback so a missing field renders 0 rather than `undefined`.
  */
 export function normalizeStats(raw) {

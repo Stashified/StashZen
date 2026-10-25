@@ -1,11 +1,7 @@
 /**
- * App.jsx — Root component
- *
- * Owns the active tab, the per-tab controls and the overlay stack, and
- * composes the rail, the control bar, the pages and the overlays. The state
- * and handlers behind that composition live in `app/use*.js`; the page
- * switch in `app/TabContent.jsx`; the overlay stack in `app/AppOverlays.jsx`;
- * static tab configuration in `app/tabConfig.js`.
+ * Root component: the active tab, the per-tab controls and the overlay stack.
+ * The state behind them lives in `app/use*.js`; the page switch and overlays
+ * in `app/TabContent.jsx` and `app/AppOverlays.jsx`.
  */
 
 import { useState } from 'react';
@@ -27,17 +23,15 @@ import TabContent from './app/TabContent.jsx';
 import AppOverlays from './app/AppOverlays.jsx';
 
 export default function App() {
-  // Subscribe to runtime settings — used to remount the data tree on
-  // Test/Live switch (and on URL/key change in Live mode) so any
-  // in-flight fetches and cached state from the previous source are
-  // discarded cleanly.
+  // Subscribing remounts the data tree on Test/Live or URL/key change, so
+  // in-flight fetches and state from the previous source are discarded.
   const settings = useSettings();
   const dataKey = dataSourceKey(settings);
 
   const { activeTab, tabEpoch, changeTab } = useTabNavigation();
 
-  // The controls bar's state, the view mode and the grid-column count — and
-  // the render-phase rules that decide what survives a tab or source change.
+  // The controls bar's state, view mode and grid columns; the render-phase
+  // rules for what survives a tab or source change live here too.
   const {
     controls, setControls, updateControls, activeMode, setActiveMode,
   } = useListingControls({ activeTab, dataKey, settings });
@@ -46,8 +40,7 @@ export default function App() {
   const config = TAB_CONTROL_CONFIG[activeTab];
   const filterMode = config?.filterMode || null;
 
-  // The saved-filter list, the current selection, and the three values the
-  // listing tabs fetch with.
+  // Saved-filter list, selection, and the values the listing tabs fetch with.
   const {
     savedFilters,
     activeFilter,
@@ -58,8 +51,8 @@ export default function App() {
     setSavedFilterEcho,
   } = useActiveFilter({ controls, filterMode, dataKey });
 
-  // Focus restore targets. `mainFocus` is the shared one (builder, player,
-  // settings, exit); the card targets belong to the overlay hooks.
+  // Focus restore targets: `mainFocus` is shared by builder, player, settings
+  // and exit; the card targets belong to the overlay hooks.
   const mainFocus = useRestoreFocus();
   const menuCardFocus = useRestoreFocus();
 
@@ -85,8 +78,7 @@ export default function App() {
     handleTagSelect, handleStudioSelect, handleGallerySelect,
   } = useFilteredNavigation({ activeTab, dataKey, changeTab, setControls });
 
-  // What is open *in front of* a listing: a scene detail page, a performer
-  // page, or the image viewer.
+  // What is open in front of a listing: scene detail, performer page or viewer.
   const {
     selectedPerformer,
     selectedScene,
@@ -152,22 +144,19 @@ export default function App() {
 
   const closeSettings = () => {
     setSettingsOpen(false);
-    // Restore focus to whatever opened the panel (the hamburger,
-    // typically). Deferred so the panel's DOM is gone first.
+    // Restore focus to whatever opened the panel; deferred so the panel's
+    // DOM is gone first.
     mainFocus.restore();
   };
 
   const cancelExit = () => {
     setExitPromptOpen(false);
-    // Same restore as the player/settings closes: defer a tick so
-    // the prompt's DOM is gone before we hand focus back.
+    // Same deferred restore as the other closes: drop the prompt's DOM first.
     mainFocus.restore();
   };
 
-  // One dispatcher rather than four `onSelect` props, because the four sections
-  // are served by one `<EntityPage>` and it has no idea which of them it is
-  // drawing. Everything section-specific about a selection therefore has to be
-  // decided here, where the tab is known.
+  // One dispatcher, not four `onSelect` props: one `<EntityPage>` draws all
+  // four sections and cannot know which, so the tab decides here.
   const handleEntitySelect = (item, index, items) => {
     switch (activeTab) {
       case 'tags':      return handleTagSelect(item);
@@ -179,13 +168,9 @@ export default function App() {
   };
 
   // ── The long-press menu's viewer entries ─────────────────
-  // actionMenus.js decides the rows; these wrappers supply what it cannot
-  // know — where the viewer state lives, and which card focus returns to.
-  //
-  // The menu is cleared *without* its restore, unlike every other close: the
-  // viewer takes focus on mount and owns the return trip itself, so restoring
-  // to the card first would put focus on the grid for a frame and then yank
-  // it back. The card is handed to the viewer as its restore target instead.
+  // The menu is cleared *without* its restore: the viewer takes focus on mount
+  // and owns the return trip, so restoring to the card first would put focus
+  // on the grid for a frame. The card is handed to the viewer instead.
   const menuReturnEl = () => menuCardFocus.targetRef.current;
 
   const openImageViewerFromMenu = (descriptor) => {
@@ -195,8 +180,8 @@ export default function App() {
 
   const openGalleryFromMenu = (gallery) => {
     dismissActionMenu();
-    // The same destination as Enter on the card: the Images tab, filtered to
-    // this gallery. The tab change is what closes the menu's page context.
+    // Same destination as Enter on the card: the Images tab, filtered to this
+    // gallery. The tab change closes the menu's page context.
     handleGallerySelect(gallery);
   };
 
@@ -223,15 +208,12 @@ export default function App() {
         }}
       />
 
-      {/* The rail is fixed; everything else lives in the content column, so
-          the top bar (scene selection: filters, sort, search, view) sits
-          above the page rather than beside the nav. */}
+      {/* The rail is fixed; the top bar sits above the page in the content
+          column rather than beside the nav. */}
       <div className={styles.content}>
 
-        {/* Hide the app-level ControlsPanel while on a performer detail
-        page — that page renders its own scoped ControlsPanel — and on Home,
-        which is the showroom: it has no sort, filter or search of its own.
-        The listing tabs, Scenes first among them, still own the bar. */}
+        {/* Hidden on Home (the showroom has no sort, filter or search) and on
+            a performer detail page, which renders its own scoped panel. */}
         {config?.showControls !== false
           && !(activeTab === 'performers' && selectedPerformer) && (
           <ControlsPanel
@@ -246,10 +228,9 @@ export default function App() {
               && activeMode !== 'carousel' && activeMode !== 'coverflow' && activeMode !== 'list'}
             filterOptions={filterOptions}
             onBuildFilter={filterMode ? () => {
-              // The builder's first D-pad press pulls the cursor inside its
-              // dialog, so closing it unmounts whatever held focus and drops
-              // the cursor to <body>. Remember the Build control — it stays
-              // mounted underneath — for closeBuilder to restore.
+              // Opening the builder pulls focus into its dialog and closing
+              // drops the cursor to <body>. Remember the Build control, which
+              // stays mounted underneath, for closeBuilder to restore.
               mainFocus.remember(document.activeElement);
               setBuilderOpen(true);
             } : null}
@@ -293,9 +274,8 @@ export default function App() {
           onPlay: handleScenePlay,
           onPlayAt: playSceneAt,
           onActivityChange: handleSceneActivityChange,
-          // A gallery chip in the detail page leaves for the Galleries tab.
-          // The tab change is what closes the page (useDetailSelection's
-          // effect), so this is the only thing the chip does.
+          // A gallery chip leaves for the Galleries tab; the tab change closes
+          // this page (useDetailSelection's effect), so that is all it does.
           onGallerySelect: handleGallerySelect,
         }}
         actionMenu={{

@@ -11,30 +11,28 @@ import {
 /**
  * The page's six writes.
  *
- * Each captures the prior value, paints the new one, writes, and then either
- * adopts the server's answer or reverts. The server's answer is preferred
- * over the optimistic value because for the like counter it is an atomic
- * increment — it can legitimately come back different from what we guessed.
+ * Each captures the prior value, paints the new one, writes, then either adopts
+ * the server's answer or reverts. The server's answer wins because for the like
+ * counter it is an atomic increment and can differ from our guess.
  *
- * They are kept separate rather than folded into one helper: they look alike
- * but differ in what they adopt, which token guards them and what they say.
+ * Kept separate rather than folded into one helper: they look alike but differ
+ * in what they adopt, which token guards them, and what they say.
  */
 export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canEdit }) {
-  // Writes that can be in flight together. Each press is its own request, and
-  // the responses are adopted in arrival order unless something says which
-  // press owns the screen. Two quick presses at a slow server can settle out of
-  // order: the first one's count (1) then overwrites the second one's (2), and
-  // a stale failure rolls back over a later success. The counter is a tally, so
-  // the last press is the one the user is looking at — stale answers are
-  // dropped. One token for the o-count because increment and clear write the
-  // same value; play count has its own.
+  // Guards writes that can be in flight together. Responses are adopted in
+  // arrival order unless a token says which press owns the screen: two quick
+  // presses at a slow server can settle out of order, letting the first press's
+  // count overwrite the second's, or a stale failure roll back a later success.
+  // The counter is a tally, so the last press is what the user sees. One token
+  // for the o-count (increment and clear write the same value); play count has
+  // its own.
   const oAttemptRef = useRef(0);
   const playedAttemptRef = useRef(0);
 
   // Rating has its own token and confirmed value. The revert baseline must be
-  // what the server last acknowledged, not `detail.rating100`: that holds the
-  // previous press's optimistic value, so two failed presses used to settle on
-  // a number Stash never stored.
+  // what the server last acknowledged, not `detail.rating100`, which holds the
+  // previous press's optimistic value and would settle on a number Stash never
+  // stored.
   const ratingAttemptRef = useRef(0);
   const ratingConfirmedRef = useRef(0);
   // Serialised so requests cannot reach the server out of order and leave the
@@ -89,16 +87,11 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
   /**
    * One more, every time.
    *
-   * This was a toggle — press added one when the counter was zero and removed
-   * one when it was not — which reads as a flag and behaves like a switch. It
-   * is neither: Stash's counter is a tally, and the user's report was that
-   * pressing it three times should leave three. So there is no branch left
-   * here, and the count is the only thing that decides what the button looks
-   * like.
+   * Not a toggle: Stash's counter is a tally, so pressing it three times must
+   * leave three. Only the count decides what the button looks like.
    *
-   * The optimistic value is a guess. Stash answers with the numbers it actually
-   * holds (its own UI may have written in between), so the response wins
-   * whenever it arrives.
+   * The optimistic value is a guess; Stash answers with the numbers it actually
+   * holds (its own UI may have written in between), so the response wins.
    */
   const incrementLike = async () => {
     const attempt = ++oAttemptRef.current;
@@ -118,11 +111,10 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
   /**
    * Hold OK to clear it.
    *
-   * Deliberately not confirmed and deliberately not on a press: undoing a tally
-   * one press at a time is exactly the tedium a hold exists to skip, and the
-   * gesture is hard enough to perform by accident that a blocking dialog would
-   * cost more than it saves. It also says so afterwards — a destructive action
-   * that reports nothing is indistinguishable from one that failed.
+   * Not confirmed and not on a press: undoing a tally one press at a time is
+   * the tedium the hold exists to skip, and the gesture is hard to perform by
+   * accident. It reports afterwards — a destructive action that says nothing
+   * is indistinguishable from one that failed.
    */
   const clearLike = async () => {
     const prev = detail.oCounter || 0;
@@ -145,13 +137,12 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
 
   /**
    * Drop the resume point, which is what removes the scene from Continue
-   * Watching. Watch time is left alone: `sceneResetActivity` resets the two
-   * independently, and "clear progress" is about the place to resume from,
-   * not about erasing that the scene was watched.
+   * Watching. Watch time is left alone: the two reset independently, and "clear
+   * progress" is about where to resume from, not erasing that it was watched.
    *
-   * The app is told on success, because the shelf underneath is still mounted
-   * and holds the card this page was opened from — a refetch would not run
-   * until the tab remounted, so App prunes it in place instead.
+   * App is told on success because the shelf underneath is still mounted and
+   * holds the card this page came from; it would not refetch until the tab
+   * remounted, so App prunes it in place instead.
    */
   const clearProgress = async () => {
     const prev = detail.resumeTime || 0;
@@ -172,10 +163,10 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
    * Count one play now, without playing anything.
    *
    * A play is a row in Stash's view history, so this appends one through
-   * `sceneAddPlay` rather than writing a count — the deprecated
-   * `sceneIncrementPlayCount` is not even on this schema. The optimistic
-   * count is a guess, and the server's answer replaces it: `count` is the
-   * resulting total, which may include plays other clients recorded.
+   * `sceneAddPlay` rather than writing a count (the deprecated
+   * `sceneIncrementPlayCount` is not on this schema). The optimistic count is a
+   * guess; the server's `count` is the resulting total, possibly including
+   * plays other clients recorded, so it replaces the guess.
    */
   const markPlayed = async () => {
     const attempt = ++playedAttemptRef.current;

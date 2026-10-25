@@ -4,14 +4,11 @@
  *
  *   node scripts/test-seek-coalescer.mjs
  *
- * AVPlay has no seek-complete callback. The seeker therefore settles on a
- * position read, retries a seek that has not arrived, and degrades instead of
- * fighting forever. The acceptance criterion this file exists for: five rapid
- * +15 s presses must land 75 s ahead, not 15 s — which means each new request
- * must replace the pending target rather than queue behind it.
- *
- * The clock is injected, so "1.5 s passed" is a number assignment, not a
- * sleep. No framework.
+ * AVPlay has no seek-complete callback, so the seeker settles on a position
+ * read, retries a seek that has not arrived, and degrades rather than fighting
+ * forever. Five rapid +15 s presses must land 75 s ahead, not 15 s: each new
+ * request replaces the pending target instead of queueing behind it. The clock
+ * is injected, so "1.5 s passed" is a number assignment, not a sleep.
  */
 
 import {
@@ -99,9 +96,8 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 // ── An arrived seek is extended, not restarted ─────────────
 {
-  // The HLS failure this pins: the position reaches the target while the
-  // engine is still buffering, and re-issuing the seek every window cancels
-  // the very work that was about to finish. On screen: "seek never finishes".
+  // The position reaches the target while the engine is still buffering;
+  // re-issuing the seek every window cancels the work about to finish.
   const r = rig({ playing: false });
   r.coalescer.request(30);
   r.moveTo(30);
@@ -125,7 +121,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 {
   // An engine that buffers forever is still bounded by the overall deadline,
-  // so the panel ends up saying "degraded" rather than waiting for ever.
+  // so the panel says "degraded" rather than waiting forever.
   const r = rig({ playing: false });
   r.coalescer.request(44);
   r.moveTo(44);
@@ -141,11 +137,9 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 // ── A rapid burst that froze is re-issued once ─────────────
 {
-  // Five presses issue several seekTo calls on top of each other. If the
-  // engine is then left paused at the pre-burst position, it is not scanning
-  // to the final target — it lost it, and one fresh request recovers the
-  // rapid skim. This is the 2026-10-24 "rapid seek fell back to the browser"
-  // report; the single slow seek below must still never be restarted.
+  // Overlapping seekTo calls leave the engine paused at the pre-burst
+  // position: it lost the target, and one fresh request recovers the skim.
+  // The single slow seek below must still never be restarted.
   const r = rig();
   r.coalescer.request(10);
   r.coalescer.request(25);           // overlapping: the burst did not settle
@@ -167,9 +161,8 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 // ── A single frozen seek is never re-issued ────────────────
 {
-  // The control for the check above: one request is the engine scanning (a
-  // 4K AV1 seek takes seconds), and restarting it is the "seek never
-  // finishes" failure.
+  // The control: one request is the engine scanning (a 4K AV1 seek takes
+  // seconds), and restarting it is the "seek never finishes" failure.
   const r = rig();
   r.coalescer.request(120);
   r.moveTo(0);
@@ -200,7 +193,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 // ── A frozen position is being worked on, not ignored ──────
 {
   // The 4K AV1 case: the engine accepts the seek and needs seconds to decode
-  // from the new keyframe. The position does not move in the meantime.
+  // from the new keyframe, so the position does not move.
   const r = rig();
   r.coalescer.request(120);
   r.moveTo(0.1); // a stale sample, not movement
@@ -235,7 +228,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 {
   // Five rapid +15 s presses from 0, before any position read: the last target
-  // must be 75, which is what "accumulate" means.
+  // must be 75.
   const r = rig();
   for (let i = 1; i <= 5; i++) r.coalescer.request(i * 15);
   check('five rapid skims land on the fifth target', r.coalescer.pendingTarget() === 75);
@@ -246,10 +239,9 @@ function rig({ throwSeek = false, playing = true } = {}) {
 
 // ── Forward progress is not an ignored seek ────────────────
 {
-  // A forward seek plays on while the engine scans: the position moves, but
-  // the distance it has to cover shrinks. Treating that as "ignored" and
-  // re-issuing aborted a seek that was about to land — the 2026-10-24 report
-  // of rapid HEVC skims handing the scene to the browser.
+  // A forward seek plays on while the engine scans: the position moves and the
+  // distance shrinks. Treating that as "ignored" and re-issuing aborted a seek
+  // about to land, handing rapid HEVC skims to the browser.
   const r = rig();
   r.coalescer.request(20);
   r.advance(SEEK_SETTLE_MS);
@@ -288,7 +280,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
   r.coalescer.tick();
   check('an expired window retries a seek playback ran past', eq(r.seeks, [20, 20]));
 
-  // The engine is ignoring the request: the position keeps running forward.
+  // The engine ignores the request; the position keeps running forward.
   for (let i = 0; i < SEEK_MAX_RETRIES; i++) {
     r.moveTo(53 + i * 2);
     r.advance(SEEK_SETTLE_MS);
@@ -301,8 +293,8 @@ function rig({ throwSeek = false, playing = true } = {}) {
 }
 
 {
-  // A newer request clears the degraded flag — the next skim deserves its own
-  // chance, and the UI must not keep saying "seek failed" forever.
+  // A newer request clears the degraded flag so the UI does not keep saying
+  // "seek failed" forever.
   const r = rig();
   r.moveTo(50);
   r.coalescer.request(5);
@@ -379,8 +371,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 {
   // The AVPlay backend does not know its source when the coalescer is built,
   // so it passes a function. A number captured at construction pinned every
-  // seek to one engine's window — always one tick short of the other's
-  // measured settle time.
+  // seek to one engine's window.
   let now = 0;
   let pos = 50;
   let hls = true;
@@ -416,10 +407,8 @@ function rig({ throwSeek = false, playing = true } = {}) {
 // ── The overall deadline can be decided per source ─────────
 {
   // The deadline is an option, not a constant, so the backend can tune it per
-  // source. (It currently uses the same 8 s for both: a direct HEVC seek was
-  // measured at 2–3 s, and failing one early is what sent scenes to the
-  // browser.) The API still has to honour a shorter value for a caller that
-  // wants one.
+  // source. It uses 8 s for both: a direct HEVC seek measured 2–3 s, and
+  // failing one early is what sent scenes to the browser.
   const run = (wait, at) => {
     let now = 0;
     const degraded = [];
@@ -448,8 +437,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 // ── The deadline is not debounced by the settle window ─────
 {
   // The window's reset used to gate the deadline check, so a 4 s deadline
-  // first fired on the next window boundary — up to 3 s later. The 2026-10-24
-  // native reopen was measured 6.2 s after the seek for that reason.
+  // first fired on the next window boundary — up to 3 s later.
   let now = 0;
   const reasons = [];
   const c = createSeekCoalescer({

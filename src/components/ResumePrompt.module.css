@@ -1,14 +1,9 @@
 /*
- * ResumePrompt — see ResumePrompt.jsx.
+ * Smaller than the marker modal's 980px: one question with two answers would
+ * read as a page at full width.
  *
- * A centred panel over the player, deliberately smaller than the marker modal's
- * 980px: this is one question with two answers, and a full-width panel would
- * read as a page rather than as an interruption.
- *
- * `z-index: 40` puts it above the player's own overlay (1000 in VideoPlayer's
- * stylesheet is a different stacking context, so the two numbers are not
- * compared directly — but 40 also clears the marker modal's 30, and nothing can
- * be open at the same time anyway).
+ * `z-index: 40` clears the marker modal's 30; VideoPlayer's 1000 is in a
+ * different stacking context, so the numbers are not compared.
  */
 
 .overlay {

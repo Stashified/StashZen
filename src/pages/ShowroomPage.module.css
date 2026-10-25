@@ -1,25 +1,22 @@
-/* ShowroomPage — four shelves, each exactly one screen wide.
-   The page is the vertical scroll container (the same shape as VideoGrid's
-   wrapper, so useKeyHandler's scrollContainerOf sees it). At 1920x1080 the
-   first three shelves are fully in view and the fourth begins just above the
-   fold, which is the "bigger cards, three rows at a time" the TV asked for.
-   That is measured, not assumed: showroom-entry's H2b asserts the section
-   rects. A shorter window scrolls, as before.
+/* Four shelves, each exactly one screen wide. The page is the vertical scroll
+   container (the same shape as VideoGrid's wrapper, so
+   useKeyHandler's scrollContainerOf sees it). At 1920x1080 the first three
+   shelves are fully in view and the fourth peeks above the fold — measured,
+   and asserted by showroom-entry's H2b section rects. A shorter window
+   scrolls.
 
-   Every card on Home is one size. The second TV pass (0.18.0) found the
-   performer shelf's portrait cards nearly twice the area of the others; the
-   0.18.2 pass makes all four shelves one footprint by giving each card a
-   fixed height here and letting its art fill whatever that leaves (the
-   `.fill` class in each card's sheet). The scene card's info bar is still
-   underneath its image; the other three overlay their text as before. */
+   Every card on Home is one size: `.cell` pins a fixed height on each and the
+   card's own `.fill` rule makes its art absorb the difference. Without that,
+   the performer shelf's portrait covers are nearly twice the area of the
+   others. */
 
 .page {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 28px 48px 48px;
-  /* Instant, not smooth: useFocusable passes behavior:'auto' and
-     scroll-behavior:smooth would fight it. Same note as VideoGrid. */
+  /* Instant: useFocusable passes behavior:'auto', which
+     scroll-behavior:smooth would fight. Same note as VideoGrid. */
   scroll-behavior: auto;
 }
 
@@ -50,15 +47,12 @@
 
 /* Five cards plus See all. Fixed columns, no overflow: the row is the whole
    shelf, and the tile is the only way past it. `align-items: stretch` (the
-   grid default, stated because it matters here) makes the See-all tile match
-   the fixed card height, so the strip has one bottom edge.
+   grid default, stated because it matters) makes the See-all tile match the
+   fixed card height, so the strip has one bottom edge.
 
-   The height is the sizing contract. 240px at the 1920x1080 TV viewport is
-   ~10% taller than the scene cards were and ~60% taller than the studio and
-   gallery covers, which is the "others a tad bigger" half of the request;
-   the performer cover falls from 3:4 portrait (341px) to the same 240px,
-   which is the "too big" half. Three sections end at ~912px, so the first
-   three shelves still fit and the fourth still peeks — asserted by H2b. */
+   `--shelf-card-h` is the sizing contract: 240px at the 1920x1080 TV viewport.
+   Three sections end at ~912px, so the first three shelves fit and the fourth
+   peeks — asserted by H2b. */
 .strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -77,11 +71,10 @@
   height: 100%;
 }
 
-/* ── See-all tile ─────────────────────────────────────────── */
-/* Chrome copied from VideoCard's `.card` so it reads as the same family:
-   one hairline border, 4px radius, the same focus scale and ring. The art
-   block fills whatever height the row's fixed cards have, so the tile and the
-   five cards share one bottom edge. */
+/* Chrome copied from VideoCard's `.card` so it reads as the same family: one
+   hairline border, 4px radius, the same focus scale and ring. The art block
+   flexes to the row's fixed card height, so the tile and the five cards share
+   one bottom edge. */
 .seeAll {
   display: flex;
   flex-direction: column;
@@ -156,7 +149,6 @@
   white-space: nowrap;
 }
 
-/* ── States ───────────────────────────────────────────────── */
 .state {
   height: 100%;
   display: flex;

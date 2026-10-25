@@ -1,11 +1,8 @@
 /**
- * PerformerGrid — Infinite-scroll grid, reactive to controls.
+ * PerformerGrid — infinite-scroll grid, reactive to controls.
  *
- * The paging itself lives in usePagedList; this component supplies the
- * request and the trigger (a sentinel observed from inside the scroll
- * container). Same division of labour as VideoGrid — the three grids were
- * near-identical copies of the state machine before this, differing in the
- * service they call and the noun they print.
+ * As in VideoGrid, usePagedList owns paging and this supplies the request and
+ * the trigger.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -32,10 +29,10 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
     items: performers, total, loading, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
-    // ← critical: sort and order MUST be in the key
+    // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // The grid is swapped out for the detail page, so Back mounts it again
-    // with page 1; the restore pages forward to the performer that was opened.
+    // Back from the detail page remounts at page 1; the restore pages forward
+    // to the performer that was opened.
     focusPrefix: 'performer',
   });
 

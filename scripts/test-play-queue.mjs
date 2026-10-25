@@ -4,18 +4,15 @@
  *
  *   node scripts/test-play-queue.mjs
  *
- * Two objects decide what a playback session contains. `queueOf` is the
- * "nothing to extend into" queue used by the detail page's Play and by a
- * marker. `queueItemFromMarker` builds the one queue item that is written by
- * hand instead of taken from a grid card, and every field it forwards is a
- * field the player needs: skimming, codec refusal and the timeline each read
- * this object. A missing field degrades silently — a marker on an HEVC scene
- * simply plays instead of prompting to transcode — so the fields are pinned
- * here rather than left to the harness, which drives the DOM.
+ * `queueOf` is the "nothing to extend into" queue used by the detail page's
+ * Play and by a marker. `queueItemFromMarker` builds the one queue item written
+ * by hand rather than taken from a grid card; skimming, codec refusal and the
+ * timeline each read it, and a missing field degrades silently (a marker on an
+ * HEVC scene just plays instead of prompting to transcode), so the fields are
+ * pinned here.
  *
  * `buildSceneMenuItems` is asserted too: the card's listing decides whether
- * "Play all" and "Play from here" exist at all. No framework, same as
- * test-criterion-draft.mjs.
+ * "Play all" and "Play from here" exist at all.
  */
 
 import {
@@ -114,10 +111,9 @@ check('Play from here counts what is left', items[2].hint, '1 left');
 items[0].onSelect();
 check('Play opens a queue of one at the start',
   calls.at(-1), { items: [card], total: 1, page: 1, startIndex: 0, startSeconds: 0, fetchPage: null });
-// `restoreBy` is what makes Back return to the card last *viewed* rather than
-// the one the queue started on (usePlayback.handlePlayerClose). A queue that
-// walks cards must set it; the single-scene Play must not, because its card
-// never changes and the element restore is the correct answer there.
+// `restoreBy` makes Back return to the card last *viewed* rather than the one
+// the queue started on (usePlayback.handlePlayerClose). A card-walking queue
+// must set it; the single-scene Play must not, since its card never changes.
 check('the single-scene Play leaves restoreBy unset', 'restoreBy' in calls.at(-1), false);
 items[1].onSelect();
 check('Play all keeps the listing and starts at its first item',
@@ -137,9 +133,9 @@ check('a card with no listing gets only Play and Details',
   single.map(i => i.id), ['menu-play', 'menu-details']);
 
 // ── Markers ────────────────────────────────────────────────
-// Two markers on one scene are two timestamps into one video. The player's
-// queue is keyed by scene, so the listing must collapse them — and the second
-// marker must still be able to *start* the queue at its own timestamp.
+// Two markers on one scene are two timestamps into one video. The queue is
+// keyed by scene, so the listing collapses them; the second marker must still
+// be able to *start* the queue at its own timestamp.
 const marker2 = { ...marker, id: 'm2', title: 'Marker Two', seconds: 640 };
 const otherScene = { ...card, id: '43' };
 const marker3 = { ...marker, id: 'm3', title: 'Marker Three', seconds: 1905, scene: otherScene };
@@ -166,8 +162,8 @@ check('total stays the marker count — an upper bound, not a promise', mq.total
 check('the queue keeps the listing page for extension', mq.page, 1);
 check('the start index is zero — the seed has already been reduced', mq.startIndex, 0);
 
-// The extension adapter has to dedupe *within* a page too: usePlayQueue
-// filters against what it has already kept, not against the same page.
+// The extension adapter dedupes *within* a page: usePlayQueue filters against
+// what it has kept, not against the same page.
 const pageRows = await mq.fetchPage(2);
 check('extension pages are mapped to scene rows and deduped', pageRows.items.map(i => i.id), ['43']);
 
@@ -283,9 +279,9 @@ check('Shuffle slideshow asks for a shuffled one',
   galleryCalls.at(-1), { slideshow: gallery, opts: { shuffle: true } });
 
 // ── buildActionMenu dispatch, per kind ─────────────────────
-// The marker kind is checked above. These are the other three: each answers
-// with its own title/subtitle and its own row set, and the scene fallback is
-// the branch every unrecognised kind lands in.
+// The marker kind is checked above; these are the other three, each with its
+// own title/subtitle and row set. The scene fallback is where an unrecognised
+// kind lands.
 const sceneAction = buildActionMenu(
   { kind: 'scene', item: card, list: listing, index: 1 },
   { openPlayer, onDetails },

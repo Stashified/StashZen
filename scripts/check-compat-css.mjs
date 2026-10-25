@@ -3,18 +3,17 @@
  * `eslint --config eslint.compat.mjs src`.
  *
  * Runs doiuse over the built stylesheet at the engine version the Tizen
- * manifest declares, so a CSS feature newer than the floor fails here instead
- * of on a viewer's TV. Needs a build first: doiuse reads the emitted CSS, not
- * the source, because Lightning CSS rewrites and prefixes it on the way out.
+ * manifest declares, so CSS newer than the floor fails here rather than on a
+ * viewer's TV. Needs a build: doiuse reads the emitted CSS, not the source,
+ * because Lightning CSS rewrites and prefixes it.
  *
- * Two caveats worth knowing when this goes red:
- *  - doiuse has no `aspect-ratio` data (Chromium 88). A new use of it will
- *    pass this check; it is covered by the floor being 94, not by the tool.
- *  - `@font-face` blocks are blanked before the scan. doiuse's tokenizer stops
- *    the stream at the first one (declarations directly inside an at-rule
- *    have no selector to hang them on), which would silently skip every rule
- *    after it — the end of the bundle went unchecked until 2026-10-18. Blanking
- *    preserves byte offsets, so reported columns still point at the real rule.
+ * Two caveats:
+ *  - doiuse has no `aspect-ratio` data (Chromium 88), so a new use passes; the
+ *    floor of 94 covers it, not the tool.
+ *  - `@font-face` blocks are blanked before the scan: doiuse's tokenizer stops
+ *    at the first one (declarations inside an at-rule have no selector), which
+ *    silently skips every rule after it. Blanking preserves byte offsets, so
+ *    reported columns still point at the real rule.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -39,9 +38,8 @@ if (cssFiles.length === 0) {
 }
 
 /**
- * Replace every `@font-face { … }` block with spaces of the same length.
- * The result has no `@font-face`, so doiuse parses all of it, and every other
- * rule keeps its original offset.
+ * Replace every `@font-face { … }` block with spaces of the same length, so
+ * doiuse parses the whole file and every other rule keeps its offset.
  */
 function blankFontFaces(css) {
   let out = '';
@@ -109,10 +107,8 @@ const lines = `${result.stdout || ''}${result.stderr || ''}`
   .filter(line => line.trim());
 
 // A tokenizer note means doiuse stopped parsing part of the bundle, so every
-// rule after it went unscanned. This used to be filtered out as noise, which
-// turned a partial scan into a green check — the same false assurance the
-// @font-face blanking above exists to remove. Blanking leaves no such note on
-// a healthy bundle, so its presence is always a failure.
+// rule after it went unscanned. Filtering it as noise turns a partial scan into
+// a green check; a healthy bundle has no such note, so any is a failure.
 const tokenizerNotes = lines.filter(line => line.startsWith('[css-tokenize]'));
 if (tokenizerNotes.length) {
   for (const line of tokenizerNotes) console.error(line);

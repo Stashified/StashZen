@@ -3,25 +3,25 @@
  * gen-filter-schema.mjs — regenerate src/utils/stashFilterSchema.js
  *
  * Introspects a live Stash server and writes the field → GraphQL-input-type
- * map the filter translator dispatches on. Run this after upgrading Stash;
- * the generated file is committed so the app never introspects at runtime.
+ * map the filter translator dispatches on. Run after upgrading Stash; the
+ * generated file is committed so the app never introspects at runtime.
  *
  *   node scripts/gen-filter-schema.mjs
  *
- * Credentials come from the environment (VITE_STASH_URL / VITE_STASH_API_KEY)
- * or, failing that, from .env.production. Nothing is ever printed.
+ * Credentials come from VITE_STASH_URL / VITE_STASH_API_KEY or, failing that,
+ * .env.production. Nothing is ever printed.
  *
- * Traversal is deliberately bounded to *filter* types: starting at the three
- * roots below it follows fields whose type ends in `FilterType` (so nested
- * filters like SceneFilterType.tags_filter are covered) and separately
- * collects the `*CriterionInput` types those fields reference. It does not
- * walk the whole schema — `SceneFilterType` ↔ `PerformerFilterType` reference
- * each other, and the criterion types are the only other thing we need.
+ * Traversal is bounded to *filter* types: from the three roots below it follows
+ * fields ending in `FilterType` (covering nested filters like
+ * SceneFilterType.tags_filter) and collects the `*CriterionInput` types those
+ * reference. It does not walk the whole schema — `SceneFilterType` ↔
+ * `PerformerFilterType` reference each other, and criteria are all else needed.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { parseDotenv } from './parse-dotenv.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(HERE, '../src/utils/stashFilterSchema.js');
@@ -34,12 +34,13 @@ function loadEnv() {
   const env = { ...process.env };
   if (env.VITE_STASH_URL && env.VITE_STASH_API_KEY) return env;
   try {
-    for (const line of readFileSync(resolve(HERE, '../.env.production'), 'utf8').split('\n')) {
-      const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=(.*)$/.exec(line);
-      if (m && !env[m[1]]) env[m[1]] = m[2].trim();
+    for (const [k, v] of Object.entries(
+      parseDotenv(readFileSync(resolve(HERE, '../.env.production'), 'utf8')),
+    )) {
+      if (!env[k]) env[k] = v;   // an explicit environment variable wins
     }
   } catch {
-    // No .env.production — the explicit-env path above is the only option.
+    // No .env.production: only the explicit environment can supply it.
   }
   return env;
 }
@@ -114,19 +115,16 @@ while (queue.length) {
   }
 }
 
-// Criterion shapes. Three things the translator needs:
-//   - which types can't carry a modifier (emitting one is a 422)
-//   - which take a list in `value` (a bare scalar has to be wrapped)
-//   - the declared field list, so a key that doesn't belong to the target
-//     type (e.g. `depth` on a plain MultiCriterionInput) is pruned rather
-//     than sent and rejected
+// Criterion shapes the translator needs: which types cannot carry a modifier
+// (emitting one is a 422), which take a list in `value` (a bare scalar must be
+// wrapped), and the declared fields, so a stray key (e.g. `depth` on a plain
+// MultiCriterionInput) is pruned rather than sent and rejected.
 const noModifier = [];
 const listValue = [];
 const criterionFields = {};
-// Enum types a criterion's `modifier` or `value` is declared as. The builder
-// needs these to render the dropdown, and hardcoding them would reintroduce
-// exactly the field-list problem this file exists to avoid: the modifier set
-// is per-criterion-type (a Duplication has no modifier at all; a Hierarchical
+// Enum types a criterion's `modifier` or `value` is declared as, for the
+// dropdown. Hardcoding them would reintroduce the field-list problem this file
+// avoids: the modifier set is per type (a Duplication has none; a Hierarchical
 // multi takes INCLUDES/EXCLUDES where a String takes MATCHES_REGEX).
 const enumRefs = new Set();
 for (const name of [...criterionTypes].sort()) {
@@ -142,8 +140,8 @@ for (const name of [...criterionTypes].sort()) {
   }
 }
 
-// Resolve the ones that are actually enums. A scalar (String, Int, Boolean)
-// has no enumValues and is dropped here rather than guessed at.
+// Resolve the actual enums. A scalar (String, Int, Boolean) has no enumValues
+// and is dropped rather than guessed at.
 const ENUM_QUERY = `
   query($n: String!) { __type(name: $n) { kind enumValues { name } } }
 `;

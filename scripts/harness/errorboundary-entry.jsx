@@ -1,19 +1,15 @@
 /**
  * Headless driver for the app's last-resort recovery screen.
  *
- * Mounts the real ErrorBoundary around a component that throws during render.
- * On a TV the failure this fixes looks like a black screen with no console, so
- * the assertions are about what a user can actually see and do:
+ * Mounts the real ErrorBoundary around a component that throws during render,
+ * and PlayerErrorBoundary around a player child that does. Asserts what a user
+ * on a TV (black screen, no console) can see: the error screen replaces the
+ * failed tree, its message is visible, "Try again" takes focus without App's
+ * navigator, arrows move between actions, Restart calls the injected hook, and
+ * a retry restores the tree. The player boundary closes the player instead.
  *
- *   - the error screen replaces the failed tree,
- *   - the failure message is visible (the one diagnostic a TV otherwise has),
- *   - "Try again" takes focus without App's navigator being mounted,
- *   - arrow keys still move between the two actions,
- *   - Restart calls the restart hook,
- *   - a successful retry brings the real tree back.
- *
- * The restart hook is injected rather than letting the component call
- * `location.reload()`: a driver that reloads its own page can never report.
+ * The restart hook is injected rather than calling `location.reload()`: a
+ * driver that reloads its own page can never report.
  */
 
 import '../../src/index.css';
@@ -83,8 +79,8 @@ async function run() {
     document.activeElement === retry,
     `active=${JSON.stringify(document.activeElement?.textContent || null)}`);
 
-  // The error screen registers its own useKeyHandler. Without it the D-pad is
-  // dead here: the tree that owns App's navigator is exactly what unmounted.
+  // The error screen registers its own useKeyHandler; the tree that owned
+  // App's navigator is exactly what unmounted.
   const right = new KeyboardEvent('keydown', {
     key: 'ArrowRight', keyCode: 39, bubbles: true, cancelable: true,
   });
@@ -111,11 +107,8 @@ async function run() {
     !window.__escaped, `escaped=${window.__escaped || 0}`);
 
   // ── The player's own boundary ────────────────────────────
-  // The global ErrorBoundary is the last resort and replaces the whole app;
-  // for a render failure inside the player that is too much — the session is
-  // still good, and the fix is to close the player and keep browsing. This
-  // mounts PlayerErrorBoundary where AppOverlays does, around a child that
-  // cannot render.
+  // A player render failure must close the player and keep browsing, not
+  // replace the whole app. Mounted where AppOverlays mounts it.
   function PlayerBomb() { throw new Error('VERIFY player failure'); }
   let closeCalls = 0;
   const logged = [];
@@ -128,19 +121,14 @@ async function run() {
       </PlayerErrorBoundary>,
     );
     // The boundary defers the close by CLOSE_DELAY_MS (1600 ms) so the
-    // message is readable before the player goes. This wait has to outlast
-    // that timer, not just the commit that raises it: waiting 300 ms asserted
-    // "closed exactly once" while the close was still pending, which is how
-    // these two checks sat red without the fix being wrong.
+    // message is readable; this wait must outlast that timer.
     await sleep(1900);
   } finally {
     console.error = realError;
   }
 
-  // The app's boundary is told apart by its own sentence, not by "Something
-  // went wrong": the player's fallback says that too ("Something went wrong.
-  // See the log for details."), so the broader phrase made a correct player
-  // boundary fail this check.
+  // Told apart by its own sentence: the player's fallback also says
+  // "Something went wrong".
   check('P1 a player render error is closed, not turned into the app recovery screen',
     !document.querySelector('[role="alertdialog"]')
       && !document.body.textContent.includes('StashZen hit an unexpected error'),

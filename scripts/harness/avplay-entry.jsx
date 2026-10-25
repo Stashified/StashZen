@@ -1,50 +1,18 @@
 /**
  * Headless driver for the TV engine — AVPlay behind the media facade.
  *
- * The one thing this driver cannot do is play anything through AVPlay: the
- * engine exists only on the TV, and the browser has none. So a stand-in
- * (`fakeAvplay.js`, built with the backend) records the calls and reports the
- * states the Phase 0 probe measured, and everything asserted here is what the
- * *app* did with them — which URL it opened, whether a `<video>` existed when
- * it opened, what the page looked like while the plane was up, and where the
- * player went when the engine refused.
- *
- * What that leaves untested is stated plainly rather than implied: whether
- * AVPlay decodes a codec, whether the picture is visible above a transparent
- * page, whether a hide/return really restores audio, and what the panel's mute
- * OSD does. Those are the TV pass's checklist. This driver proves the decisions
- * and the DOM around them.
- *
- * Groups:
- *   A — the ordinary path: AVPlay opens the scene, no `<video>` exists, the
- *       plane is transparent, the poster covers it until the first frame, the
- *       stats panel tells the truth, skims accumulate, and hide/return
- *       suspends and restores.
- *   B — a prepare refusal: content-level, so the browser plays the same file,
- *       the plane comes down, and the *next* scene of that format skips AVPlay
- *       entirely (the per-format negative cache).
- *   C — a refusal mid-play: the browser takes over at the playhead, not zero.
- *   D — HLS is preferred: every AVPlay transcoded candidate is HLS first, and
- *       the browser's own HLS-then-MP4 walk keeps the same order.
- *   E — the kill switch: two engine-level failures on different scenes turn
- *       AVPlay off for the rest of the session, and the stats panel says so.
- *   F — a slow seek: the engine holds the position past one settle window, and
- *       the player waits for it instead of re-issuing the seek each window.
- *   G — a paused skim, and the seek deadlines that must not fire on it.
- *   H — the shipped `Auto` policy: browser first. An ordinary scene never opens
- *       AVPlay; a format the browser cannot demux goes to AVPlay directly; a
- *       browser that accepts and stalls is handed over at 4 s, but the stall is
- *       not a format verdict, so the next scene of that format is tried in the
- *       browser again.
- *
- * Groups A–G run under `TV player`, so they keep testing the AVPlay path they
- * were written for. Group H switches to `Auto` and is the only one that
- * asserts the default's ordering.
- *
- * The fake is installed before React mounts, because `usePlayerEngine` reads
- * `window.webapis.avplay` during render. Modes are flipped per group through
- * the fake's own `mode` Set; `calls` is cleared between groups so each
- * assertion counts only what its group did.
+ * AVPlay exists only on the TV, so a stand-in (`fakeAvplay.js`) records the calls
+ * and reports the Phase 0 states; everything asserted is what the app did with
+ * them: which URL it opened, whether a `<video>` existed, what the page looked
+ * like while the plane was up, and where the player went on refusal. Untested
+ * here: whether AVPlay decodes a codec, whether the picture is visible, whether
+ * hide/return restores audio, and the mute OSD — the TV pass's checklist.
+ * A ordinary path; B prepare refusal (content, cached per format); C mid-play
+ * refusal at the playhead; D HLS preferred for either engine; E kill switch on
+ * two engine-level failures; F slow seek not re-issued; G paused skim and seek
+ * deadlines; H the shipped Auto policy. A–G run under `TV player`, H under `Auto`.
+ * The fake is installed before React mounts (`usePlayerEngine` reads it during
+ * render); modes are per-group and `calls` is cleared between them.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -117,12 +85,9 @@ const press = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown'
   key, keyCode, which: keyCode, bubbles: true, cancelable: true,
 }));
 
-// The player's ↓ is a two-stop ladder: with the seek bar up and no cursor on
-// it, the first press returns to the buttons and only the second steps; with
-// the bar hidden, one press steps. The player opens with the bar up, so a
-// queue step needs the extra press. The reveal is visible as the cursor
-// landing on the rail's ⏯; blurring afterwards leaves the next call in the
-// state this one started from (the seek bar, with no cursor).
+// The player's ↓ is a two-stop ladder: with the seek bar up and no cursor, the
+// first press returns to the buttons and only the second steps; with the bar
+// hidden, one press steps. The player opens with the bar up.
 const railFocused = () =>
   ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
 
@@ -347,10 +312,9 @@ async function groupA() {
 // ── B: a prepare refusal is content, not an engine fault ────
 async function groupB() {
   fake.mode.add('failPrepare');
-  // Two scenes of the *same* container/codec triple in one player session:
-  // the cache is session-scoped by design (a new server's library must not
-  // inherit another's refusals), so re-mounting between them would test
-  // nothing.
+  // Two scenes of the same triple in one session: the cache is session-scoped
+  // by design (a new server's library must not inherit another's refusals), so
+  // re-mounting between them would test nothing.
   await remount([
     scene({ id: '9202', stream: at('/tone9202.wav') }),
     scene({ id: '9203', stream: at('/tone9203.wav') }),
@@ -412,10 +376,9 @@ async function groupD() {
   // Every prepare fails: that is what makes the walk reach the transcode
   // candidates at all, since the fake would otherwise accept the direct file.
   fake.mode.add('failPrepare');
-  // Two scenes of one format in one session: the first pays for the refusal,
-  // the second finds the format in the cache and goes straight to AVPlay's
-  // HLS transcode — which is the state where the stats row used to read
-  // "AVPlay · AVPlay refused this format".
+  // Two scenes of one format in one session: the first pays for the refusal, the
+  // second hits the cache and goes straight to AVPlay's HLS transcode — where the
+  // stats row used to read "AVPlay · AVPlay refused this format".
   await remount([scene({
     id: '9205',
     stream: at('/tone9205.wav'),
@@ -491,10 +454,9 @@ async function groupE() {
   // The engine question is just "did the scene start playing at all".
   const playedA = await waitFor(playingNow, 12000);
   const afterFirst = fake.calls.openAttempts.length;
-  // The engine fault is per-candidate, not per-scene: a broken engine refuses
-  // the direct file and then each AVPlay transcode, so this scene can cost
-  // several attempts. What matters is that the *scene* played on the browser
-  // and that one scene's failures did not disable the engine.
+  // The engine fault is per-candidate, not per-scene: a broken engine refuses the
+  // direct file and each transcode, so one scene can cost several attempts. What
+  // matters is that it played in the browser and the engine was not disabled.
   check('E1 one engine failure falls back rather than disabling the engine',
     playedA && afterFirst >= 1,
     `attempts=${afterFirst} played=${playedA} `
@@ -529,10 +491,9 @@ async function groupE() {
 
 // ── F: a seek that takes longer than one window ─────────────
 async function groupF() {
-  // The 4K AV1 report: the engine accepts the seek, the picture freezes while
-  // it decodes from the new keyframe, and the position does not move. The
-  // first window expires during that hold — re-issuing the seek there is what
-  // made it never finish.
+  // The 4K AV1 report: the engine accepts the seek, the picture freezes while it
+  // decodes from the new keyframe, and the position does not move. Re-issuing the
+  // seek when the first window expired is what made it never finish.
   fake.mode.add('slowSeek');
   window.__fakeSlowSeekMs = 3000;
   await remount([scene({
@@ -619,11 +580,9 @@ async function groupG() {
     errorText() === '', `error="${errorText()}"`);
   fake.mode.delete('stuckSeek');
 
-  // G4 — a skim made while the user has paused. Two traps meet here: the
-  // engine never returns to PLAYING on its own (correctly — nobody asked it
-  // to), and the seek still has to settle on arrival rather than run out the
-  // direct deadline and be declared stuck. A false verdict here would switch
-  // engines on a working scene and lose the native plane.
+  // G4 — a skim while paused. The engine never returns to PLAYING on its own
+  // (correctly), and the seek must still settle rather than be declared stuck:
+  // a false verdict would switch engines on a working scene.
   await remount([scene({
     id: '9404', stream: at('/tone9404.wav'),
     container: 'mp4', videoCodec: 'av1', audioCodec: 'aac',
@@ -654,13 +613,9 @@ async function groupG() {
 }
 
 // ── H: the shipped default — browser first ─────────────────
-// A–G force `TV player`; this group is what a new build does without being
-// asked. Three claims, in the order the policy applies them:
-//   H1 an ordinary file plays in the browser and never opens AVPlay;
-//   H2 a file the browser cannot demux goes to AVPlay with no browser attempt;
-//   H3/H4 a browser that accepts a source and never decodes it is handed over
-//         at 4 s, and the stall is *not* recorded as a format verdict — the
-//         next scene of that format gets the browser again.
+// H1 an ordinary file never opens AVPlay; H2 a format the browser cannot demux
+// goes to AVPlay with no browser attempt; H3/H4 a stalled browser source is handed
+// over at 4 s, and the stall is not a format verdict, so the next scene retries.
 async function groupH() {
   setSettings({ playbackEngine: 'auto' });
 
@@ -689,13 +644,11 @@ async function groupH() {
     `opens=${AVPLAY_OPENS().length} url=${AVPLAY_OPENS()[0] || '(none)'} `
       + `videoAtOpen=[${fake.calls.videoPresentAtOpen.join(',')}]`);
 
-  // Two scenes of one *new* format in one player session. The first stream
-  // hangs: the element accepts the connection and never produces metadata, so
-  // only the watchdog can notice. Four seconds, not the transcode's ten,
-  // because AVPlay is a real second opinion under Auto.
-  // The watchdog is measured from the *request*, which the server timestamps;
-  // a driver-side timer would start before the fetch and the mount and would
-  // accept anything from a 2 s to a 6 s watchdog.
+  // Two scenes of one new format in one session. The first hangs: the element
+  // accepts the connection and never produces metadata, so only the watchdog can
+  // notice — 4 s, not the transcode's 10, because AVPlay is a real second opinion.
+  // Measured from the server's request timestamp; a driver-side timer would start
+  // before the fetch and accept 2–6 s.
   const hangHitsBefore = await getHangHits();
   await remount([scene({
     id: '9412', stream: at('/hang/9412'),
@@ -714,11 +667,9 @@ async function groupH() {
     `opened=${openedH3} after=${Number.isFinite(handoffMs) ? `${handoffMs}ms` : 'no request'} `
       + `url=${AVPLAY_OPENS()[0] || '(none)'}`);
 
-  // The stall is a hand-off, not a diagnosis: no metadata in four seconds can
-  // be a slow NAS or a busy Stash just as easily as a refused codec, and the
-  // only trustworthy verdict arrives through the element's own error (3/4).
-  // So the next scene of the same format is still tried in the browser — and
-  // this one is playable, so that is where it must play.
+  // A hand-off, not a diagnosis: no metadata in four seconds can be a slow NAS or
+  // a busy Stash as easily as a refused codec, and only the element's own error
+  // (3/4) is a verdict. So the next scene is still tried in the browser.
   const opensBefore = AVPLAY_OPENS().length;
   await stepNext();
   const playedH4 = await waitFor(() => playingNow() && !!videoEl(), 6000);

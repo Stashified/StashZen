@@ -4,21 +4,16 @@
  *
  *   node scripts/test-avplay-backend.mjs
  *
- * The fake here is deliberately tiny: it only implements the calls the probe
- * measured and the backend actually makes. What this pins is everything the
- * TV would otherwise have to tell us on every run:
+ * The fake implements only the calls the probe measured and the backend makes.
+ * This pins what the TV would otherwise have to report on every run:
  *
  *   - the event order the player's hooks expect (metadata → play → playing)
- *   - the error contract (`.error` set *before* `error` is emitted, and a
- *     refused codec classified as content, not as a broken engine)
- *   - the seek contract (the coalescer's targets, and the getter reporting
- *     the pending target)
+ *   - the error contract (`.error` set *before* `error`, a refused codec
+ *     classified as content, not a broken engine)
+ *   - the seek contract (coalescer targets and the pending-target getter)
  *   - suspend/restore, including the no-args restore this panel insists on
- *   - the poll's own lifecycle: it stops when the session fails or the scene
- *     ends, and a replay re-arms it
+ *   - the poll's lifecycle: it stops on failure or scene end, replay re-arms it
  *   - TV mute and its restore-on-close rule
- *
- * No framework. Real timers; the waits are a few hundred milliseconds.
  */
 
 import { createAvplayBackend } from '../src/components/player/engine/avplayBackend.js';
@@ -47,8 +42,8 @@ function fakeAvplay({ failPrepare = false, prepareMs = 5, seekStuck = false } = 
   const calls = {
     open: [], close: 0, stop: 0, play: 0, pause: 0, seek: [],
     suspend: 0, restore: [], displayMethod: [], displayRect: [],
-    // How many times the poll asked for the state; the lifecycle tests use
-    // this to prove the poll stopped rather than merely stopped emitting.
+    // Poll reads; the lifecycle tests prove the poll stopped, not just that it
+    // stopped emitting.
     state: 0,
   };
   let listener = null;
@@ -234,8 +229,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── A failure stops the poll ──────────────────────────────
-// The poll re-armed itself from inside the tick that had just failed the
-// session, so it kept reading a closed native player.
+// The poll used to re-arm from inside the tick that failed the session, and
+// kept reading a closed native player.
 {
   const r = rig();
   r.backend.open('http://x/1.mp4');
@@ -265,9 +260,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── The near-end fallback stops the poll from inside the tick ──
-// `onstreamcompleted` never arrives for this session, so finishEnded() runs
-// from the poll's own near-end verdict. The poll has to refuse to re-arm — the
-// failure this pins was one extra tick reading a finished session.
+// `onstreamcompleted` never arrives, so finishEnded() runs from the poll's
+// near-end verdict and the poll must refuse to re-arm.
 {
   const r = rig();
   r.backend.open('http://x/1.mp4');
@@ -285,9 +279,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── A stuck seek fails the session and nothing overwrites it ──
-// The degradation runs *inside* the poll. The tick must stop there: the next
-// read would come from the closed player, report 0, and undo the position the
-// fallback had just been handed.
+// Degradation runs *inside* the poll, so the tick must stop there: the next
+// read would come from the closed player, report 0, and undo the position.
 {
   const r = rig({ seekStuck: true });
   r.backend.open('http://x/1.mp4');
@@ -295,8 +288,7 @@ function rig(opts = {}, backendOpts = {}) {
   r.backend.currentTime = 60;
   const failed = await (async () => {
     // Past the backend's 8 s seek deadline (SEEK_MAX_WAIT_MS): a direct HEVC
-    // seek measured 2–3 s, so the deadline is deliberately generous and this
-    // wait has to outlast it.
+    // seek measured 2–3 s, so the deadline is generous and this must outlast it.
     const end = Date.now() + 9500;
     while (Date.now() < end) {
       if (r.backend.error) return true;
@@ -316,11 +308,9 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── An arrived seek recovers natively, not in the browser ──
-// The 2026-10-24 report: a rapid skim reached its position, the engine never
-// resumed, and the session was handed to the browser. A position at the target
-// is proof the file is seekable — it is the session that stopped — so the
-// backend reopens the same source at that position and keeps the hardware
-// decoder. Only a seek that never arrived falls back.
+// A position at the target proves the file is seekable — the session stopped —
+// so the backend reopens the source there and keeps the hardware decoder. Only
+// a seek that never arrived falls back.
 {
   const r = rig({}, { seekStuckMs: 4000 });
   r.backend.open('http://x/1.mp4');
@@ -351,9 +341,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── A seek made from loadedmetadata wins over the open's startAt ──
-// The player re-seeks a mid-scene engine fallback at the live playhead from
-// its loadedmetadata handler. The open's own start position used to be queued
-// after those events were emitted, so it overwrote the newer target.
+// The player re-seeks a fallback at the live playhead from loadedmetadata; the
+// open's start position used to be queued after that event and overwrote it.
 {
   const fake = fakeAvplay();
   const events = [];
@@ -375,9 +364,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── Replay after the end re-arms the poll ─────────────────
-// finishEnded() leaves the completion latch set and the poll stopped. Asking
-// to play again emitted `play` and then nothing: no `playing`, no
-// `timeupdate`, and no second ending.
+// finishEnded() leaves the completion latch set and the poll stopped; playing
+// again used to emit `play` and then nothing.
 {
   const r = rig();
   r.backend.open('http://x/1.mp4');
@@ -465,9 +453,8 @@ function rig(opts = {}, backendOpts = {}) {
 }
 
 // ── A mute pressed before prepare is retried on prepare ───
-// The setVolume rung needs a live session. A mute that lands while
-// `prepareAsync` is in flight used to be dropped: the call threw, the button
-// reverts, and the scene starts with sound.
+// The setVolume rung needs a live session; a mute landing while `prepareAsync`
+// is in flight used to throw, revert the button, and start the scene with sound.
 {
   const fake = fakeAvplay();
   const volumes = [];
@@ -487,10 +474,9 @@ function rig(opts = {}, backendOpts = {}) {
     eq(volumes, [0]) && backend.muted === true,
     `volumes=[${volumes.join(',')}] muted=${backend.muted}`);
 
-  // A queue advance opens a new native session, which starts at the panel's
-  // own level. The backend's remembered `muted` described the old session;
-  // keeping it made the onPrepared retry look already applied, so the new
-  // scene played with sound while the button still said muted.
+  // A queue advance opens a new session at the panel's own level. The
+  // remembered `muted` described the old session; keeping it made the
+  // onPrepared retry look applied, so the new scene played with sound.
   backend.open('http://x/2.mp4', { muted: true });
   await sleep(40);
   check('a mute survives into the next native session',
@@ -499,7 +485,8 @@ function rig(opts = {}, backendOpts = {}) {
   backend.close();
 }
 
-// A TV muted with the remote must not be unmuted by closing the player.
+// ── A remote mute survives close ───────────────────────────
+// Closing the player must not unmute a TV muted with the remote.
 {
   const fake = fakeAvplay();
   const tv = {

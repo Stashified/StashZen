@@ -1,120 +1,39 @@
 /**
- * Headless driver for the four browse-only sections (0.11.0's P4).
+ * Headless driver for the four browse-only sections (Tags, Studios, Galleries,
+ * Images) and the image viewer.
  *
- * Mounts the whole `App`, like rail-entry, because almost everything here is a
- * property of two components together rather than of either alone: the grid
- * and the service it calls, the card and the tab it lives on, the activation
- * and the tab it switches to.
+ * Mounts the whole `App`, like rail-entry: nearly every claim is a property of
+ * two components together — the grid and its service, the card and its tab,
+ * the activation and the tab it switches to. The four sections are instances
+ * of one component, so shape and paging are covered by list-entry; this file
+ * asserts where they differ.
  *
- * ## What is worth asserting here, and what is not
+ *   S1     each section renders under its prefix with its own rows and count;
+ *          text, not count, because tile ids come from the prefix and a count
+ *          stays green over the previous section's rows (the `key={activeTab}` bug).
+ *   S2/S3  its own operation and filter variable; one factory can be wrong for
+ *          a section and still render rows.
+ *   S4     every offered sort was probed against the live server, and no
+ *          rejected guess is offered.
+ *   S4b/S4b2 arriving adopts the declared sort *and direction*; the asc must
+ *          not leak onto a date-sorted tab on the way out.
+ *   S4c    grouped sort headers are sticky and opaque; rows clear them.
+ *   S4c    Performers, Markers and Studios return to name/title ascending.
+ *   S4d    arriving at Markers sends one page-1 request, already Title/ASC;
+ *          the rule adjusts `controls` during render, and both replies render.
+ *   S5–S8  a tag filters Scenes via a tab switch: arrival keeps the filter,
+ *          Back returns the right card, departure drops it. Read the screen —
+ *          a dropped filter's page-1 refetch is a `listCache` hit.
+ *   S6a    a gallery card shows its studio, falling back to the folder.
+ *   S9–S11 the viewer shows `paths.image`, not the card's thumbnail.
+ *   S10b–S11d the info panel: one fetch per image, reopen and step-back are
+ *          cache hits, a stale answer never lands, Back peels the panel first,
+ *          failures are reported and not cached, and there are no focus stops.
  *
- * The four sections are, by design, four instances of one thing — so the
- * *shape* checks (a grid rendered, 40 cards, a count line) are near-duplicates
- * of each other and the paging behaviour is already covered seven ways by
- * list-entry. Repeating that here would inflate the tally without adding a
- * claim. What this file covers is the four places where the sections differ
- * from the three that came before, because those are the new code:
- *
- *   S1–S3  the four sections render, and each sends *its own* operation with
- *          *its own* filter variable. The fake's REQUEST log records which —
- *          and it is the one thing a shared service factory can get wrong for
- *          exactly one section without anything failing to render.
- *
- *   S4     the four sort menus carry values Stash actually accepts. This is
- *          the check that would have caught the guesses: Tags take
- *          `scenes_count` (plural), Studios take `tag_count` (singular),
- *          Images take `performer_count` and reject `performers_count`. The
- *          fake does not validate sorts, so this asserts the *request* rather
- *          than the reply — see the note on S4.
- *
- *   S4b    arriving at a section adopts its declared default sort **and
- *          direction**. Tags declare `name` + `asc`, and until 0.18.0 a
- *          valid-but-foreign sort carried in from the previous tab survived
- *          the switch, so the default was applied only to users who had never
- *          touched a sort; the direction was not adopted at all until 0.18.1
- *          (the TV pass: "tags sort should be ascending"), so Tags opened
- *          Z→A. S4b2 pins the other half: the asc must not leak onto a
- *          date-sorted tab on the way back out.
- *
- *   S4c    the same claim for the two tabs the first pass missed: Performers
- *          declare `name` + `asc` and Markers `title` + `asc` (the 0.18.4 TV
- *          report: "these should have default sort as title ascending:
- *          Markers, Performers"). Each is left on Date Added + DESC, sent
- *          away, and required back on its declared pair.
- *
- *   S4d    arriving at Markers costs *one* page-1 request, carrying Markers'
- *          own Title/ASC — not two, the first of which is the previous tab's
- *          sort and is discarded. This is the "sluggish Markers tab" report
- *          from 2026-10-17: the arrival rule was an effect, so the grid
- *          fetched before it ran. The check reads the request log, because
- *          both replies render and the screen cannot tell one from two.
- *
- *   S5–S8  activation. A tag is not a page: it is a filter on the scene
- *          listing, arriving via a tab switch, which is the one piece of
- *          genuinely new control flow in this phase. The two halves that can
- *          break independently are checked separately — that arrival *keeps*
- *          the filter (the tab-change effect used to clear it in the act of
- *          applying it) and that Back *returns* to the right card.
- *
- *   S6a    a gallery card's second line: studio when there is one, folder
- *          otherwise. Both are on the fake, on neighbouring rows, so the
- *          fallback order is decidable rather than assumed.
- *
- *   S9–S11 the image viewer. New overlay, new key handling, and one claim that
- *          no other overlay makes: it shows `paths.image` rather than the
- *          thumbnail the card was showing.
- *
- *   S10b–S11d the viewer's info panel (0.29.0). Up reaches it, one request
- *          per image opened, reopen and stepping back are cache hits, the
- *          stale-answer race is sampled while the live answer is still in
- *          flight, Back peels the panel before the viewer, and a failure is
- *          reported and not cached. The panel adds no focus stops, and the
- *          fake names the studio after the requested id so a stale answer
- *          cannot pass for the right one. Since 0.29.1, Left/Right also step
- *          while the Info button holds focus (they used to require a Down
- *          first); both checks compare the title before and after the press,
- *          because a no-op left the expected title already on screen.
- *
- * ## The control experiments, and what they actually measured
- *
- * The project's rule is that a green run proves nothing until the line it
- * covers has been watched going red. Three were run for this file, and one of
- * them falsified the claim it was testing — which is why the results below are
- * written as measurements rather than as intentions.
- *
- *   - **Removing `key={activeTab}` from the `EntityPage` branch** — the fix for
- *     the bug this file found on 2026-10-16 — turns the four S1 prefix checks'
- *     *content* assertions red, S2 red for three of four operations, and S3
- *     red. The card-count halves of S1 stay green: the tiles are keyed by the
- *     descriptor's prefix, so they read `studio-1`..`studio-40` whatever rows
- *     are underneath them, and every fixture row is `id: "1"`, `id: "2"`, … .
- *     That asymmetry is the whole reason S1 asserts text and not a count.
- *   - **Deleting `workingFilterFor` from the activation** (so the tab-change
- *     effect cannot tell arrival from departure) turns three checks red: S5's
- *     listing check, S5's dropdown label and S6's listing check. That is the
- *     bug this phase's one non-obvious design decision exists to prevent — but
- *     it is **not** what the first draft of this file measured, and the
- *     difference is the most useful thing in this header. As written then, the
- *     same deletion turned exactly one check red. The reason: the filter and
- *     the tab are set in one batch, so the filtered request is *always* sent,
- *     and the unfiltered refetch that follows is page 1 of a listing
- *     `listCache` already holds from mount — so no second request reaches the
- *     log, and a "was a filtered request sent" assertion passes either way.
- *     The listing checks now read the *screen* (`liveCards`) rather than the
- *     log, which is what makes them able to fail; that in turn required the
- *     fake to honour the `tags` and `galleries` criteria — see server.py.
- *     S7 stays green under this deletion, and should: it is about where Back
- *     goes, not about what Home is showing.
- *   - **Deleting the `filterOrigin` branch in `onBack`** turns S7 red — all
- *     three of its checks, since Back falls through to the exit prompt and so
- *     "returns to Tags", "no dialog" and "focus is back on the tag" all fail —
- *     and both of S8's, because S8 drives the same Back path from the same
- *     filtered Home. Five red, 41/46. (The first draft's header guessed S8
- *     alone; the measurement is the whole S7 block plus the whole S8 pair.)
- *
- * The rest is a straight "did the request carry it" assertion on a log the fake
- * writes before dispatch, and the log itself is proven live by S3 failing when
- * a service is pointed at the wrong operation.
+ * Control experiments: deleting `key={activeTab}` reddens S1's content checks,
+ * S2 (three operations) and S3 while S1's counts stay green; deleting
+ * `workingFilterFor` reddens S5's listing/dropdown and S6's listing; deleting
+ * `filterOrigin` in `onBack` reddens all of S7 and both of S8.
  */
 
 import '../../src/index.css';
@@ -155,11 +74,9 @@ async function press(key) {
   await sleep(150);
 }
 
-// Enter fires on keyup for elements that declare `onLongPress` and on keydown
-// for everything else (see useFocusable). Only VideoCard is in the first group;
-// rail rows and EntityCards are in the second, but sending both costs nothing
-// and keeps one helper. 10009 is Tizen's Back, which every overlay here handles
-// on the capture phase.
+// Enter fires on keyup for elements declaring `onLongPress` (VideoCard) and on
+// keydown for the rest; sending both keeps one helper. 10009 is Tizen's Back,
+// which every overlay here handles on the capture phase.
 async function tapEnter() {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -185,12 +102,10 @@ const focus = (id) => {
 };
 /** Cards of a section that are *on screen right now*.
  *
- * Not the same as `cardCount`, which counts registry keys: the registry
- * outlives a card that React has unmounted — the entry still points at a
- * detached node — so a listing that has just been replaced by an empty one
- * still has 40 keys behind it. `document.contains` is the difference between
- * "was rendered" and "is rendered", and only the second one is what the user
- * is looking at. */
+ * Not `cardCount`, which counts registry keys: the registry outlives an
+ * unmounted card, so a replaced listing still has keys behind it.
+ * `document.contains` is the difference between "was rendered" and "is
+ * rendered". */
 const liveCards = (prefix) =>
   [...registry.keys()]
     .filter(k => k.startsWith(`${prefix}-`))
@@ -203,9 +118,9 @@ const has = (id) => registry.has(id);
 const cardCount = (prefix) =>
   [...registry.keys()].filter(k => k.startsWith(`${prefix}-`)).length;
 
-// The fake's own logs. `/requests` is the paginated listings and `/graphqlcalls`
-// every operation name before dispatch; between them they answer both "which
-// operation" and "with what filter variable".
+// The fake's logs: `/requests` carries the paginated listings and
+// `/graphqlcalls` every operation name before dispatch. Together they answer
+// "which operation" and "with what filter variable".
 const getJSON = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
 const clearLogs = async () => fetch(`http://127.0.0.1:${PORT}/clear`, { method: 'POST' });
 // `/mode` merges the payload into the fake's behaviour switches; each key is
@@ -244,16 +159,15 @@ async function finish() {
 
 // ── The run ─────────────────────────────────────────────────
 async function run() {
-  // Home is the showroom as of 0.15.0, so its first shelf — not a `video-`
-  // card — is what arrives over the wire here. The scene listing these
-  // sections activate into now lives on Scenes.
+  // Home is the showroom, so its first shelf — not a `video-` card — arrives
+  // over the wire; the scene listing these sections activate into is Scenes.
   await waitFor(() => has('showroom-recent-scenes-video-1'));
   await sleep(300);
 
   // ── S1  each section renders, with its own prefix ────────
-  // The focus prefix is the id scheme the rails, the Carousel and the
-  // activation handlers all key off, so "the right section rendered" is
-  // precisely "cards registered under its prefix and not another's".
+  // The focus prefix is the id scheme the rails, Carousel and activation
+  // handlers key off, so "the right section rendered" means cards registered
+  // under its prefix and not another's.
   const SECTIONS = [
     { tab: 'tags',      prefix: 'tag',     noun: 'tags',      title: 'VERIFY tag 1' },
     { tab: 'studios',   prefix: 'studio',  noun: 'studios',   title: 'VERIFY studio 1' },
@@ -262,8 +176,8 @@ async function run() {
   ];
 
   /** The text inside a registered card, read from the element the registry
-   *  points at. This is what the user sees on the tile, and it is the only
-   *  thing here that distinguishes one section's rows from another's. */
+   *  points at: what the user sees on the tile, and the only thing that
+   *  distinguishes one section's rows from another's. */
   const cardText = (id) => registry.get(id)?.el.textContent || '';
 
   for (const s of SECTIONS) {
@@ -274,48 +188,32 @@ async function run() {
       ok && n > 0 && railActive().toLowerCase() === s.tab,
       `cards=${n} rail=${railActive()} errors: ${errorTail()}`);
     // ── The content assertion, and why the count above is not enough ──
-    // It caught a real bug on 2026-10-16: all four sections render the same
-    // `EntityPage`, so React *reconciled* it across a tab switch instead of
-    // remounting, `usePagedList` kept the previous section's `items`, and its
-    // reset effect never re-ran because none of its deps change between two
-    // entity tabs. Every count-based check stayed green — the tile ids are
-    // built from the descriptor's prefix, so they read `studio-1`..`studio-40`
-    // whatever rows are underneath them, and the fixtures share `id: "1"`.
-    // What was actually on screen was Tags' rows wearing Studios' classes.
-    // Asserting the *text* is the smallest thing that could have gone red.
+    // All four sections render the same `EntityPage`, so React reconciles it
+    // and `usePagedList` keeps the previous items. Counts stay green because
+    // tile ids come from the prefix; text is the smallest visible failure.
     check(`S1 ${s.tab}: the tiles carry this section's rows`,
       cardText(`${s.prefix}-1`).includes(s.title),
       `card 1 says "${cardText(`${s.prefix}-1`).replace(/\s+/g, ' ').slice(0, 60)}"`);
     // The fixture is 100 rows; the count line is the only place the section
-    // says how many there are. Asserted as the literal the fake serves, so a
-    // section that printed another section's total would show it.
+    // states the total, so another section's number would show here.
     check(`S1 ${s.tab}: the count line reports the server's total`,
       barText().includes('100') || document.body.textContent.includes('100'),
       `bar="${barText().slice(0, 80)}"`);
   }
 
   // ── S2  the four operations are the four operations ──────
-  // Each section's service is built from one factory with the operation name
-  // in its arguments, and a factory is exactly the thing that can be right for
-  // three sections and wrong for the fourth without anything failing to
-  // render — the wrong operation would still return rows, just not these ones.
-  //
-  // Read from the whole run's log rather than from a fresh window. The first
-  // draft cleared the log and re-entered each tab, which asked nothing: the
-  // listings were already in `listCache`, so no request went out and the check
-  // failed on an empty log. Re-visiting a tab is not a way to make it fetch —
-  // only a change of request identity is — and this is the assertion that says
-  // so, so it reads what S1's own visits produced.
+  // One factory builds each service from the operation name, so it can be
+  // right for three sections and wrong for the fourth while still returning
+  // rows. Read S1's visits: `listCache` makes a re-visit send no request.
   const calls = await getJSON('/graphqlcalls');
   for (const op of ['FindTags', 'FindStudios', 'FindGalleries', 'FindImages']) {
     check(`S2 ${op} was sent`, calls.includes(op), `saw: ${[...new Set(calls)].join(', ')}`);
   }
 
   // ── S3  the filter variable is the section's own ─────────
-  // The fake logs the filter argument under its own key, so this is where a
-  // service that passed `tag_filter` to `findImages` shows up. It would have
-  // been rejected by the real server; here it would silently return the whole
-  // listing, which is why it is asserted against the log rather than the DOM.
+  // The fake logs the filter argument under its own key, so a service passing
+  // `tag_filter` to `findImages` — rejected by the real server, but silently
+  // returning the whole listing here — shows up in the log, not the DOM.
   const reqs = await getJSON('/requests');
   const keys = reqs.flatMap(r => Object.keys(r).filter(k => k.endsWith('_filter')));
   check('S3 each listing carried its own filter argument',
@@ -324,22 +222,13 @@ async function run() {
     `${reqs.length} listings logged; saw ${[...new Set(keys)].join(', ') || '(none)'}`);
 
   // ── S4  the sort menus offer only values the server accepts ──
-  // The values below are a recorded *measurement*, not a derivation. Stash's
-  // `SortBy` is one enum shared by every resolver, so introspecting it says
-  // which values exist and nothing about which ones a given `findX` honours —
-  // and the four disagree with each other in ways a pattern-match gets wrong:
-  // Tags take `scenes_count` and `performers_count` (plural), Studios take
-  // `tag_count` and `child_count` (singular) and reject `performers_count`
-  // outright, Images take `performer_count` and reject `performers_count`.
-  // Each list was sent to its own resolver before it was written into App.jsx.
-  //
-  // The fake cannot help here: it slices a fixture whatever sort it is handed,
-  // so a menu of invented values looks perfectly healthy. What is checkable is
-  // that every value the menu *offers* is one of the probed ones — and, more
-  // to the point, that none of the tempting guesses is among them. That is the
-  // assertion with teeth: `performers_count` on Studios is exactly the line a
-  // future edit would add by symmetry, and it is a runtime "invalid sort" on
-  // the TV.
+  // These lists record what each resolver accepts, not a derivation: `SortBy`
+  // is one shared enum, and the four disagree — Tags take `scenes_count` and
+  // `performers_count` (plural), Studios `tag_count`/`child_count` (singular)
+  // and reject `performers_count`, Images take `performer_count`. Each was
+  // sent to its own resolver first. The fake slices whatever sort it is handed,
+  // so the check is that every offered value was probed and the tempting
+  // `performers_count`-on-Studios guess is absent.
   const PROBED = {
     tags: ['name', 'created_at', 'updated_at', 'random',
       'scenes_count', 'scene_markers_count', 'images_count', 'galleries_count',
@@ -359,17 +248,12 @@ async function run() {
     galleries: ['files_count', 'resolution', 'filesize'],
   };
 
-  /** The values the Sort dropdown currently offers, read out of the registry.
-   *  The options only mount while the menu is open, so this opens it, reads,
-   *  and closes it again — the same three presses a user makes.
+  /** The Sort dropdown's offered values, read from the registry: the options
+   *  mount only while open, so this opens, reads and closes.
    *
-   *  While it is open, it also measures the group header and one row. The
-   *  header is `position: sticky`, so rows scroll underneath it; with a
-   *  translucent background both layers stayed readable at once and the
-   *  section name sat on top of an option's text (reported from the TV on
-   *  2026-10-18). The harness cannot see that as a paint, but it can see the
-   *  two computed styles that cause it. CSS-module names are hashed, hence the
-   *  attribute-substring selector. */
+   *  It also measures the sticky header and a row: a translucent header lets
+   *  rows show through. The harness sees computed styles, not paint;
+   *  CSS-module names are hashed, hence the substring selector. */
   const paintProbes = [];
   async function sortVocabulary() {
     if (!focus('ctrl-sort')) return null;
@@ -404,7 +288,7 @@ async function run() {
     vocab[s.tab] = await sortVocabulary();
   }
 
-  // One probe per section with a grouped menu; an empty array would make the
+  // One probe per section with a grouped menu. An empty array would make the
   // check vacuous, so the count is part of the assertion.
   check('S4c grouped sort headers are opaque and sticky, and rows clear them',
     paintProbes.length === SECTIONS.length
@@ -432,30 +316,18 @@ async function run() {
   }
 
   // ── S4d  arriving at Markers fetches page 1 exactly once ──
-  // Reported from the TV: "browsing markers tab is sluggish, slower than other
-  // tabs. There is like a small delay switching between markers." The delay
-  // was not the key handler (measured 0–2 ms, same registry size as Scenes)
-  // and not the server (43 ms median): arriving at Markers sent *two* page-1
-  // requests. The first carried the sort left over from the previous tab
-  // (`created_at`, valid everywhere) and the second Markers' own default
-  // (`title`), because the arrival rule ran in a `useEffect` and effects fire
-  // child-first — the grid's `usePagedList` reset effect had already fetched
-  // before App adopted the tab's controls. The first answer was thrown away.
-  // The rule now adjusts `controls` during render, so the grid mounts already
-  // sorted and fetches once. This is asserted against the fake's request log
-  // rather than the screen: both replies render cards, so the DOM cannot tell
-  // one request from two.
-  //
-  // `markers=paged` is what makes the fake log marker listings at all (its
-  // default two-row marker fixture is there for the markerfix checks). The
-  // mode is restored afterwards so the rest of the run sees the usual fixture.
+  // The arrival rule was a `useEffect`; effects fire child-first, so the grid
+  // fetched with the previous tab's `created_at` before App adopted `title`,
+  // and the first answer was discarded. It now adjusts `controls` during
+  // render. Read the log: both replies render cards. `markers=paged` makes the
+  // fake log marker listings at all; restore it afterwards.
   await fetch(`http://127.0.0.1:${PORT}/mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ markers: 'paged' }),
   });
-  // Images is the tab the vocabulary loop left us on, and its declared sort is
-  // `created_at` — the exact value that used to ride into Markers.
+  // Images is where the vocabulary loop left us, and its declared sort is
+  // `created_at` — the value that used to ride into Markers.
   await goto('images');
   await sleep(300);
   await clearLogs();
@@ -476,22 +348,15 @@ async function run() {
   });
 
   // ── S4b  arriving at a section adopts its declared sort *and direction* ──
-  // Tags declare `name` + `asc`; before 0.18.0 the tab-change effect only
-  // replaced `controls.sort` when the value carried over from the previous tab
-  // was *invalid* for the new one. `created_at` is valid for Tags, so a user
-  // who sorted Scenes by Date Added and then opened Tags got Date Added there
-  // too, and Tags' declared default was never applied to anyone who had
-  // touched a sort first. 0.18.1 adds the other half: `order` was never
-  // adopted at all, so Tags opened on Name *and* Descending (the TV pass
-  // caught it). The effect now adopts both on every arrival, and this is the
-  // check that pins it: set Tags to Date Added + DESC, leave for Images, come
-  // back — Tags must read Name + ASC. The control is the assertion because the
-  // page-1 fetch is a cache hit.
+  // Tags declare `name` + `asc`. The effect once replaced only an invalid sort,
+  // so valid `created_at` survived, and never adopted `order`. Leave Tags on
+  // Date Added + DESC, visit Images, return: it must read Name + ASC. The
+  // arrival is the control; the page-1 fetch is a cache hit.
   await goto('tags');
   await waitFor(() => has('ctrl-sort'));
   const sortTrigger = () => registry.get('ctrl-sort')?.el.textContent?.trim() ?? '(none)';
   // Direction is a pair of `aria-pressed` toggles (`ctrl-asc` / `ctrl-desc`),
-  // not a text control, so read the pressed state rather than a label.
+  // not a text control, so read the pressed state.
   const orderIs = () => {
     if (registry.get('ctrl-asc')?.el.getAttribute('aria-pressed') === 'true') return 'ASC';
     if (registry.get('ctrl-desc')?.el.getAttribute('aria-pressed') === 'true') return 'DESC';
@@ -514,9 +379,8 @@ async function run() {
       await press('Escape');
     }
   }
-  // Leave the direction explicitly on Descending. Arriving at Tags with Name +
-  // Asc must flip it back; without that, the arrival'd read DESC and S4b goes
-  // red (the 0.18.0 bug the TV pass caught).
+  // Leave the direction explicitly on Descending: arrival with Name + Asc must
+  // flip it back, or this reads DESC.
   if (focus('ctrl-desc')) {
     await sleep(80);
     await tapEnter();
@@ -534,9 +398,8 @@ async function run() {
       && sortTrigger() === 'Name' && orderIs() === 'ASC',
     `left on Date Added=${choseDateAdded}, DESC=${choseDesc}; back on Tags reads `
       + `"${sortTrigger()}" / ${orderIs()}`);
-  // Tags is now on ASC. Leaving it for a date-sorted tab must reset the
-  // direction to Desc — otherwise every other tab would open oldest-first
-  // after a visit to Tags. Read after the return for exactly that reason.
+  // Leaving Tags (now ASC) for a date-sorted tab must reset direction to DESC,
+  // or every other tab opens oldest-first after a visit to Tags.
   await goto('images');
   await sleep(400);
   const imagesOrder = orderIs();
@@ -545,14 +408,9 @@ async function run() {
     `Images read ${imagesOrder} after leaving Tags, which is on ASC`);
 
   // ── S4c  Performers, Markers and Studios arrive name/title-ascending ──
-  // Reported from the TV, 2026-10-18: "these should have default sort as title
-  // ascending: Markers, Performers." Then: "Studios should be arranged by
-  // title ascending." Markers already declared `title` but no direction;
-  // Performers declared `created_at`; Studios declared `name` but inherited
-  // the session's DESC. All three now carry `defaultOrder: 'asc'`
-  // (Performers and Studios on `name` — Stash's sort value is not `title`).
-  // Same shape as S4b: deliberately leave the tab on Date Added + DESC, go
-  // elsewhere, come back and require the declared pair.
+  // All three carry `defaultOrder: 'asc'`: Markers on `title`, Performers and
+  // Studios on `name` (Stash's sort value is not `title`). Same shape as S4b:
+  // leave on Date Added + DESC, go elsewhere, return and require the pair.
   for (const [tab, expectedLabel] of
     [['performers', 'Name'], ['markers', 'Title'], ['studios', 'Name']]) {
     await goto(tab);
@@ -593,12 +451,9 @@ async function run() {
   }
 
   // ── S5  activating a tag lands on Scenes, still filtered ─
-  // The whole of this phase's one non-obvious design decision. Activating a tag
-  // switches tab and sets `controls.workingFilter` in the same React batch, so
-  // the tab-change effect runs with a filter that the tab change itself applied
-  // — and the pre-0.11.0 effect cleared it unconditionally. This check is the
-  // one that goes red when that happens: the grid renders, the request goes
-  // out, and it is unfiltered.
+  // Activation switches tab and sets `controls.workingFilter` in one React
+  // batch, so the tab-change effect sees a filter the change itself applied;
+  // clearing it unconditionally leaves the grid rendered but unfiltered.
   await goto('tags');
   await waitFor(() => has('tag-3'));
   await clearLogs();
@@ -610,16 +465,10 @@ async function run() {
   check('S5 activating a tag switches to Scenes',
     railActive() === 'Scenes', `rail says ${railActive()}`);
   // ── `.at(-1)`, not `.find()` — and this is the whole check ──
-  // The first draft used `.find()`, which asks "was a filtered scene request
-  // sent at some point during this activation". It was: the batch sets the
-  // filter and the tab together, so ScenesPage mounts *already* filtered and its
-  // first fetch carries the criterion — and then the tab-change effect runs,
-  // drops the filter if it cannot tell arrival from departure, and the grid
-  // refetches unfiltered on top of it. Both requests are in the log, `.find()`
-  // sees the first, and the check passes on exactly the bug it was written for.
-  // Measured, not reasoned: with `workingFilterFor` deleted from the activation
-  // the `.find()` form stayed green. The last request is what the screen is
-  // showing, so the last request is what is asserted.
+  // The batch sets filter and tab together, so a filtered request is always
+  // sent first; if the effect then drops the filter, the grid refetches
+  // unfiltered on top. `.find()` sees the first and passes on exactly that
+  // bug. The last request is what the screen shows.
   const afterTag = await getJSON('/requests');
   const sceneReqs = afterTag.filter(r => r.scene_filter);
   const last = sceneReqs[sceneReqs.length - 1];
@@ -627,18 +476,12 @@ async function run() {
     !!last && last.scene_filter.tags?.value?.[0] === '3',
     `${sceneReqs.length} scene listing(s); last scene_filter=${JSON.stringify(last?.scene_filter ?? null)}`);
 
-  // ── And this is the check that can actually fail ──
-  // The one above cannot: the batch sets the filter and the tab together, so
-  // the filtered request is always sent, whatever the tab-change effect does
-  // next. What the effect does next is the whole question — and it is invisible
-  // in the request log, because the refetch a *dropped* filter triggers asks
-  // for page 1 of the unfiltered listing, which `listCache` has held since
-  // mount. So it is read off the screen instead: the fake honours a `tags`
-  // criterion by returning nothing (no scene in the fixture carries a tag), so
-  // a Scenes that is still filtered shows no video cards and a Scenes that
-  // dropped the filter shows forty. Both halves were measured — deleting
-  // `workingFilterFor` from the activation leaves this red and the log form
-  // green.
+  // ── The check that can actually fail ──
+  // The one above cannot: the batch always sends the filtered request. A
+  // dropped filter's refetch is page 1 of an unfiltered listing `listCache`
+  // already holds, so it never reaches the log. Read the screen: the fake
+  // returns no scenes for a `tags` criterion, so still-filtered shows 0 cards
+  // and dropped shows 40. Deleting `workingFilterFor` reddens this, not the log.
   await waitFor(() => liveCards('video') === 0, 2000);
   const sceneCards = liveCards('video');
   check('S5 and the Scenes listing is still filtered, not refetched unfiltered',
@@ -649,19 +492,15 @@ async function run() {
     `bar="${barText().slice(0, 100)}"`);
 
   // ── S6  a studio does the same, and a gallery goes elsewhere ──
-  // The gallery case is the interesting one: it lands on Images, not Scenes,
-  // so a handler that hard-coded one destination would be wrong for it and
-  // right for the other two.
+  // A gallery lands on Images, not Scenes, so a hard-coded destination would
+  // be right for two sections and wrong for this one.
   await goto('galleries');
   await waitFor(() => has('gallery-2'));
 
   // ── S6a  the gallery card's second line ─────────────────
-  // Studio when there is one, the folder otherwise (which on a real library is
-  // the field that is almost always present). The fixture makes both cases
-  // decidable in the first three rows: gallery 1 carries BOTH a studio and a
-  // folder, so "studio wins" is visible, and gallery 3 carries no studio at
-  // all, so the fallback is visible. Every value is VERIFY-prefixed, so a card
-  // printing the wrong field cannot pass on incidental text.
+  // Studio when there is one, folder otherwise. Gallery 1 has both and gallery
+  // 3 has no studio, so "studio wins" and the fallback are both decidable;
+  // every value is VERIFY-prefixed, so the wrong field cannot pass.
   check('S6a the gallery card names the studio when there is one',
     cardText('gallery-1').includes('4 images · VERIFY gallery studio 1'),
     `card 1 says "${cardText('gallery-1').replace(/\s+/g, ' ').slice(0, 90)}"`);
@@ -676,7 +515,7 @@ async function run() {
   await tapEnter();
   await sleep(600);
   const afterGallery = await getJSON('/requests');
-  // Same `.at(-1)` as S5, for the same measured reason.
+  // Same `.at(-1)` as S5, for the same reason.
   const imgReqs = afterGallery.filter(r => 'image_filter' in r);
   const lastImg = imgReqs[imgReqs.length - 1];
   check('S6 activating a gallery switches to Images',
@@ -684,20 +523,17 @@ async function run() {
   check('S6 the criterion reached the wire',
     !!lastImg && lastImg.image_filter?.galleries?.value?.[0] === '2',
     `${imgReqs.length} image listing(s); last image_filter=${JSON.stringify(lastImg?.image_filter ?? null)}`);
-  // The gallery half of S5's second check, for the same measured reason: the
-  // fake returns nothing for an `galleries` criterion, so a filtered Images
-  // section is empty on screen and an unfiltered one is not.
+  // The gallery half of S5's screen check: the fake returns nothing for a
+  // `galleries` criterion, so a filtered Images section is empty on screen.
   await waitFor(() => liveCards('image') === 0, 2000);
   const imgCards = liveCards('image');
   check('S6 and Images is still filtered to that gallery',
     imgCards === 0, `${imgCards} image card(s) on screen`);
 
   // ── S6b  Back returns to the gallery card that was opened ──
-  // Not the first card in the Galleries grid: that is where the grid's own
-  // autofocus lands when the restore fails (reported from the TV, 2026-10-20:
-  // "I open sophia gallery, close it/back out → it returns to first item in
-  // the list"). Asserted against document.activeElement and a connected
-  // element, because `getCurrentFocusId` can name a card that unmounted.
+  // Not the first card, where the grid's own autofocus lands when the restore
+  // fails. Assert against document.activeElement and a connected element:
+  // `getCurrentFocusId` can name a card that unmounted.
   await pressBack();
   const galleryCardFocused = () => {
     const el = registry.get('gallery-2')?.el;
@@ -713,10 +549,9 @@ async function run() {
       + `${Date.now() - tGallery} ms`);
 
   // ── S7  Back out of a filtered Scenes returns to Tags ───
-  // Not to Scenes-with-no-filter and not to the exit prompt. The prompt is the
-  // specific wrong answer: it is what the app does when nothing claims Back,
-  // so a check that only asserted "the rail says Tags" would also pass on a
-  // build where Back raised the dialog and the dialog's own Back closed it.
+  // Not to unfiltered Scenes and not to the exit prompt. The prompt is the
+  // specific wrong answer: a check reading only "the rail says Tags" would also
+  // pass if Back opened the dialog and the dialog's own Back closed it.
   await goto('tags');
   await waitFor(() => has('tag-3'));
   focus('tag-3');
@@ -729,16 +564,14 @@ async function run() {
   check('S7 and there is no exit prompt in the way',
     !document.querySelector('[role="dialog"]'),
     document.querySelector('[role="dialog"]') ? 'a dialog is open' : 'no dialog');
-  // The focus restore is a retry loop, not a fixed delay — see
-  // focusByIdWhenReady — so this waits rather than sleeping a guessed interval.
+  // The restore is a retry loop (focusByIdWhenReady), so wait rather than sleep
+  // a guessed interval.
   const restored = await waitFor(() => focusedId() === 'tag-3', 3000);
   check('S7 focus is back on the tag that was pressed', restored, `focus: ${focusedId()}`);
 
   // ── S7b  a card from a later page comes back too ─────────
-  // The arriving grid fetches page 1 only, so waiting for the card is not
-  // enough when the user had scrolled: the restore has to ask the listing for
-  // the missing pages (utils/focus.js). The TV report was the same shape as
-  // S6b — "backing out from selected tag returns to first in the list".
+  // The arriving grid fetches page 1 only, so after scrolling the restore has
+  // to ask for the missing pages (utils/focus.js) or it lands on the first card.
   const tagGrid = () => [...document.querySelectorAll('[role="grid"]')]
     .find(g => g.getAttribute('aria-label') === 'Tag grid');
   const tagScroller = () => tagGrid()?.parentElement;
@@ -762,9 +595,8 @@ async function run() {
     check('S7b activating it switches to Scenes',
       railActive() === 'Scenes', `rail says ${railActive()}`);
 
-    // The restore's own requests are what distinguish "paged forward to the
-    // card" from "the card happened to be in page 1": the arriving grid asks
-    // for page 1, and page 2 only exists if focusByIdWhenReady asked for it.
+    // The restore's requests distinguish "paged forward" from "the card was on
+    // page 1": the arriving grid asks for page 1, so page 2 means it paged.
     await clearLogs();
     const tTag = Date.now();
     await pressBack();
@@ -783,18 +615,15 @@ async function run() {
   }
 
   // ── S8  the filter is dropped on the way out ────────────
-  // Returning to Tags with the scene filter still set would be worse than not
-  // returning at all: the Tags tab would then be carrying a criterion for a
-  // listing it does not show, and the next tag activation would have to
-  // displace it rather than set it.
+  // A surviving scene filter would leave Tags carrying a criterion for a
+  // listing it does not show, and the next activation would have to displace it.
   await goto('scenes');
   check('S8 Scenes is unfiltered after backing out',
     !/VERIFY tag 3/.test(barText()),
     `bar="${barText().slice(0, 100)}"`);
-  // The complement of S5's second check, and the reason it is worth having
-  // both: S5 says the filter survives an arrival, this says it does not
-  // outlive a departure. A build that never cleared `workingFilter` would pass
-  // every other check in this file and show an empty Scenes forever.
+  // The complement of S5's screen check: the filter survives an arrival but
+  // not a departure. A build that never cleared it would pass everything else
+  // here and show an empty Scenes forever.
   await waitFor(() => liveCards('video') > 0, 3000);
   check('S8 …and its listing is back, not left empty by a stale filter',
     liveCards('video') > 0, `${liveCards('video')} video card(s) on screen`);
@@ -812,9 +641,8 @@ async function run() {
   if (!viewer) { await finish(); return; }
 
   // ── S10  it shows the full image, not the thumbnail ─────
-  // The two are different URLs on the fake (`/image/n/thumb.png` vs
-  // `/image/n/full.png`) precisely so this is decidable. A viewer wired to the
-  // card's own `image_path` would look identical on a server where they agreed.
+  // The fake serves distinct `/image/n/thumb.png` and `/image/n/full.png`, so
+  // a viewer wired to the card's own path would fail rather than look right.
   const img = viewer.querySelector('img');
   check('S10 the viewer shows paths.image, not the thumbnail',
     !!img && /\/image\/1\/full\.png/.test(img.getAttribute('src')),
@@ -824,10 +652,9 @@ async function run() {
     'thumb and full are distinct routes on the fake');
 
   // ── S10b  the info panel is reachable, and asks once ────
-  // The surface holds focus after opening, and the panel's only D-pad route
-  // in is the header button. A `nextId` pointing at an id that never
-  // registers would leave the panel unreachable without a pointer, which this
-  // app does not have.
+  // The picture holds focus after opening and the header button is the only
+  // D-pad route in; a `nextId` at an unregistered id would strand the panel,
+  // and this app has no pointer.
   const infoPanel = () => document.querySelector('aside[aria-label="Image info"]');
   const panelText = () => (infoPanel()?.textContent || '');
   const imageInfoFetches = async () => getJSON('/imageinfofetches');
@@ -843,9 +670,8 @@ async function run() {
   check('S10b Enter on Info opens the panel and asks once for this image',
     panelUp && info1.length === 1 && info1[0].id === '1',
     `open=${panelUp}; fetches=${JSON.stringify(info1.map(f => f.id))}`);
-  // `visual_files` is the union field Image carries; `files` does not exist on
-  // Image at all, and the fake would happily answer either. The query text is
-  // the only place the difference is visible.
+  // `visual_files` is the union field Image carries; `files` does not exist,
+  // but the fake answers either. Only the query text shows the difference.
   check('S10b the query asks for visual_files, not the invalid `files`',
     info1.length === 1 && info1[0].query.includes('visual_files'),
     info1.length ? info1[0].query.replace(/\s+/g, ' ').slice(0, 120) : '(no fetch)');
@@ -854,12 +680,12 @@ async function run() {
       && /4000×3000/.test(panelText())
       && /5 MiB/.test(panelText()),
     panelText().replace(/\s+/g, ' ').slice(0, 140));
-  // 8 tags / 7 performers / 6 galleries in the fixture: the caps are what
-  // keeps a metadata panel from becoming a wall of text at 1080p.
+  // 8 tags / 7 performers / 6 galleries: caps keep the panel from becoming a
+  // wall of text at 1080p.
   check('S10b long lists are capped with a +N count',
     /\+2/.test(panelText()) && /\+1/.test(panelText()),
     panelText().replace(/\s+/g, ' ').slice(0, 160));
-  // The panel is read-only, and the app is D-pad-only: a focusable inside it
+  // The panel is read-only and the app is D-pad-only: a focusable inside it
   // would be an invisible stop with nothing to press it for.
   const insidePanel = [...registry.entries()]
     .filter(([, e]) => e.el && infoPanel()?.contains(e.el))
@@ -868,8 +694,8 @@ async function run() {
     insidePanel.length === 0, `registered inside: ${insidePanel.join(', ') || '(none)'}`);
 
   // ── S10c  Back peels one layer at a time ────────────────
-  // The panel is on top of the viewer, so one Back must not close both — that
-  // would make the viewer's own Back unreachable while the panel is open.
+  // One Back must not close both: the viewer's own Back must stay reachable
+  // while the panel is open.
   await pressBack();
   const panelClosed = await waitFor(() => !infoPanel(), 2000);
   check('S10c Back closes the panel, not the viewer',
@@ -879,8 +705,8 @@ async function run() {
         ? 'panel closed, viewer still open' : 'viewer closed too')
       : 'panel still open');
 
-  // Reopening the same image is a cache hit. The fake's fetch log is the only
-  // place a cache can be observed — the screen looks identical either way.
+  // Reopening the same image is a cache hit; only the fake's fetch log can tell
+  // a cached answer from a fresh one.
   await press('ArrowUp');
   await tapEnter();
   await waitFor(() => /VERIFY image studio 1/.test(panelText()), 3000);
@@ -902,10 +728,8 @@ async function run() {
   check('S11 Left steps back', titleOf() === before, `"${titleOf()}" vs "${before}"`);
 
   // ── S11b  one fetch per image the panel is opened on ────
-  // Browsing with the panel closed is free (S11 left the log at one entry);
-  // opening a second image asks exactly once more; stepping back to a seen
-  // image is a cache hit. All three are read from the fake's log, because the
-  // screen cannot tell a cached answer from a fresh one.
+  // Browsing with the panel closed is free, a second image asks once more, and
+  // stepping back is a cache hit. Read from the log: the screen cannot tell.
   await press('ArrowRight');            // image 1 → 2
   await press('ArrowUp');
   await tapEnter();
@@ -915,11 +739,9 @@ async function run() {
     info2.length === 2 && info2[1].id === '2',
     `${info2.length} fetch(es): ${JSON.stringify(info2.map(f => f.id))}`);
 
-  // The Info button holds focus here — opening the panel does not move it —
-  // and Left/Right must still browse. Before 0.29.1 the capture handler
-  // ignored the arrows unless the picture itself held focus, so a step needed
-  // a Down press first; reported from the TV as "only works after closing the
-  // panel". Both targets are cached, so this must not add a fetch.
+  // The Info button holds focus here and Left/Right must still browse. The
+  // handler once ignored arrows unless the picture held focus, so a step took
+  // a Down press first. Both targets are cached, so this must add no fetch.
   await press('ArrowLeft');             // image 2 → 1, panel stays open
   const steppedWithInfo = await waitFor(
     () => /image 1\b/.test(titleOf()) && /VERIFY image studio 1/.test(panelText()),
@@ -928,10 +750,9 @@ async function run() {
   check('S11b Left steps while the Info button holds focus',
     steppedWithInfo && focusedId() === 'image-viewer-info' && !!infoPanel(),
     `"${titleOf()}"; focus: ${focusedId()}; panel=${!!infoPanel()}`);
-  // Compare against the title *before* the press: on the old guard both
-  // presses were no-ops, so "we are on image 2 with studio 2 showing" was
-  // already true and the check passed on the broken build. The title must
-  // actually change.
+  // Compare against the title before the press: on the old guard both presses
+  // were no-ops, so the expected title was already on screen and the check
+  // passed on the broken build.
   const beforeRight = titleOf();
   await press('ArrowRight');            // back to image 2
   const steppedBackWithInfo = await waitFor(
@@ -955,13 +776,9 @@ async function run() {
   await waitFor(() => !infoPanel(), 2000);
 
   // ── S11c  a slow answer cannot land on the image stepped to ──
-  // Slow mode makes the race explicit. The panel is opened on image 3, Down
-  // returns focus to the picture with the panel still open, and Right steps to
-  // image 4 while image 3's request is still in flight. The fixture names the
-  // studio after the requested id, so "the stale answer was drawn" is
-  // visible; sampling while answer 4 is *still* in flight is what makes the
-  // check able to fail — a later sample would be correct whatever happened,
-  // because the right answer eventually overwrites the wrong one.
+  // Open the panel on image 3, return to the picture and step to 4 while 3's
+  // request is in flight. The fixture names the studio after the requested id;
+  // sampling before 4's answer arrives is what lets this fail.
   await setMode('imageInfo', 'slow');
   await press('ArrowRight');            // image 1 → 2
   await press('ArrowRight');            // image 2 → 3 (uncached)
@@ -996,8 +813,8 @@ async function run() {
   await waitFor(() => !infoPanel(), 2000);
 
   // ── S11d  a failure is reported, and not remembered ─────
-  // A cached failure would look exactly like a working panel the second time:
-  // same message, no request. The fetch count is what distinguishes them.
+  // A cached failure would look like a working panel the second time — same
+  // message, no request — so the fetch count distinguishes them.
   await setMode('imageInfo', 'fail');
   await press('ArrowRight');            // image 4 → 5
   await press('ArrowUp');
@@ -1032,11 +849,9 @@ async function run() {
   check('S12 focus returns to the card', backFocus, `focus: ${focusedId()}`);
 
   // ── S12a  an untitled image shows its file's stem ───────
-  // The live library has plenty of images with no Stash title, and an empty
-  // caption left the grid looking bare. The fixture's every tenth row has an
-  // empty title and a `visual_files` basename, so the caption must read
-  // `VERIFY_stem_10` — the field has to survive the query, the normaliser and
-  // the card in order for this to pass.
+  // Every tenth fixture row has no title and a `visual_files` basename, so the
+  // card must read `VERIFY_stem_10`: the field has to survive the query, the
+  // normaliser and the card.
   const card10 = registry.get('image-10')?.el;
   check('S12a an untitled image card shows its file stem',
     !!card10 && /VERIFY_stem_10/.test(card10.textContent || ''),
@@ -1053,10 +868,8 @@ async function run() {
   await waitFor(() => focusedId() === 'image-1', 2000);
 
   // ── S12b  Back returns to the picture the viewer is on ──
-  // Stepping from image 1 to image 3 and backing out used to land on image 1,
-  // the card the viewer was opened from — "returns to image that you started
-  // the scroll from" (TV, 2026-10-20). The card that should take focus is the
-  // last one viewed.
+  // Stepping from image 1 to 3 and backing out once landed on image 1, the card
+  // the viewer opened from; the last image viewed is what should take focus.
   const liveTitle = () =>
     document.querySelector('[role="dialog"][aria-modal="true"] h2')?.textContent || '';
   await tapEnter();                     // reopen from the focused image-1 card
@@ -1074,20 +887,12 @@ async function run() {
     `viewer showed "${steppedTo}"; focus ${focusedId() ?? '<none>'}`);
 
   // ── S15  columns are per section, and remembered ─────────
-  //
-  // The grid column count used to be one value shared by every tab, so a
-  // performer card (3:4 portrait) was laid out at Scenes' 4 columns and read
-  // as oversized — reported from the TV, 2026-10-17. The fix is a per-tab
-  // count persisted in the settings store: Performers defaults to 6, every
-  // other section to 4, and a change on one tab is remembered for that tab
-  // and only that tab.
-  //
-  // Asserted through the rendered grid's inline `grid-template-columns`,
-  // which is what the columns actually do — not through localStorage, which
-  // would be green on a store that saves a value nobody renders. The
-  // persistence is then asserted separately, because a value that renders
-  // but is forgotten on the next launch is exactly the bug settings.js has
-  // shipped before.
+  // The count used to be shared by every tab, laying a 3:4 performer card out
+  // at Scenes' 4 columns. It is now per-tab and persisted: Performers defaults
+  // to 6, everything else to 4, and a change is remembered for that tab only.
+  // Assert through the rendered `grid-template-columns`, not localStorage;
+  // persistence is asserted separately because rendering the right value but
+  // forgetting it on the next launch is a bug settings.js has shipped before.
   const gridCols = () => {
     const el = Array.from(document.querySelectorAll('[role="grid"]'))
       .find(g => g.style.gridTemplateColumns);
@@ -1119,26 +924,23 @@ async function run() {
     storedCols().performers === 5,
     `stored ${JSON.stringify(storedCols())}`);
 
-  // A different section keeps its own default, which is the half the shared
-  // `controls` object used to get wrong in the other direction: switching
-  // tabs carried the count across.
+  // A different section keeps its own default: the shared `controls` object
+  // used to carry the count across a tab switch.
   await goto('scenes');
   await waitFor(() => has('video-1'));
   await sleep(300);
   check('S15e Scenes still renders its own four columns', gridCols() === 4,
     `rendered ${gridCols()} columns`);
 
-  // …and coming back restores Performers' remembered count rather than the
-  // default, or Scenes'.
+  // …and coming back restores Performers' count, not its default or Scenes'.
   await goto('performers');
   await waitFor(() => has('performer-1'));
   await sleep(300);
   check('S15f Performers reopens at the remembered count', gridCols() === 5,
     `rendered ${gridCols()} columns`);
 
-  // Put it back so a re-run of this driver starts from the default. Storage
-  // is per-driver, but the tab is left the way S14 (focus still somewhere)
-  // expects to find it.
+  // Restore the default so a re-run starts clean; storage is per-driver, but
+  // leave the tab as S14 expects to find it.
   if (dec) {
     const inc = registry.get('grid-cols-inc');
     if (inc) { inc.el.focus(); await sleep(60); await tapEnter(); await sleep(250); }
