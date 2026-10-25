@@ -167,7 +167,7 @@ async function run() {
     .find(el => el.children.length === 0 && el.textContent.trim() === t) || null;
 
   const nameEl = leafWithText('StashZen');
-  const tagEl = leafWithText('Private media, made simple.');
+  const tagEl = leafWithText('Firm grip, steady strokes, and a happy ending in every scene.');
   check('A6 the setup screen names the product and its tagline',
     !!nameEl && !!tagEl,
     `name ${!!nameEl}, tagline ${!!tagEl}`);

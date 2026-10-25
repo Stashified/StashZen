@@ -318,7 +318,7 @@ function SetupScreen({ settings }) {
               names itself; wordmark and tagline are one lockup on purpose. */}
           <div className={styles.brand}>
             <span className={styles.brandName}>StashZen</span>
-            <span className={styles.tagline}>Private media, made simple.</span>
+            <span className={styles.tagline}>Firm grip, steady strokes, and a happy ending in every scene.</span>
           </div>
           <h1 className={styles.title}>Connect to Stash</h1>
           <p className={styles.subtitle}>

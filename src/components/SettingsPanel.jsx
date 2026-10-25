@@ -205,7 +205,7 @@ export default function SettingsPanel({ onClose }) {
         <header className={styles.header}>
           <div className={styles.brand}>
             <span className={styles.brandName}>StashZen</span>
-            <span className={styles.tagline}>Private media, made simple.</span>
+            <span className={styles.tagline}>Firm grip, steady strokes, and a happy ending in every scene.</span>
           </div>
           <div className={styles.titleRow}>
             <h2 className={styles.title}>Settings</h2>
