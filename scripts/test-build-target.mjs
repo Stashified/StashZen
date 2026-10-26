@@ -7,8 +7,13 @@
  * and compares the value the build actually uses, not a string in a comment.
  */
 
-import config from '../vite.config.js';
+import rawConfig from '../vite.config.js';
 import { COMPAT_TARGET, COMPAT_BUILD_TARGET } from './compat-floor.mjs';
+
+// The config is a function now (it reads .env through Vite's loader).
+const config = typeof rawConfig === 'function'
+  ? rawConfig({ mode: 'production', command: 'build' })
+  : rawConfig;
 
 let passed = 0;
 let failed = 0;

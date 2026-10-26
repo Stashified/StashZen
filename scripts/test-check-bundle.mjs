@@ -57,6 +57,20 @@ try {
     check('clean bundle: no key hit', scan.keyFiles.length === 0);
   }
 
+  writeFileSync(join(dist, 'assets', 'binary.bin'), Buffer.from([0, 1, 2]));
+  {
+    const scan = scanBundle({ distDir: dist, secret: FAKE_KEY });
+    check('binary file is reported as skipped', scan.skippedFiles.includes('assets/binary.bin'), scan.skippedFiles.join(','));
+    check('skipped file is not counted as scanned', scan.filesScanned === 2, `got ${scan.filesScanned}`);
+    const res = checkBundle({ distDir: dist, envText: 'x' });
+    check(
+      'summary reports the uninspected file',
+      res.lines.some(l => l.includes('not inspected'))
+        && res.lines.some(l => l.includes('binary.bin')),
+      res.lines.join(' / '),
+    );
+  }
+
   writeFileSync(join(dist, 'assets', 'leak.js'), `const k = "${FAKE_JWT}";`);
   {
     const scan = scanBundle({ distDir: dist, secret: FAKE_KEY });

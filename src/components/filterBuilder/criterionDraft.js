@@ -1,9 +1,8 @@
-import { EDITOR, NULLARY } from '../../utils/filterCriteria.js';
+import { EDITOR, NULLARY, RANGE } from '../../utils/filterCriteria.js';
 
 // The one place that knows the four stored shapes. Nullary modifiers take no
-// operand, so their value is `{}` rather than `''`: measured, `{value: {}}`
-// translates to a bare modifier while `{value: {value: ''}}` sends the empty
-// string through. Both validate; only one is clean.
+// operand, so their value is `{}` rather than `''`: the translator supplies the
+// minimal well-typed operand the input type requires.
 export function blankCriterion(desc) {
   const modifier = desc.modifierOptions[0] || null;
 
@@ -42,24 +41,31 @@ const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArr
  * other shape came from the request side.
  */
 export function seedCriterion(desc, c) {
-  if (!c || typeof c !== 'object') return c;
-  if (isPlainObject(c.value)) return c;
-
-  const modifier = c.modifier;
-  if (NULLARY.has(modifier)) return { modifier, value: {} };
+  if (c == null) return c;
   if (!desc.editor) return c;
+
+  // A bare String field (`is_missing`) arrives as the scalar itself, not an
+  // envelope. Wrap it so the row has something to edit.
+  const scalar = typeof c !== 'object';
+  if (!scalar && isPlainObject(c.value)) return c;
+
+  const src = scalar ? { value: c } : c;
+  const modifier = src.modifier
+    ?? desc.modifierOptions?.[0]
+    ?? null;
+  if (NULLARY.has(modifier)) return { modifier, value: {} };
 
   switch (desc.editor) {
     case EDITOR.BOOLEAN:
     case EDITOR.TRI:
-      return { modifier: modifier || 'EQUALS', value: String(c.value ?? 'true') };
+      return { modifier, value: String(src.value ?? 'true') };
     case EDITOR.MULTI:
     case EDITOR.HIERARCHICAL: {
       const value = {
-        items: Array.isArray(c.value) ? c.value : [],
-        excluded: Array.isArray(c.excludes) ? c.excludes : [],
+        items: Array.isArray(src.value) ? src.value : [],
+        excluded: Array.isArray(src.excludes) ? src.excludes : [],
       };
-      if (c.depth != null) value.depth = c.depth;
+      if (src.depth != null) value.depth = src.depth;
       return { modifier, value };
     }
     case EDITOR.STASH_ID:
@@ -67,21 +73,31 @@ export function seedCriterion(desc, c) {
       return {
         modifier,
         value: {
-          endpoint: c.endpoint ?? '',
+          endpoint: src.endpoint ?? '',
           ...(desc.editor === EDITOR.STASH_IDS
-            ? { stashIDs: c.stash_ids ?? c.stashIDs ?? '' }
-            : { stashID: c.stash_id ?? c.stashID ?? '' }),
+            ? { stashIDs: src.stash_ids ?? src.stashIDs ?? '' }
+            : { stashID: src.stash_id ?? src.stashID ?? '' }),
         },
       };
-    case EDITOR.ENUM:
+    case EDITOR.ENUM: {
+      // Stash's web UI can store a gender criterion as `value_list` with no
+      // scalar `value`. Reading only `value` seeded the row blank, and Apply
+      // then dropped the criterion.
+      const fromList = Array.isArray(src.value_list) ? src.value_list : [];
+      const list = Array.isArray(src.value) && src.value.length ? src.value : fromList;
+      const scalar = src.value === '' || src.value == null ? fromList[0] : src.value;
       return {
         modifier,
-        value: { value: desc.listValued ? (Array.isArray(c.value) ? c.value : []) : (c.value ?? '') },
+        value: { value: desc.listValued ? list : (scalar ?? '') },
       };
+    }
     default:
       return {
         modifier,
-        value: { value: c.value, ...(c.value2 !== undefined ? { value2: c.value2 } : {}) },
+        value: {
+          value: src.value,
+          ...(src.value2 !== undefined ? { value2: src.value2 } : {}),
+        },
       };
   }
 }
@@ -137,6 +153,12 @@ export function isEffective(desc, c) {
     return true;
   }
   if (operand && (inner.value === '' || inner.value === undefined || inner.value === null)) return false;
+  // A range needs both bounds: one-sided BETWEEN returns an empty result, not
+  // an error.
+  if (RANGE.has(c.modifier)
+    && (inner.value2 === '' || inner.value2 === undefined || inner.value2 === null)) {
+    return false;
+  }
   return true;
 }
 

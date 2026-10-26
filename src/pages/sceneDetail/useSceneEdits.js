@@ -28,6 +28,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
   // its own.
   const oAttemptRef = useRef(0);
   const playedAttemptRef = useRef(0);
+  const organizedAttemptRef = useRef(0);
 
   // Rating has its own token and confirmed value. The revert baseline must be
   // what the server last acknowledged, not `detail.rating100`, which holds the
@@ -73,12 +74,16 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
   const toggleOrganized = async () => {
     const prev = !!detail.organized;
     const next = !prev;
+    const attempt = ++organizedAttemptRef.current;
     setDetail(d => ({ ...d, organized: next }));
     try {
       const server = await setSceneOrganized(detail.id, next);
+      // A quick second press owns the screen; the first answer is stale.
+      if (attempt !== organizedAttemptRef.current) return;
       setDetail(d => ({ ...d, organized: server }));
       flash(server ? 'Marked as organised' : 'Organised mark removed');
     } catch (e) {
+      if (attempt !== organizedAttemptRef.current) return;
       setDetail(d => ({ ...d, organized: prev }));
       flash(`Not saved — ${e.message}`);
     }

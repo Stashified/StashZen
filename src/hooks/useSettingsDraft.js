@@ -41,8 +41,33 @@ export function useSettingsDraft(initial) {
   // What the store last committed. Initialised from the same object the drafts
   // above are initialised from, so opening the panel is never "dirty".
   const [baseline, setBaseline] = useState(() => snapshot(initial));
+  // Why the last Save was refused, if it was. The panel shows it; the store is
+  // left untouched.
+  const [saveError, setSaveError] = useState(null);
 
+  /** Commit the drafts. Returns false — and keeps the panel open — when the
+   *  endpoint cannot be used. The first-run flow tests the connection first;
+   *  this is the only check Settings has. */
   const save = () => {
+    if (!useMock) {
+      const url = stashUrl.trim();
+      if (!url) {
+        setSaveError('Enter the Stash endpoint before saving.');
+        return false;
+      }
+      let valid = false;
+      try {
+        const parsed = new URL(url);
+        valid = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        // Not a URL at all.
+      }
+      if (!valid) {
+        setSaveError('The endpoint must be an http:// or https:// URL.');
+        return false;
+      }
+    }
+    setSaveError(null);
     setSettings({
       useMock,
       stashUrl: stashUrl.trim(),
@@ -54,10 +79,12 @@ export function useSettingsDraft(initial) {
     // Read back rather than reusing the patch: the store owns normalisation,
     // and a baseline built from the patch could disagree with what was saved.
     setBaseline(snapshot(getSettings()));
+    return true;
   };
 
   const clear = () => {
     clearSettings();
+    setSaveError(null);
     const fresh = getSettings();
     setUseMock(fresh.useMock);
     setStashUrl(fresh.stashUrl);
@@ -81,6 +108,7 @@ export function useSettingsDraft(initial) {
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
     dirty,
+    saveError,
     save, clear,
   };
 }

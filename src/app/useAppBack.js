@@ -12,7 +12,7 @@
  */
 
 import { useKeyHandler } from '../hooks/useKeyHandler.js';
-import { focusByIdWhenReady } from '../utils/focus.js';
+import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
 
 export function useAppBack({
   activeTab,
@@ -56,8 +56,19 @@ export function useAppBack({
           filterId: null,
         }));
         // The origin section must re-render before its cards exist to focus,
-        // and its listing may still be in flight — hence the retry.
-        focusByIdWhenReady(focusId);
+        // and its listing may still be in flight — hence the retry. A scene
+        // opened from Home has no `video-` card there: the same scene sits on
+        // a showroom shelf under another prefix. Try those too, then the first
+        // control, so a dead id never leaves the cursor on <body>.
+        const ids = [focusId];
+        const scene = /^video-(.+)$/.exec(String(focusId));
+        if (scene && tab === 'home') {
+          ids.push(
+            `showroom-recent-scenes-video-${scene[1]}`,
+            `showroom-continue-video-${scene[1]}`,
+          );
+        }
+        focusByIdWhenReady(ids, { fallback: focusFirstControl });
         return;
       }
       // Top-level tab: confirm before exit. Remember what had focus so

@@ -574,6 +574,9 @@ export function createAvplayBackend({
       emit('pause');
     }
     try { avplay.suspend(); } catch (e) { /* restore() is the recovery path */ }
+    // Panel-wide mute must not outlive a widget torn down while hidden, where
+    // close() never runs. resumeSession re-applies the intent.
+    releaseMute();
   }
 
   function onVisibility() {
@@ -616,6 +619,8 @@ export function createAvplayBackend({
       // called, so the cached position wins.
       const t = readTime();
       if (t != null && Math.abs(t - saved) > 1) coalescer.request(saved);
+      // suspendSession released the mute; restore the sitting's choice.
+      if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
       // The poll emits `playing` when it sees PLAYING; a scene paused before
       // hiding stays paused and emits nothing.
       if (wantPlaying && !playingLatch) startNativePlay();
@@ -760,6 +765,13 @@ export function createAvplayBackend({
         completed = false;
         nearEndSince = 0;
         playingLatch = false;
+        // The stream is still at the end: rewind, or play() completes again
+        // without a frame. The pending target also makes currentTime 0, which
+        // is what lets the reporter reopen its latch.
+        seekAwaitingPlay = true;
+        lastPlayReassert = 0;
+        lastTime = 0;
+        coalescer.request(0);
         schedulePoll(gen);
       }
       if (!playingLatch) startNativePlay();

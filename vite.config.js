@@ -1,11 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs';
 import { COMPAT_BUILD_TARGET } from './scripts/compat-floor.mjs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // `.env` / `.env.production`, not just the shell: the README lists
+  // VITE_FORCE_BROWSER among the .env variables, and Vite does not put them in
+  // process.env.
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
   plugins: [react()],
   base: './',                     // ← critical: relative paths for Tizen
   build: {
@@ -64,6 +70,7 @@ export default defineConfig({
     // whatever Settings says, and hides the Auto option. CI sets no VITE_
     // variables, so a released widget is false unless someone asks for it.
     // See usePlayerEngine.js for how it is read.
-    __FORCE_BROWSER_ENGINE__: JSON.stringify(process.env.VITE_FORCE_BROWSER === 'true'),
+    __FORCE_BROWSER_ENGINE__: JSON.stringify(env.VITE_FORCE_BROWSER === 'true'),
   },
-})
+  };
+});

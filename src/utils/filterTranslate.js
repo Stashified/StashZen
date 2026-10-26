@@ -49,6 +49,7 @@ import {
   CRITERION_FIELDS,
   CRITERIA_WITHOUT_MODIFIER,
   LIST_VALUED_CRITERIA,
+  ENUMS,
 } from './stashFilterSchema.js';
 
 const DEV = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
@@ -80,6 +81,27 @@ export function stripWrappingQuotes(s) {
 // `IS_NULL` / `NOT_NULL` take no operand, so an empty value beside them is
 // normal; every other modifier needs one.
 const NULLARY_MODIFIERS = new Set(['IS_NULL', 'NOT_NULL']);
+
+// The input types still declare a non-null operand and Stash rejects the
+// nullary criterion without one. The modifier ignores the value, so the
+// smallest well-typed operand will do; enums take their first member.
+const NULLARY_VALUE = {
+  StringCriterionInput: '',
+  DateCriterionInput: '',
+  TimestampCriterionInput: '',
+  IntCriterionInput: 0,
+  FloatCriterionInput: 0,
+  ResolutionCriterionInput: ENUMS.ResolutionEnum?.[0],
+  GenderCriterionInput: ENUMS.GenderEnum?.[0],
+  CircumcisionCriterionInput: ENUMS.CircumcisedEnum?.[0]
+    ? [ENUMS.CircumcisedEnum[0]]
+    : undefined,
+};
+// Stash-id criteria put the operand in named fields instead of `value`.
+const NULLARY_EXTRA = {
+  StashIDCriterionInput: { endpoint: '' },
+  StashIDsCriterionInput: { endpoint: '' },
+};
 
 // ── criterion values ──────────────────────────────────────
 
@@ -123,7 +145,10 @@ function coerceBoolean(v) {
  * "false") and treats the modifier as redundant.
  */
 function coerceString(v) {
-  const raw = isPlainObject(v) ? v.value : v;
+  let raw = isPlainObject(v) ? v.value : v;
+  // The builder's text editor nests twice ({value:{value}}); the field itself
+  // has no criterion envelope.
+  if (isPlainObject(raw)) raw = raw.value;
   return typeof raw === 'string' ? stripWrappingQuotes(raw) : raw;
 }
 
@@ -161,7 +186,10 @@ function translateCriterion(c, typeName) {
     // The common wrapper: {value} / {value, value2}.
     else if (v.value !== undefined) {
       out.value = coerceScalar(typeName, v.value);
-      if (v.value2 !== undefined) out.value2 = coerceScalar(typeName, v.value2);
+      // A blank second bound is not a bound — `value2:""` is a type error.
+      if (v.value2 !== undefined && v.value2 !== '' && v.value2 !== null) {
+        out.value2 = coerceScalar(typeName, v.value2);
+      }
     }
     // Already flat (DuplicationCriterionInput is stored in GraphQL shape) or a
     // shape from a newer Stash we don't model — forward it.
@@ -172,7 +200,8 @@ function translateCriterion(c, typeName) {
     out.value = coerceScalar(typeName, v);
   }
 
-  if (modifier !== undefined && !CRITERIA_WITHOUT_MODIFIER.has(typeName)) {
+  // `null` is the builder's "no modifiers here" marker, not an enum value.
+  if (modifier != null && !CRITERIA_WITHOUT_MODIFIER.has(typeName)) {
     out.modifier = modifier;
   }
 
@@ -188,6 +217,19 @@ function translateCriterion(c, typeName) {
         && c[key] !== undefined && out[key] === undefined) {
         out[key] = c[key];
       }
+    }
+  }
+
+  // Fill the operand IS_NULL/NOT_NULL ignores but the input type requires.
+  // Only when absent: a stored stash-id criterion keeps its endpoint.
+  if (NULLARY_MODIFIERS.has(out.modifier)) {
+    const extra = NULLARY_EXTRA[typeName];
+    if (extra) {
+      for (const key of Object.keys(extra)) {
+        if (out[key] === undefined) out[key] = extra[key];
+      }
+    } else if (out.value === undefined && NULLARY_VALUE[typeName] !== undefined) {
+      out.value = NULLARY_VALUE[typeName];
     }
   }
 

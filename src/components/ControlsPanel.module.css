@@ -233,18 +233,20 @@
   transition: background 0.1s, color 0.1s;
 }
 
-.stepperBtn:disabled {
+/* A native `disabled` drops focus to <body> the moment the stepper reaches an
+   end, so the end is expressed as aria-disabled and the click is clamped. */
+.stepperBtn[aria-disabled="true"] {
   color: var(--text-muted);
   cursor: not-allowed;
 }
 
-.stepperBtn:not(:disabled):hover,
+.stepperBtn:not([aria-disabled="true"]):hover,
 .stepperBtn.focused {
   background: var(--bg-card-hover);
   color: var(--accent);
 }
 
-.stepperBtn:not(:disabled):active {
+.stepperBtn:not([aria-disabled="true"]):active {
   transform: scale(0.88);
   transition: transform 0.05s ease-out;
 }

@@ -336,8 +336,21 @@ const SCENE_MARKER_CREATE_MUTATION = `
  * to fall back to, and the caller's only correct response to an error is to
  * keep the form open — impossible if this resolves.
  */
+// Test mode has no server, so a created marker is only an id for the player to
+// merge into the scene it is showing; it is not persisted anywhere.
+let mockMarkerSeq = 0;
+
 export async function createMarker({ sceneId, seconds, primaryTagId, primaryTagName, title = '' }) {
   if (!sceneId || !primaryTagId) throw new Error('A marker needs a scene and a primary tag');
+
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    return {
+      id: `marker-created-${++mockMarkerSeq}`,
+      seconds: Number(seconds) || 0,
+      primaryTag: { id: primaryTagId, name: primaryTagName || null },
+    };
+  }
 
   const data = await runQuery(SCENE_MARKER_CREATE_MUTATION, {
     input: {

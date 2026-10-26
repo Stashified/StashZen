@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import PerformerCard from './PerformerCard.jsx';
+import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchPerformers } from '../utils/performerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
@@ -54,22 +55,21 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
   }, [loadMore]);
 
   if (loading) return (
-    <div className={styles.state}>
-      <div className={styles.spinner} />
-      <p className={styles.stateText}>Loading performers…</p>
-    </div>
+    <ListingState
+      id="state-performers"
+      styles={styles}
+      loading
+      spinnerLabel="Loading performers"
+      text="Loading performers…"
+    />
   );
 
   if (error && !performers.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText} style={{ color: 'var(--red)' }}>Error: {error}</p>
-    </div>
+    <ListingState id="state-performers" styles={styles} error text={`Error: ${error}`} />
   );
 
   if (!performers.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText}>No performers found.</p>
-    </div>
+    <ListingState id="state-performers" styles={styles} text="No performers found." />
   );
 
   return (

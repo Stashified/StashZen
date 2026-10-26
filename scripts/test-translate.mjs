@@ -11,6 +11,7 @@
  */
 
 import { translateFilter, stripWrappingQuotes } from '../src/utils/filterTranslate.js';
+import { ENUMS } from '../src/utils/stashFilterSchema.js';
 
 let failed = 0;
 let passed = 0;
@@ -61,7 +62,9 @@ console.log('\n── bare String fields (must NOT be coerced to Boolean)');
 check('has_markers stays a string',
   t({ has_markers: { modifier: 'INCLUDES', value: 'true' } }), { has_markers: 'true' });
 check('is_missing stays a string',
-  t({ is_missing: { modifier: 'EXCLUDES', value: 'false' } }), { is_missing: 'false' });
+  t({ is_missing: { modifier: 'EQUALS', value: 'url' } }), { is_missing: 'url' });
+check('a null modifier is dropped',
+  t({ is_missing: { modifier: null, value: { value: 'url' } } }), { is_missing: 'url' });
 
 console.log('\n── scalar criteria');
 check('unwraps {value:{value}}',
@@ -103,6 +106,26 @@ check('orientation wraps a bare enum into a list (value is [OrientationEnum!]!)'
 check('orientation leaves an existing list alone',
   t({ orientation: { value: ['LANDSCAPE'] } }),
   { orientation: { value: ['LANDSCAPE'] } });
+
+console.log('\n── nullary modifiers get a valid operand');
+check('text IS_NULL sends an empty string',
+  t({ details: { modifier: 'IS_NULL', value: {} } }),
+  { details: { value: '', modifier: 'IS_NULL' } });
+check('int NOT_NULL sends zero',
+  t({ duration: { modifier: 'NOT_NULL', value: {} } }),
+  { duration: { value: 0, modifier: 'NOT_NULL' } });
+check('enum IS_NULL sends its first member',
+  t({ resolution: { modifier: 'IS_NULL', value: {} } }),
+  { resolution: { value: ENUMS.ResolutionEnum[0], modifier: 'IS_NULL' } });
+check('stash id IS_NULL sends an empty endpoint',
+  t({ stash_id_endpoint: { modifier: 'IS_NULL', value: {} } }),
+  { stash_id_endpoint: { endpoint: '', modifier: 'IS_NULL' } });
+check('a stored stash-id operand is kept',
+  t({ stash_id_endpoint: { modifier: 'IS_NULL', value: { endpoint: '/x', stashID: '9' } } }),
+  { stash_id_endpoint: { endpoint: '/x', stash_id: '9', modifier: 'IS_NULL' } });
+check('a blank value2 is omitted',
+  t({ duration: { modifier: 'BETWEEN', value: { value: 60, value2: '' } } }),
+  { duration: { value: 60, modifier: 'BETWEEN' } });
 
 console.log('\n── nesting');
 check('recurses into AND (object form)',

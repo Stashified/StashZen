@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { useStableListing } from '../hooks/useStableListing.js';
@@ -147,22 +148,21 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
   }, [loadMore]);
 
   if (loading) return (
-    <div className={styles.state}>
-      <div className={styles.spinner} aria-label={`Loading ${noun}`} />
-      <p className={styles.stateText}>Loading {noun}…</p>
-    </div>
+    <ListingState
+      id={`state-${noun}`}
+      styles={styles}
+      loading
+      spinnerLabel={`Loading ${noun}`}
+      text={`Loading ${noun}…`}
+    />
   );
 
   if (error && !items.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText} style={{ color: 'var(--red)' }}>Error: {error}</p>
-    </div>
+    <ListingState id={`state-${noun}`} styles={styles} error text={`Error: ${error}`} />
   );
 
   if (!items.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText}>No {noun} found.</p>
-    </div>
+    <ListingState id={`state-${noun}`} styles={styles} text={`No ${noun} found.`} />
   );
 
   return (

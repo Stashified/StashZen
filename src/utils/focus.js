@@ -20,12 +20,28 @@ import { beginRestore, endRestore } from './restorePending.js';
  * Bounds: 8 s and 12 extra pages, so a deleted card cannot walk a 10 000-row
  * listing to the end. At either bound the cursor stays where autofocus put it;
  * `fallback` gives a caller a better answer (the player uses the origin card).
+ *
+ * `id` may be an array, for a card that exists under more than one prefix.
  */
 
 // prefix → { loadMore, canLoad, pending? }, registered by `usePagedList`. It
 // comes from the mounted listing, which unregisters in its effect cleanup, so
 // the lookup can never drive a grid that is not on screen.
 const listings = new Map();
+
+// Restore requests, for listings that only mount the slots near the centre
+// (the Carousel). The last request is kept so a listener that mounts after the
+// call — a tab remount — still hears it.
+const restoreListeners = new Set();
+let pendingRestoreId = null;
+let restoreSeq = 0;
+
+/** Subscribe to focus-restore requests. Returns the unsubscribe function. */
+export function onFocusRestoreRequest(fn) {
+  restoreListeners.add(fn);
+  if (pendingRestoreId) fn(pendingRestoreId);
+  return () => { restoreListeners.delete(fn); };
+}
 
 /** Let `focusByIdWhenReady` page this listing forward while it looks for a
  *  card. `prefix` is the card id prefix ('tag', 'gallery', 'performer', …);
@@ -64,12 +80,20 @@ export function focusFirstControl() {
 }
 
 export function focusByIdWhenReady(id, { fallback } = {}) {
-  if (!id) return;
-  const prefix = prefixOf(id);
+  const ids = (Array.isArray(id) ? id : [id]).filter(Boolean);
+  if (!ids.length) return;
+  const prefix = prefixOf(ids[0]);
   const deadline = Date.now() + MAX_RESTORE_MS;
   let pages = 0;
   let settled = false;
   let timer = null;
+
+  // Let a virtualising strip render the target before the poll looks for it.
+  const token = ++restoreSeq;
+  pendingRestoreId = ids[0];
+  for (const fid of ids) {
+    for (const listener of restoreListeners) listener(fid);
+  }
 
   // Tell the listings to hold their first-card auto-focus until this lands.
   beginRestore();
@@ -81,6 +105,7 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
   const settle = () => {
     if (settled) return;
     settled = true;
+    if (token === restoreSeq) pendingRestoreId = null;
     clearTimer();
     window.removeEventListener('keydown', onUserKey, true);
     endRestore();
@@ -101,11 +126,13 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
 
   function attempt() {
     if (settled) return;
-    const el = registry.get(id)?.el;
-    if (el && document.contains(el)) {
-      settle();
-      el.focus();
-      return;
+    for (const fid of ids) {
+      const el = registry.get(fid)?.el;
+      if (el && document.contains(el)) {
+        settle();
+        el.focus();
+        return;
+      }
     }
     if (Date.now() > deadline) {
       settle();

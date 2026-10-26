@@ -54,9 +54,9 @@ export const EDITOR = {
  * deliberately keyed by *type*.
  *
  * The bare `Boolean` and `String` scalars are not interchangeable: `organized`
- * is a real Boolean, while `has_markers`/`is_missing` are String and
- * tri-state in practice ("true" / "false" / unset). Coercing the latter to a
- * boolean is the recorded bug, so they get their own editor.
+ * is a real Boolean, while `has_markers` is a String whose vocabulary is
+ * "true" / "false". Coercing the latter to a boolean is the recorded bug, so it
+ * gets its own editor.
  */
 const EDITOR_BY_TYPE = {
   StringCriterionInput: EDITOR.TEXT,
@@ -78,6 +78,12 @@ const EDITOR_BY_TYPE = {
   Boolean: EDITOR.BOOLEAN,
   String: EDITOR.TRI,
 };
+
+/**
+ * `is_missing` shares the bare `String` type with `has_markers` but not its
+ * vocabulary: it takes a field name ("url", "tags"), not yes/no.
+ */
+const EDITOR_BY_FIELD = { is_missing: EDITOR.TEXT };
 
 /** The enum a criterion's value is drawn from, when it has one. */
 const ENUM_BY_TYPE = {
@@ -119,7 +125,7 @@ export function unreachableReason(field, fieldType) {
 /** The editor kind for a filter field, or null when it is not buildable. */
 export function editorFor(field, fieldType) {
   if (unreachableReason(field, fieldType)) return null;
-  return EDITOR_BY_TYPE[BASE(fieldType)] || null;
+  return EDITOR_BY_FIELD[field] || EDITOR_BY_TYPE[BASE(fieldType)] || null;
 }
 
 // ── Modifiers ─────────────────────────────────────────────
@@ -136,7 +142,8 @@ const MODIFIERS = {
   [EDITOR.TIMESTAMP]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.ENUM]: ['EQUALS', 'NOT_EQUALS', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.MULTI]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL', 'EQUALS', 'NOT_EQUALS'],
-  [EDITOR.HIERARCHICAL]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL', 'EQUALS', 'NOT_EQUALS'],
+  // No NOT_EQUALS: the server rejects it for hierarchical multi criteria.
+  [EDITOR.HIERARCHICAL]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL', 'EQUALS'],
   [EDITOR.BOOLEAN]: ['EQUALS'],
   [EDITOR.TRI]: ['EQUALS'],
   [EDITOR.PHASH]: ['EQUALS', 'NOT_EQUALS'],
@@ -148,7 +155,7 @@ const MODIFIERS = {
 export const NULLARY = new Set(['IS_NULL', 'NOT_NULL']);
 
 /** Modifiers that take a second operand (`value2`). */
-const RANGE = new Set(['BETWEEN', 'NOT_BETWEEN']);
+export const RANGE = new Set(['BETWEEN', 'NOT_BETWEEN']);
 
 /**
  * The modifiers a given field can actually take.
