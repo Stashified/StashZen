@@ -56,26 +56,34 @@ function walk(dir, base = dir) {
  * Scan `distDir` for credential-shaped content.
  *
  * @param {{ distDir: string, secret?: string }} opts
- * @returns {{ filesScanned: number, jwtFiles: string[], keyFiles: string[], lanFiles: string[] }}
+ * @returns {{ filesScanned: number, skippedFiles: string[], jwtFiles: string[], keyFiles: string[], lanFiles: string[] }}
  */
 export function scanBundle({ distDir, secret = '' }) {
-  const result = { filesScanned: 0, jwtFiles: [], keyFiles: [], lanFiles: [] };
+  const result = { filesScanned: 0, skippedFiles: [], jwtFiles: [], keyFiles: [], lanFiles: [] };
   if (!existsSync(distDir)) return result;
 
   for (const rel of walk(distDir)) {
     const full = join(distDir, rel);
     const st = statSync(full);
     // Bundles are small text files; skip anything obviously binary rather than
-    // risk a false positive from compressed bytes.
-    if (st.size > 8 * 1024 * 1024) continue;
+    // risk a false positive from compressed bytes. A skip is reported, not
+    // silent: a file this check did not read must not count as clean.
+    if (st.size > 8 * 1024 * 1024) {
+      result.skippedFiles.push(rel);
+      continue;
+    }
     let text;
     try {
       text = readFileSync(full, 'utf8');
     } catch {
-      continue; // unreadable entry: nothing this check can conclude from it
+      result.skippedFiles.push(rel); // unreadable: nothing this check can conclude
+      continue;
     }
     // A NUL byte is the usual quick tell for a binary file.
-    if (text.includes('\u0000')) continue;
+    if (text.includes('\u0000')) {
+      result.skippedFiles.push(rel);
+      continue;
+    }
 
     result.filesScanned += 1;
     if (text.includes(JWT_MARKER)) result.jwtFiles.push(rel);
@@ -133,7 +141,13 @@ export function checkBundle({ distDir, envText = null, secret = '', allowBaked =
       lines.push('  For a local package that is only for your own TV: ALLOW_BAKED_KEY=1 npm run build');
     }
   } else {
-    lines.push(`ok bundle check: no credentials in dist/ (${scan.filesScanned} files scanned).`);
+    const skipped = scan.skippedFiles.length
+      ? `; ${scan.skippedFiles.length} not inspected`
+      : '';
+    lines.push(`ok bundle check: no credentials in dist/ (${scan.filesScanned} files scanned${skipped}).`);
+    if (scan.skippedFiles.length) {
+      lines.push(`! Not inspected (binary or over 8 MiB): ${scan.skippedFiles.join(', ')}`);
+    }
   }
 
   if (scan.lanFiles.length > 0) {

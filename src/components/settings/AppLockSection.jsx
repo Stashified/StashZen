@@ -148,8 +148,9 @@ export function AppLockSection({ pinFlowRef }) {
       <p className={styles.lockNotice} role="status" aria-live="polite">{notice}</p>
 
       <p className={styles.hint}>
-        A forgotten PIN cannot be recovered in the app. See the README for
-        how to reset — it clears the saved endpoint and key too.
+        A forgotten PIN cannot be recovered — reinstalling the app is the only
+        reset, and it clears the saved endpoint, key and filters too. PIN
+        changes apply immediately, not on Save.
       </p>
 
       {pinFlow && (

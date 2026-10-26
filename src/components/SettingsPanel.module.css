@@ -233,6 +233,29 @@
   font-weight: 600;
 }
 
+.saveError {
+  font-size: 13px;
+  color: var(--red);
+  line-height: 1.5;
+}
+
+/* The connection test and its answer: the classes were referenced but absent,
+   so a pass and a failure looked identical. */
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.testResult {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.testOk { color: var(--green); }
+.testFail { color: var(--red); }
+
 .footer {
   padding: 20px 32px;
   border-top: 1px solid var(--border);

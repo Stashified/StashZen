@@ -1,6 +1,6 @@
 {
   "name": "stashzen",
-  "version": "0.37.1",
+  "version": "0.37.2",
   "description": "A Stash client for Samsung Tizen TVs. Firm grip, steady strokes, and a happy ending in every scene.",
   "license": "MIT",
   "type": "module",

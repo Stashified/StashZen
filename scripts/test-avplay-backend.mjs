@@ -378,6 +378,11 @@ function rig(opts = {}, backendOpts = {}) {
   await sleep(450);
   check('replay after ended reports playing again',
     r.events.filter((e) => e === 'playing').length >= 2);
+  // Playback is rewound first; the fake does not advance time on its own, so
+  // the next position is what proves the poll is running.
+  check('replay after ended rewinds to the start', r.fake.calls.seek.at(-1) === 0);
+  r.fake.setPosition(500);
+  await sleep(450);
   check('replay after ended resumes timeupdate',
     r.events.filter((e) => e === 'timeupdate').length > before);
   check('replay after ended is not paused', r.backend.paused === false);
@@ -424,6 +429,35 @@ function rig(opts = {}, backendOpts = {}) {
     r.events.filter((e) => e === 'playing').length >= 2);
   r.backend.close();
   check('close unbinds visibility', r.doc.count('visibilitychange') === 0);
+}
+
+// ── Hide releases the panel mute; return puts it back ─────
+// tvaudiocontrol is panel-wide, and a widget torn down while hidden never runs
+// close(), so no mute of ours may outlive the hide.
+{
+  const fake = fakeAvplay();
+  const tv = {
+    muted: false,
+    calls: [],
+    setMute(v) { this.calls.push(v); this.muted = v; },
+    isMute() { return this.muted; },
+    getVolume() { return 13; },
+  };
+  const doc = fakeDoc();
+  const backend = createAvplayBackend({
+    avplay: fake.api, tvaudiocontrol: tv, emit: () => {}, doc, win: null,
+  });
+  backend.open('http://x/1.mp4');
+  await sleep(40);
+  backend.setMuted(true);
+  doc.visibilityState = 'hidden';
+  doc.fire('visibilitychange');
+  check('hiding releases the TV mute', tv.muted === false);
+  doc.visibilityState = 'visible';
+  doc.fire('visibilitychange');
+  await sleep(100);
+  check('returning restores the mute', tv.muted === true && backend.muted === true);
+  backend.close();
 }
 
 // ── TV mute: applied, and restored only by the app ────────

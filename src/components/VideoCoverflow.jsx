@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import VideoCard from './VideoCard.jsx';
+import ListingState from './ListingState.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
@@ -87,22 +88,21 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   
 
   if (loading) return (
-    <div className={styles.state}>
-      <div className={styles.spinner} aria-label="Loading videos" />
-      <p className={styles.stateText}>Loading videos…</p>
-    </div>
+    <ListingState
+      id="state-videos"
+      styles={styles}
+      loading
+      spinnerLabel="Loading videos"
+      text="Loading videos…"
+    />
   );
 
   if (error && !videos.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText} style={{ color: 'var(--red)' }}>Error: {error}</p>
-    </div>
+    <ListingState id="state-videos" styles={styles} error text={`Error: ${error}`} />
   );
 
   if (!videos.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText}>No videos found.</p>
-    </div>
+    <ListingState id="state-videos" styles={styles} text="No videos found." />
   );
 
   const focused = videos[focusedIndex] || videos[0];

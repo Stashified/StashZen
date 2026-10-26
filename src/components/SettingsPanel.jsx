@@ -48,6 +48,7 @@ export default function SettingsPanel({ onClose }) {
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
     dirty,
+    saveError,
     save, clear,
   } = useSettingsDraft(settings);
 
@@ -144,7 +145,14 @@ export default function SettingsPanel({ onClose }) {
   // the PIN keypad owns the keys. See the hook.
   useSettingsBack(requestClose, pinFlowRef);
 
-  useEffect(() => { setTestResult(null); }, [stashUrl, stashKey]);
+  // An edit invalidates a test still in flight, not just the result on screen:
+  // otherwise a 12-second test of the old address paints "Connected" over the
+  // new one.
+  useEffect(() => {
+    testAttemptRef.current++;
+    setTesting(false);
+    setTestResult(null);
+  }, [stashUrl, stashKey]);
 
   const [saved, setSaved] = useState(false);
   // Held in a ref so it can be cleared on unmount — a stale timeout would
@@ -164,7 +172,7 @@ export default function SettingsPanel({ onClose }) {
   useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const handleSave = () => {
-    save();
+    if (!save()) return;
     setSaved(true);
     clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => onClose?.(), SAVE_CLOSE_DELAY_MS);
@@ -263,6 +271,9 @@ export default function SettingsPanel({ onClose }) {
                 Endpoint &amp; key are saved to this device.
               </p>
             )}
+            {!useMock && saveError && (
+              <p className={styles.saveError} role="alert">{saveError}</p>
+            )}
             <p className={styles.hint}>
               The mode is saved too — the app opens in whichever one you left it in.
             </p>
@@ -296,7 +307,8 @@ export default function SettingsPanel({ onClose }) {
             <p className={styles.hint}>
               Reopens the first-run screen, starting from the saved values.
               Back leaves it without changing anything. Clearing saved settings
-              below also resets setup, so the screen comes back on next launch.
+              below also resets setup and opens the first-run screen straight
+              away.
             </p>
           </div>
 

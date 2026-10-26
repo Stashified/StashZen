@@ -73,7 +73,11 @@ check('no modifiers starts with null', blankCriterion({ ...textDesc, modifierOpt
 
 console.log('seedCriterion');
 check('null passes through', seedCriterion(textDesc, null), null);
-check('a non-object passes through', seedCriterion(textDesc, 'oops'), 'oops');
+check('a bare scalar is wrapped for the row', seedCriterion(textDesc, 'url'),
+  { modifier: 'MATCHES_REGEX', value: { value: 'url' } });
+check('a bare scalar on a no-modifier field seeds a null modifier',
+  seedCriterion({ ...textDesc, modifierOptions: [] }, 'url'),
+  { modifier: null, value: { value: 'url' } });
 const stored = { modifier: 'MATCHES_REGEX', value: { value: 'x' } };
 check('a stored envelope passes through unchanged', seedCriterion(textDesc, stored), stored);
 check('a stored boolean envelope is left alone', seedCriterion(boolDesc, { modifier: 'EQUALS', value: 'false' }),
@@ -110,6 +114,16 @@ check('list-valued enum discards a scalar (the request side sends a list)',
 check('list-valued enum keeps a list', seedCriterion(listEnumDesc,
   { modifier: 'EQUALS', value: ['CUT'] }),
   { modifier: 'EQUALS', value: { value: ['CUT'] } });
+// Stash's web UI stores gender's answer in value_list as well as value.
+check('scalar enum reads value_list when value is absent', seedCriterion(enumDesc,
+  { modifier: 'INCLUDES', value_list: ['FEMALE'] }),
+  { modifier: 'INCLUDES', value: { value: 'FEMALE' } });
+check('scalar enum reads value_list when value is blank', seedCriterion(enumDesc,
+  { modifier: 'EQUALS', value: '', value_list: ['MALE'] }),
+  { modifier: 'EQUALS', value: { value: 'MALE' } });
+check('list-valued enum reads value_list', seedCriterion(listEnumDesc,
+  { modifier: 'EQUALS', value_list: ['CUT'] }),
+  { modifier: 'EQUALS', value: { value: ['CUT'] } });
 check('plain operand carries value and value2', seedCriterion(numberDesc,
   { modifier: 'BETWEEN', value: 70, value2: 90 }),
   { modifier: 'BETWEEN', value: { value: 70, value2: 90 } });
@@ -121,6 +135,10 @@ console.log('isEffective');
 check('empty text is not effective', isEffective(textDesc, { modifier: 'MATCHES_REGEX', value: { value: '' } }), false);
 check('filled text is effective', isEffective(textDesc, { modifier: 'MATCHES_REGEX', value: { value: 'x' } }), true);
 check('zero is a real number', isEffective(numberDesc, { modifier: 'BETWEEN', value: { value: 0, value2: 5 } }), true);
+check('a range without its second bound is not effective',
+  isEffective(numberDesc, { modifier: 'BETWEEN', value: { value: 5 } }), false);
+check('a range with an empty second bound is not effective',
+  isEffective(numberDesc, { modifier: 'BETWEEN', value: { value: 5, value2: '' } }), false);
 check('a nullary criterion is effective with no operand',
   isEffective(textDesc, { modifier: 'IS_NULL', value: {} }), true);
 check('empty multi is not effective', isEffective(multiDesc, { modifier: 'INCLUDES', value: { items: [] } }), false);

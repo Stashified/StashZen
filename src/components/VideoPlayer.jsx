@@ -285,6 +285,13 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     media.open(playbackSrc, openOptionsRef.current);
   }, [media, engine, playbackSrc, mediaKey]);
 
+  // A plan that ran out leaves the previous scene's native session playing
+  // under the error card. A plain source change must not close (that would
+  // unmute between two scenes); exhaustion means no source is coming.
+  useEffect(() => {
+    if (sourceExhausted) media.close();
+  }, [media, sourceExhausted]);
+
   // The sitting's end: close the native session and restore the panel. Runs
   // after the plane attribute's cleanup, so the shell is never left hidden.
   useEffect(() => () => media.close(), [media]);

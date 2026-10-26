@@ -52,7 +52,12 @@ export function useFilterBuilder({
     // is reopened elsewhere, and a bare criteria list comes back in Stash's
     // default order.
     const findFilter = { sort: controls.sort, direction: controls.order === 'asc' ? 'ASC' : 'DESC' };
-    const saved = await saveFilter({ mode: filterMode, name, objectFilter, findFilter });
+    // Seeded from the active saved filter, so Save edits it in place rather
+    // than forking a same-named copy.
+    const id = controls.filterId && controls.filterId !== WORKING_FILTER_ID
+      ? controls.filterId
+      : undefined;
+    const saved = await saveFilter({ id, mode: filterMode, name, objectFilter, findFilter });
 
     // `saveFilter` clears filterService's cache, but the hook is keyed on
     // mode + source; the epoch is what re-runs it so the entry appears.

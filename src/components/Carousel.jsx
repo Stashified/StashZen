@@ -27,10 +27,12 @@
  *               in Carousel.module.css.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStableListing } from '../hooks/useStableListing.js';
+import ListingState from './ListingState.jsx';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { onFocusRestoreRequest } from '../utils/focus.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './Carousel.module.css';
 
@@ -96,23 +98,47 @@ export default function Carousel({
     return () => document.removeEventListener('focusin', onFocus);
   }, [items, focusedIndex, idPrefix]);
 
+  // Only ±4 slots are mounted, so a restore to a card outside that window has
+  // no element to find. Move the window when the request names one of ours —
+  // on arrival if the rows are here, otherwise as soon as they land.
+  const pendingRestoreRef = useRef(null);
+  useEffect(() => onFocusRestoreRequest((fid) => {
+    if (!fid.startsWith(idPrefix)) return;
+    pendingRestoreRef.current = fid;
+    const id = fid.slice(idPrefix.length);
+    const idx = items.findIndex(v => String(v.id) === String(id));
+    if (idx >= 0) {
+      pendingRestoreRef.current = null;
+      setFocusedIndex(idx);
+    }
+  }), [idPrefix, items]);
+
+  useEffect(() => {
+    const fid = pendingRestoreRef.current;
+    if (!fid || !items.length) return;
+    const id = fid.slice(idPrefix.length);
+    const idx = items.findIndex(v => String(v.id) === String(id));
+    if (idx < 0) return;
+    pendingRestoreRef.current = null;
+    setFocusedIndex(idx);
+  }, [items, idPrefix]);
+
   if (loading) return (
-    <div className={styles.state}>
-      <div className={styles.spinner} aria-label={`Loading ${noun}`} />
-      <p className={styles.stateText}>Loading {noun}…</p>
-    </div>
+    <ListingState
+      id={`state-${noun}`}
+      styles={styles}
+      loading
+      spinnerLabel={`Loading ${noun}`}
+      text={`Loading ${noun}…`}
+    />
   );
 
   if (error && !items.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText} style={{ color: 'var(--red)' }}>Error: {error}</p>
-    </div>
+    <ListingState id={`state-${noun}`} styles={styles} error text={`Error: ${error}`} />
   );
 
   if (!items.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText}>No {noun} found.</p>
-    </div>
+    <ListingState id={`state-${noun}`} styles={styles} text={`No ${noun} found.`} />
   );
 
   // Fixed-width slots; the strip translates to centre the focused one, and CSS

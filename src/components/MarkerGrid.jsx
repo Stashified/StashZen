@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import MarkerCard from './MarkerCard.jsx';
+import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchMarkers } from '../utils/markerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
@@ -63,22 +64,21 @@ export default function MarkerGrid({
   }, [loadMore]);
 
   if (loading) return (
-    <div className={styles.state}>
-      <div className={styles.spinner} />
-      <p className={styles.stateText}>Loading markers…</p>
-    </div>
+    <ListingState
+      id="state-markers"
+      styles={styles}
+      loading
+      spinnerLabel="Loading markers"
+      text="Loading markers…"
+    />
   );
 
   if (error && !markers.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText} style={{ color: 'var(--red)' }}>Error: {error}</p>
-    </div>
+    <ListingState id="state-markers" styles={styles} error text={`Error: ${error}`} />
   );
 
   if (!markers.length) return (
-    <div className={styles.state}>
-      <p className={styles.stateText}>No markers found.</p>
-    </div>
+    <ListingState id="state-markers" styles={styles} text="No markers found." />
   );
 
   return (

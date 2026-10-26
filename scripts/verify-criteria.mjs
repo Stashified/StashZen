@@ -196,16 +196,13 @@ rt('an empty value is dropped',
   { title: { modifier: 'INCLUDES', value: { value: '' } } },
   {});
 
-// IS_NULL takes no operand, so an empty value beside it must not be dropped as
-// unset. The builder emits `value: {}` with no inner key, which translates to a
-// criterion carrying only its modifier.
-rt('IS_NULL with no operand translates clean',
+// IS_NULL ignores its operand but the input type still requires one, so an
+// empty envelope gains the minimal valid value. Stash rejects a bare modifier.
+rt('IS_NULL gains the operand its input type requires',
   { details: { modifier: 'IS_NULL', value: {} } },
-  { details: { modifier: 'IS_NULL' } });
+  { details: { modifier: 'IS_NULL', value: '' } });
 
-// What Stash's own UI stores — an empty inner value — also survives but carries
-// the empty string through. On the record so the difference is not rediscovered
-// later; the builder emits `{}` deliberately.
+// An inner value Stash's UI stored survives unchanged.
 rt('IS_NULL with an empty inner value keeps it',
   { details: { modifier: 'IS_NULL', value: { value: '' } } },
   { details: { value: '', modifier: 'IS_NULL' } });

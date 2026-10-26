@@ -207,6 +207,9 @@ for (const spec of MODES) {
     // must be a no-op.
     if (canonical(translateFilter(translated, spec.filterType)) !== canonical(translated)) {
       notIdempotent++;
+      // The services translate unconditionally, so a second pass changing the
+      // result is a bug, not a curiosity: the listing would differ by caller.
+      failures++;
       console.log(`  !  ${f.name} — translating twice changes the result`);
     }
 

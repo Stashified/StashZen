@@ -254,7 +254,7 @@ function NumberStepper({ id, value, min, max, onChange }) {
         ref={decRef}
         className={`${styles.stepperBtn} ${decFocused ? styles.focused : ''}`}
         onClick={() => onChange(Math.max(min, value - 1))}
-        disabled={value <= min}
+        aria-disabled={value <= min}
         aria-label={`Decrease ${id}`}
       >−</button>
       <span className={styles.stepperVal}>{value}</span>
@@ -262,7 +262,7 @@ function NumberStepper({ id, value, min, max, onChange }) {
         ref={incRef}
         className={`${styles.stepperBtn} ${incFocused ? styles.focused : ''}`}
         onClick={() => onChange(Math.min(max, value + 1))}
-        disabled={value >= max}
+        aria-disabled={value >= max}
         aria-label={`Increase ${id}`}
       >+</button>
     </div>
