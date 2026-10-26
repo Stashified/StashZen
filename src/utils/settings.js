@@ -302,7 +302,8 @@ export async function testStashConnection({ url, key }) {
   const v = data?.version?.version;
   if (!v) return { ok: false, reason: 'Unexpected response from server.' };
 
-  return { ok: true, version: v };
+  // Stash reports "v0.31.1"; the callers print their own "v" in front.
+  return { ok: true, version: String(v).replace(/^v/i, '') };
 }
 
 /**
