@@ -1,5 +1,5 @@
 /**
- * mockArt.js — the covers Test mode draws for itself.
+ * mockArt.js: the covers Test mode draws for itself.
  *
  * SVG data URIs derived from the item's own id: deterministic (same id, same
  * picture every load), offline, and distinct enough that no two cards are
@@ -9,7 +9,7 @@
  * ── Regimes ────────────────────────────────────────────────────────────────
  *
  * One mid-lightness hue sweep makes 48 tiles distinguishable but is a poor
- * model of a real library, which is warm, skin-tone-dominant and low-key — one
+ * model of a real library, which is warm, skin-tone-dominant and low-key, one
  * lit subject on a dark field. The UI must be tested against the covers most
  * likely to break it: white chrome, the 40% black scrim on a focused card
  * (`VideoCard.module.css`) and a blue focus ring, over a tile close in value to
@@ -18,8 +18,8 @@
  * So the palette is chosen per seed from a small table of regimes, with a
  * deliberate minority landing on adversarial ones. The weights live in
  * `REGIMES` and are meant to be tuned from the contact sheet;
- * `scripts/verify-mockart.mjs` asserts only their rough shape — the sweep stays
- * the majority, the hard regimes stay rare — so none becomes the whole library
+ * `scripts/verify-mockart.mjs` asserts only their rough shape, the sweep stays
+ * the majority, the hard regimes stay rare, so none becomes the whole library
  * or dead code.
  *
  *   sweep     old behaviour          ~57%   ordinary, well-behaved hue sweep
@@ -35,8 +35,8 @@
  * ── Determinism is load-bearing ────────────────────────────────────────────
  *
  * Differential diffs rest on `coverArt(seed)` being a pure function of its
- * seed, so all vocabulary is drawn through `makeRng` — no `Math.random()`, no
- * clock — and `scripts/verify-mockart.mjs` proves it by stubbing both to throw
+ * seed, so all vocabulary is drawn through `makeRng`, no `Math.random()`, no
+ * clock, and `scripts/verify-mockart.mjs` proves it by stubbing both to throw
  * and calling `coverArt`.
  *
  * It stays SVG, so it stays abstract: real imagery in a data URI would mean
@@ -55,7 +55,7 @@ export function hashSeed(str) {
 }
 
 /**
- * mulberry32 — a deterministic PRNG, so a seeded id always yields the same
+ * mulberry32, a deterministic PRNG, so a seeded id always yields the same
  * numbers. Do not swap in xorshift32: its low bits are weakly decorrelated, so
  * nearby seeds make hue and motif track each other. Independent streams
  * (`seed|p` palette, `seed|m` motif, `|r` regime) are the other half; see
@@ -120,7 +120,7 @@ function dots(rng, w, h, stroke) {
   return out;
 }
 
-/** A single diagonal edge with the far side filled — the plainest possible
+/** A single diagonal edge with the far side filled, the plainest possible
  *  composition, and useful precisely because it reads at any size. */
 function wedge(rng, w, h, stroke) {
   const x = w * (0.3 + rng() * 0.4);
@@ -198,7 +198,7 @@ function rays(rng, w, h, stroke) {
  *
  * Meeting exactly is not enough: the shapes become tangent, the neck zero-width,
  * and at 200px it reads as a ball on a hill. Sinking the apex by `NECK·headR`
- * gives a real join width — the circle there spans
+ * gives a real join width, the circle there spans
  * `2·headR·√(2·NECK − NECK²)`, a little over half the head at 0.22.
  *
  * `shoulder` is a half-width, so the shape spans 2·shoulder.
@@ -228,7 +228,7 @@ function figure(rng, w, h, stroke) {
   return silhouette(cx, headY, headR, shoulder, h, stroke);
 }
 
-/** Portrait: a tighter crop than `figure` — larger head, shoulders wider than
+/** Portrait: a tighter crop than `figure`, larger head, shoulders wider than
  *  the frame, so it reads as a close-up at 200px, the only size that matters. */
 function torso(rng, w, h, stroke) {
   const cx = w * (0.36 + rng() * 0.28);
@@ -305,7 +305,7 @@ export const PORTRAIT_HEIGHT = 600;
 
 /** A hue at mid-lightness, with a mark colour far from both. Grounds stay in
  *  the mid tones: a wall of near-black tiles reads as "nothing loaded" at ten
- *  feet — which the `dark` regime does on purpose, rarely. */
+ *  feet, which the `dark` regime does on purpose, rarely. */
 function sweepPalette(rng) {
   const hue = Math.floor(rng() * 360);
   const hue2 = (hue + 30 + Math.floor(rng() * 90)) % 360;
@@ -320,7 +320,7 @@ function sweepPalette(rng) {
 /** Warm and low-key: 8–40° is the skin-and-ember arc; grounds at 12–26%
  *  lightness keep the tile close in *value* to `--bg-base`, with one lit mark
  *  well above them. A single subject on a dark field, as a real cover mostly is
- *  — the case the white chrome and blue focus ring were never drawn against. */
+ * , the case the white chrome and blue focus ring were never drawn against. */
 function warmPalette(rng) {
   const hue = 8 + Math.floor(rng() * 32);
   const hue2 = (hue + 4 + Math.floor(rng() * 18)) % 360;
@@ -378,7 +378,7 @@ function clutterPalette(rng) {
 /**
  * The regimes and their weights. Read the header before changing them: the
  * numbers are a claim about what a library looks like, and nothing outside
- * this file depends on the exact values — only their rough shape.
+ * this file depends on the exact values, only their rough shape.
  */
 const REGIMES = [
   { name: 'sweep', weight: 12, palette: sweepPalette, marks: 1 },

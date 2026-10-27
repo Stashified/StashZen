@@ -60,8 +60,8 @@ export function ServerStatusSection() {
       if (token !== scanRef.current) return;
       setScanPhase('started');
       setScanMessage(getSettings().useMock
-        ? 'Test mode — sample data; no scan was started on a server.'
-        : "Scan started with this server's saved scan options — progress appears below.");
+        ? 'Test mode: sample data; no scan was started on a server.'
+        : "Scan started with this server's saved scan options: progress appears below.");
       load();
     } catch (e) {
       if (token !== scanRef.current) return;
@@ -84,8 +84,8 @@ export function ServerStatusSection() {
         phase: 'stopped',
         id: job.id,
         message: getSettings().useMock
-          ? 'Test mode — the sample job was removed; no job was stopped on a server.'
-          : `Stopping "${job.description}" — press Refresh if it is still listed.`,
+          ? 'Test mode: the sample job was removed; no job was stopped on a server.'
+          : `Stopping "${job.description}": press Refresh if it is still listed.`,
       });
       load();
     } catch (e) {
@@ -119,7 +119,7 @@ export function ServerStatusSection() {
         aria-live="polite"
       >
         {scanPhase === 'error'
-          ? `Couldn't start a scan${scanMessage ? ` — ${scanMessage}` : ''}`
+          ? `Couldn't start a scan${scanMessage ? `: ${scanMessage}` : ''}`
           : scanPhase === 'started' ? scanMessage : ''}
       </div>
 
@@ -129,7 +129,7 @@ export function ServerStatusSection() {
         aria-live="polite"
       >
         {stopState.phase === 'error'
-          ? `Couldn't stop the job${stopState.message ? ` — ${stopState.message}` : ''}`
+          ? `Couldn't stop the job${stopState.message ? `: ${stopState.message}` : ''}`
           : stopState.phase === 'stopped' ? stopState.message : ''}
       </div>
 
@@ -169,12 +169,12 @@ export function ServerStatusSection() {
         aria-live="polite"
       >
         {phase === 'error'
-          ? `Couldn't load server status${message ? ` — ${message}` : ''}`
+          ? `Couldn't load server status${message ? `: ${message}` : ''}`
           : ''}
       </div>
 
       <p className={styles.hint}>
-        A snapshot, not a live feed — press <strong>Refresh</strong> to update it.
+        A snapshot, not a live feed: press <strong>Refresh</strong> to update it.
         {' '}A scan uses the scan options saved on your Stash server (Settings → Tasks →
         Scan in Stash), so it generates whatever those options ask for.
       </p>

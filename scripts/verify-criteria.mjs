@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * verify-criteria.mjs — the builder's model, proved against the schema.
+ * verify-criteria.mjs: the builder's model, proved against the schema.
  *
  *   node scripts/verify-criteria.mjs
  *
  * Two claims that are easy to assert and hard to mean:
  *
- *   1. "All fields" really is all fields — every field of every sendable filter
+ *   1. "All fields" really is all fields, every field of every sendable filter
  *      type is either buildable or listed as unreachable *with a reason*. No
  *      field may be silently absent or unbuildable for an unexplained reason.
  *   2. What the builder writes is what the translator reads. The builder emits
@@ -39,7 +39,7 @@ function eq(label, actual, expected) {
 
 // ── 1. Coverage ───────────────────────────────────────────
 //
-// Every filter type the three services can send — the ones App.jsx reaches
+// Every filter type the three services can send, the ones App.jsx reaches
 // through TAB_CONTROL_CONFIG.
 const SENDABLE = [
   'SceneFilterType',
@@ -111,9 +111,11 @@ for (const ft of SENDABLE) {
       offersRange === declaresValue2,
       `offers range: ${offersRange}, declares value2: ${declaresValue2}`);
 
-    // A type with no modifier field must offer none.
+    // A type with no modifier field must offer none. `is_missing` is a bare
+    // String whose value carries the whole condition.
     ok(`${ft}.${c.field}: no modifiers where the criterion declares none`,
       !ENUMS.CriterionModifier.length || c.modifierOptions.length > 0 ||
+      c.field === 'is_missing' ||
       ['DuplicationCriterionInput', 'FileDuplicationCriterionInput', 'OrientationCriterionInput']
         .includes(base));
   }
@@ -148,7 +150,7 @@ console.log('\nRound trip: builder envelope → GraphQL');
 const rt = (name, stored, expected) =>
   eq(`round trip: ${name}`, translateFilter(stored, 'SceneFilterType'), expected);
 
-// text / number / date — { modifier, value: { value } }
+// text / number / date, { modifier, value: { value } }
 rt('string criterion',
   { title: { modifier: 'INCLUDES', value: { value: 'Night' } } },
   { title: { value: 'Night', modifier: 'INCLUDES' } });
@@ -161,7 +163,7 @@ rt('range criterion uses value2',
   { o_counter: { modifier: 'BETWEEN', value: { value: 1, value2: 5 } } },
   { o_counter: { value: 1, value2: 5, modifier: 'BETWEEN' } });
 
-// boolean — the value is the STRING 'true', and must come out a real boolean.
+// boolean, the value is the STRING 'true', and must come out a real boolean.
 rt('boolean criterion is coerced',
   { organized: { modifier: 'EQUALS', value: 'true' } },
   { organized: true });
@@ -171,7 +173,7 @@ rt('tri-state String stays a string',
   { has_markers: { modifier: 'EQUALS', value: 'true' } },
   { has_markers: 'true' });
 
-// multi — { modifier, value: { items: [{id,label}], excluded, depth } }
+// multi, { modifier, value: { items: [{id,label}], excluded, depth } }
 rt('multi criterion unwraps to ids',
   { tags: { modifier: 'INCLUDES', value: { items: [{ id: '5', label: 'Blonde' }], excluded: [] } } },
   { tags: { value: ['5'], modifier: 'INCLUDES' } });
@@ -190,7 +192,7 @@ rt('a value with a space is not quoted',
   { title: { modifier: 'INCLUDES', value: { value: 'Two Words' } } },
   { title: { value: 'Two Words', modifier: 'INCLUDES' } });
 
-// A criterion that constrains nothing is dropped, not sent — sending
+// A criterion that constrains nothing is dropped, not sent, sending
 // `INCLUDES ""` matches every row and silently widens the filter.
 rt('an empty value is dropped',
   { title: { modifier: 'INCLUDES', value: { value: '' } } },

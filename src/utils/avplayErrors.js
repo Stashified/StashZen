@@ -1,9 +1,9 @@
 /**
- * avplayErrors — what an AVPlay failure means, decided by *when* it happened.
+ * avplayErrors, what an AVPlay failure means, decided by *when* it happened.
  *
  * AVPlay reports almost everything as a generic code. The probe found a codec
- * this panel cannot decode surfaces as `PLAYER_ERROR_CONNECTION_FAILED` — the
- * same family as a dropped stream — so the code alone cannot separate "file
+ * this panel cannot decode surfaces as `PLAYER_ERROR_CONNECTION_FAILED`, the
+ * same family as a dropped stream, so the code alone cannot separate "file
  * not playable here" from "engine broken". Both mistakes are expensive:
  * treating a refusal as an engine fault trips the session kill switch after
  * two scenes, and treating a broken engine as a refusal retries forever.
@@ -116,6 +116,9 @@ export function isEngineLevel(result) {
 /** A short phrase for the stats panel / engine-aware error message. */
 export function describeAvplayFailure(result) {
   if (!result) return 'unknown playback error';
+  if (result.name === 'SEEK_RECOVERY_FAILED') {
+    return 'the seek failed and the TV player could not recover';
+  }
   const where = result.phase === 'prepare' ? 'while preparing'
     : result.phase === 'open' ? 'while opening the player'
       : result.phase === 'seek' ? 'during a seek'
@@ -130,7 +133,7 @@ export function describeAvplayFailure(result) {
  *
  * A panel can decode 1080p AV1 and refuse 4K, so resolution belongs in the key;
  * exact pixels would fragment the cache per file. The short edge treats both
- * orientations alike. Empty when Stash reports no dimensions — callers keep
+ * orientations alike. Empty when Stash reports no dimensions, callers keep
  * that as a coarser key rather than pretending to know.
  */
 export function resolutionBand({ width, height } = {}) {

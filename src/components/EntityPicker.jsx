@@ -1,5 +1,5 @@
 /**
- * EntityPicker — choose entities for a multi-select criterion.
+ * EntityPicker, choose entities for a multi-select criterion.
  *
  * NOT PORTALLED. `focusScopeOf` returns the *nearest* enclosing
  * `role="dialog"`, so as a DOM child of FilterBuilder this dialog confines the
@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
 import { useBackKey } from '../hooks/useBackKey.js';
-import { TIZEN_BACK } from '../utils/input.js';
+import { isBackCode } from '../utils/input.js';
 import { searchEntities } from '../utils/entitySearch.js';
 import styles from './FilterBuilder.module.css';
 
@@ -46,7 +46,7 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
   const [error, setError] = useState(null);
   const [chosen, setChosen] = useState(selected);
 
-  // Search box: the same select-then-edit field as SettingsPanel's — see
+  // Search box: the same select-then-edit field as SettingsPanel's, see
   // useEditableField. Select the wrapper (not the input) so it is the picker's
   // first landing spot; Enter still decides when the IME appears.
   const { setWrapperRef, inputRef, selected: boxSelected, editing, inputHandlers } = useEditableField({
@@ -77,11 +77,11 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
 
   // Back closes the picker, not the builder: this listener registers after the
   // builder's, so the builder's runs first, and FilterBuilder's `overlayOpenRef`
-  // guard stands down while a nested layer is up — not any `stopPropagation`
+  // guard stands down while a nested layer is up, not any `stopPropagation`
   // here. Backspace cancels only outside text-entry mode, tested by the picker's
   // own `editing` flag rather than `isBackKey`'s activeElement heuristic.
   const pickerIsBack = useCallback(
-    (e) => e.key === 'Escape' || e.keyCode === TIZEN_BACK
+    (e) => e.key === 'Escape' || isBackCode(e.keyCode)
       || (e.key === 'Backspace' && !editing),
     [editing],
   );
@@ -138,7 +138,7 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
           {!loading && error && <p className={styles.pickError}>{error}</p>}
           {!loading && !error && rows.length === 0 && (
             <p className={styles.pickEmpty}>
-              {query ? `Nothing matches “${query}”.` : 'Nothing here — this library has none.'}
+              {query ? `Nothing matches “${query}”.` : 'Nothing here: this library has none.'}
             </p>
           )}
           {!loading && !error && rows.map((row) => (

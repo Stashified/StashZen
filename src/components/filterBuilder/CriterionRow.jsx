@@ -16,7 +16,7 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
 
   const setModifier = (m) => {
     // Switching to a nullary modifier drops the operand rather than leaving a
-    // stale one beside it — the translator would send it.
+    // stale one beside it, the translator would send it.
     onChange(NULLARY.has(m) ? { modifier: m, value: {} } : { ...criterion, modifier: m });
   };
 
@@ -32,7 +32,7 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
   // registration order; the button comes from the registry's `pick` part.
   //
   // `.rowBody` wraps, and geometry then reads Left as "towards whatever is on
-  // screen left" — a footer button. Two fixes are both needed: the row gets its
+  // screen left", a footer button. Two fixes are both needed: the row gets its
   // own zone (Left/Right do not cross zones without `crossZone`), and it
   // declares its own left-to-right order.
   //
@@ -46,7 +46,7 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
   chain.push(...editorChainIds(field, desc, criterion));
 
   // At either end the direction falls through to the geometry, where the row's
-  // own zone leaves nothing sideways to find — the line is the unit.
+  // own zone leaves nothing sideways to find, the line is the unit.
   const edgesOf = (id) => {
     const i = chain.indexOf(id);
     if (i < 0) return null;
@@ -88,9 +88,12 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
       setInner({ value: asStoredEnum(value, desc.listValued) });
     } else if (part.apply === 'depth') {
       setInner({ depth: Number(value) });
+    } else if (part.apply === 'value') {
+      // is_missing: a bare String at the filter level, stored in the envelope.
+      setInner({ value });
     } else {
       // BOOLEAN and TRI keep the chosen value as a string on the criterion
-      // itself, beside the modifier — see boolean.js.
+      // itself, beside the modifier, see boolean.js.
       onChange({ ...criterion, value });
     }
   };

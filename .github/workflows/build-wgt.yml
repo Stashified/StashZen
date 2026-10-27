@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 45
     outputs:
       version: ${{ steps.version.outputs.version }}
+      # The mode actually used to sign. `release` refuses a test-signed build.
+      signing: ${{ steps.signing.outputs.mode }}
 
     # Load-bearing: the signing secrets live in a GitHub *environment*, and a
     # job only sees them if it names it here. Without this line they resolve to
@@ -137,9 +139,17 @@ jobs:
 
       # Deliberately does NOT receive the signing secrets, and no .env.production
       # exists in CI (gitignored), so nothing of your Stash server ends up in the
-      # released bundle. See the guard step below.
+      # released bundle. The only VITE_ variables set here are the update-check
+      # pair below, neither of which is a credential. See the guard step below.
       - name: Build web app
         id: version
+        env:
+          # Both locks for the public-only update check. `github.repository` is
+          # evaluated per step, so this file is identical in both repos: true in
+          # the public copy, false in the private one. A private build gets an
+          # empty URL too, so api.github.com is never inlined.
+          VITE_UPDATE_CHECK: "${{ github.repository == 'Stashified/StashZen' && 'true' || 'false' }}"
+          VITE_UPDATE_CHECK_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://api.github.com/repos/Stashified/StashZen/releases/latest' || '' }}"
         run: |
           set -euo pipefail
 
@@ -181,6 +191,11 @@ jobs:
       # the credential check has its own named step in the summary, and a future
       # change to the build script cannot quietly drop it.
       - name: Guard against leaked credentials
+        # Repeated, not inherited: env does not flow between steps. The guard
+        # allows the GitHub API URL only when the update check is armed.
+        env:
+          VITE_UPDATE_CHECK: "${{ github.repository == 'Stashified/StashZen' && 'true' || 'false' }}"
+          VITE_UPDATE_CHECK_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://api.github.com/repos/Stashified/StashZen/releases/latest' || '' }}"
         run: node scripts/check-bundle.mjs
 
       # The TV floor: JS is checked from source and CSS from the bundle built
@@ -197,6 +212,7 @@ jobs:
       # exists only between here and `tizen package`; earlier would leave a
       # readable private key on disk while dependency scripts run.
       - name: Generate signing profile
+        id: signing
         env:
           TIZEN_AUTHOR_P12: ${{ secrets.TIZEN_AUTHOR_P12 }}
           TIZEN_AUTHOR_PASSWORD: ${{ secrets.TIZEN_AUTHOR_PASSWORD }}
@@ -206,6 +222,16 @@ jobs:
           SIGNING_MODE: ${{ inputs.signing || 'real' }}
         run: |
           set -euo pipefail
+
+          echo "mode=$SIGNING_MODE" >> "$GITHUB_OUTPUT"
+
+          # A test-signed package cannot be published, so refuse before any key
+          # is unpacked. The warning further down is for manual runs on a
+          # branch; a tag dispatch with signing=test lands here.
+          if [ "$SIGNING_MODE" = "test" ] && [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::error::signing=test on tag $GITHUB_REF_NAME. The artifact would carry Tizen's TEST distributor, which the standard install path rejects; use signing=real or run it on a branch."
+            exit 1
+          fi
 
           TIZEN_STUDIO="$GITHUB_WORKSPACE/tizen-studio"
           CERTS="$TIZEN_STUDIO/tools/certificate-generator/certificates"
@@ -334,7 +360,9 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: build
-    if: github.ref_type == 'tag'
+    # Belt and braces: the signing step refuses test mode on a tag, and this
+    # keeps a future edit to that step from publishing the result.
+    if: github.ref_type == 'tag' && needs.build.outputs.signing != 'test'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

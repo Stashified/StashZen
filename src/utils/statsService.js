@@ -1,5 +1,5 @@
 /**
- * statsService.js — Library-wide aggregate numbers from Stash.
+ * statsService.js: Library-wide aggregate numbers from Stash.
  *
  * One query, no arguments. `stats` is the aggregate Stash keeps for its own
  * dashboard; the handful of fields displayed is cheap and does not touch the

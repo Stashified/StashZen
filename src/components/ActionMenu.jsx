@@ -1,5 +1,5 @@
 /**
- * ActionMenu — the long-press menu on a scene card.
+ * ActionMenu, the long-press menu on a scene card.
  *
  * Items are passed in so App decides what a card can do and this file only
  * draws a focusable list.
@@ -51,7 +51,7 @@ export default function ActionMenu({ title, subtitle, items = [], onClose }) {
   // Take focus only after the press that opened the menu ends: it mounts
   // mid-press, and grabbing focus would aim the auto-repeats at the first row
   // (holding OK on a card played the scene). The press end is measured, not
-  // observed — a remote need not send keyup, and keydowns simply stopping also
+  // observed, a remote need not send keyup, and keydowns simply stopping also
   // covers remotes that repeat without setting `e.repeat`.
   const [armed, setArmed] = useState(false);
   useEffect(() => {

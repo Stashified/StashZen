@@ -45,9 +45,9 @@ export function AppLockSection({ pinFlowRef }) {
 
   const [pinFlow, setPinFlow] = useState(null);
   const [pendingPin, setPendingPin] = useState(null);
-  // Same two-step confirm as "Clear saved" below — see useArmedConfirm.
+  // Same two-step confirm as "Clear saved" below, see useArmedConfirm.
   const [confirmingRemove, runRemove, resetRemove] = useArmedConfirm();
-  // Transient confirmation, cleared on unmount — see useFlash.
+  // Transient confirmation, cleared on unmount, see useFlash.
   const [notice, flash] = useFlash();
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function AppLockSection({ pinFlowRef }) {
     if (pin !== pendingPin) {
       setPendingPin(null);
       setPinFlow('set');
-      return 'PINs did not match — start again';
+      return 'PINs did not match, start again';
     }
 
     // setPin reports whether the write landed; don't claim success otherwise.
@@ -125,7 +125,7 @@ export function AppLockSection({ pinFlowRef }) {
           <p className={styles.sectionStatus}>
             {lockSet
               ? 'A PIN is required to open the app.'
-              : 'No PIN set — the app opens without one.'}
+              : 'No PIN set: the app opens without one.'}
           </p>
         </div>
         <div className={styles.sectionActions}>
@@ -148,7 +148,7 @@ export function AppLockSection({ pinFlowRef }) {
       <p className={styles.lockNotice} role="status" aria-live="polite">{notice}</p>
 
       <p className={styles.hint}>
-        A forgotten PIN cannot be recovered — reinstalling the app is the only
+        A forgotten PIN cannot be recovered: reinstalling the app is the only
         reset, and it clears the saved endpoint, key and filters too. PIN
         changes apply immediately, not on Save.
       </p>

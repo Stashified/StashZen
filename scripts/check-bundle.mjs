@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * check-bundle.mjs — refuse to ship an API key in the built bundle.
+ * check-bundle.mjs: refuse to ship an API key in the built bundle.
  *
  * Vite inlines `VITE_STASH_API_KEY` from `.env.production` at build time. Fine
  * for a local package on your own TV, dangerous for anything handed to someone
@@ -27,6 +27,10 @@ import { parseDotenv } from './parse-dotenv.mjs';
 // Stash API keys are JWTs, so `eyJhbGciOi` is the base64 of {"alg":... .
 // Kept identical to the pattern the CI workflow has always used.
 const JWT_MARKER = 'eyJhbGciOi';
+
+// The public update check's endpoint. Only the public build may inline it; a
+// private build carrying it means the gate was wired wrong.
+const GITHUB_API_MARKER = 'api.github.com';
 
 // A private-network address in a release bundle means the builder's own server
 // was inlined. Not a credential, but worth saying.
@@ -56,10 +60,13 @@ function walk(dir, base = dir) {
  * Scan `distDir` for credential-shaped content.
  *
  * @param {{ distDir: string, secret?: string }} opts
- * @returns {{ filesScanned: number, skippedFiles: string[], jwtFiles: string[], keyFiles: string[], lanFiles: string[] }}
+ * @returns {{ filesScanned: number, skippedFiles: string[], jwtFiles: string[], keyFiles: string[], lanFiles: string[], githubApiFiles: string[] }}
  */
 export function scanBundle({ distDir, secret = '' }) {
-  const result = { filesScanned: 0, skippedFiles: [], jwtFiles: [], keyFiles: [], lanFiles: [] };
+  const result = {
+    filesScanned: 0, skippedFiles: [], jwtFiles: [], keyFiles: [], lanFiles: [],
+    githubApiFiles: [],
+  };
   if (!existsSync(distDir)) return result;
 
   for (const rel of walk(distDir)) {
@@ -88,6 +95,7 @@ export function scanBundle({ distDir, secret = '' }) {
     result.filesScanned += 1;
     if (text.includes(JWT_MARKER)) result.jwtFiles.push(rel);
     if (secret && secret.length >= 8 && text.includes(secret)) result.keyFiles.push(rel);
+    if (text.includes(GITHUB_API_MARKER)) result.githubApiFiles.push(rel);
     // Remove the documented placeholder first, then look for anything else: a
     // file may legitimately contain both.
     if (LAN_RE.test(text.split(LAN_PLACEHOLDER).join(''))) result.lanFiles.push(rel);
@@ -96,6 +104,7 @@ export function scanBundle({ distDir, secret = '' }) {
   result.jwtFiles.sort();
   result.keyFiles.sort();
   result.lanFiles.sort();
+  result.githubApiFiles.sort();
   return result;
 }
 
@@ -107,7 +116,10 @@ export function scanBundle({ distDir, secret = '' }) {
  *
  * @returns {{ ok: boolean, lines: string[] }}
  */
-export function checkBundle({ distDir, envText = null, secret = '', allowBaked = false, isCI = false }) {
+export function checkBundle({
+  distDir, envText = null, secret = '', allowBaked = false, isCI = false,
+  updateCheckEnabled = false,
+}) {
   const lines = [];
 
   if (!existsSync(distDir)) {
@@ -154,7 +166,22 @@ export function checkBundle({ distDir, envText = null, secret = '', allowBaked =
     lines.push(`! A private-network address is inlined into dist/: ${scan.lanFiles.join(', ')}`);
   }
 
-  return { ok: !baked || allowBaked, lines };
+  // Fail closed: the URL is allowed only when the build was explicitly armed.
+  // A private build can then never carry the endpoint even if the gate code is
+  // changed later.
+  let updateBlocked = false;
+  if (scan.githubApiFiles.length > 0) {
+    if (updateCheckEnabled) {
+      lines.push(`ok update check: the public GitHub API URL is in dist/ (${scan.githubApiFiles.join(', ')}).`);
+    } else {
+      updateBlocked = true;
+      lines.push('x A GitHub API URL is inlined into dist/ but the update check is not armed.');
+      lines.push(`  Found in: ${scan.githubApiFiles.join(', ')}`);
+      lines.push('  Only the public build may carry it: set VITE_UPDATE_CHECK=true and VITE_UPDATE_CHECK_URL.');
+    }
+  }
+
+  return { ok: (!baked || allowBaked) && !updateBlocked, lines };
 }
 
 function main() {
@@ -171,6 +198,7 @@ function main() {
     secret,
     allowBaked,
     isCI,
+    updateCheckEnabled: process.env.VITE_UPDATE_CHECK === 'true',
   });
 
   for (const line of lines) console.log(line);

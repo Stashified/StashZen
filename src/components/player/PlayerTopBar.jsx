@@ -2,7 +2,7 @@ import styles from '../VideoPlayer.module.css';
 
 /**
  * The bar across the top of the overlay: close, title, source chip and queue
- * position. Presentational — the shell owns the source decision and the queue.
+ * position. Presentational, the shell owns the source decision and the queue.
  */
 export function PlayerTopBar({ video, sourceKind, sourceLabel, itemsLength, total, index, onClose }) {
   return (
@@ -18,7 +18,7 @@ export function PlayerTopBar({ video, sourceKind, sourceLabel, itemsLength, tota
       </div>
       {/* Direct or transcoded: the difference is otherwise invisible on screen.
           Names the source actually resolved, so a fallback either way updates
-          it. Deliberately not a live region — the player already has two
+          it. Deliberately not a live region: the player already has two
           `role="status"` lines, and a third always-mounted one would make "the
           player's status line" ambiguous. It is a label, not an announcement. */}
       {sourceLabel && (

@@ -35,9 +35,9 @@
      focused rules inherit their ink from the rule above, so a fill light enough
      to need dark ink cannot be swapped in without changing the label too. */
 
-  --accent:         #48aff0;  /* blue5 — focus rings/borders, accent text, bars */
-  --accent-fill:    #106ba3;  /* blue2 — a solid fill at rest */
-  --accent-fill-hi: #137cbd;  /* blue3 — the same fill, focused: Stash's own button */
+  --accent:         #48aff0;  /* blue5, focus rings/borders, accent text, bars */
+  --accent-fill:    #106ba3;  /* blue2, a solid fill at rest */
+  --accent-fill-hi: #137cbd;  /* blue3, the same fill, focused: Stash's own button */
   --accent-dim:     rgba(19, 124, 189, 0.25);  /* blue3 tint behind a chip */
 
   /* The accent as channels, for alphas the four tokens above don't cover.
@@ -57,10 +57,10 @@
   --border:         rgba(16, 22, 26, 0.5);
   --border-strong:  #394b59;
 
-  --red:            #ff7373;  /* red5    — error text on dark */
-  --green:          #3dcc91;  /* green5  — success text on dark */
+  --red:            #ff7373;  /* red5   , error text on dark */
+  --green:          #3dcc91;  /* green5 , success text on dark */
   --amber:          #d9822b;  /* orange3 */
-  --rating:         #d9822b;  /* orange3 — star / score, as Stash draws it */
+  --rating:         #d9822b;  /* orange3, star / score, as Stash draws it */
 
   --focus-ring: 0 0 0 3px var(--accent), 0 0 0 5px rgba(72, 175, 240, 0.25);
 
@@ -69,7 +69,7 @@
   --font-body:      'Inter', sans-serif;
   --font-condensed: 'Inter', sans-serif;
 
-  /* 208px, not the narrow face's 176px: Inter is wider — "PERFORMERS" at
+  /* 208px, not the narrow face's 176px: Inter is wider, "PERFORMERS" at
      17px/600/0.05em measures ~123px versus 87. Rail and row padding are
      trimmed so the growth goes to the label, not to air. */
   --sidebar-w: 208px;   /* the rail; the content column starts here */
@@ -78,7 +78,7 @@
 }
 
 /* OLED: an off pixel is true black, so the largest surface goes to #000 and
-   anything that must stay a *shape* lifts a few steps off it — a card at pure
+   anything that must stay a *shape* lifts a few steps off it: a card at pure
    black would vanish. Text, accent and status colours are unchanged (identity
    and focus affordance do not depend on the panel). Borders restate as white at
    low alpha, since the base's near-black ones disappear. Black literals in the
@@ -138,7 +138,7 @@ html[data-avplay-plane] [data-app-shell] > :not([data-player-host]) {
 }
 
 /*
- * A resumed Tizen app repaints its last frame — the library — for about half a
+ * A resumed Tizen app repaints its last frame, the library, for about half a
  * second before the lock screen can mount; this makes that frame the themed
  * background instead. `visibility` for the same reasons as the AVPlay rule.
  */
@@ -150,7 +150,7 @@ html[data-lock-cover] #root {
  * The cover over the AVPlay plane: with plane mode on, the transparent page is
  * what lets the picture through, so hiding `#root` alone would leave the scene
  * playing under the keypad. Repainting the page base masks the plane and
- * nothing else — the attribute selectors outrank the transparency above, and
+ * nothing else, the attribute selectors outrank the transparency above, and
  * `--bg-base` keeps the OLED theme's true black.
  */
 html[data-lock-cover][data-avplay-plane],
@@ -195,7 +195,7 @@ button {
 
 /* `body.is-navigating` deliberately has NO styling: useKeyHandler sets it only
    as a JS signal (VideoCard and MarkerCard skip previews while an arrow is
-   held). Do not style it — a universal selector here invalidated style for the
+   held). Do not style it: a universal selector here invalidated style for the
    whole document twice per keypress, and `[class*="focused"]` is a substring
    match no engine can fast-path. The ring is one unblurred layer, so there is
    nothing worth hiding mid-navigation. */

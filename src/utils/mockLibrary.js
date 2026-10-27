@@ -1,9 +1,9 @@
 /**
- * mockLibrary.js — the catalogue Test mode pretends to have.
+ * mockLibrary.js: the catalogue Test mode pretends to have.
  *
  * A fictional archive: forty-eight restored shorts, six studios, sixty-odd
  * people, markers named the way an editor names them. Every name was invented
- * for this file — ordinary English, no real title, studio or person.
+ * for this file, ordinary English, no real title, studio or person.
  *
  * Kept in one module so the three generators agree: a marker names the scene
  * it belongs to, and a scene's id means the same thing everywhere. Covers are
@@ -32,7 +32,7 @@ export const STUDIOS = [
   'Tidewater Pictures', 'Lantern House', 'Quiet Harbour',
 ];
 
-/** The two halves of a marker's name. Twelve by five is exactly sixty —
+/** The two halves of a marker's name. Twelve by five is exactly sixty:
  *  enough for the sixty markers Test mode generates with no repeats, and
  *  every combination of them reads like an editor's note. */
 export const MARKER_PREFIXES = [
@@ -63,8 +63,8 @@ export const TAG_NAMES = [
   'Tracking Shot', 'Two Shot', 'Wide Lens', 'Whip Pan',
 ];
 
-/** Galleries, named the way an archive files them — a drawer, an envelope, a
- *  roll — rather than "Gallery 1". Images borrow their gallery's name for
+/** Galleries, named the way an archive files them, a drawer, an envelope, a
+ *  roll, rather than "Gallery 1". Images borrow their gallery's name for
  *  their own title, so these are the only fictional nouns the two need. */
 export const GALLERY_TITLES = [
   'Archive Box 3', 'Blue Folder', 'Cardboard Tube', 'Contact Sheet 12',

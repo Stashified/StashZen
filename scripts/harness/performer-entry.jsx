@@ -48,7 +48,7 @@ const api = (path, body) => fetch(`http://127.0.0.1:${PORT}${path}`, {
 const getJSON = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
 const setMode = (key, value) => api('/mode', { [key]: value });
 const clearLogs = () => api('/clear');
-// Enter on whatever was just focused — the keydown a remote sends, through the
+// Enter on whatever was just focused, the keydown a remote sends, through the
 // real useFocusable handler.
 function press(key, keyCode) {
   (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', {
@@ -76,7 +76,7 @@ async function waitForAsync(fn, ms = 4000) {
 
 // The card the user pressed Enter on: its gender, rating and favourite are the
 // listing's and deliberately disagree with the detail answer, so the adoption
-// is visible. "Unrated" is not a mistake — the listing carries `rating100` as a
+// is visible. "Unrated" is not a mistake, the listing carries `rating100` as a
 // display string and the page must not write from it.
 const CARD = {
   id: '8701',
@@ -132,7 +132,7 @@ const detailFetches = async () => (await getJSON('/performerfetches'));
 const updateFetches = async () => (await getJSON('/performerupdates'));
 const graphqlCalls = async () => (await getJSON('/graphqlcalls'));
 
-// Registry keys inside `el` — the honest signal for "did this block add a
+// Registry keys inside `el`, the honest signal for "did this block add a
 // D-pad stop", because a plain button never wired through useFocusable is
 // unreachable from a remote.
 const idsInside = (el) => (el ? [...registry.entries()]
@@ -248,7 +248,7 @@ async function run() {
   // favourite, so both readings are adopted values. The profile renders the
   // aliases, then an effect copies `rating100`/`favorite` into edit state one
   // commit later, so reading straight after the alias group can catch the
-  // card's 0 — a race, not a stale answer.
+  // card's 0, a race, not a stale answer.
   await waitFor(() => ratingStars() === 8, 4000);
   check('P1 the rating and favourite come from the detail answer',
     ratingStars() === 8 && !!favoriteStar()
@@ -282,7 +282,7 @@ async function run() {
 
   // ── P2: the wrapping profile block fits the hero ────────────
   //
-  // Every block is capped in code — an uncapped bio or tag list would blow past
+  // Every block is capped in code, an uncapped bio or tag list would blow past
   // the bound by hundreds of pixels, while the capped rows stay within ~four
   // extra chip rows.
   const h = header();
@@ -315,7 +315,7 @@ async function run() {
   const sparseFetched2 = await waitFor(
     () => (document.body.textContent.includes(CARD.name) && document.querySelector('[aria-label^="Gender:"]')),
     4000);
-  // Wait for the sparse answer to be logged and painted — the page shows
+  // Wait for the sparse answer to be logged and painted, the page shows
   // nothing new, so the fetch log is the settle signal.
   await waitForAsync(
     async () => (await getJSON('/performerfetches')).some(f => f.id === '8702'), 4000);
@@ -366,8 +366,8 @@ async function run() {
   //
   // The contract is not "Back owns the autofocus": the page's video grid
   // autofocuses its first card and wins that race. What must hold is that the
-  // profile block is inert — no chip registered with the D-pad, none carrying a
-  // tabindex/button role — and the control row adds exactly its three stops.
+  // profile block is inert, no chip registered with the D-pad, none carrying a
+  // tabindex/button role, and the control row adds exactly its three stops.
   await setMode('performerDetail', 'ok');
   mount(CARD);
   const chipsLoaded = await waitFor(
@@ -397,7 +397,7 @@ async function run() {
 
   // ── P7: rating and favourite are optimistic and roll back ───
   // The stepper works in whole stars; the detail answer is 75, shown as 8. One
-  // press up is 90, the value the mutation must carry — the number the server
+  // press up is 90, the value the mutation must carry, the number the server
   // stores, not the rounded star count.
   const focusPress = async (id) => {
     const entry = registry.get(id);

@@ -2,7 +2,7 @@
   position: fixed;
   inset: 0;
   z-index: 950;
-  /* Flat scrim, not a backdrop-filter blur — see the note in
+  /* Flat scrim, not a backdrop-filter blur, see the note in
      SettingsPanel.module.css. This one covers the grid too. */
   background: rgba(var(--scrim-rgb), 0.9);
   display: flex;

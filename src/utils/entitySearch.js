@@ -1,5 +1,5 @@
 /**
- * entitySearch.js — name lookup for the filter builder's multi-selects.
+ * entitySearch.js: name lookup for the filter builder's multi-selects.
  *
  * A criterion stores `{items: [{id, label}]}` (Stash's shape), so the builder
  * needs id→label for whichever entity a field names. Deliberately not the
@@ -7,7 +7,7 @@
  * totals, and `usePagedList` would drag the grid machinery into a modal.
  *
  * One table drives all eight sources; the queries differ only in root,
- * argument name and label field. Only id and name are selected — the builder
+ * argument name and label field. Only id and name are selected, the builder
  * never needs an entity's body to let the user pick one.
  */
 
@@ -22,7 +22,7 @@ function lastSegment(path) {
 }
 
 /**
- * The last `n` segments of a path, joined — the part of a folder path that
+ * The last `n` segments of a path, joined, the part of a folder path that
  * identifies it.
  *
  * One segment is not enough: gallery folders run
@@ -81,7 +81,7 @@ const SOURCES = {
   },
   scenes: {
     root: 'findScenes', rows: 'scenes', label: 'title',
-    // ScenePathsType has no `basename` — it is `screenshot`/`preview`/`stream`
+    // ScenePathsType has no `basename`, it is `screenshot`/`preview`/`stream`
     // /`webp`/`vtt`/`sprite`/`funscript`/`interactive_heatmap`/`caption`. The
     // file's own basename is on the scene, under `files`.
     select: 'id title files { basename }',

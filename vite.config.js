@@ -67,10 +67,16 @@ export default defineConfig(({ mode }) => {
     __APP_VERSION__: JSON.stringify(pkg.version),
     // The release-level rollback for AVPlay: a build made with
     // `VITE_FORCE_BROWSER=true` uses today's <video> player everywhere,
-    // whatever Settings says, and hides the Auto option. CI sets no VITE_
-    // variables, so a released widget is false unless someone asks for it.
-    // See usePlayerEngine.js for how it is read.
+    // whatever Settings says, and hides the Auto option. CI's only VITE_
+    // variables are the update-check pair below, so a released widget is false
+    // unless someone asks for it. See usePlayerEngine.js for how it is read.
     __FORCE_BROWSER_ENGINE__: JSON.stringify(env.VITE_FORCE_BROWSER === 'true'),
+    // Public-build-only update check. The public workflow sets both; a private
+    // or local build leaves the URL empty, so the api.github.com literal is
+    // not inlined at all. check-bundle.mjs fails a bundle that carries it
+    // without the flag.
+    __UPDATE_CHECK__: JSON.stringify(env.VITE_UPDATE_CHECK === 'true'),
+    __UPDATE_URL__: JSON.stringify(env.VITE_UPDATE_CHECK_URL || ''),
   },
   };
 });

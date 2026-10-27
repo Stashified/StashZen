@@ -1,7 +1,7 @@
 /* Four shelves, each exactly one screen wide. The page is the vertical scroll
    container (the same shape as VideoGrid's wrapper, so
    useKeyHandler's scrollContainerOf sees it). At 1920x1080 the first three
-   shelves are fully in view and the fourth peeks above the fold — measured,
+   shelves are fully in view and the fourth peeks above the fold: measured,
    and asserted by showroom-entry's H2b section rects. A shorter window
    scrolls.
 
@@ -52,7 +52,7 @@
 
    `--shelf-card-h` is the sizing contract: 240px at the 1920x1080 TV viewport.
    Three sections end at ~912px, so the first three shelves fit and the fourth
-   peeks — asserted by H2b. */
+   peeks: asserted by H2b. */
 .strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

@@ -1,5 +1,5 @@
 /**
- * sha256.js — dependency-free SHA-256 (FIPS 180-4)
+ * sha256.js: dependency-free SHA-256 (FIPS 180-4)
  *
  * Hand-rolled rather than `crypto.subtle`: the widget is a Tizen .wgt loaded
  * over `file://`, where a secure context is not guaranteed and `crypto.subtle`
@@ -10,7 +10,7 @@
  * combinations, so against an attacker holding the blob the digest buys
  * nothing; it only keeps the PIN out of localStorage in plaintext.
  *
- * It does NOT protect the Stash API key written unencrypted beside it — anyone
+ * It does NOT protect the Stash API key written unencrypted beside it, anyone
  * who can read the app's storage has that key whatever this does. The README
  * says so.
  *
@@ -19,7 +19,7 @@
  */
 
 // First 32 bits of the fractional parts of the cube roots of the first 64
-// primes — the FIPS 180-4 round constants.
+// primes, the FIPS 180-4 round constants.
 const K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -45,7 +45,7 @@ function toHex(bytes) {
  * Encode a JS string as UTF-8 bytes.
  *
  * Handles surrogate pairs (a code point above U+FFFF needs four bytes) and
- * replaces unpaired surrogates with U+FFFD, matching TextEncoder — which
+ * replaces unpaired surrogates with U+FFFD, matching TextEncoder, which
  * is itself unavailable on the older engines this targets.
  */
 function utf8Bytes(str) {
@@ -87,7 +87,7 @@ function utf8Bytes(str) {
  */
 function sha256Bytes(bytes) {
   // Pad: 0x80, then zeros, then the message length in bits as a 64-bit
-  // big-endian integer — such that the total is a multiple of 64 bytes.
+  // big-endian integer, such that the total is a multiple of 64 bytes.
   const bitLen = bytes.length * 8;
   const total = Math.ceil((bytes.length + 9) / 64) * 64;
   const msg = new Uint8Array(total);

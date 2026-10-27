@@ -1,13 +1,13 @@
 /**
- * stashUrl.js — Attach the API key to Stash media URLs.
+ * stashUrl.js: Attach the API key to Stash media URLs.
  *
  * GraphQL requests send an `ApiKey` header. Media cannot: `<img>`, `<video
  * poster>`, CSS `background-image` and the browser's fetch of the sprite VTT
  * send no headers, so the key travels in the URL.
  *
  * Stash only does that for `paths.stream`, because that endpoint is meant for
- * external players. Every other path comes back bare — `screenshot`,
- * `preview`, `sprite`, `vtt`, a performer's `image_path` — and an
+ * external players. Every other path comes back bare, `screenshot`,
+ * `preview`, `sprite`, `vtt`, a performer's `image_path`, and an
  * unauthenticated request gets a `302 → /login?returnURL=…`; the browser then
  * tries to decode the login page as a JPEG and renders nothing.
  *
@@ -24,7 +24,7 @@ import { getSettings } from './settings.js';
 export function withApiKey(url) {
   if (!url || typeof url !== 'string') return url;
 
-  // Already authenticated — Stash's own `paths.stream` arrives this way.
+  // Already authenticated, Stash's own `paths.stream` arrives this way.
   if (/[?&]apikey=/i.test(url)) return url;
 
   const { stashUrl, stashKey } = getSettings();
@@ -33,7 +33,7 @@ export function withApiKey(url) {
   try {
     if (new URL(url, stashUrl).host !== new URL(stashUrl).host) return url;
   } catch (e) {
-    // Unparseable, or no usable base — leave it alone rather than guess.
+    // Unparseable, or no usable base, leave it alone rather than guess.
     return url;
   }
 

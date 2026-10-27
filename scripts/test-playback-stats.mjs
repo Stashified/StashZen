@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * test-playback-stats.mjs — the stats readout, and what it must not print
+ * test-playback-stats.mjs: the stats readout, and what it must not print
  *
  *   node scripts/test-playback-stats.mjs
  *
  * Two load-bearing rules. The panel is meant to be photographed for a bug
- * report, so it must never print a media URL's query string — every Stash
+ * report, so it must never print a media URL's query string, every Stash
  * transcode carries `?apikey=…`. And AVPlay cannot answer buffer, seekable,
  * readyState, frame or resolution questions, so those rows are omitted rather
  * than filled with placeholders that look like measurements.

@@ -1,5 +1,5 @@
 /**
- * EntityCard — one card for Tags, Studios, Galleries and Images.
+ * EntityCard, one card for Tags, Studios, Galleries and Images.
  *
  * The sections differ, but the difference lives in the `view` descriptor
  * (title, subtitle, badge, image, aspect) rather than here, so the layout is
@@ -19,7 +19,7 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './EntityCard.module.css';
 
 /** One or two initials for when there is no picture: a failed load, since
- *  `image_path` is non-empty for every tag and studio — see tagService. */
+ *  `image_path` is non-empty for every tag and studio, see tagService. */
 function initialsOf(text) {
   return String(text || '?')
     .split(/\s+/)

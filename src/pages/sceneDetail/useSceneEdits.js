@@ -66,7 +66,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
         // A stale failure belongs to a press the user has already replaced.
         if (attempt !== ratingAttemptRef.current) return;
         setDetail(d => ({ ...d, rating100: ratingConfirmedRef.current }));
-        flash(`Rating not saved — ${e.message}`);
+        flash(`Rating not saved: ${e.message}`);
       }
     });
   };
@@ -85,7 +85,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
     } catch (e) {
       if (attempt !== organizedAttemptRef.current) return;
       setDetail(d => ({ ...d, organized: prev }));
-      flash(`Not saved — ${e.message}`);
+      flash(`Not saved: ${e.message}`);
     }
   };
 
@@ -109,7 +109,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
     } catch (e) {
       if (attempt !== oAttemptRef.current) return;
       setDetail(d => ({ ...d, oCounter: prev }));
-      flash(`o-count not saved — ${e.message}`);
+      flash(`o-count not saved: ${e.message}`);
     }
   };
 
@@ -118,7 +118,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
    *
    * Not confirmed and not on a press: undoing a tally one press at a time is
    * the tedium the hold exists to skip, and the gesture is hard to perform by
-   * accident. It reports afterwards — a destructive action that says nothing
+   * accident. It reports afterwards, a destructive action that says nothing
    * is indistinguishable from one that failed.
    */
   const clearLike = async () => {
@@ -136,7 +136,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
     } catch (e) {
       if (attempt !== oAttemptRef.current) return;
       setDetail(d => ({ ...d, oCounter: prev }));
-      flash(`o-count not cleared — ${e.message}`);
+      flash(`o-count not cleared: ${e.message}`);
     }
   };
 
@@ -160,7 +160,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
       flash('Progress cleared');
     } catch (e) {
       setDetail(d => ({ ...d, resumeTime: prev }));
-      flash(`Progress not cleared — ${e.message}`);
+      flash(`Progress not cleared: ${e.message}`);
     }
   };
 
@@ -192,7 +192,7 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
     } catch (e) {
       if (attempt !== playedAttemptRef.current) return;
       setDetail(d => ({ ...d, playCount: prev, lastPlayedAt: prevLast }));
-      flash(`Not marked played — ${e.message}`);
+      flash(`Not marked played: ${e.message}`);
     }
   };
 

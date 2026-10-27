@@ -1,5 +1,5 @@
 /**
- * useControlsVisibility — whether the rail is up, and the timer that puts it
+ * useControlsVisibility: whether the rail is up, and the timer that puts it
  * away.
  *
  * One timer, one rule: the controls hide when it expires unless the rail still
@@ -37,7 +37,7 @@ export function useControlsVisibility({ railRef }) {
 
   // Hiding it outright with the cursor already out. Back calls this when the
   // rail is down and the bar is up: the bar goes on that press, the player on
-  // the next. It refuses while the rail holds focus — never pull the bar from
+  // the next. It refuses while the rail holds focus, never pull the bar from
   // under the cursor; Back inside the rail goes through `leaveRail`.
   const hideControls = useCallback(() => {
     clearTimeout(hideTimerRef.current);

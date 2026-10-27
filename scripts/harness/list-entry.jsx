@@ -1,14 +1,14 @@
 /**
  * Headless driver for the paginated list views.
  *
- * Asserts the observable contract — which pages are requested, with which
- * variables, and what the user sees — not any internal of `usePagedList`.
+ * Asserts the observable contract, which pages are requested, with which
+ * variables, and what the user sees, not any internal of `usePagedList`.
  * Chosen with `?view=grid` (default), `markers`, `performers`, `carousel`,
  * `coverflow` or `list`: the grids and List watch an IntersectionObserver
  * sentinel; the strips watch how near the focused index is to the loaded end.
  *
  * It mounts the listing components directly, so it cannot see whether a page
- * dispatches to them — `views-entry.jsx` mounts App for that. The three grids
+ * dispatches to them, `views-entry.jsx` mounts App for that. The three grids
  * differ only in the count noun and the focus-id prefix, so `VIEWS` holds
  * those and one `runGrid` serves them.
  */
@@ -36,7 +36,7 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// The fake listing is 100 rows at a page size of 40 — see SCENE_COUNT,
+// The fake listing is 100 rows at a page size of 40, see SCENE_COUNT,
 // MARKER_COUNT and PERFORMER_COUNT in server.py.
 const TOTAL = 100;
 const PAGE_SIZE = 40;
@@ -49,8 +49,8 @@ const VIEWS = {
   markers:    { kind: 'grid',  t: 'M', noun: 'markers',    focus: 'marker-',
                 mode: { markers: 'paged' } },
   performers: { kind: 'grid',  t: 'P', noun: 'performers', focus: 'performer-' },
-  // One-column List keeps the grid's contract — `[role="grid"]`, one focus id
-  // per row, sentinel and end marker — so `runGrid` applies; only the layout
+  // One-column List keeps the grid's contract, `[role="grid"]`, one focus id
+  // per row, sentinel and end marker, so `runGrid` applies; only the layout
   // check knows it is a list.
   list:       { kind: 'grid',  t: 'L', noun: 'videos',     focus: 'video-' },
   carousel:   { kind: 'strip', t: 'C', noun: 'videos',     focus: 'video-' },
@@ -69,7 +69,7 @@ const DEFAULT_CONTROLS = {
 };
 
 // ── Server-side request log ─────────────────────────────────
-// The row count cannot tell "asked for page 2" from "asked twice" — the failure
+// The row count cannot tell "asked for page 2" from "asked twice", the failure
 // mode a mis-wired in-flight guard produces.
 const log = () => fetch('/requests').then(r => r.json());
 const clearLog = () => fetch('/clear', { method: 'POST' });
@@ -202,7 +202,7 @@ async function runGrid() {
   check(`${t}3 the short page completes the list`, rowCount() === TOTAL, `${rowCount()} of ${TOTAL} rows`);
   check(`${t}3 the end marker replaced the sentinel`,
     endMarkerShown() && !tailIsSentinel(), `tail is sentinel: ${tailIsSentinel()}`);
-  // Stops saying "N of N" once every row is in — see ListStats.
+  // Stops saying "N of N" once every row is in, see ListStats.
   check(`${t}3 the count line stops repeating itself once the list is whole`,
     countLineText() === `100 ${noun}`, countLineText());
 
@@ -300,7 +300,7 @@ async function runGrid() {
   await clearLog();
   await toBottom();                    // page 2 goes out and is refused
   // Three attempts, three seconds apart: the last lands about six seconds in.
-  // Do not shorten this wait — it is the budget being tested, and a shorter
+  // Do not shorten this wait, it is the budget being tested, and a shorter
   // one would pass whether the hook retried twice or never retried at all.
   await sleep(10500);
   const failed = await log();
@@ -411,7 +411,7 @@ async function runFocusWalk() {
     await sleep(40);
   }
   // The first refusal lands around card 33; the two retries follow three
-  // and six seconds later. Wait past the budget — a shorter wait would not
+  // and six seconds later. Wait past the budget, a shorter wait would not
   // distinguish a bounded retry from none.
   await sleep(10000);
   const failedC = await log();

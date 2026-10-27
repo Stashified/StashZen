@@ -1,7 +1,7 @@
 /**
  * Shared display formatters.
  *
- * formatTime — seconds → "H:MM:SS" (or "M:SS" under an hour).
+ * formatTime, seconds → "H:MM:SS" (or "M:SS" under an hour).
  *
  * `padMinutes` is a deliberate difference: the player pads so the readout does
  * not reflow when playback crosses the one-minute mark (visible on a TV); the
@@ -40,7 +40,7 @@ export function formatTime(seconds, { padMinutes = false } = {}) {
 
 /**
  * Group a count with commas. Done by hand rather than with `toLocaleString`,
- * whose grouping can vary with the engine's locale data — the harness and the
+ * whose grouping can vary with the engine's locale data, the harness and the
  * TV's Chromium 56 should produce the same string.
  */
 export function formatCount(value) {

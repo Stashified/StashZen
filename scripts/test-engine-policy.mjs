@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-engine-policy.mjs — the playback engine decision, without a TV
+ * test-engine-policy.mjs: the playback engine decision, without a TV
  *
  *   node scripts/test-engine-policy.mjs
  *
@@ -43,7 +43,7 @@ const H264 = { videoCodec: 'h264', audioCodec: 'aac', container: 'mp4' };
 const WMV = { videoCodec: 'wmv2', audioCodec: 'wmav2', container: 'wmv' };
 const PCM = { videoCodec: 'h264', audioCodec: 'pcm_s32le', container: 'mp4' };
 // Scene 24844: MPEG-TS, H.264/AAC. The browser allowlist counts mpegts as
-// direct, so `Auto` gives it to the browser first — the one AVPlay-only file
+// direct, so `Auto` gives it to the browser first, the one AVPlay-only file
 // here that is *not* pre-empted. It is the TV pass's silent-refusal watchdog.
 const MPEGTS = { videoCodec: 'h264', audioCodec: 'aac', container: 'mpegts' };
 

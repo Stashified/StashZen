@@ -33,7 +33,7 @@ export function useSettingsDraft(initial) {
   const [stashUrl, setStashUrl] = useState(initial.stashUrl);
   const [stashKey, setStashKey] = useState(initial.stashKey);
   const [previewsEnabled, setPreviewsEnabled] = useState(initial.previewsEnabled);
-  // Appearance is a draft like everything else — see above.
+  // Appearance is a draft like everything else, see above.
   const [theme, setTheme] = useState(initial.theme);
   // Playback engine is a draft too: choosing Browser and cancelling must not
   // change the next scene the user opens.
@@ -45,7 +45,7 @@ export function useSettingsDraft(initial) {
   // left untouched.
   const [saveError, setSaveError] = useState(null);
 
-  /** Commit the drafts. Returns false — and keeps the panel open — when the
+  /** Commit the drafts. Returns false, and keeps the panel open, when the
    *  endpoint cannot be used. The first-run flow tests the connection first;
    *  this is the only check Settings has. */
   const save = () => {
@@ -70,15 +70,21 @@ export function useSettingsDraft(initial) {
     setSaveError(null);
     setSettings({
       useMock,
-      stashUrl: stashUrl.trim(),
-      stashKey: stashKey.trim(),
+      // Test mode hides the connection fields, so their drafts may hold a
+      // half-typed Live value. Keep what is stored instead of committing it
+      // unseen.
+      ...(useMock ? {} : { stashUrl: stashUrl.trim(), stashKey: stashKey.trim() }),
       previewsEnabled,
       theme,
       playbackEngine,
     });
     // Read back rather than reusing the patch: the store owns normalisation,
-    // and a baseline built from the patch could disagree with what was saved.
-    setBaseline(snapshot(getSettings()));
+    // and in Test mode the connection the patch omitted. The drafts follow,
+    // or `dirty` would stay true for fields the user cannot see.
+    const saved = getSettings();
+    setStashUrl(saved.stashUrl);
+    setStashKey(saved.stashKey);
+    setBaseline(snapshot(saved));
     return true;
   };
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-engine-controller.mjs — the session's engine memory.
+ * test-engine-controller.mjs: the session's engine memory.
  *
  *   node scripts/test-engine-controller.mjs
  *

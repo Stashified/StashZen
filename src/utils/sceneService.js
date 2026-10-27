@@ -1,9 +1,9 @@
 /**
- * sceneService.js — one scene, in full, plus the mutations the detail page
+ * sceneService.js: one scene, in full, plus the mutations the detail page
  * offers.
  *
  * Separate from videoService on purpose: its `normalizeScene` feeds 40-scene
- * grid pages, so every field is fetched 40× per request — widening it for the
+ * grid pages, so every field is fetched 40× per request, widening it for the
  * detail page would put `details`, `urls` and the full `files` array on every
  * card. Cards want duration and a screenshot; the detail view wants everything.
  *
@@ -19,6 +19,7 @@ import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { clearScenePages, addScenePlay } from './videoService.js';
+import { publishRowPatch } from './rowPatches.js';
 
 // `files` is a list and in practice holds one; GraphQL cannot select just the
 // first, so `normalizeSceneDetail` takes files[0] and keeps the count.
@@ -84,7 +85,7 @@ const SCENE_UPDATE_MUTATION = `
   }
 `;
 
-// These return `HistoryMutationResult { count }` — the o_counter after the
+// These return `HistoryMutationResult { count }`, the o_counter after the
 // change, authoritative in a way a client-side increment is not (racing writes
 // would leave the UI showing a number the server never held).
 const SCENE_ADD_O_MUTATION = `
@@ -101,7 +102,7 @@ const SCENE_DELETE_O_MUTATION = `
 
 // The odd one out: `sceneResetO` returns a bare `Int!` while its siblings
 // return `HistoryMutationResult`. Giving it a `{ count }` selection is a
-// *selection-set validation error* — on a TV, a console.warn nobody sees and a
+// *selection-set validation error*, on a TV, a console.warn nobody sees and a
 // button that does nothing.
 const SCENE_RESET_O_MUTATION = `
   mutation SceneResetO($id: ID!) {
@@ -112,7 +113,7 @@ const SCENE_RESET_O_MUTATION = `
 // `sceneResetActivity` clears *activity*, not history: `reset_resume` zeroes
 // `resume_time` and `reset_duration` zeroes `play_duration`; neither touches
 // `last_played_at` or the play count. Both flags are optional on the schema, so
-// they are sent explicitly — an absent flag would mean the resolver's default.
+// they are sent explicitly, an absent flag would mean the resolver's default.
 //
 // It returns a bare `Boolean!`, so there is nothing to select.
 const SCENE_RESET_ACTIVITY_MUTATION = `
@@ -243,7 +244,7 @@ export function normalizeSceneDetail(scene) {
  * Full state for one scene, given the card the user opened it from.
  *
  * Takes the card rather than an id because Test mode must answer with
- * something — mock scenes have no server row. The mock branch returns the
+ * something, mock scenes have no server row. The mock branch returns the
  * card's data read-only, keeping the page on its real render path.
  *
  * Throws on a transport or GraphQL error so the page can show it.
@@ -276,7 +277,12 @@ export async function updateSceneRating(id, rating100) {
   }
   const clamped = Math.max(0, Math.min(100, Math.round(rating100)));
   const result = await sceneUpdate({ id: String(id), rating100: clamped });
-  return result?.rating100 ?? clamped;
+  const saved = result?.rating100 ?? clamped;
+  // The card draws the display string normalizeVideo builds.
+  publishRowPatch('scene', id, {
+    rating: saved != null ? (saved / 10).toFixed(1) : null,
+  });
+  return saved;
 }
 
 export async function setSceneOrganized(id, organized) {
@@ -296,7 +302,7 @@ export async function addSceneO(id) {
 
 /**
  * Un-like. `sceneDeleteO` removes the most recent history entry, undoing one
- * like rather than clearing all — the counter matches the likes that happened.
+ * like rather than clearing all, the counter matches the likes that happened.
  *
  * Kept even though the scene page now increments on press and clears on hold:
  * "undo one" is the only correct inverse of an increment, and the pair is why a
@@ -338,6 +344,7 @@ export async function resetSceneProgress(id) {
   });
   if (!data?.sceneResetActivity) return false;
   clearScenePages();
+  publishRowPatch('scene', id, { resume_time: 0 });
   return true;
 }
 
@@ -349,7 +356,7 @@ export async function resetSceneProgress(id) {
  * appended to Stash's view list. (`sceneIncrementPlayCount` is deprecated and
  * not on the current schema; see `addScenePlay` in videoService.)
  *
- * `last_played_at` moves — the Continue Watching sort key — so the grid cache
+ * `last_played_at` moves, the Continue Watching sort key, so the grid cache
  * is dropped like every other write here.
  */
 export async function markScenePlayed(id) {

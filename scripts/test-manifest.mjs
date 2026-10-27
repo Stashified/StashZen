@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-manifest.mjs — keep tizen/config.xml honest
+ * test-manifest.mjs: keep tizen/config.xml honest
  *
  *   node scripts/test-manifest.mjs
  *

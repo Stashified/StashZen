@@ -1,5 +1,5 @@
 /**
- * LockScreen — the gate shown while the app is locked.
+ * LockScreen, the gate shown while the app is locked.
  *
  * A thin wrapper over PinPad, plus the global arrow-key navigator the app tree
  * would otherwise take with it.
@@ -45,10 +45,10 @@ export default function LockScreen({ onUnlock }) {
 
     const seconds = Math.ceil(result.retryAfterMs / 1000);
     if (result.blocked) {
-      return `Too many attempts — try again in ${seconds}s`;
+      return `Too many attempts, try again in ${seconds}s`;
     }
     if (result.retryAfterMs > 0) {
-      return `Incorrect PIN — wait ${seconds}s before trying again`;
+      return `Incorrect PIN, wait ${seconds}s before trying again`;
     }
     return 'Incorrect PIN';
   }, [onUnlock]);

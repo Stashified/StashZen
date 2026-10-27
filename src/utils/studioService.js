@@ -1,10 +1,10 @@
 /**
- * studioService.js — Fetch studios from the Stash GraphQL endpoint.
+ * studioService.js: Fetch studios from the Stash GraphQL endpoint.
  *
  * The loader is `entityService.js`; what is specific to studios is here.
  *
  * Studio is the richest of the four: `rating100`, `organized`, `o_counter`, and
- * the only `parent_studio`. It also has the fewest valid sorts — the resolver
+ * the only `parent_studio`. It also has the fewest valid sorts, the resolver
  * rejects `performers_count` and `groups_count` though comparable values work
  * on Tags, which is why these menus were probed rather than copied.
  *
@@ -149,7 +149,7 @@ const service = createEntityService({
   },
 });
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchStudios(opts = {}) {
   return service.fetch(opts);
 }

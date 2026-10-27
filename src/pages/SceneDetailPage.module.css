@@ -9,7 +9,7 @@
   /* Same band as SettingsPanel (900), below LockScreen/ExitPrompt/PinPad:
      this page traps Back, so a prompt behind it would be unreachable. */
   z-index: 900;
-  /* Flat scrim, not a backdrop-filter blur — see SettingsPanel.module.css.
+  /* Flat scrim, not a backdrop-filter blur, see SettingsPanel.module.css.
      This opens over a grid of full-HD covers. */
   background: rgba(var(--scrim-rgb), 0.88);
   display: flex;
@@ -346,7 +346,7 @@
   color: var(--text-primary);
   font-size: 16px;
   font-weight: 500;
-  /* Named properties, not `all` — see PerformerDetailPage's backBtn. */
+  /* Named properties, not `all`, see PerformerDetailPage's backBtn. */
   transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv);
 }
 
@@ -458,7 +458,7 @@
 
 .notice {
   /* Fixed height so the actions above it never shift when a message
-     appears — a moving focus target is the one thing a remote can't cope
+     appears: a moving focus target is the one thing a remote can't cope
      with. */
   min-height: 20px;
   font-size: 14px;

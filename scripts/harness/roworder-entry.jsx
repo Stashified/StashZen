@@ -1,12 +1,12 @@
 /**
- * roworder-entry.jsx — the D-pad row-order audit of every screen.
+ * roworder-entry.jsx: the D-pad row-order audit of every screen.
  *
  * The claim is geometric: Left and Right move focus through the items of one
  * visual line, in reading order. Up/Down (between rows) belongs to the rail's
  * declared edges in rail-entry.
  *
  * A driver is needed because the navigator scores rectangles, so row order is
- * usually correct by construction — and "usually" hides the exceptions: a
+ * usually correct by construction, and "usually" hides the exceptions: a
  * control registered in another zone is skipped sideways, a wrapped row's
  * second line sits left of where the first ends, and a `verticalOnly` card is
  * an invisible hole. None throws, and each looks fine on a static screen.
@@ -92,7 +92,7 @@ const focus = (id) => {
 };
 
 // ── Reading the screen ─────────────────────────────────────
-// The navigator confines itself to the nearest dialog, so the audit must too —
+// The navigator confines itself to the nearest dialog, so the audit must too:
 // otherwise a settings row is compared against cards behind the panel.
 function activeScope() {
   return document.querySelector('[role="dialog"]') || document.querySelector('[data-focus-trap]');
@@ -113,7 +113,7 @@ function snapshot() {
 }
 
 // Greedy vertical-overlap clustering over top-sorted entries: two join when
-// they overlap by more than half the shorter one — "same line to the eye",
+// they overlap by more than half the shorter one, "same line to the eye",
 // not "same top to the pixel".
 function linesOf(items) {
   const sorted = [...items].sort((a, b) => a.r.top - b.r.top);

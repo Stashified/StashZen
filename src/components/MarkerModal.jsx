@@ -1,5 +1,5 @@
 /**
- * MarkerModal — create a scene marker without leaving the player.
+ * MarkerModal, create a scene marker without leaving the player.
  *
  * The player pauses while this is up: a scene running behind a three-field form
  * makes "the current timestamp" drift between reading and saving it.
@@ -7,7 +7,7 @@
  * ## Keys
  *
  * Its own capture-phase Back handler, not the app's: the player yields every
- * key while this is open, and App's onBack chain knows nothing about it — a
+ * key while this is open, and App's onBack chain knows nothing about it, a
  * Back that reached it would raise the exit prompt over an open form.
  * Backspace is excluded while a text field has focus; TIZEN_BACK fires anyway.
  *
@@ -108,7 +108,7 @@ export default function MarkerModal({
         if (cancelled) return;
         // Keep the default even outside the usage head: it is the tag this
         // scene's markers already use, so it is the likeliest answer. Dropping
-        // it leaves a selected tag with no chip — nothing looks selected and
+        // it leaves a selected tag with no chip, nothing looks selected and
         // Save refuses.
         const withDefault = fallback?.id && !list.some(t => t.id === fallback.id)
           ? [{ ...fallback, markerCount: fallback.markerCount || 0 }, ...list]
@@ -123,7 +123,7 @@ export default function MarkerModal({
 
   // What the form can actually offer. When the lookup fails, the scene's own
   // tag is still legitimate (it came from the player's query, not the failed
-  // one), and dropping it would leave the single required field unfillable —
+  // one), and dropping it would leave the single required field unfillable:
   // a reason on screen and no way past it. Hence a one-chip list, not empty.
   const fallbackTag = defaultTagRef.current;
   const options = useMemo(
@@ -136,11 +136,11 @@ export default function MarkerModal({
   const savingRef = useRef(false);
   useEffect(() => { savingRef.current = saving; });
 
-  // Back/Escape, capture phase — see the header. The default predicate counts
+  // Back/Escape, capture phase, see the header. The default predicate counts
   // Escape and TIZEN_BACK always; Backspace belongs to its text field.
   useBackKey(() => {
     // Mid-save there is nothing safe to close: the write may be in flight, and
-    // closing would orphan it — the marker could be created with the player
+    // closing would orphan it, the marker could be created with the player
     // back on screen and no confirmation shown.
     if (savingRef.current) return;
     onClose?.();
@@ -175,7 +175,7 @@ export default function MarkerModal({
         primaryTagName: tag.name,
         title: title.inputRef.current?.value || '',
       });
-      // Only now — everything above can fail without having written anything.
+      // Only now, everything above can fail without having written anything.
       onCreated?.(created);
       onClose?.();
     } catch (e) {
@@ -215,7 +215,7 @@ export default function MarkerModal({
 
         {/*
           Only ever a shortcut: absent with no marker history, and every tag
-          here also appears in the full list below — so the cursor has a route
+          here also appears in the full list below, so the cursor has a route
           that does not depend on this lookup having worked.
         */}
         {recentTags.length > 0 && (
@@ -253,7 +253,7 @@ export default function MarkerModal({
             disabled={saving}
             onSelect={setTagId}
             // The tag is the one required decision, so the cursor starts on the
-            // default — the user sees the guess and can accept it or move along.
+            // default, the user sees the guess and can accept it or move along.
             // The chips do not exist until the list arrives, so this also takes
             // focus off the rail button underneath.
             autoFocusSelected
@@ -263,7 +263,7 @@ export default function MarkerModal({
         <div className={styles.section}>
           <p className={styles.label}>
             Label
-            <span className={styles.labelHint}>optional — defaults to the tag</span>
+            <span className={styles.labelHint}>optional, defaults to the tag</span>
           </p>
           <div
             ref={title.setWrapperRef}
@@ -308,7 +308,7 @@ export default function MarkerModal({
 
 /**
  * One scrolling row of tags, shared by both rows. `idPrefix` keeps the two
- * focusable id spaces apart when a tag is in both at once — the normal case for
+ * focusable id spaces apart when a tag is in both at once, the normal case for
  * a tag someone actually uses.
  */
 function TagRow({ idPrefix, tags, selectedId, disabled, onSelect, autoFocusSelected = false }) {

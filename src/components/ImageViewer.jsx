@@ -1,5 +1,5 @@
 /**
- * ImageViewer — full-screen view of one image, with the listing around it.
+ * ImageViewer, full-screen view of one image, with the listing around it.
  *
  * Borrows the overlay idiom: `role="dialog"` for the focus trap, and Back on
  * the capture phase so it closes this rather than reaching App's `onBack` and
@@ -7,7 +7,7 @@
  *
  * ## Focus
  *
- * The surface itself is focusable and autofocuses — load-bearing, not tidy: if
+ * The surface itself is focusable and autofocuses, load-bearing, not tidy: if
  * focus stayed on the card behind, Left/Right would move the grid's focus *and*
  * step this image, since the grid is still mounted underneath.
  *
@@ -21,7 +21,7 @@
  *
  * `autoPlay` advances every SLIDE_MS, preloading the next picture. It stops at
  * the last image rather than looping, pauses while the info panel is open and
- * resumes on close, and any manual Left/Right stops it — browsing is a decision,
+ * resumes on close, and any manual Left/Right stops it, browsing is a decision,
  * not a nudge to the timer. In gallery mode it holds on the last picture in
  * hand while the background loop is still fetching and stops only at the real
  * end, so a slideshow that outran a slow server does not stop halfway.
@@ -45,7 +45,7 @@ import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK } from '../utils/input.js';
+import { isBackCode } from '../utils/input.js';
 import { fetchImageInfo, fetchImages } from '../utils/imageService.js';
 import { buildImageInfoRows } from '../utils/imageInfo.js';
 import { stableSort } from '../utils/randomSort.js';
@@ -95,7 +95,7 @@ export default function ImageViewer({
   const [galleryMessage, setGalleryMessage] = useState('');
   // False while the background loop is still paging the gallery in. The
   // slideshow uses it to tell "this is the last picture" apart from "the last
-  // picture I have so far" — see the slide timer below.
+  // picture I have so far", see the slide timer below.
   const [galleryDone, setGalleryDone] = useState(false);
   const preloadRef = useRef(null);
 
@@ -133,7 +133,7 @@ export default function ImageViewer({
   const canPrev = currentIndex > 0;
   const canNext = currentIndex < sourceItems.length - 1;
 
-  // App builds `onIndexChange` inline. A ref keeps `goTo` stable — it is in the
+  // App builds `onIndexChange` inline. A ref keeps `goTo` stable, it is in the
   // slide timer's dependencies, where an unstable identity would restart the
   // six-second countdown on any unrelated re-render and tear down the key
   // listener with it.
@@ -153,7 +153,7 @@ export default function ImageViewer({
   // viewer is on image 6. The resolve checks this ref.
   useEffect(() => { currentIdRef.current = item?.id ?? null; }, [item?.id]);
 
-  // Only while the panel is open — stepping with it closed must not issue a
+  // Only while the panel is open, stepping with it closed must not issue a
   // request per image. The delay collapses a held arrow's repeat, so only the
   // image the user settles on is queried.
   useEffect(() => {
@@ -252,13 +252,13 @@ export default function ImageViewer({
   // ── The slideshow ─────────────────────────────────────────
   // Not while the info panel is open: the user asked to read about this
   // picture, and stepping away would answer a question they did not ask.
-  // Closing resumes (`playing` is still true) — opening Info is a browse
+  // Closing resumes (`playing` is still true), opening Info is a browse
   // action, not a stop.
   useEffect(() => {
     if (!playing || infoOpen || !itemId) return undefined;
     if (!canNext) {
       // Gallery mode: the loop may still be bringing pictures in. This is the
-      // last one *in hand*, so hold — the effect re-runs when the next page
+      // last one *in hand*, so hold, the effect re-runs when the next page
       // lands (`canNext` flips) and falls through when the loop reports its
       // end (`galleryDone`).
       if (gallery && !galleryDone) return undefined;
@@ -290,8 +290,8 @@ export default function ImageViewer({
   // A *layout* effect, deliberately. The closure reads the index it was
   // registered with, and the slideshow changes that index on a timer. A
   // passive effect lands one task after the advance's commit, so a keydown in
-  // between runs the old closure — index 0 on the advance away from 0, whose
-  // `canPrev` is false — and the arrow is silently dropped. Layout effects run
+  // between runs the old closure, index 0 on the advance away from 0, whose
+  // `canPrev` is false, and the arrow is silently dropped. Layout effects run
   // inside the commit, closing that window (a flaky harness check caught it:
   // same tree, 36/40 vs 40/40).
   useLayoutEffect(() => {
@@ -316,7 +316,7 @@ export default function ImageViewer({
         setPlaying(true);
         return;
       }
-      if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === TIZEN_BACK) {
+      if (e.key === 'Escape' || e.key === 'Backspace' || isBackCode(e.keyCode)) {
         e.preventDefault();
         e.stopPropagation();
         // Back peels one layer at a time: the panel first, then the viewer.
@@ -327,7 +327,7 @@ export default function ImageViewer({
       // ArrowLeft/ArrowRight only, not the TV's channel keys. With the panel
       // closed and the Info button focused, the arrows belong to the D-pad:
       // changing the picture behind a focused button would be invisible. With
-      // the panel open they browse anyway — the footer advertises ◀ ▶ Browse
+      // the panel open they browse anyway, the footer advertises ◀ ▶ Browse
       // and the panel reloads for the new image without a Down press first.
       if (!infoOpen && document.activeElement !== ref.current) return;
       if (e.key === 'ArrowLeft' && canPrev) {
@@ -350,7 +350,7 @@ export default function ImageViewer({
 
   // `full` is the full-resolution file and `image_path` the thumbnail; the
   // service puts both through withApiKey. The fallback covers a row whose
-  // `paths.image` came back empty — Stash can still serve its thumbnail.
+  // `paths.image` came back empty, Stash can still serve its thumbnail.
   const src = item ? (item.full || item.image_path) : null;
   // Never draw the previous image's metadata under the new one while the
   // next request is in flight.
@@ -373,7 +373,7 @@ export default function ImageViewer({
         {gallery && !item && !empty && (
           galleryStatus === 'error' ? (
             <p className={styles.unavailable}>
-              Couldn't load this gallery's images{galleryMessage ? ` — ${galleryMessage}` : ''}.
+              Couldn't load this gallery's images{galleryMessage ? `: ${galleryMessage}` : ''}.
             </p>
           ) : (
             <>
@@ -411,7 +411,7 @@ export default function ImageViewer({
             )}
             {infoStatus === 'error' && (
               <p className={styles.infoState}>
-                Couldn't load info{infoMessage ? ` — ${infoMessage}` : ''}
+                Couldn't load info{infoMessage ? `: ${infoMessage}` : ''}
               </p>
             )}
             {infoStatus === 'ready' && (

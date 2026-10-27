@@ -1,5 +1,5 @@
 /**
- * EntityPage — the grid, or the carousel/list when this section's mode is one.
+ * EntityPage, the grid, or the carousel/list when this section's mode is one.
  *
  * One page for all four browse-only sections, parameterised by the descriptor:
  * four near-identical files is what the descriptor exists to avoid. `mode` is a

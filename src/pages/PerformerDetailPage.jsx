@@ -1,5 +1,5 @@
 /**
- * PerformerDetailPage — hero header plus a video grid filtered to this
+ * PerformerDetailPage, hero header plus a video grid filtered to this
  * performer via Stash's standard scene filter shape. Owns its own controls
  * state, independent of the app's. Backspace / Tizen Back returns to the grid.
  */
@@ -26,7 +26,7 @@ const MAX_ALIAS_CHIPS = 4;
 const MAX_TAG_CHIPS = 5;
 const MAX_LINK_CHIPS = 3;
 
-// Scene sort groups for the inner grid — kept local rather than threaded from App.
+// Scene sort groups for the inner grid, kept local rather than threaded from App.
 const SCENE_SORT_GROUPS = [
   {
     group: 'General',
@@ -134,7 +134,7 @@ export default function PerformerDetailPage({
     return () => { cancelled = true; };
   }, [performer]);
 
-  // Rating and favourite — the two writes this page offers. Seeded from the
+  // Rating and favourite, the two writes this page offers. Seeded from the
   // card so the hero is right on first paint, then replaced by the detail
   // answer. The card's `rating` is a display string; writes use `rating100`.
   const [edits, setEdits] = useState(() => ({
@@ -205,7 +205,7 @@ export default function PerformerDetailPage({
         // superseded, and reverting it would undo a later press.
         if (attempt !== ratingAttempt.current) return;
         setEdits(prev => ({ ...prev, rating100: ratingConfirmed.current }));
-        flash(`Rating not saved — ${e.message}`);
+        flash(`Rating not saved: ${e.message}`);
       }
     });
   };
@@ -227,14 +227,14 @@ export default function PerformerDetailPage({
       } catch (e) {
         if (attempt !== favoriteAttempt.current) return;
         setEdits(prev => ({ ...prev, favorite: favoriteConfirmed.current }));
-        flash(`Favourite not saved — ${e.message}`);
+        flash(`Favourite not saved: ${e.message}`);
       }
     });
   };
 
   // Capture phase so the global handler does not tab-switch first. The
   // predicate, not the handler, carries the yields: only Backspace belongs to
-  // the search field, and a nested layer (dropdown, action menu) owns Back —
+  // the search field, and a nested layer (dropdown, action menu) owns Back:
   // testing here avoids preventDefaulting a key it handles. `dialogOpen` is the
   // yield focus cannot make: the player leaves focus on <body>, so a
   // focus-only guard would close the page when dismissing its controls.
@@ -407,7 +407,7 @@ export default function PerformerDetailPage({
 
           {profileStatus === 'error' && (
             <div className={styles.profileWarn} role="status">
-              Couldn't load profile details{profileError ? ` — ${profileError}` : ''}
+              Couldn't load profile details{profileError ? `: ${profileError}` : ''}
             </div>
           )}
         </div>

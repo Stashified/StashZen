@@ -1,5 +1,5 @@
 /**
- * avplayAvailability — is the TV's own player there, and load it if not.
+ * avplayAvailability, is the TV's own player there, and load it if not.
  *
  * `window.webapis` is normally present; on some firmware the media APIs only
  * appear after the WebAPI script is pulled in. `$WEBAPIS/webapis/webapis.js`
@@ -7,8 +7,8 @@
  * cannot hit the network.
  *
  * The load is attempted once per session and the promise shared, so concurrent
- * scenes wait on one attempt. Failure is a normal answer — the caller falls
- * back to the browser — not something to propagate.
+ * scenes wait on one attempt. Failure is a normal answer, the caller falls
+ * back to the browser, not something to propagate.
  */
 
 const WEBAPIS_SRC = '$WEBAPIS/webapis/webapis.js';

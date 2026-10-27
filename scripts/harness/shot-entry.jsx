@@ -58,7 +58,7 @@ const liveIds = (prefix) => [...registry.entries()]
   .filter(([id, entry]) => id.startsWith(`${prefix}-`) && document.contains(entry.el))
   .map(([id]) => id);
 
-/** First live registry id with this prefix — card ids are generated, so a
+/** First live registry id with this prefix, card ids are generated, so a
  *  screenshot driver must not hard-code mock fixture numbering. */
 const firstId = (prefix) => liveIds(prefix)[0] || null;
 

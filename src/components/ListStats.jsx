@@ -1,10 +1,10 @@
 /**
- * ListStats — the muted count line Stash puts between its toolbar and its
+ * ListStats, the muted count line Stash puts between its toolbar and its
  * cards ("1-40 of 5,834").
  *
  * Narrower than Stash's: this app infinite-scrolls, so there is no page to
  * locate in and only the total is ported. The line answers what the toolbar
- * cannot — how much is behind the current filter/sort/search.
+ * cannot, how much is behind the current filter/sort/search.
  *
  * Left-aligned with the grid, not centred as in the reference: a centred line
  * under a left-aligned bar reads as a mistake.

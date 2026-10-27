@@ -1,5 +1,5 @@
 /**
- * mediaEngine — the one media object the player talks to: the slice of
+ * mediaEngine, the one media object the player talks to: the slice of
  * `HTMLMediaElement` the hooks actually use. That stability is what lets AVPlay
  * be added behind it instead of rewriting them.
  *
@@ -8,14 +8,14 @@
  * `e.target !== v || !v.error`; an element's own event would be dropped. The
  * backend must assign `.error` **before** it emits `error`.
  *
- * Identity never changes — only `kind` and `capabilities` on a swap — so hook
+ * Identity never changes, only `kind` and `capabilities` on a swap, so hook
  * listeners survive an engine switch. See avplayBackend.js for the other side.
  *
  * ## Load-bearing getter contracts
  *
  * - `currentTime` reports the requested seek target while a seek is in flight
  *   (AVPlay), because `useSkim` reads it straight after writing it.
- * - `duration` is `NaN` — never 0 — before a source is prepared, because the
+ * - `duration` is `NaN`, never 0, before a source is prepared, because the
  *   timeline logic tests `Number.isFinite(d) && d > 0`.
  * - `muted` reflects the *requested* state synchronously; `setMuted` reverts
  *   and reports failure if the native call throws.
@@ -37,7 +37,7 @@ class MediaFacade extends EventTarget {
     /** @type {'html5'|'avplay'} */
     this.kind = 'html5';
     /**
-     * What the active backend can do — read by the mute button and the stats
+     * What the active backend can do, read by the mute button and the stats
      * panel, not the Settings lever. `stats: 'reduced'` means buffer, seekable,
      * readyState, frames and resolution have no honest value, so the panel must
      * omit them rather than print placeholders that look like measurements.
@@ -60,7 +60,7 @@ class MediaFacade extends EventTarget {
    *
    * Switching **away** from AVPlay closes the native session here: a passive
    * cleanup would run after layout effects, by which time it would close the
-   * new backend — and clear the `src` React had just set.
+   * new backend, and clear the `src` React had just set.
    */
   setEngine(kind, { avplay = null, tvaudiocontrol = null } = {}) {
     if (kind === 'avplay' && (!this._avplay || this._avplayApi !== avplay)) {

@@ -1,5 +1,5 @@
 /**
- * TabContent — App's `<main>`: the page switch and the key that remounts it.
+ * TabContent, App's `<main>`: the page switch and the key that remounts it.
  *
  * A composition root, not a stateful component: everything it needs is passed
  * down as props and nothing here decides anything.
@@ -42,7 +42,7 @@ export default function TabContent({
   return (
     /* Keying main remounts the active page on a data-source change (Test↔Live,
         endpoint/key change) and on a press of the rail's current row
-        (`tabEpoch`, the in-place reload — see `changeTab`). In-flight fetches
+        (`tabEpoch`, the in-place reload; see `changeTab`). In-flight fetches
         are dropped; list caches are partitioned by source and, on a reload,
         cleared by `changeTab` before this remount. */
     <main key={`${dataKey}\u0000${tabEpoch}`} className={styles.main} role="main">
@@ -67,8 +67,8 @@ export default function TabContent({
           rather than four more lines.
 
           **`key={activeTab}` is load-bearing.** The three tabs above move
-          between different component types — ScenesPage, PerformersPage,
-          MarkersPage — so React unmounts one and mounts the next. These four
+          between different component types: ScenesPage, PerformersPage,
+          MarkersPage, so React unmounts one and mounts the next. These four
           are one type in one position, so without a key React *reconciles*
           EntityPage across a tab switch: `EntityGrid` stays mounted,
           `usePagedList` keeps its `items`, and its reset effect does not

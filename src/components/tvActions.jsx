@@ -1,11 +1,11 @@
 /**
- * tvActions.jsx — the controls a TV panel is built out of.
+ * tvActions.jsx: the controls a TV panel is built out of.
  *
  * `ActionButton` replaces the identical copies SettingsPanel and ExitPrompt
  * each carried; the props are the union of what their call sites passed.
  *
  * FirstRun deliberately keeps its own larger variant (13px 26px, 16px text,
- * plus `:disabled`). Do not fold that size into this component — it is a design
+ * plus `:disabled`). Do not fold that size into this component, it is a design
  * change, not a move.
  *
  * `zone` is the focus scope and part of the contract: useFocusable groups by
@@ -44,6 +44,6 @@ export function ActionButton({ id, label, primary, pressed, onClick, autoFocus, 
  * AppLockSection's buttons call `primaryBtn.focus()` imperatively when the PIN
  * flow opens, which a component owning its own useFocusable cannot be asked to
  * do from outside. Moving them to <ActionButton> needs an imperative escape
- * hatch — a deliberate change, not a side effect of this move.
+ * hatch, a deliberate change, not a side effect of this move.
  */
 export const tvActionStyles = styles;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-request-key.mjs — the listing request identity
+ * test-request-key.mjs: the listing request identity
  *
  *   node scripts/test-request-key.mjs
  *

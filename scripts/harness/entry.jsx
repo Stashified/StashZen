@@ -22,7 +22,7 @@ function check(name, pass, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // The card Enter was pressed on. Its rating is the display string the grid
-// would carry (5), while the server answers 7 — which makes T1 real.
+// would carry (5), while the server answers 7, which makes T1 real.
 const SCENE = {
   id: '4242',
   title: 'VERIFY — detail page harness',
@@ -568,7 +568,7 @@ async function run() {
     `activeElement="${document.activeElement?.id || (document.activeElement?.textContent || '').slice(0, 20)}"`);
 
   // Control: strip the attribute that creates the trap and repeat the same
-  // input. If focus escapes, the trap was holding it — same DOM, one attribute
+  // input. If focus escapes, the trap was holding it, same DOM, one attribute
   // different.
   const ov = overlay();
   ov.removeAttribute('role');
@@ -578,7 +578,7 @@ async function run() {
   check('T5 CONTROL: without role=dialog the same keypress DOES escape',
     escaped,
     `activeElement="${document.activeElement?.id || (document.activeElement?.textContent || '').slice(0, 20)}"`);
-  // `ov`, not `overlay()` — with the role removed the query returns null.
+  // `ov`, not `overlay()`, with the role removed the query returns null.
   ov.setAttribute('role', 'dialog');
 
   // ── T6: Play fires onPlay ───────────────────────────────

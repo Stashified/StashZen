@@ -1,5 +1,5 @@
 /**
- * FirstRun — connection setup, shown before the app on a fresh device.
+ * FirstRun, connection setup, shown before the app on a fresh device.
  *
  * Shipped builds bake in no credentials and the env fallback is a localhost URL
  * nothing listens on, so without this a fresh .wgt opens on "Cannot reach the
@@ -10,7 +10,7 @@
  * load an unreachable library behind an empty panel.
  *
  * Shown when `onboarded` is null (never answered) or `setupRequested` is set.
- * Two separate fields so a re-run can be cancelled — Back returns to the app.
+ * Two separate fields so a re-run can be cancelled, Back returns to the app.
  * On a genuine first run there is nothing behind this, so Back does nothing.
  * The PIN lock stays outside, in main.jsx: a device with a PIN has already been
  * through setup, so the two never compete.
@@ -18,7 +18,7 @@
  * ## Two steps, and `onboarded` commits at the end
  *
  * Step one is the connection; step two is an optional PIN, offered only on a
- * genuine first run — otherwise a user who wants a shared TV locked must first
+ * genuine first run, otherwise a user who wants a shared TV locked must first
  * get through an unlocked launch to reach Settings.
  *
  * Connect and Skip hold a *pending* patch; the flow commits it once, when the
@@ -52,7 +52,7 @@ const ZONE = 'setup';
 const URL_PLACEHOLDER = 'http://192.168.1.10:9999';
 
 // ── A text field you select first, then edit ─────────────
-// Same interaction as SettingsPanel's, and the same two traps — held in
+// Same interaction as SettingsPanel's, and the same two traps, held in
 // useEditableField, where the reasoning lives.
 function TextField({ id, label, value, onChange, placeholder, type = 'text', autoFocus = false }) {
   const labelId = `${id}-label`;
@@ -121,7 +121,7 @@ function ActionButton({ id, label, primary, busy, onClick }) {
  * PinPad's header.
  *
  * The set → confirm → mismatch-restarts machine is lifted from SettingsPanel's
- * AppLockSection; only "done" differs — there it closes a panel, here it
+ * AppLockSection; only "done" differs, there it closes a panel, here it
  * commits a settings patch.
  */
 function PinStep({ onFinish, onCancel }) {
@@ -140,7 +140,7 @@ function PinStep({ onFinish, onCancel }) {
     if (pin !== firstPin) {
       setFirstPin(null);
       setPhase('set');
-      return 'PINs did not match — start again';
+      return 'PINs did not match, start again';
     }
 
     // setPin reports whether the write landed; never continue (or leave the
@@ -160,7 +160,7 @@ function PinStep({ onFinish, onCancel }) {
       title={phase === 'confirm' ? 'Confirm PIN' : 'Set a PIN'}
       subtitle={phase === 'confirm'
         ? 'Enter the same PIN again'
-        : `Optional — a ${PIN_LENGTH}-digit PIN to open StashZen`}
+        : `Optional: a ${PIN_LENGTH}-digit PIN to open StashZen`}
       hint="Press Back to go back, or Not now to skip"
       onSubmit={handleSubmit}
       onCancel={onCancel}
@@ -205,7 +205,7 @@ function SetupScreen({ settings }) {
   const canCancel = !isFirstRun;
 
   /**
-   * Hold the patch and move on — to the PIN step, or straight to the commit
+   * Hold the patch and move on, to the PIN step, or straight to the commit
    * when there is none (so a re-run is one step long).
    */
   const advance = (patch) => {
@@ -218,7 +218,7 @@ function SetupScreen({ settings }) {
   };
 
   // The setup screen replaces <App />, and the global arrow-key navigator lives
-  // in App — without this the screen would focus the URL field and ignore the
+  // in App, without this the screen would focus the URL field and ignore the
   // D-pad. Same wiring as LockScreen.
   const handleCancel = useCallback(() => {
     setSettings({ setupRequested: false });
@@ -260,13 +260,13 @@ function SetupScreen({ settings }) {
     const result = await runTest();
     if (!result) return;
     setStatus(result.ok
-      ? { ok: true, message: `Connected — Stash v${result.version}` }
+      ? { ok: true, message: `Connected: Stash v${result.version}` }
       : { ok: false, message: result.reason });
   };
 
   /**
    * Connect tests first rather than saving blind: a wrong URL typed on a remote
-   * is the likeliest mistake here, and this screen is where to find out — not
+   * is the likeliest mistake here, and this screen is where to find out, not
    * an empty grid three taps later. The cost is that a server merely *down*
    * cannot be saved from here; Skip, then Settings, is the way through.
    */
@@ -299,7 +299,7 @@ function SetupScreen({ settings }) {
   };
 
   /**
-   * Commit the held patch once the flow is done — the PIN step finished or was
+   * Commit the held patch once the flow is done, the PIN step finished or was
    * declined. A plain closure over `pending`, not a `setPending(p => ...)`
    * updater: updaters must be pure and React may call them twice, so the write
    * would repeat.
@@ -372,7 +372,7 @@ function SetupScreen({ settings }) {
             busy={busy}
             onClick={handleConnect}
           />
-          <ActionButton id="firstrun-skip" label="Skip — use sample data" onClick={handleSkip} />
+          <ActionButton id="firstrun-skip" label="Skip: use sample data" onClick={handleSkip} />
         </div>
 
         <p className={styles.hint}>

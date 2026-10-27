@@ -1,10 +1,10 @@
 /**
- * useAppBack — App's place in the layered Back stack.
+ * useAppBack: App's place in the layered Back stack.
  *
  * The order of the checks is the user's mental stack: close what is on
  * screen, then step back out of where you are, then leave the app. The
  * overlays above close themselves on the capture phase; these checks are
- * backstops plus the two decisions App owns — a filtered listing's origin and
+ * backstops plus the two decisions App owns, a filtered listing's origin and
  * the exit prompt.
  *
  * Must stay the only caller of `useKeyHandler` in App, so its registration
@@ -37,7 +37,7 @@ export function useAppBack({
       // Long-press menu: closes itself on the capture phase; without this a
       // Back that got through would raise the exit prompt on top of it.
       if (actionMenu) return;
-      // Image viewer: same again — it closes itself on the capture phase too.
+      // Image viewer: same again, it closes itself on the capture phase too.
       if (imageViewer) return;
       // Back out of a listing a tag, studio or gallery opened returns to the
       // section it came from, filter dropped and focus back on the pressed
@@ -56,7 +56,7 @@ export function useAppBack({
           filterId: null,
         }));
         // The origin section must re-render before its cards exist to focus,
-        // and its listing may still be in flight — hence the retry. A scene
+        // and its listing may still be in flight, hence the retry. A scene
         // opened from Home has no `video-` card there: the same scene sits on
         // a showroom shelf under another prefix. Try those too, then the first
         // control, so a dead id never leaves the cursor on <body>.

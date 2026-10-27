@@ -1,5 +1,5 @@
 /**
- * useSavedFilters — fetch & expose the saved filters for a given Stash mode.
+ * useSavedFilters: fetch & expose the saved filters for a given Stash mode.
  *
  * Filters are empty in mock mode (Stash-only), and the fetch is cached in
  * filterService so tab switches do not re-hit the network.
@@ -35,7 +35,7 @@ export function useSavedFilters(mode, source = '', revision = 0) {
     // A list fetched for the previous mode or *server* belongs to that one:
     // filter ids are namespaced by scene/image/gallery and name a row on one
     // instance. Keeping the old rows selectable while the new fetch is in
-    // flight — or after it fails — would resolve the id against the wrong
+    // flight, or after it fails, would resolve the id against the wrong
     // list, or none, and silently run unfiltered.
     //
     // Not keyed on `revision`: that is bumped after a save, and blanking the

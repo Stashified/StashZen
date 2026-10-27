@@ -23,7 +23,7 @@ export function RatingStepper({
   // At a bound the button is inert but still focusable, hence `aria-disabled`
   // rather than native `disabled`: a natively disabled button cannot hold
   // focus, so pressing "−" to zero would drop the ring, focus to <body>, and
-  // the D-pad's zone. The page-level `disabled` is different — nothing becomes
+  // the D-pad's zone. The page-level `disabled` is different, nothing becomes
   // focusable there without a reload of page state, so a real one is safe.
   const atFloor = stars <= 0;
   const atCeiling = stars >= 10;
@@ -39,7 +39,7 @@ export function RatingStepper({
         aria-label="Decrease rating"
       >−</button>
       <span className={styles.stepperVal}>
-        {stars > 0 ? `${stars}` : '—'}
+        {stars > 0 ? `${stars}` : '–'}
         <span className={styles.stepperStar} aria-hidden="true">★</span>
       </span>
       <button

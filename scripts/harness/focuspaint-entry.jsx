@@ -1,5 +1,5 @@
 /**
- * focuspaint-entry.jsx — the paint-cost contract of a focus move in the
+ * focuspaint-entry.jsx: the paint-cost contract of a focus move in the
  * classic grids.
  *
  * Key-press lag appeared only at 6 columns and only with Live covers
@@ -10,7 +10,7 @@
  * frames. The fix is `contain: content` per card plus an inset ring and no
  * stacking change on focus.
  *
- * This driver cannot time a paint — headless Firefox has no TV compositor.
+ * This driver cannot time a paint, headless Firefox has no TV compositor.
  * It pins the structural contract: focus must leave `position` and `z-index`
  * alone, the card must be paint-contained, and the ring must be inset. Each
  * has a red control. All four classic-grid cards are covered because they are

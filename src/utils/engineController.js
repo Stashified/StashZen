@@ -1,5 +1,5 @@
 /**
- * engineController — the session's memory about playback engines.
+ * engineController, the session's memory about playback engines.
  *
  * `enginePolicy.js` is pure and stateless: what to try, in what order. This
  * module holds what the player has *learned* this session and how that
@@ -7,8 +7,8 @@
  *
  * Four pieces of memory:
  *   1. **Kill switch.** Two engine-level failures on different scenes turn
- *      AVPlay off for the session. Content refusals never count — they are
- *      what the fallback exists for — and repeated transcode failures on one
+ *      AVPlay off for the session. Content refusals never count, they are
+ *      what the fallback exists for, and repeated transcode failures on one
  *      scene say nothing about the engine. Counting lives in
  *      `createEngineHealth`.
  *   2. **Per-format negative cache for AVPlay.** Remembers `container|video|
@@ -95,7 +95,7 @@ export function createEngineController({ healthLimit = 2 } = {}) {
    * `setting` is the persisted value, `available` the resolved availability
    * from usePlayerEngine, `video` this scene's codec triple. The checks run in
    * the resolver's order: build flag/setting, session kill switch,
-   * availability, then this scene's format. That order matters to the panel —
+   * availability, then this scene's format. That order matters to the panel:
    * after the kill switch trips, "refused this format" would be true but the
    * wrong explanation for a scene that was never attempted.
    */
@@ -110,7 +110,7 @@ export function createEngineController({ healthLimit = 2 } = {}) {
     const key = keyOf(video);
     if (key != null && refusedFormats.has(key)) return ENGINE_STATUS.FORMAT_REFUSED;
     // AVPlay is available here, so the browser playing under `Auto` is policy,
-    // not a fallback — but still worth noting, or it looks like a
+    // not a fallback, but still worth noting, or it looks like a
     // browser-only build.
     return mode === 'auto' ? ENGINE_STATUS.BROWSER_FIRST : ENGINE_STATUS.ACTIVE;
   }
@@ -136,7 +136,7 @@ export function createEngineController({ healthLimit = 2 } = {}) {
 
     /**
      * True when the browser failed this format directly earlier this session,
-     * so AVPlay should be asked first. Callers must also check availability —
+     * so AVPlay should be asked first. Callers must also check availability:
      * skipping the browser with nowhere to go is an unasked-for transcode.
      */
     browserBlockedFormat(video) {

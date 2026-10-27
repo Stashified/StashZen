@@ -1,9 +1,9 @@
 /**
- * tagService.js — Fetch tags from the Stash GraphQL endpoint.
+ * tagService.js: Fetch tags from the Stash GraphQL endpoint.
  *
  * The loader is `entityService.js`; what is specific to tags is here.
  *
- * Only fields confirmed on `Tag` are selected — no `rating100`, because Tag has
+ * Only fields confirmed on `Tag` are selected, no `rating100`, because Tag has
  * none (Studio does, so the two cards cannot be the same card renamed).
  *
  * The sort *values* use Stash's plural `_count` spelling while selected fields
@@ -107,7 +107,7 @@ export function normalizeTag(t) {
     id: t.id,
     name: t.name,
     // Arrives absolute and unkeyed and 302s to the login page without the key
-    // — see stashUrl.js. `image_path` is non-empty for every tag here, which
+    //, see stashUrl.js. `image_path` is non-empty for every tag here, which
     // does NOT mean a picture exists: Stash serves a generated-asset URL
     // whether or not Generate ran, so the card's fallback is reached through
     // onError, never an absent field.
@@ -145,7 +145,7 @@ const service = createEntityService({
   },
 });
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchTags(opts = {}) {
   return service.fetch(opts);
 }

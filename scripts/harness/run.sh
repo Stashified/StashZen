@@ -44,6 +44,8 @@ mkdir -p "$OUT"
 echo "── building bundle ($ENTRY) ──"
 cd "$REPO" || exit 1
 HARNESS_ENTRY="$ENTRY" HARNESS_OUT="$OUT" \
+  HARNESS_UPDATE_CHECK="${HARNESS_UPDATE_CHECK:-0}" \
+  HARNESS_UPDATE_URL="${HARNESS_UPDATE_URL:-}" \
   npx vite build --config scripts/harness/vite.config.mjs 2>&1 | tail -5 || exit 1
 
 CSS=$(ls "$OUT"/*.css 2>/dev/null | head -1 | xargs -r basename)

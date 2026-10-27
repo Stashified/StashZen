@@ -1,5 +1,5 @@
 /**
- * Carousel — a centred strip of cards, one row deep.
+ * Carousel, a centred strip of cards, one row deep.
  *
  * The focused card sits in the middle of the stage scaled up, with partial
  * neighbours receding either side; Left/Right move focus and the strip
@@ -43,34 +43,36 @@ export default function Carousel({
   controls, objectFilter, searchQuery, view, onSelect, onLongPress,
 }) {
   const { sort, order } = controls;
-  const { Card, service, itemsKey, focusPrefix, noun, ariaLabel, hero, slotWidth } = view;
+  const { Card, service, itemsKey, focusPrefix, noun, ariaLabel, hero, slotWidth, entity } = view;
 
   const [focusedIndex, setFocusedIndex] = useState(0);
 
   // Named, not inline: the play queue gets the same closure, so a queue started
   // here pages the listing the carousel shows.
   const fetchPage = useCallback(
-    (page) =>
+    (page, signal) =>
       service({
         sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE,
         // The hero is the only consumer of the blurb.
         hero: true,
+        signal,
       })
         .then(d => ({ items: d[itemsKey], total: d.total })),
     [service, itemsKey, sort, order, objectFilter, searchQuery],
   );
 
   const {
-    items, total, page, loading, loadingMore, error, loadMore,
+    items, total, page, loading, retrying, loadingMore, error, loadMore,
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list and the focus with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
     focusPrefix,
+    entity,
   });
 
   // Stable identity with current values (see useStableListing): every card gets
-  // the same object, so an append must not replace it — only the new slot
+  // the same object, so an append must not replace it, only the new slot
   // should render.
   const listing = useStableListing({ items, total, page, fetchPage });
 
@@ -99,7 +101,7 @@ export default function Carousel({
   }, [items, focusedIndex, idPrefix]);
 
   // Only ±4 slots are mounted, so a restore to a card outside that window has
-  // no element to find. Move the window when the request names one of ours —
+  // no element to find. Move the window when the request names one of ours:
   // on arrival if the rows are here, otherwise as soon as they land.
   const pendingRestoreRef = useRef(null);
   useEffect(() => onFocusRestoreRequest((fid) => {
@@ -129,7 +131,7 @@ export default function Carousel({
       styles={styles}
       loading
       spinnerLabel={`Loading ${noun}`}
-      text={`Loading ${noun}…`}
+      text={retrying ? 'Connection problem, retrying…' : `Loading ${noun}…`}
     />
   );
 
@@ -230,7 +232,7 @@ export default function Carousel({
 
       {error && !loadingMore && items.length > 0 && (
         <div className={styles.loadingMore} style={{ color: 'var(--red)' }}>
-          <span>Couldn't load more — {error}</span>
+          <span>Couldn't load more: {error}</span>
         </div>
       )}
     </div>

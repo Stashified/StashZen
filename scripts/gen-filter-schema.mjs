@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * gen-filter-schema.mjs — regenerate src/utils/stashFilterSchema.js
+ * gen-filter-schema.mjs: regenerate src/utils/stashFilterSchema.js
  *
  * Introspects a live Stash server and writes the field → GraphQL-input-type
  * map the filter translator dispatches on. Run after upgrading Stash; the
@@ -14,7 +14,7 @@
  * Traversal is bounded to *filter* types: from the three roots below it follows
  * fields ending in `FilterType` (covering nested filters like
  * SceneFilterType.tags_filter) and collects the `*CriterionInput` types those
- * reference. It does not walk the whole schema — `SceneFilterType` ↔
+ * reference. It does not walk the whole schema, `SceneFilterType` ↔
  * `PerformerFilterType` reference each other, and criteria are all else needed.
  */
 
@@ -159,7 +159,7 @@ const capturedAt = new Date().toISOString().slice(0, 10);
 
 // ── emit ──────────────────────────────────────────────────
 const banner = `/**
- * stashFilterSchema.js — GENERATED FILE, DO NOT EDIT BY HAND.
+ * stashFilterSchema.js: GENERATED FILE, DO NOT EDIT BY HAND.
  *
  * The field → GraphQL input type map for every filter type the app can send.
  * \`filterTranslate.js\` dispatches on these type names: it is what tells a
@@ -182,7 +182,7 @@ const banner = `/**
  * pinned snapshot makes a translator change reviewable as a diff.
  *
  * The map is additive and read-only at runtime. A field missing from here is
- * NOT an error — filterTranslate.js passes unrecognised fields through
+ * NOT an error, filterTranslate.js passes unrecognised fields through
  * verbatim, so a filter saved by a newer Stash still reaches the server.
  */
 
@@ -201,10 +201,10 @@ const body = [
   }),
   '};',
   '',
-  '/** Criterion types with no `modifier` field — emitting one is a 422. */',
+  '/** Criterion types with no `modifier` field, emitting one is a 422. */',
   `export const CRITERIA_WITHOUT_MODIFIER = new Set(${JSON.stringify(noModifier)});`,
   '',
-  '/** Criterion types whose `value` is a list — a bare scalar must be wrapped. */',
+  '/** Criterion types whose `value` is a list, a bare scalar must be wrapped. */',
   `export const LIST_VALUED_CRITERIA = new Set(${JSON.stringify(listValue)});`,
   '',
   '/**',

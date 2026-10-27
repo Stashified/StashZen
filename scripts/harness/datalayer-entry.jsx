@@ -4,7 +4,7 @@
  *
  *   D1–D5  Test mode's sorts. Fields the mock rows lacked (`duration` vs
  *          `durationSeconds`) made `a[field] - b[field]` compare undefined, so
- *          the comparator returned 0 and the list kept its order — a control
+ *          the comparator returned 0 and the list kept its order, a control
  *          that appears to work. `random` had the reverse: a real random
  *          comparator reorders per call, so paging duplicates and drops rows.
  *   D6     `usePlayQueue` at a page boundary. Stash's ordering can shift
@@ -124,7 +124,7 @@ function QueueProbe() {
     fetchPage: async (page) => {
       callsRef.current++;
       // Delayed so the mount-time extension is in flight when `goNext`
-      // advances — the report's shape. Waiting first would let `goNext` start
+      // advances, the report's shape. Waiting first would let `goNext` start
       // a second extension asking the page after the duplicate, which advances
       // even on the shipped bug.
       await sleep(200);

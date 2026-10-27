@@ -1,8 +1,8 @@
 /**
- * useFocusable — attach to any element to make it TV-navigable
+ * useFocusable: attach to any element to make it TV-navigable
  *
  * Zones group elements for D-pad navigation: within a zone Left/Right/Up/Down
- * move freely, while crossing zones happens via Up/Down only — which prevents
+ * move freely, while crossing zones happens via Up/Down only, which prevents
  * Left/Right leaking out of horizontal rows.
  *
  * Usage:
@@ -23,7 +23,7 @@ import { isRestorePending } from '../utils/restorePending.js';
 const registry = new Map();
 let currentFocusId = null;
 // The element that is mid-`focus()` from an `autoFocusFallback` timer; read by
-// `handleFocus` to record how focus got there — see `autoFocusWhenIdle`.
+// `handleFocus` to record how focus got there, see `autoFocusWhenIdle`.
 let focusingFallback = false;
 
 // How long Enter must be held for a long-pressable element to count it as a
@@ -51,19 +51,19 @@ export function useFocusable({
   // otherwise pull the ring out of the search field (closing the TV keyboard)
   // or off the controls trigger just used. Dialogs keep the aggressive default.
   autoFocusWhenIdle = false,
-  // Opt-in, only with `autoFocus`: a *fallback* — it takes focus only if
+  // Opt-in, only with `autoFocus`: a *fallback*, it takes focus only if
   // nothing else has it, and unlike any other focus may be replaced later by
   // an `autoFocusWhenIdle` element.
   //
   // The rail is the case: it exists on every tab and claims focus at boot, but
   // a shelf card mounts after its fetch and is the intended resting place. A
-  // focus the *user* placed — a D-pad press or a dialog — is never replaced.
+  // focus the *user* placed, a D-pad press or a dialog, is never replaced.
   autoFocusFallback = false,
   // Opt-in: this element can never be *entered* by Left/Right. Used by the
   // rail's inactive rows, which sit in the grid's own zone; without it Left
   // out of the content lands on whichever row is beside the card (Settings,
   // low down) instead of the tab being looked at. Entering is the axis worth
-  // gating — see useKeyHandler.
+  // gating, see useKeyHandler.
   verticalOnly = false,
   // Opt-in: one row of the left navigation rail. The rows sit in the grid's
   // own zone, so Down out of the last card of a page finds Settings when the
@@ -71,7 +71,7 @@ export function useFocusable({
   // still enter them, because returning from the top row is intended.
   railRow = false,
   // Opt-in: connected across zones while still refusing to be entered sideways
-  // from outside its own — that refusal is why it has a zone. The controls bar
+  // from outside its own, that refusal is why it has a zone. The controls bar
   // keeps a zone so the grid cannot step in sideways, then must be lifted out
   // of both penalties: CROSS_ZONE_PENALTY (Up would land on the rail instead of
   // the filter below) and the same-zone requirement (Left would do nothing).
@@ -107,7 +107,7 @@ export function useFocusable({
   // Refreshed every render, not in the registration effect below: callers write
   // `nextId={{ down: 'nav-settings' }}`, a fresh object each render, and putting
   // it in that effect's deps would tear down and re-add four listeners per
-  // render — felt in the D-pad on a TV. The ref lets the registration effect
+  // render, felt in the D-pad on a TV. The ref lets the registration effect
   // read the value without depending on it; on the first commit this effect
   // runs first and finds no entry, so a ref is the only way to avoid installing
   // a stale `nextId` until the next render.
@@ -138,7 +138,7 @@ export function useFocusable({
       //
       // `behavior: 'auto'` is explicit: it overrides CSS `scroll-behavior` so a
       // stylesheet cannot silently restore the glide. Smooth scrolling was
-      // measured as a drag on the TV — it animates on the main thread, so each
+      // measured as a drag on the TV, it animates on the main thread, so each
       // press started an animation competing with the next, and the ring
       // trailed the key. Grid wrappers set `scroll-behavior` too; both stay
       // instant.
@@ -191,7 +191,7 @@ export function useFocusable({
       const { onEnter, onLongPress: longPress, longPressMs: holdMs } = callbacksRef.current;
 
       // Auto-repeat is never an activation. A remote spams keydown at ~30 Hz,
-      // so repeats would run the action 30 times a second — and outlive the
+      // so repeats would run the action 30 times a second, and outlive the
       // first press: a long press moves focus into the menu it opened, and
       // every repeat activates its first row, so holding OK plays the scene
       // instead of showing the menu. Only a fresh keydown after a keyup counts.
@@ -236,7 +236,7 @@ export function useFocusable({
     };
 
     // A hold that spans the app going to the background is not a hold the
-    // user is still performing — and on Tizen the keyup may never arrive.
+    // user is still performing, and on Tizen the keyup may never arrive.
     const cancelOnHide = () => cancelPress();
     document.addEventListener('visibilitychange', cancelOnHide);
     window.addEventListener('pagehide', cancelOnHide);
@@ -273,7 +273,7 @@ export function useFocusable({
         if (autoFocusWhenIdle) {
           const ae = document.activeElement;
           if (ae && ae !== document.body) {
-            // A fallback focus — the rail's boot-time claim — is not the user
+            // A fallback focus, the rail's boot-time claim, is not the user
             // being somewhere. Anything else is, and is left alone.
             const currentEntry = currentFocusId ? registry.get(currentFocusId) : null;
             const replaceable = currentEntry?.el === ae && currentEntry.focusOrigin === 'fallback';
@@ -311,9 +311,9 @@ export function useFocusable({
       // Forget where focus was only when the element is gone. A
       // *re-registration* (`disabled` flipping, `verticalOnly` following the
       // tab) leaves it connected, and nulling this started the next Left/Right
-      // from <body> with no zone. The entry is re-added below — even while
+      // from <body> with no zone. The entry is re-added below, even while
       // disabled, since the candidate search already skips it as a landing
-      // target — so the current element keeps its zone and rect.
+      // target, so the current element keeps its zone and rect.
       if (currentFocusId === id && !el.isConnected) currentFocusId = null;
     };
   }, [id, effectiveZone, disabled, autoFocus, autoFocusWhenIdle, autoFocusFallback,

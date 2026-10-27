@@ -1,5 +1,5 @@
 /**
- * sortGroups.js — flatten a tab descriptor's grouped sort options.
+ * sortGroups.js: flatten a tab descriptor's grouped sort options.
  *
  * `sortGroups` is `[{ label, options: [{ value, label }] }]`. App validates a
  * stored sort value against the flat list and ControlsPanel uses it for the

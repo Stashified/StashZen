@@ -1,5 +1,5 @@
 /**
- * restorePending — "focus is on its way".
+ * restorePending, "focus is on its way".
  *
  * A remounted listing focuses its first card after 50 ms so the D-pad has
  * somewhere to go. When Back is restoring a specific card, that first card is

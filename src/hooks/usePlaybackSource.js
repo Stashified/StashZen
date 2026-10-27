@@ -1,5 +1,5 @@
 /**
- * usePlaybackSource — which URL the <video> gets, and what to do when it does
+ * usePlaybackSource: which URL the <video> gets, and what to do when it does
  * not work.
  *
  * A `<video>` element decodes a narrower set than the TV's own pipeline, so a
@@ -30,7 +30,7 @@
  *                Derived here, because only the candidate that yielded it knows
  *                whether the server is re-encoding.
  *   exhausted    every candidate has been tried and none loaded
- *   reportFailure()  a media error — true if another candidate is being tried,
+ *   reportFailure()  a media error, true if another candidate is being tried,
  *                false if there is none (the caller shows the failure)
  */
 
@@ -43,7 +43,7 @@ import { createEngineController } from '../utils/engineController.js';
 // How long an attempt may sit below HAVE_METADATA before it is judged dead: a
 // LAN direct stream reports metadata well under a second, a transcode about a
 // second. Generous because a stall costs the user time but switching early
-// wastes a transcode — which still plays.
+// wastes a transcode, which still plays.
 const STALL_MS = 10000;
 
 // Under `Auto` the browser is first and AVPlay is a real second opinion: a
@@ -62,7 +62,7 @@ export function usePlaybackSource(video, mediaRef, {
   const sceneId = video?.id ?? null;
   const directUrl = video?.stream ?? null;
 
-  // The session's engine memory — the kill switch and the per-format negative
+  // The session's engine memory, the kill switch and the per-format negative
   // cache. One instance for the life of the player: what one scene teaches
   // survives a queue advance, nothing survives the player.
   const controllerRef = useRef(null);
@@ -88,8 +88,13 @@ export function usePlaybackSource(video, mediaRef, {
   ]);
 
   const [src, setSrc] = useState(null);
+  // Which scene `src` belongs to. The queue advances before a new source
+  // resolves, and the old engine session stays open in that gap; the player
+  // uses this to avoid playing it again and attributing its events to the new
+  // scene.
+  const [srcSceneId, setSrcSceneId] = useState(null);
   // Which half of the plan produced `src`. The player uses this to say whether
-  // the server is re-encoding — a URL comparison would be an inference and
+  // the server is re-encoding, a URL comparison would be an inference and
   // would drift.
   const [sourceKind, setSourceKind] = useState(null);
   // Which engine owns the source: one URL can belong to either, and the player
@@ -98,7 +103,7 @@ export function usePlaybackSource(video, mediaRef, {
   const [engine, setEngine] = useState(null);
   // Which scene the exhaustion belongs to, not a bare boolean: on the commit
   // that advances the queue the effect has not run, so a plain flag is still
-  // the previous scene's answer for one render — when the error effect runs.
+  // the previous scene's answer for one render, when the error effect runs.
   // Naming the scene derives the answer against the scene on screen.
   const [exhaustedScene, setExhaustedScene] = useState(null);
 
@@ -140,19 +145,19 @@ export function usePlaybackSource(video, mediaRef, {
       }
       // The mirror image: this format's direct file already failed in the
       // browser this session, and a resident engine can take it. Skipping costs
-      // nothing if wrong — the browser is last in the plan.
+      // nothing if wrong, the browser is last in the plan.
       if (candidate.engine === 'html5' && candidate.kind === 'direct'
         && plan.avplayAvailable && !controller.isDisabled()
         && controller.browserBlockedFormat(plan.video)) {
         continue;
       }
       // A media `error` in this window belongs to the source that just failed,
-      // not the untried one — see reportFailure. Set inside the loop so an
+      // not the untried one, see reportFailure. Set inside the loop so an
       // empty resolve keeps the guard up while the next is fetched.
       plan.pending = true;
 
       // A candidate that throws is a failed candidate, not an error to
-      // propagate — the loop is the "try the next" path.
+      // propagate, the loop is the "try the next" path.
       const url = await candidate.make().catch(() => null);
       if (planRef.current !== plan || !mountedRef.current) return;
 
@@ -178,6 +183,7 @@ export function usePlaybackSource(video, mediaRef, {
       // attributed to this engine and kind, not to the plan's first choice.
       plan.active = { engine: candidate.engine || 'html5', kind: candidate.kind };
       setSrc(url);
+      setSrcSceneId(plan.sceneId);
       setSourceKind(candidate.kind);
       setEngine(candidate.engine || 'html5');
 
@@ -193,7 +199,7 @@ export function usePlaybackSource(video, mediaRef, {
         const el = mediaRef.current;
         if (el && el.readyState >= 1) return;
         // Move on, but record no verdict: no metadata in four seconds does not
-        // mean the format was refused — a moov-at-the-end MP4, a spinning-up
+        // mean the format was refused, a moov-at-the-end MP4, a spinning-up
         // NAS or a dropped LAN all stall. A cached verdict would exile the
         // format for the session; only the element's own error is evidence.
         void runFrom(plan);
@@ -211,16 +217,16 @@ export function usePlaybackSource(video, mediaRef, {
     // Learn before walking on. AVPlay classifies what it saw (avplayErrors.js):
     // a *content* refusal on a direct attempt is cached per codec triple; an
     // *engine* fault counts toward the kill switch. A refused transcode is
-    // never cached — Stash produced that file.
+    // never cached, Stash produced that file.
     const active = plan.active;
     const failure = mediaRef.current?.lastFailure;
     if (active?.engine === 'avplay' && failure) {
       if (failure.level === 'engine') {
         controller.fail({ sceneId: plan.sceneId, level: 'engine', reason: failure.phase });
       } else if (failure.level !== 'transient' && active.kind === 'direct') {
-        // A *transient* failure is the seek coalescer giving up: the scene moves
-        // to the browser at the requested position, but that says nothing about
-        // the format, so the next scene must still try AVPlay.
+        // A *transient* failure is a seek the TV player could not recover
+        // from. It says nothing about the format, so the next scene must still
+        // try AVPlay; caching it here exiled a 4K format for the session.
         controller.refusedDirect(plan.video);
       }
     } else if (active?.engine === 'html5' && active.kind === 'direct'
@@ -260,6 +266,7 @@ export function usePlaybackSource(video, mediaRef, {
     planRef.current = plan;
     clearTimer();
     setSrc(null);
+    setSrcSceneId(null);
     setSourceKind(null);
     setExhaustedScene(null);
     // The engine is deliberately *not* reset: dropping to null would unmount
@@ -280,7 +287,7 @@ export function usePlaybackSource(video, mediaRef, {
       return pickTranscodeUrls(streams);
     };
 
-    // Descriptors from the policy, with URL production attached here — the
+    // Descriptors from the policy, with URL production attached here, the
     // policy never fetches. `kind`/`engine` survive the walk so the controls and
     // stats show the answer.
     const available = avplayAvailable && !controller.isDisabled();
@@ -297,7 +304,7 @@ export function usePlaybackSource(video, mediaRef, {
 
     return () => { planRef.current = null; clearTimer(); };
     // The codec fields arrive through `sceneMeta`, which is memoised on those
-    // primitives for this exact reason — see its comment.
+    // primitives for this exact reason, see its comment.
   }, [
     sceneId, directUrl, sceneMeta, setting, forcedBrowser, avplayAvailable, ready,
     controller, runFrom, clearTimer,
@@ -306,13 +313,13 @@ export function usePlaybackSource(video, mediaRef, {
   // ── The stall watchdog's off switch ────────────────────────
   // Only these three: they mean the element has real media behind it.
   // `loadeddata`/`progress` also fire for a file that begins to arrive and then
-  // stops being decodable — exactly the case the watchdog catches.
+  // stops being decodable, exactly the case the watchdog catches.
   useEffect(() => {
     const el = mediaRef.current;
     if (!el) return;
     const settle = () => clearTimer();
     // A frame on screen is proof the engine works, and it is what clears the
-    // kill switch's count — not a prepared or requested stream.
+    // kill switch's count, not a prepared or requested stream.
     //
     // Only a frame *from AVPlay* counts: the browser fallback plays after every
     // AVPlay fault, and letting its `playing` clear the count would mean the
@@ -337,6 +344,7 @@ export function usePlaybackSource(video, mediaRef, {
   // yet. See `exhaustedScene`.
   return {
     src,
+    srcSceneId,
     sourceKind,
     engine,
     // Why AVPlay is or is not in play, for the stats panel and the failure

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-progress-reporter.mjs — what the player writes back to Stash
+ * test-progress-reporter.mjs: what the player writes back to Stash
  *
  *   node scripts/test-progress-reporter.mjs
  *

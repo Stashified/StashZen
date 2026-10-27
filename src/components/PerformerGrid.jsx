@@ -1,5 +1,5 @@
 /**
- * PerformerGrid — infinite-scroll grid, reactive to controls.
+ * PerformerGrid, infinite-scroll grid, reactive to controls.
  *
  * As in VideoGrid, usePagedList owns paging and this supplies the request and
  * the trigger.
@@ -20,14 +20,14 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
   const { sort, order, cols } = controls;
 
   const fetchPage = useCallback(
-    (page) =>
-      fetchPerformers({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      fetchPerformers({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d.performers, total: d.total })),
     [sort, order, objectFilter, searchQuery],
   );
 
   const {
-    items: performers, total, loading, loadingMore, error, exhausted, loadMore,
+    items: performers, total, loading, retrying, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // sort and order MUST be in the key
@@ -60,7 +60,7 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
       styles={styles}
       loading
       spinnerLabel="Loading performers"
-      text="Loading performers…"
+      text={retrying ? 'Connection problem, retrying…' : 'Loading performers…'}
     />
   );
 
@@ -97,7 +97,7 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
           )}
           {error && !loadingMore && (
             <span className={styles.loadingMoreText} style={{ color: 'var(--red)' }}>
-              Couldn't load more — {error}
+              Couldn't load more: {error}
             </span>
           )}
         </div>

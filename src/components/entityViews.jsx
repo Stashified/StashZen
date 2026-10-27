@@ -1,5 +1,5 @@
 /**
- * entityViews.jsx — what each of the four browse-only sections shows.
+ * entityViews.jsx: what each of the four browse-only sections shows.
  *
  * `EntityGrid` and `Carousel` each draw any of the four; these descriptors are
  * the part that cannot generalize. Kept together so the differences sit side
@@ -9,10 +9,10 @@
  *
  *   key, service, itemsKey, noun   the listing and where its rows live
  *   focusPrefix                    the cards' registry-id prefix, which the
- *                                  Carousel also matches on — card and strip
+ *                                  Carousel also matches on, card and strip
  *                                  must agree or the hero silently freezes on
  *                                  row 1 with nothing thrown.
- *   aspect                         'portrait' | 'landscape' — the one thing
+ *   aspect                         'portrait' | 'landscape', the one thing
  *                                  that changes the card's *shape*
  *   slotWidth                      Carousel only, portrait art only. See
  *                                  `--slot-w` in Carousel.module.css.
@@ -28,7 +28,7 @@
  * Two things true of all four:
  *
  * `image_path` is non-empty for every tag and studio in this library, which
- * does **not** mean a picture is there — Stash serves a generated-asset URL
+ * does **not** mean a picture is there, Stash serves a generated-asset URL
  * whether or not Generate has run, so a 200 proves nothing. The monogram
  * fallback is therefore reached by `onError`, never an absent field, which is
  * why EntityCard owns it rather than a getter.
@@ -78,7 +78,7 @@ function bind(view) {
     // EntityCard selects with `(item, index, list?.items)`; the Images viewer
     // needs the position, so a list row must hand up the same three.
     rowSelect: (item, index, list, onSelect) => onSelect?.(item, index, list?.items),
-    // The menu takes the listing itself when the section opted in — it reports
+    // The menu takes the listing itself when the section opted in, it reports
     // the position from the listing's total.
     rowLongPress: view.longPress
       ? (item, index, list, onLongPress) => onLongPress?.(item, index, list)
@@ -86,7 +86,7 @@ function bind(view) {
   };
 }
 
-// Portrait. Tag has no `rating100`, so no badge — the clearest of the four
+// Portrait. Tag has no `rating100`, so no badge, the clearest of the four
 // differences and why this is a descriptor rather than a colour of one card.
 export const TAG_VIEW = bind({
   key: 'tags',
@@ -145,7 +145,7 @@ export const STUDIO_VIEW = bind({
   }),
 });
 
-// Landscape covers. No `paths.cover` case here — the service already applied
+// Landscape covers. No `paths.cover` case here, the service already applied
 // withApiKey, and a gallery with no cover is `null`, caught by the fallback.
 export const GALLERY_VIEW = bind({
   key: 'galleries',

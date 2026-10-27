@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * probe-filter-write.mjs — does the builder's envelope survive a save?
+ * probe-filter-write.mjs: does the builder's envelope survive a save?
  *
  *   node scripts/probe-filter-write.mjs
  *
@@ -85,7 +85,7 @@ const STORED = {
  * `object_filter` is a `Map` scalar serialised with keys sorted, so a
  * multi-select written `{items, excluded}` reads back `{excluded, items}`. Same
  * object, but `JSON.stringify` compares key order, so the compare must be
- * canonical — as in `test-translate.mjs`.
+ * canonical, as in `test-translate.mjs`.
  */
 function canonical(v) {
   if (Array.isArray(v)) return v.map(canonical);

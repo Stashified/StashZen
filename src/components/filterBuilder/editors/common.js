@@ -4,7 +4,7 @@
  */
 
 /**
- * The stored envelope's inner object — `{ value, value2, items, depth, … }`.
+ * The stored envelope's inner object, `{ value, value2, items, depth, … }`.
  * A nullary modifier stores `{}`, and a malformed value is treated as empty
  * rather than crashing the row.
  */

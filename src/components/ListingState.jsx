@@ -1,5 +1,5 @@
 /**
- * ListingState — the card area when there are no cards yet: loading, error, or
+ * ListingState, the card area when there are no cards yet: loading, error, or
  * empty results.
  *
  * Focusable on purpose. Without it an empty view has no target in the content
@@ -11,7 +11,7 @@
 
 import { useFocusable } from '../hooks/useFocusable.js';
 
-// Module constant, not a render literal — see useFocusable's `nextId` note.
+// Module constant, not a render literal, see useFocusable's `nextId` note.
 // Falls through to geometry on a tab with no sort control.
 const UP_EDGE = { up: 'ctrl-sort' };
 

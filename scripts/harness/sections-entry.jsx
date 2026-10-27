@@ -3,7 +3,7 @@
  * Images) and the image viewer.
  *
  * Mounts the whole `App`, like rail-entry: nearly every claim is a property of
- * two components together — the grid and its service, the card and its tab,
+ * two components together, the grid and its service, the card and its tab,
  * the activation and the tab it switches to. The four sections are instances
  * of one component, so shape and paging are covered by list-entry; this file
  * asserts where they differ.
@@ -22,7 +22,7 @@
  *   S4d    arriving at Markers sends one page-1 request, already Title/ASC;
  *          the rule adjusts `controls` during render, and both replies render.
  *   S5–S8  a tag filters Scenes via a tab switch: arrival keeps the filter,
- *          Back returns the right card, departure drops it. Read the screen —
+ *          Back returns the right card, departure drops it. Read the screen:
  *          a dropped filter's page-1 refetch is a `listCache` hit.
  *   S6a    a gallery card shows its studio, falling back to the folder.
  *   S9–S11 the viewer shows `paths.image`, not the card's thumbnail.
@@ -159,7 +159,7 @@ async function finish() {
 
 // ── The run ─────────────────────────────────────────────────
 async function run() {
-  // Home is the showroom, so its first shelf — not a `video-` card — arrives
+  // Home is the showroom, so its first shelf, not a `video-` card, arrives
   // over the wire; the scene listing these sections activate into is Scenes.
   await waitFor(() => has('showroom-recent-scenes-video-1'));
   await sleep(300);
@@ -212,8 +212,8 @@ async function run() {
 
   // ── S3  the filter variable is the section's own ─────────
   // The fake logs the filter argument under its own key, so a service passing
-  // `tag_filter` to `findImages` — rejected by the real server, but silently
-  // returning the whole listing here — shows up in the log, not the DOM.
+  // `tag_filter` to `findImages`, rejected by the real server, but silently
+  // returning the whole listing here, shows up in the log, not the DOM.
   const reqs = await getJSON('/requests');
   const keys = reqs.flatMap(r => Object.keys(r).filter(k => k.endsWith('_filter')));
   check('S3 each listing carried its own filter argument',
@@ -223,7 +223,7 @@ async function run() {
 
   // ── S4  the sort menus offer only values the server accepts ──
   // These lists record what each resolver accepts, not a derivation: `SortBy`
-  // is one shared enum, and the four disagree — Tags take `scenes_count` and
+  // is one shared enum, and the four disagree, Tags take `scenes_count` and
   // `performers_count` (plural), Studios `tag_count`/`child_count` (singular)
   // and reject `performers_count`, Images take `performer_count`. Each was
   // sent to its own resolver first. The fake slices whatever sort it is handed,
@@ -327,7 +327,7 @@ async function run() {
     body: JSON.stringify({ markers: 'paged' }),
   });
   // Images is where the vocabulary loop left us, and its declared sort is
-  // `created_at` — the value that used to ride into Markers.
+  // `created_at`, the value that used to ride into Markers.
   await goto('images');
   await sleep(300);
   await clearLogs();
@@ -464,7 +464,7 @@ async function run() {
 
   check('S5 activating a tag switches to Scenes',
     railActive() === 'Scenes', `rail says ${railActive()}`);
-  // ── `.at(-1)`, not `.find()` — and this is the whole check ──
+  // ── `.at(-1)`, not `.find()`, and this is the whole check ──
   // The batch sets filter and tab together, so a filtered request is always
   // sent first; if the effect then drops the filter, the grid refetches
   // unfiltered on top. `.find()` sees the first and passes on exactly that
@@ -813,8 +813,8 @@ async function run() {
   await waitFor(() => !infoPanel(), 2000);
 
   // ── S11d  a failure is reported, and not remembered ─────
-  // A cached failure would look like a working panel the second time — same
-  // message, no request — so the fetch count distinguishes them.
+  // A cached failure would look like a working panel the second time, same
+  // message, no request, so the fetch count distinguishes them.
   await setMode('imageInfo', 'fail');
   await press('ArrowRight');            // image 4 → 5
   await press('ArrowUp');

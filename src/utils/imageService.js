@@ -1,5 +1,5 @@
 /**
- * imageService.js — Fetch images from the Stash GraphQL endpoint.
+ * imageService.js: Fetch images from the Stash GraphQL endpoint.
  *
  * The loader is `entityService.js`; what is specific to images is here.
  *
@@ -8,9 +8,9 @@
  * scroll, and nothing here preloads.
  *
  * Three URLs come back per row, three sizes of the same picture:
- *   - `paths.thumbnail` — the grid tile
- *   - `paths.preview`   — a mid-size still
- *   - `paths.image`     — full resolution, for the viewer
+ *   - `paths.thumbnail`, the grid tile
+ *   - `paths.preview`  , a mid-size still
+ *   - `paths.image`    , full resolution, for the viewer
  * All are absolute and unkeyed and need `withApiKey()`. Tile and viewer
  * deliberately do not share a field: full-res art for every tile would make
  * this section slow.
@@ -85,7 +85,7 @@ const FIND_IMAGES_QUERY = `
 /**
  * A tile's caption. Image titles are empty far more often than scene titles
  * (photographs commonly have none), so the file's own name is the fallback,
- * extension dropped — see `filenameStem`.
+ * extension dropped, see `filenameStem`.
  *
  * The first visual file is the one the tile draws, so its name is the honest
  * one. A row with neither stays null and viewers fall back to "Image".
@@ -115,16 +115,16 @@ const service = createEntityService({
   searchFields: ['title'],
 });
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchImages(opts = {}) {
   return service.fetch(opts);
 }
 
 // ── One image, in full, for the viewer's info panel ───────
 // The listing query carries only what a tile draws, so the overlay asks for
-// one row. Read-only — no rating or counter buttons, hence no cache clearing.
+// one row. Read-only, no rating or counter buttons, hence no cache clearing.
 // `visual_files` is a union (ImageFile | VideoFile) and Image has no `files`
-// field; the inline fragment keeps the query valid — asking for `files` fails
+// field; the inline fragment keeps the query valid, asking for `files` fails
 // the whole operation, which on TV is the panel's error state.
 const FIND_IMAGE_INFO_QUERY = `
   query FindImageInfo($id: ID!) {

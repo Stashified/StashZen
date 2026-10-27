@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-seek-coalescer.mjs — rapid skims, last one wins, no lost distance
+ * test-seek-coalescer.mjs: rapid skims, last one wins, no lost distance
  *
  *   node scripts/test-seek-coalescer.mjs
  *
@@ -108,9 +108,11 @@ function rig({ throwSeek = false, playing = true } = {}) {
   check('it is still pending while the engine buffers',
     r.coalescer.isSeeking() === true);
 
-  r.advance(SEEK_SETTLE_MS);
+  // Inside the arrival grace: still waiting, still no re-issue. Past it the
+  // seek is a failed resume, which has its own test below.
+  r.advance(2000);
   r.coalescer.tick();
-  check('a second buffering window still does not restart the seek',
+  check('a later buffering poll still does not restart the seek',
     eq(r.seeks, [30]));
 
   r.setPlaying(true);
@@ -133,6 +135,34 @@ function rig({ throwSeek = false, playing = true } = {}) {
     eq(r.degraded, [44]));
   check('and never restarted the seek', eq(r.seeks, [44]));
   check('the reason says the position arrived', eq(r.reasons, ['arrived']));
+}
+
+// ── Arrival without playback has its own, shorter verdict ──
+{
+  // The panel froze ~8 s on a seek that had already landed before recovery
+  // began. Once the position is at the target, 2.5 s without playback is
+  // enough to call the resume failed.
+  let now = 0;
+  const reasons = [];
+  const c = createSeekCoalescer({
+    seekTo: () => {},
+    getTime: () => 30,
+    isPlaying: () => false,
+    now: () => now,
+    maxWaitMs: 8000,
+    onDegraded: (t, reason) => reasons.push(reason),
+  });
+  c.request(30);
+  now = SEEK_SETTLE_MS;
+  c.tick();
+  now = SEEK_SETTLE_MS + 2000;
+  c.tick();
+  check('arrival is not degraded inside its grace', eq(reasons, []));
+  now = SEEK_SETTLE_MS + 2600;
+  c.tick();
+  check('a landed seek that never plays degrades before the deadline',
+    eq(reasons, ['arrived']));
+  check('...and the burst ends', c.isSeeking() === false);
 }
 
 // ── A rapid burst that froze is re-issued once ─────────────
@@ -437,7 +467,7 @@ function rig({ throwSeek = false, playing = true } = {}) {
 // ── The deadline is not debounced by the settle window ─────
 {
   // The window's reset used to gate the deadline check, so a 4 s deadline
-  // first fired on the next window boundary — up to 3 s later.
+  // first fired on the next window boundary, up to 3 s later.
   let now = 0;
   const reasons = [];
   const c = createSeekCoalescer({

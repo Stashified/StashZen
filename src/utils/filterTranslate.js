@@ -1,9 +1,9 @@
 /**
- * filterTranslate.js — Stash's *saved-filter* format → the GraphQL input shape.
+ * filterTranslate.js: Stash's *saved-filter* format → the GraphQL input shape.
  *
  * `findSavedFilters` returns `object_filter` in the shape Stash's frontend
  * stores, which the GraphQL API does not accept. Forwarded verbatim, most saved
- * filters fail with an opaque 422 — or validate and return nothing — and either
+ * filters fail with an opaque 422, or validate and return nothing, and either
  * way the user sees an empty grid.
  *
  * There is one modifier enum (`CriterionModifier`), so modifiers pass through
@@ -20,7 +20,7 @@
  *
  * THE QUOTING TRAP. Stash's UI wraps a value containing a space in literal
  * double quotes, so many `path` criteria read `"\"/media/library/…/Some Folder\""`.
- * Sent as-is they *validate* and match zero rows — the worst failure mode here,
+ * Sent as-is they *validate* and match zero rows, the worst failure mode here,
  * because nothing errors (measured: 0 scenes quoted, a full page de-quoted).
  *
  * DISPATCH IS SCHEMA-DRIVEN, NEVER A FIELD LIST. The generated
@@ -30,7 +30,7 @@
  * takes `depth` (`HierarchicalMultiCriterionInput` only).
  *
  * UNKNOWN INPUT PASSES THROUGH. Dropping an unrecognised field or shape would
- * silently discard a filter condition — the exact bug this file fixes. A
+ * silently discard a filter condition, the exact bug this file fixes. A
  * criterion from a newer Stash therefore degrades to today's behaviour rather
  * than quietly widening the filter.
  *
@@ -39,7 +39,7 @@
  * services can translate unconditionally at query time.
  *
  * WHERE IT IS CALLED. In the three service loaders, just before the request
- * variables — not in `filterService`, so the raw object stays in the
+ * variables, not in `filterService`, so the raw object stays in the
  * `listCache` keys and cache identity is unchanged.
  */
 
@@ -51,6 +51,7 @@ import {
   LIST_VALUED_CRITERIA,
   ENUMS,
 } from './stashFilterSchema.js';
+import { requestEnumValue } from './enumStrings.js';
 
 const DEV = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
 
@@ -115,18 +116,55 @@ function toIds(arr) {
 
 /** Coerce a scalar for `typeName`'s `value` field. */
 function coerceScalar(typeName, v) {
+  // Stash's UI saves display strings ("1080p"); GraphQL wants member names.
+  // requestEnumValue is a no-op for non-enum types.
+  const map = (x) => requestEnumValue(
+    typeName,
+    typeof x === 'string' ? stripWrappingQuotes(x) : x,
+  );
   // Orientation and circumcision declare `value` as a list, so a bare enum is
   // wrapped. A value already in list form goes through `toIds`, which also
   // unwraps `{id,label}` entries.
   if (LIST_VALUED_CRITERIA.has(typeName)) {
-    if (Array.isArray(v)) return toIds(v);
-    return [typeof v === 'string' ? stripWrappingQuotes(v) : v];
+    if (Array.isArray(v)) return toIds(v).map(map);
+    return [map(v)];
   }
-  return typeof v === 'string' ? stripWrappingQuotes(v) : v;
+  return map(v);
 }
 
 /**
- * A `Boolean` field, stored as `{modifier:'EQUALS', value:'false'}` — a
+ * Gender is the one criterion that declares both `value` (nullable scalar) and
+ * `value_list` (list). Stash's UI writes the list; a stored array sent as
+ * `value` is a GraphQL type error that fails the whole query, and display
+ * strings ("Female") must become member names.
+ */
+function translateGender(c) {
+  const raw = Array.isArray(c.value)
+    ? c.value
+    : Array.isArray(c.value_list)
+      ? c.value_list
+      : isPlainObject(c.value)
+        ? (Array.isArray(c.value.value_list) ? c.value.value_list
+          : Array.isArray(c.value.value) ? c.value.value
+            : c.value.value != null ? [c.value.value] : [])
+        : c.value != null ? [c.value] : [];
+  const list = raw
+    .map(v => requestEnumValue('GenderCriterionInput', typeof v === 'string' ? stripWrappingQuotes(v) : v))
+    .filter(v => v != null && v !== '');
+
+  const out = {};
+  if (c.modifier != null) out.modifier = c.modifier;
+  if (NULLARY_MODIFIERS.has(out.modifier)) {
+    out.value = NULLARY_VALUE.GenderCriterionInput;
+    return out;
+  }
+  if (!list.length) return undefined;
+  out.value_list = list;
+  return out;
+}
+
+/**
+ * A `Boolean` field, stored as `{modifier:'EQUALS', value:'false'}`, a
  * *string*, which GraphQL rejects here. Returns `undefined` for a value it
  * cannot interpret, which the caller treats as "drop the field".
  */
@@ -141,7 +179,7 @@ function coerceBoolean(v) {
 /**
  * A bare `String` field (`has_markers`, `is_missing`). These arrive in a
  * criterion envelope but the GraphQL field has no modifier slot, so it is
- * dropped — safe, because Stash encodes the choice in the value ("true" /
+ * dropped, safe, because Stash encodes the choice in the value ("true" /
  * "false") and treats the modifier as redundant.
  */
 function coerceString(v) {
@@ -158,6 +196,7 @@ function coerceString(v) {
  */
 function translateCriterion(c, typeName) {
   if (!isPlainObject(c)) return c;
+  if (typeName === 'GenderCriterionInput') return translateGender(c);
 
   const modifier = c.modifier;
   const v = c.value;
@@ -186,13 +225,13 @@ function translateCriterion(c, typeName) {
     // The common wrapper: {value} / {value, value2}.
     else if (v.value !== undefined) {
       out.value = coerceScalar(typeName, v.value);
-      // A blank second bound is not a bound — `value2:""` is a type error.
+      // A blank second bound is not a bound, `value2:""` is a type error.
       if (v.value2 !== undefined && v.value2 !== '' && v.value2 !== null) {
         out.value2 = coerceScalar(typeName, v.value2);
       }
     }
     // Already flat (DuplicationCriterionInput is stored in GraphQL shape) or a
-    // shape from a newer Stash we don't model — forward it.
+    // shape from a newer Stash we don't model, forward it.
     else {
       Object.assign(out, v);
     }
@@ -205,7 +244,7 @@ function translateCriterion(c, typeName) {
     out.modifier = modifier;
   }
 
-  // Carry across declared keys already at the criterion's top level — the
+  // Carry across declared keys already at the criterion's top level, the
   // fixed-point half. GraphQL hoists `depth`, `distance` and `endpoint` out of
   // `value`, so an already-translated criterion has them outside, where the
   // shape analysis above never looks; without this a second pass silently
@@ -239,7 +278,7 @@ function translateCriterion(c, typeName) {
   if (declared) {
     for (const key of Object.keys(out)) {
       if (!declared.includes(key)) {
-        warnOnce(`${typeName} has no field "${key}" — dropped (value came from a newer or unknown envelope)`);
+        warnOnce(`${typeName} has no field "${key}"; dropped (value came from a newer or unknown envelope)`);
         delete out[key];
       }
     }
@@ -248,7 +287,7 @@ function translateCriterion(c, typeName) {
   // Drop a criterion that constrains nothing: `INCLUDES ""` matches every row
   // (silently widening), `EXCLUDES ""` matches none (silently emptying), and
   // neither is what an unset value means. An empty value is only "nothing" when
-  // there are no exclusions either — `items: []` beside a non-empty `excluded`
+  // there are no exclusions either, `items: []` beside a non-empty `excluded`
   // does constrain, and dropping it showed rows the user had excluded.
   const emptyValue = out.value === ''
     || (Array.isArray(out.value) && out.value.length === 0);
@@ -295,7 +334,7 @@ function translateObject(obj, typeName) {
 
     if (!fieldType) {
       // Unknown field: forward it. Dropping would silently remove a condition.
-      warnOnce(`${typeName}.${key} is not in the schema snapshot — passed through untranslated`);
+      warnOnce(`${typeName}.${key} is not in the schema snapshot; passed through untranslated`);
       out[key] = obj[key];
       continue;
     }
@@ -319,7 +358,7 @@ export function translateFilter(raw, filterTypeName) {
   if (raw == null) return {};
   if (!isPlainObject(raw)) return {};
   if (!FILTER_TYPES[filterTypeName]) {
-    warnOnce(`unknown filter type "${filterTypeName}" — passed through untranslated`);
+    warnOnce(`unknown filter type "${filterTypeName}"; passed through untranslated`);
     return raw;
   }
   return translateObject(raw, filterTypeName);

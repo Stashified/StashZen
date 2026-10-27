@@ -1,8 +1,8 @@
 /**
- * usePagedList — the pagination state machine the list views share
+ * usePagedList: the pagination state machine the list views share
  *
  * The request (page size, which `controls` go into it) and *when* to ask for
- * more stay with the caller — the grid watches an IntersectionObserver
+ * more stay with the caller, the grid watches an IntersectionObserver
  * sentinel, the others the focused index. The hook owns the identical part:
  *
  *   - the request-id guard, so a page resolving after a reset or sort change
@@ -26,7 +26,7 @@
  *
  * `requestKey` is the caller's *request identity*: change it and the list
  * resets to page 1. Build it with `pageRequestKey` from everything that
- * belongs to the request — never from `fetchPage` or the page number.
+ * belongs to the request, never from `fetchPage` or the page number.
  *
  * Two stops beyond "every row is held":
  *
@@ -43,17 +43,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { registerFocusListing } from '../utils/focus.js';
+import { onRowPatch } from '../utils/rowPatches.js';
 
 // One initial request plus two retries: enough to ride out a TV's flaky Wi-Fi
 // without turning a persistent failure into a request loop.
 const MAX_PAGE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 
-export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
+export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity = null }) {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Page 1 failed and a retry is on its way. Without it the TV shows a plain
+  // spinner for the whole retry budget and reads as hung.
+  const [retrying, setRetrying] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   // The no-progress stop is a *successful* end: the server answered with
@@ -65,7 +69,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
 
   // Every id this request identity has produced. Rescanning `items` avoided
   // duplicate appends but could not tell "genuinely empty page" from "repeated
-  // what we hold" — the distinction the no-progress stop needs.
+  // what we hold", the distinction the no-progress stop needs.
   const seenIdsRef = useRef(new Set());
 
   // A page-N failure is retried from here, never from a consumer's trigger:
@@ -79,7 +83,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   // Re-entrancy guard held in a ref, not `loadingMore` state: two triggers can
   // ask for the next page in the same tick (the sentinel observer and a focus
   // restore paging forward), and a state update is invisible to the second.
-  // Both then fetched the same page, and the second hit the no-progress stop —
+  // Both then fetched the same page, and the second hit the no-progress stop:
   // a 1,892-row library printed "40 performers" and could never page again.
   //
   // Holds the *request id that owns the fetch*, not a boolean: a boolean
@@ -97,6 +101,10 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   const itemsLenRef = useRef(0);
   const totalRef = useRef(0);
   const loadingRef = useRef(true);
+  // The current identity's abort controller. A replaced identity's requests
+  // must free their sockets now: on a slow server, superseded page 1s queue
+  // the newest request behind them.
+  const abortRef = useRef(null);
 
   // Callers write `fetchPage` inline, so it is new every render. Holding it in
   // a ref lets the reset effect key on `requestKey` alone. This effect is
@@ -104,6 +112,23 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   // current closure.
   const fetchPageRef = useRef(fetchPage);
   useEffect(() => { fetchPageRef.current = fetchPage; });
+
+  // A write elsewhere publishes the fields it changed; patch the row in place
+  // so the card is current without a refetch (which would reset focus).
+  useEffect(() => {
+    if (!entity) return undefined;
+    return onRowPatch(entity, (id, patch) => {
+      setItems((prev) => {
+        let changed = false;
+        const next = prev.map((it) => {
+          if (String(it.id) !== id) return it;
+          changed = true;
+          return { ...it, ...patch };
+        });
+        return changed ? next : prev;
+      });
+    });
+  }, [entity]);
 
   // Latest `loadMore` for the retry timer, which fires between renders holding
   // a stale closure.
@@ -127,8 +152,12 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     itemsLenRef.current = 0;
     totalRef.current = 0;
     loadingRef.current = true;
+    abortRef.current?.abort();
+    abortRef.current = typeof AbortController === 'function' ? new AbortController() : null;
+    const { signal } = abortRef.current || {};
 
     setLoading(true);
+    setRetrying(false);
     setError(null);
     setItems([]);
     setPage(1);
@@ -141,12 +170,13 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
 
     // Page 1 gets the same bounded retry as page N: its failure used to be a
     // dead end only a remount cleared. The error is not shown until the budget
-    // is spent — a retry already on its way is not something to read about.
+    // is spent, a retry already on its way is not something to read about.
     const attemptFirstPage = () => {
-      fetchPageRef.current(1)
+      fetchPageRef.current(1, signal)
         .then(data => {
           if (cancelled || reqId !== requestIdRef.current) return;
           attemptsRef.current = 0;
+          setRetrying(false);
           seenIdsRef.current = new Set(data.items.map(it => it.id));
           itemsLenRef.current = data.items.length;
           totalRef.current = data.total;
@@ -163,10 +193,12 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
             // arrived would be a partial list with a hole at the top.
             blockedRef.current = true;
             loadingRef.current = false;
+            setRetrying(false);
             setError(e.message);
             setLoading(false);
             return;
           }
+          setRetrying(true);
           retryTimerRef.current = setTimeout(() => {
             retryTimerRef.current = null;
             if (cancelled || reqId !== requestIdRef.current) return;
@@ -181,6 +213,8 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
       retryPendingRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
     };
   }, [requestKey]);
 
@@ -192,7 +226,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
 
     // The refs close both windows: two triggers in one tick (owner check) and
     // a trigger queued by an older render (refs below). The committed pair is
-    // a conservative extra — a stale-true `loading` only defers one trigger.
+    // a conservative extra, a stale-true `loading` only defers one trigger.
     //
     // The owner check is deliberately `===`: a replaced identity must not block
     // the new one, and its `finally` clears the flag only when it still owns it.
@@ -205,7 +239,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     inFlightRef.current = reqId;
     setLoadingMore(true);
     try {
-      const data = await fetchPageRef.current(nextPage);
+      const data = await fetchPageRef.current(nextPage, abortRef.current?.signal);
       if (reqId !== requestIdRef.current) return true;
 
       // Collect before touching state: the seen-set is a ref, and refs must
@@ -220,8 +254,8 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
 
       if (fresh.length === 0) {
         // No progress: this page added nothing, so treat it as the end for this
-        // identity. `total` becomes what we hold — the server's higher count
-        // would promise rows the list has stopped fetching — and `ended` lets
+        // identity. `total` becomes what we hold, the server's higher count
+        // would promise rows the list has stopped fetching, and `ended` lets
         // the grid unmount the sentinel and draw its end marker.
         blockedRef.current = true;
         totalRef.current = itemsLenRef.current;
@@ -242,7 +276,9 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
         setTotal(data.total);
       }
     } catch (e) {
-      if (reqId !== requestIdRef.current) return true;
+      // An aborted request was cancelled on purpose (a new identity, or an
+      // unmount); its failure is not something to report or retry.
+      if (reqId !== requestIdRef.current || e?.name === 'AbortError') return true;
       setError(e.message);
       attemptsRef.current += 1;
       if (attemptsRef.current < MAX_PAGE_ATTEMPTS) {
@@ -283,7 +319,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
   // ── A focus restore can ask this listing for more rows ────
   // Back out of a filtered listing remounts the origin grid, which fetches only
   // page 1; a card from a later page would never come back. The registered
-  // listing pages forward until it exists — see utils/focus.js.
+  // listing pages forward until it exists, see utils/focus.js.
   //
   // The driver reads paging state through a ref because `loadMore` is replaced
   // every render (its guards close over the current page), yet the registered
@@ -305,5 +341,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null }) {
     });
   }, [focusPrefix]);
 
-  return { items, total, page, loading, loadingMore, error, exhausted, loadMore };
+  return {
+    items, total, page, loading, retrying, loadingMore, error, exhausted, loadMore,
+  };
 }

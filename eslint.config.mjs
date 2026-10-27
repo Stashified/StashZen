@@ -50,6 +50,8 @@ export default [
         // Injected by Vite's `define` (see vite.config.js).
         __APP_VERSION__: 'readonly',
         __FORCE_BROWSER_ENGINE__: 'readonly',
+        __UPDATE_CHECK__: 'readonly',
+        __UPDATE_URL__: 'readonly',
       },
     },
     plugins: {

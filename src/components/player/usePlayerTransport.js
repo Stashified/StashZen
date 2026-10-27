@@ -1,5 +1,5 @@
 /**
- * usePlayerTransport — everything that moves the playhead or the queue.
+ * usePlayerTransport: everything that moves the playhead or the queue.
  *
  * They share one rule: each ends by re-arming the controls, since a press that
  * changes something should show what it changed. The exception is the ends of
@@ -52,8 +52,8 @@ export function usePlayerTransport({
   useEffect(() => {
     const v = mediaRef.current;
     if (!v) return;
-    // Once the viewer has expressed a preference, every later change — the
-    // remote's included — is a preference too and must travel to the next scene
+    // Once the viewer has expressed a preference, every later change, the
+    // remote's included, is a preference too and must travel to the next scene
     // and engine. Before the first press the intent stays null, so `open()` keeps
     // adopting an already-muted TV. The initial read below is not this path.
     const sync = () => {
@@ -98,7 +98,7 @@ export function usePlayerTransport({
    * The remote's play/pause keys, resolved to actions. Not three names for one
    * toggle: 10252 is play/pause and only that one toggles, while 19 is *pause*
    * and 415 is *play*. Folding them together would leave a remote with separate
-   * keys one press out of phase — pause on a paused scene would start it.
+   * keys one press out of phase, pause on a paused scene would start it.
    *
    * Which code a given TV emits cannot be settled off-device: the harness can
    * prove the mapping, not that this remote sends them.
@@ -118,7 +118,7 @@ export function usePlayerTransport({
   }, [mediaRef, playQuietly, togglePlay, showControls]);
 
   /**
-   * Step to the neighbouring scene — the single path behind ↑/↓ and the rail's
+   * Step to the neighbouring scene, the single path behind ↑/↓ and the rail's
    * ⏮/⏭, so the ends-of-queue rule is stated once.
    *
    * No wrapping: running off either end does nothing, including not raising the
@@ -151,7 +151,7 @@ export function usePlayerTransport({
     if (!target) return;
     try { v.currentTime = target.seconds; } catch (e) { return; }
     // Move the clock and dot now rather than at the next `timeupdate`, up to
-    // 250 ms away — the same reason skim() sets it directly.
+    // 250 ms away, the same reason skim() sets it directly.
     setCurrentTime(target.seconds);
   }, [mediaRef, markers, setCurrentTime]);
 

@@ -1,16 +1,16 @@
 /**
- * useDetailsOverlay — the scene detail page over the player, its stream
+ * useDetailsOverlay: the scene detail page over the player, its stream
  * readout, and the two ways the page hands playback back.
  *
  * Unlike the marker form, closing the page does not resume what it
  * interrupted: the page is a destination the user chose to stop at, so playing
- * again is their press — the page's own Play.
+ * again is their press, the page's own Play.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime }) {
-  // A boolean: there is nothing per-open to remember — it always describes the
+  // A boolean: there is nothing per-open to remember, it always describes the
   // scene currently loaded, i.e. the element's own state.
   const [detailsOpen, setDetailsOpen] = useState(false);
   // The stream readout. Off on open, kept across a queue advance: it describes

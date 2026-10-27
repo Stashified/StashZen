@@ -4,7 +4,7 @@
  * Mounts the whole App, because the builder's claims are about a path: a
  * control opens it, a criterion is composed in Stash's stored envelope, that
  * becomes the listing's filter, and the server sees what was asked for. F1–F3/F7
- * assert on `scene_filter` in `/requests` — the server's own record — so they
+ * assert on `scene_filter` in `/requests`, the server's own record, so they
  * are end-to-end, not a claim about one file. F5 guards capture-phase Back:
  * the builder registers before its picker, so one Back closed both; the control
  * is deleting `overlayOpenRef`. What this cannot tell: whether it looks good,
@@ -120,7 +120,7 @@ async function run() {
   const onScenes = await waitFor(() => registry.has('video-1'));
   // A stated precondition: every check below is about the filter bar, which only
   // exists on a listing tab; without this, failing to leave Home reports "no
-  // Build button" — a true sentence about the wrong screen.
+  // Build button", a true sentence about the wrong screen.
   check('F0 the driver reached the Scenes tab',
     onScenes && !!registry.get('ctrl-build-filter'),
     `scenes cards=${registry.has('video-1')} build=${!!registry.get('ctrl-build-filter')} `
@@ -156,7 +156,7 @@ async function run() {
   if (!picker) return;
 
   // The nested dialog must be a DOM child of the builder, not a portal. If it
-  // were portalled it would still be *found* by this query — the assertion has
+  // were portalled it would still be *found* by this query, the assertion has
   // to be on containment, which is also what focusScopeOf depends on.
   check('F3c the nested dialog is a DOM child of the builder, not portalled',
     builder.contains(picker), 'focusScopeOf depends on this');

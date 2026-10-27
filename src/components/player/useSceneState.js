@@ -1,5 +1,5 @@
 /**
- * useSceneState — what Stash knows about the scene on screen: one small query
+ * useSceneState: what Stash knows about the scene on screen: one small query
  * per scene plus the per-scene reset. Without the reset, the previous scene's
  * value would seek this one. The latches it clears belong to the resume and
  * media hooks and are passed in, so all resets happen in one commit.
@@ -29,7 +29,7 @@ export function useSceneState({
   }, []);
 
   // Refresh resume_time from Stash: the cached grid data may be stale. One
-  // small query per scene — per *scene* is the point: without the reset below,
+  // small query per scene, per *scene* is the point: without the reset below,
   // the previous scene's value would seek this one.
   useEffect(() => {
     // Per-scene reset: the resume value, auto-seek latch, load error and marker

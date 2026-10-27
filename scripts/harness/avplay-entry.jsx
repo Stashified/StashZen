@@ -1,12 +1,12 @@
 /**
- * Headless driver for the TV engine — AVPlay behind the media facade.
+ * Headless driver for the TV engine, AVPlay behind the media facade.
  *
  * AVPlay exists only on the TV, so a stand-in (`fakeAvplay.js`) records the calls
  * and reports the Phase 0 states; everything asserted is what the app did with
  * them: which URL it opened, whether a `<video>` existed, what the page looked
  * like while the plane was up, and where the player went on refusal. Untested
  * here: whether AVPlay decodes a codec, whether the picture is visible, whether
- * hide/return restores audio, and the mute OSD — the TV pass's checklist.
+ * hide/return restores audio, and the mute OSD, the TV pass's checklist.
  * A ordinary path; B prepare refusal (content, cached per format); C mid-play
  * refusal at the playhead; D HLS preferred for either engine; E kill switch on
  * two engine-level failures; F slow seek not re-issued; G paused skim and seek
@@ -18,10 +18,11 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState } from 'react';
 import VideoPlayer from '../../src/components/VideoPlayer.jsx';
+import { SKIM_STEPS } from '../../src/components/player/constants.js';
 import { setSettings } from '../../src/utils/settings.js';
 import { installFakeAvplay } from './fakeAvplay.js';
 // The plane's rules live in the app stylesheet, so a driver that asserts on
-// them has to load it — the overlay's own class rules arrive with the
+// them has to load it, the overlay's own class rules arrive with the
 // component, but "hide every shell child but the host" does not.
 import '../../src/index.css';
 
@@ -84,6 +85,8 @@ const bg = (el) => getComputedStyle(el).backgroundColor;
 const press = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown', {
   key, keyCode, which: keyCode, bubbles: true, cancelable: true,
 }));
+/** One ArrowRight is the ladder's first rung, not the old fixed skip. */
+const TAP_MS = SKIM_STEPS[0] * 1000;
 
 // The player's ↓ is a two-stop ladder: with the seek bar up and no cursor, the
 // first press returns to the buttons and only the second steps; with the bar
@@ -249,22 +252,24 @@ async function groupA() {
     text.slice(0, 180));
   await closeStats();
 
-  // Five presses inside one gesture. The failure this catches is a getter that
-  // returns the last *poll* instead of the pending target, which moves the
-  // user 15 s instead of 75.
+  // Five presses inside one gesture. Two things are pinned: the getter must
+  // return the pending (not the last polled) position, or the presses do not
+  // accumulate, and the burst must reach the engine as one deferred seek, not
+  // five seeks that abort each other on a heavy file.
   const before = fake.positionMs;
+  const seeksBefore = fake.calls.seek.length;
   for (let i = 0; i < 5; i += 1) {
     press('ArrowRight', 39);
     await sleep(15);
   }
-  await sleep(400);
-  const seeks = fake.calls.seek;
-  const first = seeks[0];
-  const last = seeks[seeks.length - 1];
-  check('A5 five rapid skims accumulate to +75 s rather than collapsing to one',
-    seeks.length === 5 && Math.abs((last - first) / 1000 - 60) <= 2
-    && Math.abs(last / 1000 - (before / 1000 + 75)) <= 3,
-    `targets=${seeks.map(s => Math.round(s / 1000)).join(',')} from ${(before / 1000).toFixed(1)} s`);
+  await sleep(700);
+  const targets = fake.calls.seek.slice(seeksBefore);
+  const step = SKIM_STEPS[0];
+  check('A5 five rapid skims accumulate and reach the engine as one seek',
+    targets.length === 2
+    && Math.abs(targets[0] / 1000 - (before / 1000 + step)) <= 3
+    && Math.abs(targets[1] / 1000 - (before / 1000 + step * 5)) <= 3,
+    `targets=${targets.map(s => Math.round(s / 1000)).join(',')} from ${(before / 1000).toFixed(1)} s`);
 
   // ── Hide and return ──
   const positionAtHide = fake.positionMs;
@@ -377,7 +382,7 @@ async function groupD() {
   // candidates at all, since the fake would otherwise accept the direct file.
   fake.mode.add('failPrepare');
   // Two scenes of one format in one session: the first pays for the refusal, the
-  // second hits the cache and goes straight to AVPlay's HLS transcode — where the
+  // second hits the cache and goes straight to AVPlay's HLS transcode, where the
   // stats row used to read "AVPlay · AVPlay refused this format".
   await remount([scene({
     id: '9205',
@@ -418,7 +423,7 @@ async function groupD() {
 
   // The same format again: direct AVPlay is skipped from the cache, and the
   // HLS transcode is played *by AVPlay*. The refusal note must stay off that
-  // row — a cached refusal explains a browser fallback, not an AVPlay stream.
+  // row, a cached refusal explains a browser fallback, not an AVPlay stream.
   fake.mode.delete('failPrepare');
   fake.mode.add('failDirect');
   await stepNext();
@@ -441,7 +446,7 @@ async function groupD() {
 // ── E: the session kill switch ──────────────────────────────
 async function groupE() {
   // Engine-level failures, i.e. `open()` itself throwing. A *content* refusal
-  // must never trip this — group B already proved it does not.
+  // must never trip this, group B already proved it does not.
   fake.mode.add('failOpen');
   await remount([
     scene({ id: '9301', stream: at('/tone9301.wav'), container: 'mkv', videoCodec: 'hevc' }),
@@ -506,13 +511,13 @@ async function groupF() {
   const before = fake.positionMs;
   const seeksBefore = fake.calls.seek.length;
   press('ArrowRight', 39);
-  // Past one 1.5 s settle window, still inside the 3 s the engine takes.
+  // Inside the 3 s settle window, still inside the 3 s the engine takes.
   await sleep(2200);
   check('F1 a slow seek is not re-issued while the engine is working',
     started && fake.calls.seek.length - seeksBefore === 1,
     `seeks=${fake.calls.seek.length - seeksBefore} state=${fake.state}`);
 
-  const target = before + 15000;
+  const target = before + TAP_MS;
   const landed = await waitFor(
     () => Math.abs(fake.positionMs - target) < 3000, 6000);
   check('F2 ...and it lands when the engine finishes it', landed,
@@ -531,7 +536,7 @@ async function groupF() {
 
 // ── G: a seek the engine handles badly ──────────────────────
 async function groupG() {
-  // G1 — the engine pauses itself to rebuffer a seek. Reading that PAUSED as
+  // G1, the engine pauses itself to rebuffer a seek. Reading that PAUSED as
   // a user pause is how a scene stays frozen: `wantPlaying` goes false and
   // nothing asks the engine to play again. The player must ask again.
   fake.mode.add('pauseOnSeek');
@@ -553,10 +558,10 @@ async function groupG() {
     `seeks=${fake.calls.seek.length - seeksBefore} video=${!!videoEl()}`);
   fake.mode.delete('pauseOnSeek');
 
-  // G2 — the seek is accepted and never lands. The picture is frozen, the
-  // position does not move, and no callback ever fires: the scene has to move
-  // to the browser at the position the user asked for, rather than sit there.
-  fake.mode.add('stuckSeek');
+  // G2, the seek is accepted and never lands. The picture is frozen and the
+  // position does not move: the engine is reopened natively at the target. The
+  // scene must not move to the browser, that is what "TV player" prevents.
+  fake.mode.add('stuckSeekOnce');
   await remount([scene({
     id: '9403', stream: at('/tone9403.wav'),
     container: 'mp4', videoCodec: 'av1', audioCodec: 'aac',
@@ -564,23 +569,73 @@ async function groupG() {
   const playingG2 = await waitFor(() => fake.state === 'PLAYING' && planeOn(), 6000);
   await sleep(300);
   const before = fake.positionMs;
+  const opensG2 = fake.calls.open.length;
   press('ArrowRight', 39);
-  const switched = await waitFor(
-    () => hasData() && !planeOn()
-      && (videoEl()?.currentSrc || '').includes('/tone9403.wav'), 12000);
-  await sleep(700);
-  const landedAt = videoEl()?.currentTime ?? 0;
-  const target = (before + 15000) / 1000;
-  check('G2 a seek that never lands moves the scene to the browser',
-    playingG2 && switched, `plane=${planeOn()} src=${videoEl()?.currentSrc || '(none)'}`);
-  check('G3 ...at the position the user asked for',
-    Math.abs(landedAt - target) < 4,
-    `${landedAt.toFixed(1)} s vs ${target.toFixed(1)} s`);
+  const target = before + TAP_MS;
+  const reopenedG2 = await waitFor(() => fake.calls.open.length > opensG2, 12000);
+  const landedG2 = await waitFor(
+    () => Math.abs(fake.positionMs - target) < 3000, 6000);
+  await sleep(300);
+  check('G2 a seek that never lands reopens the live engine, never the browser',
+    playingG2 && reopenedG2 && planeOn() && !videoEl(),
+    `opens=${fake.calls.open.length - opensG2} plane=${planeOn()} video=${!!videoEl()}`);
+  check('G3 ...at the position the user asked for', landedG2,
+    `${(fake.positionMs / 1000).toFixed(1)} s vs ${(target / 1000).toFixed(1)} s`);
   check('G3 ...and the recovery is not shown as a failure',
     errorText() === '', `error="${errorText()}"`);
+
+  // G5, a file whose seeks never land at all. The reopen budget is spent and
+  // the session stays on AVPlay: a failed seek says nothing about the file's
+  // playability, so it must not be a reason to switch engines.
+  fake.mode.add('stuckSeek');
+  await remount([scene({
+    id: '9405', stream: at('/tone9405.wav'),
+    container: 'mp4', videoCodec: 'av1', audioCodec: 'aac',
+  })]);
+  await waitFor(() => fake.state === 'PLAYING' && planeOn(), 6000);
+  await sleep(300);
+  const opensG5 = fake.calls.open.length;
+  press('ArrowRight', 39);
+  await waitFor(() => fake.calls.open.length >= opensG5 + 2, 30000);
+  // Longer than one deadline: a third reopen would happen in this window.
+  await sleep(9000);
+  check('G5 the reopen budget is spent and the scene stays on AVPlay',
+    fake.calls.open.length === opensG5 + 2 && planeOn() && !videoEl(),
+    `opens=${fake.calls.open.length - opensG5} plane=${planeOn()} video=${!!videoEl()}`);
   fake.mode.delete('stuckSeek');
 
-  // G4 — a skim while paused. The engine never returns to PLAYING on its own
+  // G6, the failure the panel reported after a deep 4K skim: the seek lands,
+  // playback does not resume, and AVPlay raises CONNECTION_FAILED while
+  // reading the new range. That must reopen natively; treating it as a
+  // refused format is what exiled the file and moved the scene to the browser.
+  fake.mode.add('seekErrorOnce');
+  await remount([scene({
+    id: '9406', stream: at('/tone9406.wav'),
+    container: 'mp4', videoCodec: 'av1', audioCodec: 'aac',
+  })]);
+  const playingG6 = await waitFor(() => fake.state === 'PLAYING' && planeOn(), 6000);
+  await sleep(300);
+  const beforeG6 = fake.positionMs;
+  const opensG6 = fake.calls.open.length;
+  press('ArrowRight', 39);
+  const targetG6 = beforeG6 + TAP_MS;
+  const reopenedG6 = await waitFor(() => fake.calls.open.length > opensG6, 6000);
+  const landedG6 = await waitFor(
+    () => Math.abs(fake.positionMs - targetG6) < 3000, 6000);
+  await sleep(400);
+  check('G6 a read failure after the seek landed reopens, never the browser',
+    playingG6 && reopenedG6 && landedG6 && planeOn() && !videoEl()
+    && errorText() === '',
+    `opens=${fake.calls.open.length - opensG6} plane=${planeOn()}`
+      + ` video=${!!videoEl()} error="${errorText()}"`);
+  const statsG6 = (await openStats()) ? statsText() : '';
+  check('G6 ...and the readout does not name the format as refused',
+    statsG6.includes('AVPlay') && !/refused this format/i.test(statsG6),
+    statsG6.slice(0, 180));
+  await closeStats();
+  fake.mode.delete('seekErrorOnce');
+
+  // G4, a skim while paused. The engine never returns to PLAYING on its own
   // (correctly), and the seek must still settle rather than be declared stuck:
   // a false verdict would switch engines on a working scene.
   await remount([scene({
@@ -603,16 +658,16 @@ async function groupG() {
     `state=${fake.state} plane=${planeOn()} video=${!!videoEl()}`
       + ` seeks=${fake.calls.seek.length - seeksG4}`);
   check('G4 ...the seek landed where it was asked to',
-    Math.abs(fake.positionMs - (pausedAtG4 + 15000)) < 3000,
+    Math.abs(fake.positionMs - (pausedAtG4 + TAP_MS)) < 3000,
     `${(fake.positionMs / 1000).toFixed(1)} s vs `
-      + `${((pausedAtG4 + 15000) / 1000).toFixed(1)} s`);
+      + `${((pausedAtG4 + TAP_MS) / 1000).toFixed(1)} s`);
   press(' ', 32);
   const resumedG4 = await waitFor(() => fake.state === 'PLAYING', 3000);
   check('G4 ...and resuming plays on from there, still on AVPlay',
     resumedG4 && !videoEl(), `state=${fake.state} video=${!!videoEl()}`);
 }
 
-// ── H: the shipped default — browser first ─────────────────
+// ── H: the shipped default, browser first ─────────────────
 // H1 an ordinary file never opens AVPlay; H2 a format the browser cannot demux
 // goes to AVPlay with no browser attempt; H3/H4 a stalled browser source is handed
 // over at 4 s, and the stall is not a format verdict, so the next scene retries.
@@ -646,7 +701,7 @@ async function groupH() {
 
   // Two scenes of one new format in one session. The first hangs: the element
   // accepts the connection and never produces metadata, so only the watchdog can
-  // notice — 4 s, not the transcode's 10, because AVPlay is a real second opinion.
+  // notice, 4 s, not the transcode's 10, because AVPlay is a real second opinion.
   // Measured from the server's request timestamp; a driver-side timer would start
   // before the fetch and accept 2–6 s.
   const hangHitsBefore = await getHangHits();

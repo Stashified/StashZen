@@ -8,7 +8,7 @@
  * cannot suppress a sibling on the same target. The page's guard asks whether
  * *focus* is inside a dialog, but while the player is open focus is on <body>
  * (the detail page unmounted with Play; the player never focuses its own
- * container — see useControlsVisibility's leaveRail), so the page closed
+ * container, see useControlsVisibility's leaveRail), so the page closed
  * underneath it.
  *
  * The first Back is the player's controls-bar press and must not touch the
@@ -203,7 +203,7 @@ async function run() {
 
   // ── Back #1: the controls bar ─────────────────────────────
   // With the bar up the first press puts it away; the performer page must do
-  // nothing — it is not the top layer.
+  // nothing, it is not the top layer.
   await sleep(200);
   press('Escape', 27);
   await sleep(350);

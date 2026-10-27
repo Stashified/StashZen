@@ -1,5 +1,5 @@
 /**
- * listCache — module-scope cache for paginated list responses.
+ * listCache, module-scope cache for paginated list responses.
  *
  * A Map plus an inflight Map plus a clear export, shared by the list services.
  *
@@ -14,14 +14,14 @@
 
 import { dataSourceKey } from './settings.js';
 
-// ~50 entries x 40 scenes is a few MB of normalised objects — enough for a
+// ~50 entries x 40 scenes is a few MB of normalised objects, enough for a
 // deep scroll plus the page-1 keys that tab switches keep coming back to.
 const MAX_ENTRIES = 50;
 
 /**
  * NUL-joined: NUL can't occur in a URL, a sort enum or a search string, so
  * adjacent parts can't run together into a colliding key. Objects (the
- * `*_filter` payloads) are JSON-encoded — key order is insertion order, so
+ * `*_filter` payloads) are JSON-encoded, key order is insertion order, so
  * the same filter object always produces the same key.
  */
 const SEP = '\u0000';
@@ -108,7 +108,7 @@ export function createListCache() {
  * Drop every cached list page, in every service, at once.
  *
  * `clearScenePages`-style exports cover writes the app makes; this covers what
- * it cannot see — the library changed on the server. Called on tab switch so
+ * it cannot see, the library changed on the server. Called on tab switch so
  * arriving re-reads page 1 (the remount alone was not enough).
  */
 export function clearAllListCaches() {

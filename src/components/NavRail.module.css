@@ -63,7 +63,7 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Where you are, surviving the focus ring on top of it — as in the app menu's
+/* Where you are, surviving the focus ring on top of it, as in the app menu's
    rows and the player rail's `.active`. */
 .item.active {
   color: var(--text-primary);
@@ -82,6 +82,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The news lives in Settings, so the mark does too. Pushed right so it clears
+   the label, and kept out of the flex shrink so it cannot vanish. */
+.updateDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* Pushes Settings to the bottom. */

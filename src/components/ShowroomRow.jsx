@@ -1,5 +1,5 @@
 /**
- * ShowroomRow — one shelf: a heading, up to five cards, and a See-all tile.
+ * ShowroomRow, one shelf: a heading, up to five cards, and a See-all tile.
  *
  * The cards are the app's real cards, not showroom variants: focus ids, preview
  * behaviour, long-press menu and selection path are unchanged. The four shelves
@@ -11,10 +11,10 @@
  * deliberately not `verticalOnly`: Right past the fifth card must reach it.
  *
  * `isTop` means "the first shelf that actually renders", not the first row in
- * the table — an empty shelf hands the rail edge and autofocus to the next one.
+ * the table, an empty shelf hands the rail edge and autofocus to the next one.
  *
  * Every card sits in `.cell`, which owns the shelf's one height (see
- * ShowroomPage.module.css), and gets `fill` so its cover takes what is left —
+ * ShowroomPage.module.css), and gets `fill` so its cover takes what is left:
  * that is what makes a portrait performer and a landscape studio card occupy
  * the same box. The See-all tile is unwrapped: it stretches to the row height,
  * and the harness looks for it as the strip's last element.
@@ -86,12 +86,12 @@ export default function ShowroomRow({
     [items, row.focusIdPrefix],
   );
 
-  // An empty row is not a shelf and not an error — a library with no galleries
+  // An empty row is not a shelf and not an error, a library with no galleries
   // legitimately has no gallery shelf, so it does not exist.
   //
   // A *failed* row must not take that same path, or a timeout looks like an
   // empty shelf: heading, cards and See-all vanish and the rest slides up with
-  // no explanation. One inert line under the heading is the whole report — the
+  // no explanation. One inert line under the heading is the whole report, the
   // next move is back to a tab, which asks again.
   if (!items.length) {
     if (!error) return null;
@@ -104,8 +104,8 @@ export default function ShowroomRow({
   }
 
   // Up out of the top shelf leaves for the rail's active row, mirroring Left.
-  // Without the edge the geometry picks the *nearest* row above — Scenes, the
-  // row the user is not on — one Down press from the wrong part of the rail.
+  // Without the edge the geometry picks the *nearest* row above, Scenes, the
+  // row the user is not on, one Down press from the wrong part of the rail.
   // Measured at 1920x1080 in showroom-entry's H11.
   const topEdge = isTop ? TOP_EDGE : null;
 

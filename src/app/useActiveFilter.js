@@ -1,5 +1,5 @@
 /**
- * useActiveFilter — the saved-filter list, the current selection, and the
+ * useActiveFilter: the saved-filter list, the current selection, and the
  * three values the listing tabs actually fetch with.
  *
  * The subtle piece is `activeObjectFilter`: it is memoised on the resolved
@@ -17,7 +17,7 @@ export function useActiveFilter({ controls, filterMode, dataKey }) {
   // Bumped after a save so the hook's effect re-runs: useSavedFilters is keyed
   // on mode + source and has no refresh of its own, and `saveFilter` clears the
   // module cache behind it. Folding it into `version` also partitions the cache
-  // key, which is harmless — the old partition is already cleared.
+  // key, which is harmless, the old partition is already cleared.
   const [filtersEpoch, setFiltersEpoch] = useState(0);
   const { filters: savedFilters } = useSavedFilters(filterMode, dataKey, filtersEpoch);
 
@@ -38,14 +38,14 @@ export function useActiveFilter({ controls, filterMode, dataKey }) {
   // `??` and why no cache invalidation is needed.
   const resolvedObjectFilter = resolveObjectFilter(controls, activeFilter);
   // `usePagedList`'s reset effect keys on this object's *identity*, and the
-  // same filter comes back as a fresh object on every refetch — unchanged
+  // same filter comes back as a fresh object on every refetch, unchanged
   // values would throw the rows away and fetch page 1 again. Keying on the
   // JSON, as `listCacheKey` does, holds it stable.
   const objectFilterJson = JSON.stringify(resolvedObjectFilter);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const activeObjectFilter = useMemo(() => resolvedObjectFilter, [objectFilterJson]);
 
-  // `find_filter.q` carries the saved filter's search string — many "filters"
+  // `find_filter.q` carries the saved filter's search string, many "filters"
   // are just a search query. User-typed search overrides it.
   const userSearch = controls.search || '';
   const activeSearchQuery = userSearch || activeFilter?.findFilter?.q || '';

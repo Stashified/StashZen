@@ -1,5 +1,5 @@
 /**
- * MarkerGrid — infinite-scroll grid of marker cards, reading sort/order/cols
+ * MarkerGrid, infinite-scroll grid of marker cards, reading sort/order/cols
  * from `controls`.
  *
  * As in VideoGrid, usePagedList owns paging and this supplies the request and
@@ -24,19 +24,19 @@ export default function MarkerGrid({
   const { sort, order, cols } = controls;
 
   const fetchPage = useCallback(
-    (page) =>
-      fetchMarkers({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      fetchMarkers({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d.markers, total: d.total })),
     [sort, order, objectFilter, searchQuery],
   );
 
   const {
-    items: markers, total, page, loading, loadingMore, error, exhausted, loadMore,
+    items: markers, total, page, loading, retrying, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // A restore by `marker-<id>` pages forward through unloaded markers — see
+    // A restore by `marker-<id>` pages forward through unloaded markers, see
     // utils/focus.js.
     focusPrefix: 'marker',
   });
@@ -69,7 +69,7 @@ export default function MarkerGrid({
       styles={styles}
       loading
       spinnerLabel="Loading markers"
-      text="Loading markers…"
+      text={retrying ? 'Connection problem, retrying…' : 'Loading markers…'}
     />
   );
 
@@ -113,7 +113,7 @@ export default function MarkerGrid({
           )}
           {error && !loadingMore && (
             <span className={styles.loadingMoreText} style={{ color: 'var(--red)' }}>
-              Couldn't load more — {error}
+              Couldn't load more: {error}
             </span>
           )}
         </div>

@@ -1,14 +1,16 @@
 /**
- * usePlayerMedia — the <video> element's wiring. The four effects here consume
+ * usePlayerMedia: the <video> element's wiring. The four effects here consume
  * the resume decision, the scene id and the resolver's answer, and only the
  * render consumes them, hence their last place in the hook order.
  *
  * Two invariants:
  *   - `onTimeUpd` drops ticks while `sourceFreshRef` is set; crediting runs
- *     only after that guard.
+ *     only after that guard. It leaves the displayed clock alone while a skim
+ *     gesture's seek is still unsent (`skimPendingRef`): the element is then
+ *     playing on at the old position, which is not where the bar should go.
  *   - the wiring effect's dependency list is load-bearing: `video?.id` is the
  *     queue's change signal (the element survives an advance), and
- *     `effectiveStart` is there only to keep `onLoadedMd`'s closure fresh —
+ *     `effectiveStart` is there only to keep `onLoadedMd`'s closure fresh:
  *     widening the list would tear the listeners down mid-playback.
  */
 
@@ -26,7 +28,9 @@ export function usePlayerMedia({
   pendingLiveResumeRef,
   fallbackSeekRef,
   sourceFreshRef,
+  skimPendingRef,
   playbackSrc,
+  sourceSceneId,
   sourceExhausted,
   reportSourceFailure,
   codecs,
@@ -63,7 +67,9 @@ export function usePlayerMedia({
 
     // Where the play count is written (the once-per-scene latch is the
     // reporter's). `playing`, not mount: a scene that 404s is not watched.
+    // Stale = the outgoing scene's session, whose play is not this scene's.
     const onPlaying   = () => {
+      if (sourceFreshRef.current) return;
       setBuffering(false);
       progress.countPlay(sceneId);
     };
@@ -79,6 +85,13 @@ export function usePlayerMedia({
       // The credit rule lives in the reporter's `tick`; a seek in flight must
       // not be credited even though it is not a pause.
       progress.tick(t, v.paused || v.seeking);
+      // A paused seek back from the end emits no `play`, so the completion
+      // latch must be cleared here or the teardown saves 0.
+      if (v.currentTime < (v.duration || 0) - 1) progress.reopen();
+      // A held skim owns the timeline until its seek lands: the element is
+      // still playing at the old position, and syncing to it here made the
+      // bar yoyo between the gesture target and the frame on screen.
+      if (skimPendingRef?.current) return;
       setCurrentTime(t);
     };
     const onLoadedMd  = () => {
@@ -112,7 +125,7 @@ export function usePlayerMedia({
     const onDurationChange = () => setElementDuration(v.duration || 0);
     // A media element's `error` event is not proof that *playback* failed: it
     // also fires for failing subresources (the poster, in some engines), while
-    // `v.error` is set only for a genuine MediaError — without this guard a
+    // `v.error` is set only for a genuine MediaError, without this guard a
     // healthy, still-playing video gets "Failed to load video" over it.
     //
     // The resolver gets first refusal: a scene whose codec the TV cannot decode
@@ -124,13 +137,16 @@ export function usePlayerMedia({
       setError(playbackFailureMessage(codecs));
     };
     const onEnded     = () => {
+      // The outgoing session's end is not this scene's: acting on it would
+      // save 0 for the new scene and skip it.
+      if (sourceFreshRef.current) return;
       // Report the finished scene before stepping off it: the teardown save
       // would otherwise be the only one, after the queue swapped the src.
       // `complete()` makes it a zero position, so the scene leaves Continue
       // Watching rather than staying at a full bar.
       progress.complete();
       progress.save(video?.id);
-      // Advance only if there is somewhere to go — the last scene of a
+      // Advance only if there is somewhere to go, the last scene of a
       // queue stops where it is, with the controls up.
       goNext().then((moved) => { if (!moved) setPlaying(false); });
     };
@@ -145,7 +161,7 @@ export function usePlayerMedia({
     v.addEventListener('error',    onError);
     v.addEventListener('ended',    onEnded);
 
-    // Not started from here — see the autoplay effect below. `autoPlay` is gone
+    // Not started from here, see the autoplay effect below. `autoPlay` is gone
     // from the element for the same reason: a saved position must not start
     // playing under the prompt asking about it.
     showControls();
@@ -166,7 +182,8 @@ export function usePlayerMedia({
   }, [
     showControls, effectiveStart, video?.id, goNext, progress, reportSourceFailure,
     codecs, askingToResume, mediaRef, startSeekedRef,
-    pendingLiveResumeRef, fallbackSeekRef, sourceFreshRef, setCurrentTime,
+    pendingLiveResumeRef, fallbackSeekRef, sourceFreshRef, skimPendingRef,
+    setCurrentTime,
     setElementDuration, setError,
   ]);
 
@@ -179,12 +196,15 @@ export function usePlayerMedia({
   useEffect(() => {
     const v = mediaRef.current;
     if (!v || !video?.id) return;
+    // The old session is still open until the new source resolves; playing it
+    // would restart the previous scene in the gap.
+    if (sourceSceneId !== video.id) return;
     if (askingToResume) return;
     v.play().catch(() => {});
     // `playbackSrc` is here for the fallback, not the first load: changing the
     // element's `src` runs the load algorithm, which stops playback, so a
     // re-sourced scene would sit paused with nothing but the big ▶ to explain.
-  }, [video?.id, askingToResume, playbackSrc, mediaRef]);
+  }, [video?.id, askingToResume, playbackSrc, sourceSceneId, mediaRef]);
 
   /**
    * Re-arm the start seek when the source changes under a scene.
@@ -201,13 +221,13 @@ export function usePlayerMedia({
   // A **layout** effect: the read must happen in the commit that swaps the
   // source, before the element's load task runs, because `loadedmetadata` reads
   // `fallbackSeekRef` and `sourceFreshRef`. As a passive effect the fallback
-  // resumed at 0.4 s instead of 12.9 s — the target had been read from the
+  // resumed at 0.4 s instead of 12.9 s, the target had been read from the
   // outgoing engine's empty timeline. Layout effects all run before the load.
   useLayoutEffect(() => {
     const sceneId = video?.id ?? null;
     const prev = fallbackSeekRef.current;
     // Same scene, different source is a fallback: keep the on-screen playhead.
-    // A different scene inherits nothing — its first source starts from the
+    // A different scene inherits nothing, its first source starts from the
     // resume decision (or a marker).
     fallbackSeekRef.current = prev.sceneId === sceneId
       ? { sceneId, time: progress.position() }
@@ -221,7 +241,7 @@ export function usePlayerMedia({
   ]);
 
   /**
-   * Every candidate failed — the second way playback gives up. Here the
+   * Every candidate failed, the second way playback gives up. Here the
    * resolver ran out without the element rejecting a source (a missing direct
    * URL, transcoding off), while the `error` handler above is the element
    * refusing one it did load. Both end in the same sentence, hence one wording

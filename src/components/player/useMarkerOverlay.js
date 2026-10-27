@@ -1,5 +1,5 @@
 /**
- * useMarkerOverlay — the add-marker form and its confirmation.
+ * useMarkerOverlay: the add-marker form and its confirmation.
  *
  * Opening pauses (a scene running on would make the marker land elsewhere) and
  * remembers focus; closing restores it after the form's chips have unmounted.
@@ -30,7 +30,7 @@ export function useMarkerOverlay({ mediaRef, addMarkers, showControls }) {
 
   const closeMarkerModal = useCallback(() => {
     // Resume only if the form interrupted playback: a scene already paused must
-    // stay paused — the form is not a play button.
+    // stay paused, the form is not a play button.
     if (markerModal?.wasPlaying) {
       const v = mediaRef.current;
       if (v?.paused) v.play().catch(() => {});

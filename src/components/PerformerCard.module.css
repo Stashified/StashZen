@@ -1,5 +1,5 @@
 .card {
-  /* Local paint containment and an inset focus ring — see the note in
+  /* Local paint containment and an inset focus ring, see the note in
      MarkerCard.module.css. */
   contain: content;
   display: block;
@@ -11,7 +11,7 @@
   text-align: left;
   width: 100%;
   padding: 0;
-  /* No `box-shadow` transition — see VideoCard.module.css. */
+  /* No `box-shadow` transition, see VideoCard.module.css. */
   transition:
     transform    0.14s var(--ease-tv),
     border-color 0.10s ease-out;

@@ -1,5 +1,5 @@
 /**
- * ExitPrompt — modal asking the user to confirm app exit.
+ * ExitPrompt, modal asking the user to confirm app exit.
  *
  * Shown on Back at a top-level tab. On confirm it exits via
  * `tizen.application`; in a browser that silently no-ops.

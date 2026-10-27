@@ -1,5 +1,5 @@
 /**
- * usePlayerKeys — installs the player's capture-phase key listener.
+ * usePlayerKeys: installs the player's capture-phase key listener.
  *
  * Deliberately thin: `routePlayerKey` decides everything (action, preventDefault,
  * stopPropagation) and this hook only performs it. The map is unit-tested in
@@ -7,7 +7,6 @@
  */
 
 import { useEffect } from 'react';
-import { SKIP_SECONDS } from './constants.js';
 import { foreignDialogOpen, routePlayerKey } from './keyRouting.js';
 
 export function usePlayerKeys({
@@ -24,7 +23,7 @@ export function usePlayerKeys({
   stepScene,
   singleScene,
 }) {
-  // Keyboard handling — capture phase, so the player sees every key first.
+  // Keyboard handling, capture phase, so the player sees every key first.
   // Two things take a key away: a foreign overlay (marker form, detail page),
   // and the player's own rail, which owns ←/→/↓ and Enter for spatial nav and
   // the focused button. Everything else is handled here.
@@ -50,8 +49,8 @@ export function usePlayerKeys({
         case 'hide-controls': hideControls(); break;
         case 'close': onClose?.(); break;
         case 'reveal-rail': revealRail(); break;
-        case 'skim-back': skim(-SKIP_SECONDS); break;
-        case 'skim-forward': skim(SKIP_SECONDS); break;
+        case 'skim-back': skim(-1, e.repeat); break;
+        case 'skim-forward': skim(1, e.repeat); break;
         default: break;
       }
     };

@@ -1,8 +1,8 @@
 /**
- * playQueue.js — the two shapes a playback session is built from.
+ * playQueue.js: the two shapes a playback session is built from.
  *
- * Every entry point into the player produces the same shape — a queue plus
- * the index to start at — so the player has one code path rather than a
+ * Every entry point into the player produces the same shape, a queue plus
+ * the index to start at, so the player has one code path rather than a
  * "single video" one and a "queue" one that can drift apart.
  */
 
@@ -10,7 +10,7 @@
  * A queue of one: the detail page's Play, and a marker.
  *
  * `fetchPage: null` is what tells the queue it has nowhere to extend into.
- * A longer queue comes from a view — its array, the total the server
+ * A longer queue comes from a view, its array, the total the server
  * reported, the page it stopped at, and its own `fetchPage` closure. See
  * usePlayQueue.
  */
@@ -22,7 +22,7 @@ export function queueOf(video, startSeconds = 0) {
 
 /**
  * The queue item for a marker. A marker is a timestamp inside a scene, so it
- * opens without the scene browser in front of it — but the item has to carry
+ * opens without the scene browser in front of it, but the item has to carry
  * everything the player reads from a grid card.
  *
  * Two markers on one scene produce the same `id` on purpose: the player's
@@ -32,10 +32,10 @@ export function queueItemFromMarker(marker) {
   return {
     id: marker.scene.id,
     // The marker this row came from, so a marker queue can put the cursor
-    // back on the marker card for the scene last viewed — the scene id alone
+    // back on the marker card for the scene last viewed, the scene id alone
     // does not name a card in the Markers tab. See usePlayback.
     markerId: marker.id ?? null,
-    title: `${marker.scene.title} — ${marker.title}`,
+    title: `${marker.scene.title}: ${marker.title}`,
     stream: marker.scene.stream,
     thumbnail: marker.screenshot || marker.scene.screenshot,
     // Forward the parent scene's sprite/vtt so the player's skim
@@ -62,12 +62,12 @@ export function queueItemFromMarker(marker) {
  * The Markers tab lists markers, but the player plays scenes: two markers on
  * one scene are two ways into the same video. Keeping both would make the
  * queue walk into a scene it has just left, and the player's dedupe would drop
- * the second a moment later — silently, so the counter would disagree.
+ * the second a moment later, silently, so the counter would disagree.
  * First occurrence wins, in listing order.
  *
  * Each row also carries `startSeconds`. Only the starting row's timestamp is
  * read (`VideoPlayer`'s `index === startIndex` rule), so a later value is
- * inert — but keeping it lets "Play from here" start on its marker without a
+ * inert, but keeping it lets "Play from here" start on its marker without a
  * second code path.
  */
 export function markerQueueItems(markers) {
@@ -86,7 +86,7 @@ export function markerQueueItems(markers) {
 /**
  * A play queue seeded from the Markers listing.
  *
- * `markers` is the run to start with — the whole loaded listing for "Play all",
+ * `markers` is the run to start with, the whole loaded listing for "Play all",
  * or rows from the pressed marker onward for "Play from here". Paging continues
  * the *marker* listing, mapping each page through `markerQueueItems` so the
  * dedupe also applies to rows arriving while playing. `total` is the marker

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-mockart.mjs — the cover generator's decisions, checked as data.
+ * verify-mockart.mjs: the cover generator's decisions, checked as data.
  *
  *   node scripts/verify-mockart.mjs
  *
@@ -76,7 +76,7 @@ const first = SEEDS.map(s => coverArt(s));
 eq('two calls in one process agree', coverArt('scene-0'), first[0]);
 
 // A query string makes Node evaluate the module again rather than return the
-// cached copy — a reload. Any module-level counter, memo or lazy table shows up
+// cached copy, a reload. Any module-level counter, memo or lazy table shows up
 // here and nowhere else.
 const fresh = await import('../src/utils/mockArt.js?reload=1');
 eq('a freshly evaluated module agrees', fresh.coverArt('scene-0'), first[0]);
@@ -128,7 +128,7 @@ ok('a portrait cover is not the landscape one for the same seed',
 // ── 4. Reachability and shape ─────────────────────────────
 console.log('\nVocabulary');
 
-// Enough seeds that a ~5% regime is sampled ~200 times — the bands below can
+// Enough seeds that a ~5% regime is sampled ~200 times, the bands below can
 // then be tight without being flaky.
 const SAMPLE = Array.from({ length: 4000 }, (_, i) => `s-${i}`);
 const landscapePlans = SAMPLE.map(s => artPlan(s));
@@ -181,7 +181,7 @@ for (const name of ['dark', 'blown', 'clutter']) {
 }
 
 // The clutter regime exists to be *busy*, so the regime has to be what decides
-// the number of motifs — a field that is set and never read would pass every
+// the number of motifs, a field that is set and never read would pass every
 // check above.
 const clutterPlans = landscapePlans.filter(p => p.regime === 'clutter');
 ok('clutter draws three motifs', clutterPlans.every(p => p.motifs.length === 3));
@@ -249,7 +249,7 @@ console.log('\nThe emitted document');
 
 // ── 7. The source has not grown new vocabulary ────────────
 // A cheap guard against a palette or motif added as a local helper but never
-// wired into REGIMES or the motif arrays — the failure mode the checks above
+// wired into REGIMES or the motif arrays, the failure mode the checks above
 // cannot see directly.
 {
   const src = readFileSync(SOURCE, 'utf8');

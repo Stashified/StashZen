@@ -16,7 +16,7 @@ import { isBackKey } from '../utils/input.js';
  * `preventDefault`/`stopPropagation` run before the handler. Note that
  * `stopPropagation` does not suppress a *sibling* listener on the same target
  * (only `stopImmediatePropagation` would), so a layer that must yield to a
- * nested one checks for it inside its own handler — see the `pinFlowRef` and
+ * nested one checks for it inside its own handler, see the `pinFlowRef` and
  * `focusScopeOf` guards at the call sites.
  *
  * `isBack` should be stable (the default is); an inline predicate re-registers
@@ -39,7 +39,7 @@ export function useBackKey(onBack, {
       if (preventDefault) e.preventDefault();
       if (stopPropagation) e.stopPropagation();
       // A held Back repeats, and each repeat reaches whichever layer is on top
-      // by then — one press could close the layer that owned it and every one
+      // by then, one press could close the layer that owned it and every one
       // behind it. Only the first keydown is the press; it is still swallowed
       // above.
       if (e.repeat) return;

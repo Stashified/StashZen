@@ -1,5 +1,5 @@
 /**
- * useFilteredNavigation — activating a tag, studio or gallery, and getting
+ * useFilteredNavigation: activating a tag, studio or gallery, and getting
  * back from what it opened.
  *
  * Activation routes through the filter machinery rather than new page types:
@@ -18,7 +18,7 @@ import { WORKING_FILTER_ID } from './tabConfig.js';
 
 export function useFilteredNavigation({ activeTab, dataKey, changeTab, setControls }) {
   // Where an activated tag, studio or gallery sent the user *from*, so Back
-  // can return: `{ tab, focusId, to }` — the section, the card to focus
+  // can return: `{ tab, focusId, to }`, the section, the card to focus
   // (returning to the top of a 533-row grid is not returning), and the tab
   // the filter was applied for.
   //
@@ -40,7 +40,7 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
   // own change must not clear what it just set, or Back on a later tab jump
   // sends the user into a section they left several presses ago.
   //
-  // An effect is fine here — this only affects Back, not a fetch, so the
+  // An effect is fine here, this only affects Back, not a fetch, so the
   // child-before-parent ordering does not matter.
   useEffect(() => {
     setFilterOrigin(prev => (prev && prev.to !== activeTab ? null : prev));

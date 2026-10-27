@@ -1,4 +1,4 @@
-/* FirstRun — the connection setup screen. Its field and button rules restate
+/* FirstRun, the connection setup screen. Its field and button rules restate
    SettingsPanel's so both URL-and-key screens look like one app; the layouts
    differ, so only the tokens are shared. The interaction lives in
    useEditableField and useFocusable, which are genuinely shared. */

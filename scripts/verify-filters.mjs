@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-filters.mjs — replay every saved filter against the live server.
+ * verify-filters.mjs: replay every saved filter against the live server.
  *
  *   node scripts/verify-filters.mjs            # report
  *   node scripts/verify-filters.mjs --verbose  # + the translated JSON per filter
@@ -11,14 +11,14 @@
  * asserted.
  *
  * For SCENES it also calls the app's *real* `fetchVideos` with the raw stored
- * filter — real query text, loadVideos wiring and normaliser. Its count must
+ * filter, real query text, loadVideos wiring and normaliser. Its count must
  * match the hand-translated one; a mismatch means the wiring, not the
  * translator, is wrong. (videoService imports under Node: settings.js catches
  * the missing `localStorage`, and `import.meta.env` is undefined here.)
  *
  * Dev-only: never imported by src/, so never in the .wgt bundle.
  *
- * Only `count` is selected and only field *presence* is asserted — never a
+ * Only `count` is selected and only field *presence* is asserted, never a
  * title, path or other scene metadata. The translated JSON under --verbose does
  * contain the filter's own criteria (a folder path, a tag id), hence opt-in.
  *
@@ -121,8 +121,8 @@ async function probe(spec, filter) {
 }
 
 /**
- * Drive the app's real fetch path — loadVideos' query, translateFilter call
- * and normaliser — for one *raw* stored filter. Only field presence is
+ * Drive the app's real fetch path, loadVideos' query, translateFilter call
+ * and normaliser, for one *raw* stored filter. Only field presence is
  * asserted; no scene data is captured or printed.
  */
 async function probeApp(rawFilter) {
@@ -191,7 +191,7 @@ for (const spec of MODES) {
       : f.object_filter;
 
     if (stored == null || typeof stored !== 'object') {
-      // An empty object_filter means "no criteria" — the saved filter does its
+      // An empty object_filter means "no criteria", the saved filter does its
       // work purely through find_filter.q, which the app already honours.
       console.log(`  ·  ${f.name} — no object_filter (search/sort only, already working)`);
       continue;

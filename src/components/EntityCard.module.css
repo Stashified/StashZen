@@ -3,7 +3,7 @@
    the two. */
 
 .card {
-  /* Local paint containment and an inset focus ring — see MarkerCard. */
+  /* Local paint containment and an inset focus ring, see MarkerCard. */
   contain: content;
   display: block;
   background: var(--bg-card);
@@ -14,7 +14,7 @@
   text-align: left;
   width: 100%;
   padding: 0;
-  /* No `box-shadow` transition — see VideoCard.module.css. */
+  /* No `box-shadow` transition, see VideoCard.module.css. */
   transition:
     transform    0.14s var(--ease-tv),
     border-color 0.10s ease-out;

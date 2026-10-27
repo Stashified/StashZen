@@ -86,7 +86,7 @@ async function tapEnter() {
   await sleep(150);
 }
 
-// Focus an element by its registry id, the only handle the cards have — they
+// Focus an element by its registry id, the only handle the cards have, they
 // carry no DOM id and their CSS-module classes are hashed.
 const focus = (id) => {
   const entry = registry.get(id);
@@ -224,7 +224,7 @@ async function run() {
   focus('nav-settings');
   await sleep(120);
 
-  // ── R6  the crossing — the load-bearing claim ───────────
+  // ── R6  the crossing, the load-bearing claim ───────────
   // In a separate zone, findBestCandidate returns null for Right and focus
   // never leaves the rail.
   await press('ArrowRight');
@@ -255,8 +255,8 @@ async function run() {
   // the geometry happens to agree with.
   //
   // The controls bar is the case that matters: it was outside the grid's zone
-  // and reachable only through the rail. Find it by position — immediately
-  // above <main> — not by zone, or the probe would test nothing after the fix.
+  // and reachable only through the rail. Find it by position, immediately
+  // above <main>, not by zone, or the probe would test nothing after the fix.
   const barEl = document.querySelector('[role="main"]')?.previousElementSibling;
   const barIds = barEl
     ? [...registry.entries()].filter(([, v]) => barEl.contains(v.el)).map(([id]) => id)
@@ -640,7 +640,7 @@ async function run() {
   await sleep(60);
 
   // ── R9  Enter on a tab row switches the tab ─────────────
-  // Close the panel first — it is modal and would scope the vault search.
+  // Close the panel first, it is modal and would scope the vault search.
   if (dialog) {
     const back = document.querySelector('[role="dialog"]');
     back.dispatchEvent(new KeyboardEvent('keydown', {
@@ -684,7 +684,7 @@ async function run() {
     parseFloat(cs?.opacity ?? '0') === 1, `opacity ${cs?.opacity}`);
 
   // ── R11  Down at the end of a listing stays in the content ─────────────
-  // With nothing below the focused card — mid-load or at the listing's end —
+  // With nothing below the focused card, mid-load or at the listing's end:
   // a rail row is the nearest Down candidate, since the rows share the grid's
   // zone and Settings is fixed at the foot. `skipRailRows` is the guard.
   // The fake's `short` mode (one full row, then one card) makes this

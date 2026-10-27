@@ -1,5 +1,5 @@
 /**
- * MarkersPage — the marker grid, or the carousel/list for this section's mode.
+ * MarkersPage, the marker grid, or the carousel/list for this section's mode.
  * `mode` is a prop rather than `controls.mode`; see ScenesPage's header for why.
  */
 

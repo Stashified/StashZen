@@ -1,5 +1,5 @@
 /**
- * ServerJobRow — one job in the Settings → Server snapshot.
+ * ServerJobRow, one job in the Settings → Server snapshot.
  *
  * Its own component because Stop needs per-row state: a two-step confirm on
  * the list would arm every row. The row also receives `stopping` from the

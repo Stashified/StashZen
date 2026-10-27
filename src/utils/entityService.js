@@ -1,5 +1,5 @@
 /**
- * entityService.js — one loader for the four browse-only sections.
+ * entityService.js: one loader for the four browse-only sections.
  *
  * Tags, Studios, Galleries and Images differ in exactly four things: the
  * GraphQL root, the `*_filter` argument name, the result field, and row
@@ -16,7 +16,7 @@
  * THE ONE DIVERGENCE: the mock branch here honours `q`; the older services'
  * does not. A search box that does nothing in Test mode is worth fixing by
  * migrating those two later, not by making four new sections worse. `filter`
- * is ignored in Test mode everywhere — a stored filter is a server query and
+ * is ignored in Test mode everywhere, a stored filter is a server query and
  * there is no server.
  */
 
@@ -32,7 +32,7 @@ import { baseSort, stableSort } from './randomSort.js';
  *
  * `kind` and `itemsKey` are usually equal (`tags`/`tags`) but separate: `kind`
  * namespaces the cache key, `itemsKey` is the field the GraphQL result nests
- * the list under. `filterArg` must be passed — `tag_filter` for `findTags` but
+ * the list under. `filterArg` must be passed, `tag_filter` for `findTags` but
  * `image_filter` for `findImages`; there is no reliable rule.
  *
  * `searchFields` are what Test-mode `q` matches. `heroQuery` is an optional
@@ -56,7 +56,7 @@ export function createEntityService({
 }) {
   const cache = createListCache();
 
-  async function load({ sort, order, filter, q, page, limit, query: selectedQuery }) {
+  async function load({ sort, order, filter, q, page, limit, query: selectedQuery, signal }) {
     if (getSettings().useMock) {
       await new Promise(r => setTimeout(r, 400));
 
@@ -85,12 +85,12 @@ export function createEntityService({
         sort,
         direction: order === 'asc' ? 'ASC' : 'DESC',
       },
-      // Translated at query time, not at the call site — see the note in
+      // Translated at query time, not at the call site, see the note in
       // videoService.js. Raw is what stays in the cache key.
       [filterArg]: translateFilter(filter, filterType),
     };
 
-    const data = await runQuery(selectedQuery, variables);
+    const data = await runQuery(selectedQuery, variables, { signal });
     const rows = data?.[root]?.[itemsKey] || [];
 
     return {
@@ -118,13 +118,14 @@ export function createEntityService({
       // `random` is re-shuffled per request, so a listing would overlap its
       // own pages and the no-progress stop could end a short list early.
       // Seeding it from the request identity makes one listing one
-      // permutation; see randomSort.js. The `:hero` suffix is excluded — both
+      // permutation; see randomSort.js. The `:hero` suffix is excluded, both
       // variants are the same listing.
       const requestSort = stableSort(sort, kind, filter, q);
 
       const loader = () => load({
         sort: requestSort, order, filter, q, page, limit,
         query: useHeroQuery ? heroQuery : query,
+        signal: opts.signal,
       });
 
       if (!useCache) return loader();

@@ -1,7 +1,7 @@
 /**
- * performerService.js — Fetch performers from Stash GraphQL endpoint
+ * performerService.js: Fetch performers from Stash GraphQL endpoint
  *
- * Mirrors videoService.js — uses the runtime settings store for URL/key/mode.
+ * Mirrors videoService.js, uses the runtime settings store for URL/key/mode.
  */
 
 import { getSettings } from './settings.js';
@@ -12,6 +12,7 @@ import { translateFilter } from './filterTranslate.js';
 import { BIOS, COUNTRIES, mockPersonName } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
+import { baseSort, stableSort } from './randomSort.js';
 
 // `height` is the sort value; the row carries `height_cm`. Everything else
 // the Performers control offers (`name`, `rating`, `o_counter`, `play_count`,
@@ -48,7 +49,7 @@ function generateMockPerformers(count = 60) {
       details: BIOS[i % BIOS.length],
       created_at: now - i * 86400000,
       // Every sort the Performers control offers needs a field the comparator
-      // can find. Without these the engagement and career sorts all tie —
+      // can find. Without these the engagement and career sorts all tie:
       // a menu that looks live and does nothing.
       o_counter: Math.floor(extra() * 12),
       play_count: Math.floor(extra() * 45),
@@ -88,7 +89,7 @@ const FIND_PERFORMERS_QUERY = `
 //
 // `rating100` and `favorite` are the exception to "the card already has it":
 // the card holds `rating`, a one-decimal display string, and a write must be
-// based on the value Stash stores, not a formatted string — the same rule that
+// based on the value Stash stores, not a formatted string, the same rule that
 // makes `canEdit` false until the scene detail lands.
 //
 // `url` is deprecated on Performer and replaced by `urls`. Schema facts:
@@ -244,7 +245,7 @@ export async function updatePerformer(id, patch) {
 /**
  * Drop cached performer pages after a write. The Performers grid unmounts
  * while the detail page is open (TabContent swaps the page), so Back mounts
- * a fresh grid that fetches page 1 — this is what makes the new rating or
+ * a fresh grid that fetches page 1, this is what makes the new rating or
  * favourite appear there.
  */
 export function clearPerformerPages() {
@@ -273,7 +274,7 @@ function normalizePerformer(p) {
 // ═══════════════════════════════════════════════════════════
 const performerCache = createListCache();
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchPerformers({
   sort = 'created_at',
   order = 'desc',
@@ -281,10 +282,14 @@ export async function fetchPerformers({
   q = '',
   page = 1,
   limit = 40,
+  signal,
 } = {}) {
+  // `random` reshuffles per request, so page 2 would overlap page 1 and the
+  // no-progress stop could end the list early. See randomSort.js.
+  const requestSort = stableSort(sort, 'performers', filter, q);
   return performerCache.get(
-    listCacheKey('performers', sort, order, filter, q, page, limit),
-    () => loadPerformers({ sort, order, filter, q, page, limit }),
+    listCacheKey('performers', requestSort, order, filter, q, page, limit),
+    () => loadPerformers({ sort: requestSort, order, filter, q, page, limit, signal }),
   );
 }
 
@@ -295,12 +300,14 @@ async function loadPerformers({
   q = '',
   page = 1,
   limit = 40,
+  signal,
 } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
     let performers = generateMockPerformers(60);
 
-    performers.sort(mockComparator(sort, order, MOCK_SORT_ALIAS));
+    // `sort` may be `random_<n>`; the comparator knows only `random`.
+    performers.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
 
     // Paginate
     const start = (page - 1) * limit;
@@ -317,11 +324,11 @@ async function loadPerformers({
       sort,
       direction: order === 'asc' ? 'ASC' : 'DESC',
     },
-    // Translated at query time — see the note in videoService.js.
+    // Translated at query time, see the note in videoService.js.
     performer_filter: translateFilter(filter, 'PerformerFilterType'),
   };
 
-  const data = await runQuery(FIND_PERFORMERS_QUERY, variables);
+  const data = await runQuery(FIND_PERFORMERS_QUERY, variables, { signal });
   const performers = data?.findPerformers?.performers || [];
 
   return {

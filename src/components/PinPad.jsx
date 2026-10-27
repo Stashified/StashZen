@@ -1,5 +1,5 @@
 /**
- * PinPad — on-screen numeric keypad for the app lock, shared by the lock
+ * PinPad, on-screen numeric keypad for the app lock, shared by the lock
  * screen (unlock), Settings (set/confirm/remove) and FirstRun's optional PIN
  * step, so the three cannot drift.
  *
@@ -20,8 +20,8 @@
  *
  * ## onSubmit contract
  * Must be SYNCHRONOUS and may return:
- *   - `true` / `undefined` — accepted; the caller takes it from here.
- *   - a `string`           — rejected; shown as the error line, the entry is
+ *   - `true` / `undefined`, accepted; the caller takes it from here.
+ *   - a `string`          , rejected; shown as the error line, the entry is
  *                            cleared, and focus stays on the keypad.
  * The entry is cleared either way. A Promise satisfies neither branch and
  * would read as "accepted"; the digest is a plain SHA-256 with no stretching,
@@ -34,7 +34,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK, isTextInput } from '../utils/input.js';
+import { isBackCode, isTextInput } from '../utils/input.js';
 import { PIN_LENGTH } from '../utils/appLock.js';
 import styles from './PinPad.module.css';
 
@@ -153,7 +153,7 @@ export default function PinPad({
       update(next);
     }
 
-    // OK with a partial entry does nothing — there is no half-submit.
+    // OK with a partial entry does nothing, there is no half-submit.
     if (next.length !== length) return;
 
     submittingRef.current = true;
@@ -173,7 +173,7 @@ export default function PinPad({
   useEffect(() => {
     const handler = (e) => {
       // Never steal keys from a text field. Unreachable in practice since the
-      // pad takes focus on open — a safety net, not a path.
+      // pad takes focus on open, a safety net, not a path.
       if (isTextInput(e.target)) return;
 
       const digit = digitFromEvent(e);
@@ -197,7 +197,7 @@ export default function PinPad({
         return;
       }
 
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK) {
+      if (e.key === 'Escape' || isBackCode(e.keyCode)) {
         e.preventDefault();
         e.stopPropagation();
         cbRef.current.onCancel?.();
@@ -227,7 +227,7 @@ export default function PinPad({
           ))}
         </div>
 
-        {/* Always mounted so the live region exists before it has text — a
+        {/* Always mounted so the live region exists before it has text, a
             region added with its text is not reliably read out. */}
         <p className={styles.error} role="status" aria-live="polite">{error}</p>
 

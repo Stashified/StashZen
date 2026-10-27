@@ -24,7 +24,7 @@
   width: 100%;
   /* `box-shadow` is deliberately NOT transitioned: every focus change would
      re-raster a large blurred shadow for the duration. The ring is unblurred,
-     so it can just appear. `transform` stays — scale is composited. */
+     so it can just appear. `transform` stays: scale is composited. */
   transition:
     transform    0.14s var(--ease-tv),
     border-color 0.10s ease-out;
@@ -92,7 +92,7 @@
 
 /* A layer above the cover, below `.overlay` (z-index 2). Fully transparent
    until the element reports a decoded frame, so the cover shows for every
-   scene with no preview — nearly all of them. Nothing here hides the cover. */
+   scene with no preview: nearly all of them. Nothing here hides the cover. */
 .preview {
   position: absolute;
   inset: 0;
@@ -164,7 +164,7 @@
   z-index: 3;
 }
 
-/* Solid amber with dark ink, matching the detail page's `.badgeRating` — one
+/* Solid amber with dark ink, matching the detail page's `.badgeRating`, one
    treatment for one value. Opaque, not translucent, for the reason recorded
    there: the chip sits on the cover, so a dark ink over an image showing
    through has no fixed contrast ratio. */

@@ -43,9 +43,10 @@ rm -rf /tmp/diff-"$LABEL"-*
 # exits non-zero.
 MISSING=0
 
-run() {  # run <name> <entry> [query]
-  local name=$1 entry=$2 query=${3:-}
+run() {  # run <name> <entry> [query] [update-check 0|1]
+  local name=$1 entry=$2 query=${3:-} update=${4:-0}
   ENTRY="scripts/harness/$entry" NAME="diff-$LABEL-$name" PORT=8850 QUERY="$query" \
+    HARNESS_UPDATE_CHECK="$update" \
     "$HERE/run.sh" >"$OUT/$name.log" 2>&1
   if [ -f "/tmp/diff-$LABEL-$name/result.json" ]; then
     cp "/tmp/diff-$LABEL-$name/result.json" "$OUT/$name.json"
@@ -166,6 +167,11 @@ run views          views-entry.jsx
 # for them (`/mode galleryImages=populate`) — the default empty answer is what
 # Sections S6 depends on.
 run longpress      longpress-entry.jsx
+# The public-only update check, in both build shapes. The gate is a compile-time
+# constant, so one bundle cannot show both: `update` is the public build and
+# `update-off` proves the private one has no section and makes no request.
+run update         update-entry.jsx '' 1
+run update-off     update-entry.jsx '' 0
 echo "── $LABEL done ──"
 if [ "$MISSING" -gt 0 ]; then
   echo "!! $MISSING driver(s) produced no results — the sweep did not cover them."

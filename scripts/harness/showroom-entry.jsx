@@ -1,7 +1,7 @@
 /**
  * Headless driver for Home as a showroom.
  *
- * Mounts the whole `App`: each claim pairs two things — a shelf and its
+ * Mounts the whole `App`: each claim pairs two things, a shelf and its
  * request, a See-all tile and the tab it opens, a tab's Back and the shelf it
  * returns to.
  *
@@ -138,7 +138,7 @@ const focus = (id) => {
 };
 const focusedId = () => getCurrentFocusId();
 
-/** Open the Sort dropdown, choose a value, close it again — the three presses
+/** Open the Sort dropdown, choose a value, close it again, the three presses
  *  a user makes. Returns false if the menu never offered the value. */
 async function chooseSort(value) {
   if (!focus('ctrl-sort')) return false;

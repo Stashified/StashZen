@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { fromCard, loadSceneDetail } from '../../utils/sceneService.js';
 
 /**
- * The page's data — two sources of truth, on purpose.
+ * The page's data, two sources of truth, on purpose.
  *
  * `detail` starts as the card the user pressed Enter on (title, screenshot,
  * duration, resume point), so the page paints immediately instead of spinning.

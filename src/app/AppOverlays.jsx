@@ -1,5 +1,5 @@
 /**
- * AppOverlays — the stack App draws over the pages.
+ * AppOverlays, the stack App draws over the pages.
  *
  * Every overlay is a sibling of the content column, not a child of the page
  * that opened it, because each is opened from several pages and must outlive
@@ -56,7 +56,7 @@ export default function AppOverlays({
         />
       )}
 
-      {/* The menu, then the player — and the player on top, since Play
+      {/* The menu, then the player, and the player on top, since Play
           closes the menu and opens it in the same press. */}
       {action && (
         <ActionMenu
@@ -97,7 +97,7 @@ export default function AppOverlays({
       )}
 
       {/* Below Settings and the exit prompt so a more recent intent is on
-          top. It cannot open over a playing video — the action that opens it
+          top. It cannot open over a playing video: the action that opens it
           lives in the controls bar, which the player covers. */}
       {builder.open && (
         <FilterBuilder

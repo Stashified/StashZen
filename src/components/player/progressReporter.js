@@ -1,5 +1,5 @@
 /**
- * progressReporter — everything the player writes back to Stash, as a plain
+ * progressReporter, everything the player writes back to Stash, as a plain
  * object.
  *
  * This is the one subsystem that can write *wrong data* into the user's
@@ -125,7 +125,7 @@ export function createProgressReporter({
     const t = completed ? 0 : lastTime;
     const owed = played;
     // Nothing to report: neither the position nor the watch time moved. Both
-    // halves matter — without the second, a scene watched to a standstill would
+    // halves matter, without the second, a scene watched to a standstill would
     // stop saving its play_duration. After a completion save `lastSaved` is 0,
     // so the following teardown is a no-op rather than a second end write.
     if (Math.abs(t - lastSaved) < 2 && owed < PLAY_CREDIT_MIN_S) return;
@@ -183,7 +183,7 @@ export function createProgressReporter({
       lastTime = t;
     },
 
-    /** Where the playhead is believed to be — read by the fallback seek. */
+    /** Where the playhead is believed to be, read by the fallback seek. */
     position() { return lastTime; },
 
     complete() { completed = true; },
@@ -212,7 +212,7 @@ export function createProgressReporter({
 
     save: saveScene,
 
-    /** A read failed too — same chip, same reason (see countPlay). */
+    /** A read failed too, same chip, same reason (see countPlay). */
     reportError(error) {
       if (!mounted) return;
       syncError = error;

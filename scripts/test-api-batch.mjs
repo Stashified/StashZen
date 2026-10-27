@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * test-api-batch.mjs — the normalisers and pure helpers behind the
+ * test-api-batch.mjs: the normalisers and pure helpers behind the
  * enrichment batch (performer profile, image info, entity heroes, job
  * details).
  *
  *   node scripts/test-api-batch.mjs
  *
  * The pieces the harness cannot see cheaply: every normaliser is a pure mapping
- * from a GraphQL answer to the shape a page draws. Two failure modes — keeping
+ * from a GraphQL answer to the shape a page draws. Two failure modes, keeping
  * a field the query no longer asks for, and hiding an empty value behind
- * truthiness the page then prints — are decided here rather than at 1080p.
+ * truthiness the page then prints, are decided here rather than at 1080p.
  * The render paths (hero blurb, Stop button, gallery chips) are the DOM
  * harness's job.
  */
@@ -44,7 +44,7 @@ function check(name, cond, detail = '') {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Performer detail — profile and write authority fields
+// Performer detail, profile and write authority fields
 // ═══════════════════════════════════════════════════════════
 const FULL_PERFORMER = {
   id: '8701',
@@ -69,7 +69,7 @@ const FULL_PERFORMER = {
   tags: [{ id: 't1', name: 'tag one' }, { id: 't2', name: 'tag two' }],
   rating100: 75,
   favorite: true,
-  // The deprecated single-value field. The client must not map it — the
+  // The deprecated single-value field. The client must not map it, the
   // output having no `url` key is how a stale mapping shows up here.
   url: 'https://old.example/deprecated',
 };
@@ -120,7 +120,7 @@ check('performer: null in, null out', normalizePerformerDetail(null) === null);
 // ── Web links ───────────────────────────────────────────────
 const links = webLinks([
   'https://a.example/one',
-  'https://a.example/two',          // same host — the duplicate a chip-per-URL would print twice
+  'https://a.example/two',          // same host, the duplicate a chip-per-URL would print twice
   'https://b.example/three',
   'https://c.example/four',
   'https://d.example/five',
@@ -292,7 +292,7 @@ const IM = normalizeImageDetail({
   performers: [{ id: 'p1', name: 'Performer one' }],
   galleries: [{ id: 'g1', title: 'Gallery one' }],
   // The union field, with the inline fragment's answer. `files` does not
-  // exist on Image at all — a normaliser reading it would report 0 B here.
+  // exist on Image at all, a normaliser reading it would report 0 B here.
   visual_files: [{ basename: 'IMG_0055.JPG', size: 2048, width: 1920, height: 1080 }],
   paths: { thumbnail: '/image/55/thumb.png', image: '/image/55/full.png', preview: null },
 });

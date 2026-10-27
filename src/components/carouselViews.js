@@ -1,5 +1,5 @@
 /**
- * carouselViews.js — what each section's carousel shows.
+ * carouselViews.js: what each section's carousel shows.
  *
  * `Carousel` draws any section; these descriptors are the part that cannot
  * generalize, because scenes and performers have different fields and art.
@@ -11,7 +11,7 @@
  * section is one descriptor and nothing else.
  *
  * They live in `components/` rather than `utils/` because they name card
- * components — the same reason `tvActions.jsx` is here.
+ * components, the same reason `tvActions.jsx` is here.
  */
 
 import VideoCard from './VideoCard.jsx';
@@ -28,6 +28,8 @@ export const SCENE_VIEW = {
   service: fetchVideos,
   itemsKey: 'videos',
   focusPrefix: 'video',
+  // Rows to patch in place when a write changes a scene. See rowPatches.js.
+  entity: 'scene',
   noun: 'videos',
   ariaLabel: 'Video carousel',
   // List-mode row art; a scene's row is landscape, like its card.

@@ -1,12 +1,12 @@
 /**
- * SceneDetailPage — full-screen scene view with the editable rating, organised,
+ * SceneDetailPage, full-screen scene view with the editable rating, organised,
  * like and the two activity actions: clear progress (leaves Continue Watching)
  * and mark played (appends a play now).
  *
  * Mounted as an overlay rather than swapped in as a page, so the grid
  * underneath keeps its scroll position and fetched pages: closing is a state
  * change, not a refetch. `role="dialog"` is what confines the D-pad to it via
- * `focusScopeOf`. Data and writes live in `sceneDetail/` — see the two hooks
+ * `focusScopeOf`. Data and writes live in `sceneDetail/`, see the two hooks
  * for when the card paints first and the optimistic-write rules.
  */
 
@@ -33,7 +33,7 @@ const MAX_GALLERIES = 4;
 export default function SceneDetailPage({
   scene, onClose, onPlay, onPlayAt, onActivityChange, onGallerySelect,
 }) {
-  // Transient status line, cleared on unmount — see useFlash. Called first so
+  // Transient status line, cleared on unmount, see useFlash. Called first so
   // its unmount effect is registered before the others.
   const [notice, flash] = useFlash(NOTICE_MS);
 
@@ -43,7 +43,7 @@ export default function SceneDetailPage({
   // handler never sees it. No text inputs exist here, so Backspace is unambiguous.
   useBackKey(() => onClose?.());
 
-  // The six writes — see useSceneEdits for the optimistic and in-flight-token rules.
+  // The six writes, see useSceneEdits for the optimistic and in-flight-token rules.
   const { setRating, toggleOrganized, incrementLike, clearLike, clearProgress, markPlayed } =
     useSceneEdits({ detail, setDetail, flash, onActivityChange, canEdit });
 
@@ -141,7 +141,7 @@ export default function SceneDetailPage({
                 <GalleryChip
                   key={gallery.id}
                   gallery={gallery}
-                  // The scene id is what Back can focus on the origin tab —
+                  // The scene id is what Back can focus on the origin tab:
                   // there is no gallery card there (see handleGallerySelect).
                   onGallerySelect={g => onGallerySelect?.(g, detail.id)}
                 />

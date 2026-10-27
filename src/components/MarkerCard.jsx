@@ -1,5 +1,5 @@
 /**
- * MarkerCard — Marker thumbnail.
+ * MarkerCard, Marker thumbnail.
  *
  * Enter plays the parent scene's full stream from the marker's `seconds`
  * (handled in App's onSelect). There is no focus preview video: those files

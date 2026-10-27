@@ -1,5 +1,5 @@
 /**
- * tabConfig.js — Static configuration for the tab shell.
+ * tabConfig.js: Static configuration for the tab shell.
  *
  * Sort options are grouped for readability. Each group is a section
  * in the dropdown with a small header label.
@@ -22,13 +22,13 @@ export const DEFAULT_CONTROLS = {
   cols:  4,
   filterId: null,
   // A filter composed in the builder and applied without saving. Per-tab UI
-  // state with the same lifetime as `filterId` — see the tab-change effect.
+  // state with the same lifetime as `filterId`, see the tab-change effect.
   workingFilter: null,
   // What the dropdown calls it. `null` means "Custom filter"; activating a tag
   // or studio sets its name, because landing on Scenes under a filter with no
   // indication of which tag caused it reads as the app's own doing.
   workingFilterLabel: null,
-  // Which tab this filter was composed against — what makes the tab-change
+  // Which tab this filter was composed against, what makes the tab-change
   // effect idempotent.
   workingFilterFor: null,
   // One-shot hand-off marker for the showroom's See-all tile: it names the tab
@@ -345,12 +345,12 @@ export const TAB_CONTROL_CONFIG = {
   // is a grid of small cards; the carousel ignores `cols` and the call site
   // hides the control for it.
   //
-  // Tags and Studios are name-shaped — a 533-row name list is browsable, a
-  // 31,251-row date list is not — while Galleries and Images are file-shaped,
+  // Tags and Studios are name-shaped, a 533-row name list is browsable, a
+  // 31,251-row date list is not, while Galleries and Images are file-shaped,
   // where "newest first" means something.
   //
   // `defaultSort` is adopted on **every arrival at the tab**, not only when the
-  // carried sort is invalid (see the tab-change effect) — otherwise a valid
+  // carried sort is invalid (see the tab-change effect), otherwise a valid
   // `created_at` carried in from another tab would survive onto Tags and
   // "Tags opens by Name" would only hold if the user had never left it.
   //

@@ -248,7 +248,7 @@ async function run() {
       `pad=${!!document.querySelector('[role="dialog"]')}`
       + ` child=${!!document.getElementById('app-lock-child')}`);
     // One frame behind the commit and the uncovered paint would be the
-    // library — the defect itself.
+    // library, the defect itself.
     check('P15 the cover is gone in the same task that commits the keypad',
       !document.documentElement.hasAttribute('data-lock-cover'),
       `attr=${document.documentElement.getAttribute('data-lock-cover')}`);
