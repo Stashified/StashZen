@@ -65,9 +65,11 @@ export function UpdateSection() {
       </div>
 
       <p className={styles.hint}>
-        On, the app checks once a day while it is open. Updates are installed
-        from the GitHub release page; the check sends nothing about this device.
-        The toggle applies immediately, not on Save.
+        When on, the app checks for updates once a day while it is open. Updates
+        must be downloaded and installed manually from GitHub Releases or by
+        using Apps2Samsung. Update checks do not send any device information.
+        The update-check toggle takes effect immediately; no save action is
+        needed.
       </p>
     </div>
   );
