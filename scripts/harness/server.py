@@ -1576,6 +1576,12 @@ class Handler(SimpleHTTPRequestHandler):
             inp = variables.get("input") or {}
             mode = inp.get("mode")
             with LOCK:
+                slow = MODE.get("filterSave") == "slow"
+            # Delayed before the reply, so the prompt's saving state is
+            # observable long enough to press Back against it.
+            if slow:
+                time.sleep(1.5)
+            with LOCK:
                 bucket = SAVED_FILTERS.setdefault(mode, [])
                 entry = {
                     "id": str(inp.get("id") or (len(bucket) + 1)),

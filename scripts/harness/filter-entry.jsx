@@ -441,8 +441,27 @@ async function run() {
   await sleep(150);
 
   const confirm = btnByText(namePrompt, 'Save');
+  // Held open server-side so the saving state is observable: a Back during it
+  // used to tear the prompt down, hiding the reply's error while the save
+  // still landed and closed the builder.
+  await fetch('/mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filterSave: 'slow' }),
+  });
   confirm?.click();
-  await sleep(600);
+  await sleep(250);
+  const savingUp = !!dialogNamed(/Save filter/);
+  await press('Escape');
+  const stillUp = !!dialogNamed(/Save filter/) && !!dialogNamed(/^Filter scenes/);
+  check('F8h Back while saving leaves the prompt and the builder up', savingUp && stillUp,
+    `before ${savingUp}, after ${stillUp}`);
+  await sleep(1600);
+  await fetch('/mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filterSave: 'off' }),
+  });
 
   const writes = await getJson('/filterwrites');
   const saved = writes.filter(w => w.op === 'save');

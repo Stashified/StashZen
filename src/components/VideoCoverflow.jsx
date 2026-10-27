@@ -101,6 +101,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   }, [videos]);
 
   useEffect(() => onFocusRestoreRequest((fid) => {
+    if (!fid) { pendingRestoreRef.current = null; return; }
     if (!fid.startsWith('video-')) return;
     pendingRestoreRef.current = moveToRestore(fid) ? null : fid;
   }), [moveToRestore]);

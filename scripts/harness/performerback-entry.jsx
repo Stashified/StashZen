@@ -63,6 +63,14 @@ const focus = (id) => {
   return !!entry;
 };
 
+// The app's own Back is the Tizen code; 27 only reaches the overlays.
+async function pressBack() {
+  active().dispatchEvent(new KeyboardEvent('keydown', {
+    keyCode: 10009, key: 'Escape', bubbles: true, cancelable: true,
+  }));
+  await sleep(400);
+}
+
 async function waitFor(fn, ms = 6000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -80,6 +88,10 @@ const playerDialog = () => [...document.querySelectorAll('[role="dialog"]')]
 // Only the performer page has this button, so it also proves the page survived
 // rather than being replaced by the Performers grid.
 const performerPageOpen = () => !!document.querySelector('button[aria-label="Back to performers"]');
+
+// The rail's current tab; only NavRail sets aria-current.
+const railActive = () =>
+  document.querySelector('[aria-current="page"]')?.textContent.trim() || '(none)';
 
 async function run() {
   // ── Arrive on the Performers grid ─────────────────────────
@@ -171,6 +183,38 @@ async function run() {
     check('P0b Back returns to a performer from the third page', false,
       'performer-85 never mounted');
   }
+
+  // ── A gallery chip from a scene opened on a performer page ──
+  // The performer page closes with the tab, so `video-<scene>` names nothing
+  // on the grid. Back must land on the performer that opened it, not the first
+  // card the fallback would pick.
+  await waitFor(() => registry.has('performer-3'));
+  await sleep(200);
+  focus('performer-3');
+  await sleep(120);
+  await tapEnter();
+  await waitFor(() => performerPageOpen() && registry.has('video-1'));
+  focus('video-1');
+  await sleep(120);
+  await tapEnter();
+  await waitFor(() => registry.has('scene-gallery-7001'));
+  focus('scene-gallery-7001');
+  await sleep(120);
+  await tapEnter();
+  const onImages = await waitFor(() => railActive() === 'Images', 4000);
+  check('P0c the gallery chip opens the Images tab', onImages,
+    `rail ${railActive()}`);
+  await pressBack();
+  const tGallery = Date.now();
+  const backOnPerformer = await waitFor(() => {
+    const el = registry.get('performer-3')?.el;
+    return railActive() === 'Performers'
+      && !!el && document.contains(el) && document.activeElement === el;
+  }, 9000);
+  check('P0c Back returns to the performer that opened the scene',
+    backOnPerformer,
+    `rail ${railActive()}, focus ${getCurrentFocusId() ?? '<none>'}, `
+      + `${Date.now() - tGallery} ms`);
 
   // ── Open performer-1's page for the player layering checks ──
   await waitFor(() => registry.has('performer-1'));

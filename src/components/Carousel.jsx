@@ -105,6 +105,7 @@ export default function Carousel({
   // on arrival if the rows are here, otherwise as soon as they land.
   const pendingRestoreRef = useRef(null);
   useEffect(() => onFocusRestoreRequest((fid) => {
+    if (!fid) { pendingRestoreRef.current = null; return; }
     if (!fid.startsWith(idPrefix)) return;
     pendingRestoreRef.current = fid;
     const id = fid.slice(idPrefix.length);

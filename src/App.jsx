@@ -283,7 +283,13 @@ export default function App() {
           onActivityChange: handleSceneActivityChange,
           // A gallery chip leaves for the Galleries tab; the tab change closes
           // this page (useDetailSelection's effect), so that is all it does.
-          onGallerySelect: handleGallerySelect,
+          // Opened on a performer page, the performer is the card Back can
+          // focus: the page closes with the tab and has no video cards.
+          onGallerySelect: (gallery, sceneId) => handleGallerySelect(
+            gallery,
+            sceneId,
+            selectedPerformer ? `performer-${selectedPerformer.id}` : null,
+          ),
         }}
         actionMenu={{
           menu: actionMenu,

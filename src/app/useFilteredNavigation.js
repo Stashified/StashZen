@@ -110,11 +110,12 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
   // The recorded focus id must name something that exists in the origin tab.
   // A gallery opened from Galleries has `gallery-<id>`, but the scene-detail
   // hand-off leaves that tab: on Back there is no `gallery-` card, so a scene
-  // names its own card (`video-<id>`, the prefix both listings use).
-  const handleGallerySelect = (gallery, sceneId = null) => activateFiltered(
+  // names its own card (`video-<id>`, the prefix both listings use). The
+  // caller can pass the origin's own id instead, for a tab with no video card.
+  const handleGallerySelect = (gallery, sceneId = null, originFocusId = null) => activateFiltered(
     { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
     gallery.title,
-    sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`,
+    originFocusId || (sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`),
     'images',
   );
 

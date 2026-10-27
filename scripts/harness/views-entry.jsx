@@ -17,6 +17,7 @@ import '../../src/index.css';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App.jsx';
 import { registry, getCurrentFocusId } from '../../src/hooks/useFocusable.js';
+import { focusByIdWhenReady, onFocusRestoreRequest } from '../../src/utils/focus.js';
 import { PERFORMER_VIEW } from '../../src/components/carouselViews.js';
 import { setSettings, getSettings, readViewModes } from '../../src/utils/settings.js';
 
@@ -372,6 +373,18 @@ async function run() {
     `${JSON.stringify(studioClamp)}`);
 
   check('V7 no render error was raised', errors.length === 0, errorTail());
+
+  // A strip that is never told the request ended keeps the target and
+  // re-centres on it pages later. One user key ends it before the deadline.
+  const heard = [];
+  const off = onFocusRestoreRequest((fid) => heard.push(fid));
+  focusByIdWhenReady('ghost-card');
+  await sleep(60);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+  const ended = await waitFor(() => heard.includes(null), 1500);
+  off();
+  check('V9 an abandoned restore tells listeners it is over', ended,
+    `heard ${JSON.stringify(heard)}`);
 }
 
 async function finish() {

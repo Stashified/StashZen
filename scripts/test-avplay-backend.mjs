@@ -49,6 +49,8 @@ function fakeAvplay({
     state: 0,
   };
   let listener = null;
+  // Lets a test refuse the next prepare regardless of which open it belongs to.
+  let failNextPrepare = false;
   const api = {
     open(url) { calls.open.push(url); state = 'OPENED'; position = 0; },
     setListener(l) { listener = l; },
@@ -58,8 +60,15 @@ function fakeAvplay({
       state = 'PREPARING';
       // An open after the first is a recovery reopen.
       const recoveryOpen = calls.open.length > 1;
+      // Latched here, not read when the timer fires: a test can arm the next
+      // prepare without an earlier, still-pending one consuming it.
+      const failThisPrepare = failNextPrepare;
+      failNextPrepare = false;
       setTimeout(() => {
-        if (recoveryOpen && failRecoveryPrepares > 0) {
+        if (failThisPrepare) {
+          state = 'IDLE';
+          bad({ name: 'PLAYER_ERROR_CONNECTION_FAILED', message: 'codec refused' });
+        } else if (recoveryOpen && failRecoveryPrepares > 0) {
           failRecoveryPrepares -= 1;
           state = 'IDLE';
           bad({ name: 'PLAYER_ERROR_CONNECTION_FAILED', message: 'reopen refused' });
@@ -97,6 +106,7 @@ function fakeAvplay({
   return {
     api,
     calls,
+    failNextPrepare: () => { failNextPrepare = true; },
     fireError: (raw) => listener?.onerror?.(raw),
     setStuckSeeks: (n) => { stuckSeeks = n; },
     complete: () => listener?.onstreamcompleted(),
@@ -494,6 +504,40 @@ function rig(opts = {}, backendOpts = {}) {
   r.backend.close();
 }
 
+// Stepping to the next scene while a recovery is in flight must not carry the
+// old scene's recovery verdict: a refused prepare would otherwise reopen the
+// new scene at the old target and report a seek failure instead of a refusal.
+{
+  const r = rig({ stuckSeeks: 1, prepareMs: 120 }, { seekGiveUpMs: 300 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(250);
+  r.backend.currentTime = 60;
+  const reopened = await (async () => {
+    const end = Date.now() + 3000;
+    while (Date.now() < end) {
+      if (r.fake.calls.open.length >= 2) return true;
+      await sleep(5);
+    }
+    return false;
+  })();
+  check('precondition: a stuck seek started a recovery reopen', reopened,
+    `opens=${r.fake.calls.open.length}`);
+  // Step to scene 2 before the reopen's prepare lands, and refuse its prepare.
+  r.fake.failNextPrepare();
+  r.backend.open('http://x/2.mp4');
+  const end = Date.now() + 1200; // past the 400 ms recovery retry
+  while (Date.now() < end && !r.backend.error) await sleep(20);
+  check('a new scene reports its own refused prepare, not a seek recovery',
+    r.backend.error?.phase === 'prepare'
+      && r.backend.getLastFailure()?.phase === 'prepare',
+    `phase=${r.backend.error?.phase} error=${r.backend.error?.name || 'none'}`);
+  // Scene 1, its recovery reopen, then scene 2. A fourth would be the recovery
+  // retry for a scene the old recovery does not belong to.
+  check("...without a recovery reopen of the new scene",
+    r.fake.calls.open.length === 3, `opens=${r.fake.calls.open.length}`);
+  r.backend.close();
+}
+
 // Outside the window an error is still a verdict on the file.
 {
   const r = rig({}, { postSeekErrorMs: 0 });
@@ -623,6 +667,26 @@ function rig(opts = {}, backendOpts = {}) {
     r.events.filter((e) => e === 'playing').length >= 2);
   r.backend.close();
   check('close unbinds visibility', r.doc.count('visibilitychange') === 0);
+}
+
+// A hide during a seek saves the seek's target, not the pre-seek clock: both
+// the deferred press and the coalescer's in-flight target are cancelled by the
+// suspend, so the restore must not read the position the burst started from.
+{
+  const r = rig({ stuckSeeks: 99 }, { seekGiveUpMs: 10000 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(200);
+  r.backend.currentTime = 60; // issued at once, and the engine never lands it
+  await sleep(80);
+  r.doc.visibilityState = 'hidden';
+  r.doc.fire('visibilitychange');
+  r.doc.visibilityState = 'visible';
+  r.doc.fire('visibilitychange');
+  await sleep(400);
+  const seeksToTarget = r.fake.calls.seek.filter((ms) => ms === 60000).length;
+  check('a hide during a seek restores at the seek target',
+    seeksToTarget >= 2, `seeks=${r.fake.calls.seek.join(',')}`);
+  r.backend.close();
 }
 
 // ── Hide releases the panel mute; return puts it back ─────
