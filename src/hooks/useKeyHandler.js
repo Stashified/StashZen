@@ -1,5 +1,5 @@
 /**
- * useKeyHandler — global D-pad key handler with zone-aware spatial nav
+ * useKeyHandler: global D-pad key handler with zone-aware spatial nav
  *
  * Rects are cached per element and invalidated on scroll/resize and per press;
  * without that, one arrow press measures 40+ nodes and the D-pad lags on a TV
@@ -8,13 +8,13 @@
  *
  * While navigating, `document.body` carries `is-navigating`. It is a JS signal,
  * not a styling hook: VideoCard and MarkerCard check it so holding an arrow
- * does not spawn a preview for every card passed over. No CSS is keyed on it —
+ * does not spawn a preview for every card passed over. No CSS is keyed on it:
  * see index.css for why those rules were themselves a per-press cost.
  */
 
 import { useEffect, useRef } from 'react';
 import { registry, getCurrentFocusId } from './useFocusable.js';
-import { TIZEN_BACK, isTextInput, focusScopeOf } from '../utils/input.js';
+import { isBackCode, isTextInput, focusScopeOf } from '../utils/input.js';
 
 const CROSS_ZONE_PENALTY = 100000;
 // Larger than the zone penalty: a same-container candidate must beat a
@@ -54,7 +54,7 @@ function isRendered(el) {
  * The nearest ancestor the element actually scrolls inside, or null.
  *
  * Geometry treats a scrolled-out row and the fixed footer below it as equally
- * valid, and the nearer footer wins — so Down in a long dialog skips the fold
+ * valid, and the nearer footer wins, so Down in a long dialog skips the fold
  * and jumps straight to Save. Actual overflow (scrollHeight > clientHeight) is
  * required so containers with nothing to scroll get no penalty.
  */
@@ -73,7 +73,7 @@ function scrollContainerOf(el) {
  *
  * A wrapped row is one logical line rendered as several physical ones, read
  * left-to-right then top-to-bottom: Right at the end must continue on the next
- * line, which may start left of where it ended — geometry finds nothing there.
+ * line, which may start left of where it ended, geometry finds nothing there.
  * Grids are excluded, so their Right stops at the row end as usual.
  */
 function wrapContainerOf(el) {
@@ -95,7 +95,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   // An explicit destination, checked before geometry because that is the point:
   // for the rail's Settings row, 860 px below the tabs with a card halfway, the
   // geometry is confidently wrong. Falls through if the named element is gone
-  // or disabled — a declared edge must not dead-end the D-pad.
+  // or disabled, a declared edge must not dead-end the D-pad.
   const forcedId = currentEntry?.nextId?.[direction];
   if (forcedId) {
     const forced = registry.get(forcedId);
@@ -124,7 +124,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   const currentCrossesZones = currentEntry?.crossZone === true;
   // Up/Down prefer to stay inside the scroll container already in use, so a
   // long body is walked to its end before focus can reach a fixed footer.
-  // Left/Right are untouched — a horizontal strip is its own thing.
+  // Left/Right are untouched, a horizontal strip is its own thing.
   const currentScroll = isHorizontal ? null : scrollContainerOf(currentEl);
   // Only a wrapped row gets the reading-order treatment below; a grid keeps
   // its row edges. See wrapContainerOf.
@@ -133,7 +133,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   const curCx = curRect.left + curRect.width / 2;
   const curCy = curRect.top + curRect.height / 2;
 
-  // Active focus scope — when set, candidates outside it are excluded.
+  // Active focus scope, when set, candidates outside it are excluded.
   // Falls back to any open dialog in the DOM if the user is currently
   // focused on something outside the modal (e.g. body) but a modal is
   // visible. This handles the moment a modal opens before its first
@@ -162,7 +162,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     //
     // Checked on the element, not `useFocusable`'s option: call sites render
     // `disabled` without passing it, and reading the element cannot drift.
-    // `aria-disabled` is not checked — it stays focusable by design.
+    // `aria-disabled` is not checked, it stays focusable by design.
     if (el.disabled) return;
     // See the flag notes at the top of this function.
     if (isHorizontal && verticalOnly) return;
@@ -179,7 +179,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     // the container are split geometrically:
     //
     //  - Wholly beyond its edge in the travel direction (the rail, left of the
-    //    controls bar) is a legitimate neighbour, scored normally — a hard
+    //    controls bar) is a legitimate neighbour, scored normally, a hard
     //    boundary turned the bar into a sideways trap.
     //  - Overlapping its horizontal span on another line (the marker-chip row
     //    above the scene actions) is excluded; allowing it made Right jump into
@@ -216,7 +216,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   });
 
   // End of a wrapped line: continue at the start of the next, chosen by line
-  // edge then position within it — reading order the scoring above cannot
+  // edge then position within it, reading order the scoring above cannot
   // produce, since the next line starts *behind*. Left is the mirror.
   if (!bestEl && isHorizontal && wrapContainer) {
     const goingRight = direction === 'right';
@@ -284,7 +284,7 @@ export function useKeyHandler({ onBack } = {}) {
 
         e.preventDefault();
 
-        // Throttle held-key repeats — TV remotes spam keydown ~30 Hz.
+        // Throttle held-key repeats, TV remotes spam keydown ~30 Hz.
         const now = performance.now();
         if (now - lastNavAt < MIN_REPEAT_MS) return;
         lastNavAt = now;
@@ -311,19 +311,19 @@ export function useKeyHandler({ onBack } = {}) {
         return;
       }
 
-      if (key === 'Backspace' || e.keyCode === TIZEN_BACK) {
+      if (key === 'Backspace' || isBackCode(e.keyCode)) {
         // One press, one layer: an unguarded repeat closes the player, then the
         // page under it, then the exit prompt.
         if (e.repeat) return;
         // The on-screen keyboard's delete sends Backspace; let it delete while
-        // a text field has focus. Tizen Back (10009) still triggers onBack — it
+        // a text field has focus. Tizen Back (10009) still triggers onBack, it
         // is a hardware key with no text-editing meaning.
         if (key === 'Backspace' && isTextInput(document.activeElement)) return;
         onBackRef.current?.();
       }
     };
 
-    // Geometry changes — drop cached rects.
+    // Geometry changes, drop cached rects.
     const invalidate = () => { rectCacheRef.current = new WeakMap(); };
 
     window.addEventListener('keydown', handleKeyDown);

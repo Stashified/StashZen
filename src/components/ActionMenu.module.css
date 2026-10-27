@@ -82,7 +82,7 @@
   color: var(--text-primary);
 }
 
-/* No box-shadow transition — on Tizen it makes the ring trail the key (see
+/* No box-shadow transition, on Tizen it makes the ring trail the key (see
    VideoCard). The ring token keeps every surface consistent. */
 .item.focused {
   background: var(--bg-elevated);

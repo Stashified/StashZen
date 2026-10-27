@@ -1,5 +1,5 @@
 /**
- * useFilterBuilder — open, apply, save and close the in-app filter builder.
+ * useFilterBuilder: open, apply, save and close the in-app filter builder.
  *
  * Apply writes the filter into `controls.workingFilter` and sends nothing to
  * Stash; Save writes it to the server *and* selects it; Cancel touches
@@ -21,6 +21,7 @@ export function useFilterBuilder({
   setControls,
   setFiltersEpoch,
   setSavedFilterEcho,
+  activeFilter,
   mainFocus,
 }) {
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -48,16 +49,25 @@ export function useFilterBuilder({
   };
 
   const saveBuiltFilter = async ({ name, objectFilter }) => {
-    // The sort on screen is the sort the filter should carry: a saved filter
-    // is reopened elsewhere, and a bare criteria list comes back in Stash's
-    // default order.
-    const findFilter = { sort: controls.sort, direction: controls.order === 'asc' ? 'ASC' : 'DESC' };
     // Seeded from the active saved filter, so Save edits it in place rather
     // than forking a same-named copy.
     const id = controls.filterId && controls.filterId !== WORKING_FILTER_ID
       ? controls.filterId
       : undefined;
-    const saved = await saveFilter({ id, mode: filterMode, name, objectFilter, findFilter });
+    const existing = id ? activeFilter : null;
+    // An update replaces the whole row, so keep the parts the builder does not
+    // show: `q` is the only condition in many saved filters, and per_page and
+    // ui_options are the user's display choices. The sort on screen wins: it
+    // is the sort the filter is being saved with.
+    const findFilter = {
+      ...(existing?.findFilter || {}),
+      sort: controls.sort,
+      direction: controls.order === 'asc' ? 'ASC' : 'DESC',
+    };
+    const uiOptions = existing?.uiOptions ?? null;
+    const saved = await saveFilter({
+      id, mode: filterMode, name, objectFilter, findFilter, uiOptions,
+    });
 
     // `saveFilter` clears filterService's cache, but the hook is keyed on
     // mode + source; the epoch is what re-runs it so the entry appears.
@@ -76,6 +86,7 @@ export function useFilterBuilder({
         source: dataKey,
         objectFilter,
         findFilter,
+        uiOptions,
       });
     }
 

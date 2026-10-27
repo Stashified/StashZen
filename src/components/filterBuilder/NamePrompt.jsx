@@ -12,7 +12,7 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
     autoFocus: true,
   });
 
-  // Escape and the hardware Back only — Backspace stays inert, as it was.
+  // Escape and the hardware Back only, Backspace stays inert, as it was.
   useBackKey(onCancel, { isBack: isHardBackKey });
 
   const { ref: okRef, focused: okFocused } = useFocusable({

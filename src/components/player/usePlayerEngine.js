@@ -1,5 +1,5 @@
 /**
- * usePlayerEngine — whether this session can use the TV's player, and the
+ * usePlayerEngine: whether this session can use the TV's player, and the
  * objects needed to drive it. Three inputs, checked in this order:
  *
  *   Browser       the Settings lever, and the rollback path. `Auto` and
@@ -12,7 +12,7 @@
  * The resolver waits for `ready` before building a plan, so the first scene
  * never starts on the browser and then switches under the user. The wait is
  * bounded by ensureAvplay's 1.5 s timeout; on a Tizen widget the script is
- * local. The setting is read at open, not subscribed to — it cannot change
+ * local. The setting is read at open, not subscribed to, it cannot change
  * mid-scene, and its hint says "applies on the next open".
  */
 

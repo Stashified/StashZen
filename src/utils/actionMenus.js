@@ -1,10 +1,10 @@
 /**
- * actionMenus.js — what a long-press menu offers, for each kind of card.
+ * actionMenus.js: what a long-press menu offers, for each kind of card.
  *
  * Pure: it reads the menu state and closes over the handlers passed in.
  * Playback entries end in `openPlayer` and image/gallery entries in the viewer
  * openers, so the menu is never left behind. The menu component only draws
- * rows — which rows a card has belongs here.
+ * rows, which rows a card has belongs here.
  */
 
 import { queueOf, queueItemFromMarker, markerQueueItems, queueFromMarkers } from './playQueue.js';
@@ -55,7 +55,7 @@ export function buildActionMenu({ kind, item, list, index = 0 } = {}, handlers) 
  * @param {{ openPlayer, onDetails }} handlers
  *
  * "Play all" / "Play from here" continue through the listing, so need a view
- * that has one — every card opening this menu does. `restoreBy: 'video'` tells
+ * that has one, every card opening this menu does. `restoreBy: 'video'` tells
  * Back to return to the last-viewed scene card rather than the queue's origin;
  * single-scene Play omits it (its card never changes).
  */
@@ -93,7 +93,7 @@ export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetai
  * point; listing entries walk the *markers*, one scene each.
  *
  * `markerQueueItems` turns markers into scene rows and drops repeats, so the
- * hint counts scenes. A `+` means not every marker was loaded — the queue pages
+ * hint counts scenes. A `+` means not every marker was loaded, the queue pages
  * in the rest itself.
  *
  * `restoreBy: 'marker'`: Back returns to the last-viewed scene's marker card;
@@ -178,8 +178,8 @@ export function buildImageMenuItems({ item, list, index }, { openImageViewer }) 
 
 /**
  * A gallery is a container, so its menu chooses a way to show the pictures.
- * The viewer fetches the gallery's own images — the listing behind the card is
- * galleries — and pages the rest in behind the first screen.
+ * The viewer fetches the gallery's own images, the listing behind the card is
+ * galleries, and pages the rest in behind the first screen.
  *
  * "View images" is the same destination as Enter: the Images tab filtered to
  * this gallery.

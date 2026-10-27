@@ -1,5 +1,5 @@
 /**
- * ItemList — one full-width row per item, for every listing tab.
+ * ItemList, one full-width row per item, for every listing tab.
  *
  * The fourth view mode, and a listing component on the grids' contracts:
  *
@@ -107,22 +107,23 @@ function Row({ item, index, list, onSelect, onLongPress, view }) {
 
 export default function ItemList({ controls, view, objectFilter, searchQuery, onSelect, onLongPress }) {
   const { sort, order } = controls;
-  const { service, itemsKey, noun, focusPrefix } = view;
+  const { service, itemsKey, noun, focusPrefix, entity } = view;
 
   const fetchPage = useCallback(
-    (page) =>
-      service({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      service({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d[itemsKey], total: d.total })),
     [service, itemsKey, sort, order, objectFilter, searchQuery],
   );
 
   const {
-    items, total, page, loading, loadingMore, error, exhausted, loadMore,
+    items, total, page, loading, retrying, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
     focusPrefix,
+    entity,
   });
 
   // `fetchPage` is included even where the select ignores it, so every row gets
@@ -153,7 +154,7 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
       styles={styles}
       loading
       spinnerLabel={`Loading ${noun}`}
-      text={`Loading ${noun}…`}
+      text={retrying ? 'Connection problem, retrying…' : `Loading ${noun}…`}
     />
   );
 
@@ -199,7 +200,7 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
             )}
             {error && !loadingMore && (
               <span className={styles.loadingMoreText} style={{ color: 'var(--red)' }}>
-                Couldn't load more — {error}
+                Couldn't load more: {error}
               </span>
             )}
           </div>

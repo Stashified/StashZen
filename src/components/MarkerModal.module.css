@@ -88,7 +88,7 @@
 }
 
 /*
- * `overflow-x: auto`, not hidden, so the browser can scroll — which is what
+ * `overflow-x: auto`, not hidden, so the browser can scroll, which is what
  * lets `useFocusable`'s `scrollIntoView({ inline: 'nearest' })` keep the
  * focused chip on screen.
  */

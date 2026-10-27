@@ -1,5 +1,5 @@
 /**
- * filterCriteria.js — what the generated schema cannot know.
+ * filterCriteria.js: what the generated schema cannot know.
  *
  * `stashFilterSchema.js` knows every field, its GraphQL input type, the fields
  * each criterion declares and its enums. It does not know that `rating100`
@@ -8,7 +8,7 @@
  *
  * THE DISCIPLINE. Nothing here enumerates *fields*: the editor is derived from
  * the declared input type name, and modifiers from the fields that type
- * declares. A field list is how the `has_markers`/`is_missing` bug happened —
+ * declares. A field list is how the `has_markers`/`is_missing` bug happened:
  * both are `String` in the schema while the `organized` beside them is
  * `Boolean`. Add a field to Stash and regenerate: it appears here with no edit,
  * and a wrong type makes `coverage()` fail loudly rather than shipping a 422.
@@ -27,6 +27,7 @@ import {
   ENUMS,
   FILTER_TYPE_NAMES,
 } from './stashFilterSchema.js';
+import { enumLabel } from './enumStrings.js';
 
 const BASE = (t) => String(t).replace(/[[\]!]/g, '');
 
@@ -47,6 +48,7 @@ export const EDITOR = {
   PHASH: 'phash',
   STASH_ID: 'stashid',
   STASH_IDS: 'stashids',
+  IS_MISSING: 'ismissing',
 };
 
 /**
@@ -81,9 +83,38 @@ const EDITOR_BY_TYPE = {
 
 /**
  * `is_missing` shares the bare `String` type with `has_markers` but not its
- * vocabulary: it takes a field name ("url", "tags"), not yes/no.
+ * vocabulary: it takes a field name ("url", "tags"), not yes/no, and no
+ * modifier. The live schema cannot say which names a filter type accepts.
  */
-const EDITOR_BY_FIELD = { is_missing: EDITOR.TEXT };
+const EDITOR_BY_FIELD = { is_missing: EDITOR.IS_MISSING };
+
+export const IS_MISSING_FIELDS = {
+  SceneFilterType: [
+    'title', 'code', 'details', 'director', 'url', 'date', 'rating', 'cover',
+    'galleries', 'studio', 'group', 'performers', 'tags', 'stash_id',
+  ],
+  ImageFilterType: [
+    'title', 'details', 'photographer', 'url', 'date', 'code', 'rating',
+    'galleries', 'studio', 'performers', 'tags',
+  ],
+  PerformerFilterType: [
+    'url', 'ethnicity', 'country', 'hair_color', 'eye_color', 'height',
+    'weight', 'measurements', 'fake_tits', 'penis_length', 'circumcised',
+    'career_start', 'career_end', 'tattoos', 'piercings', 'aliases', 'gender',
+    'birthdate', 'death_date', 'disambiguation', 'tags', 'image', 'details',
+    'rating', 'stash_id',
+  ],
+  GalleryFilterType: [
+    'title', 'code', 'details', 'photographer', 'url', 'date', 'rating',
+    'cover', 'studio', 'performers', 'tags', 'scenes',
+  ],
+  TagFilterType: ['image', 'aliases', 'description', 'stash_id'],
+  StudioFilterType: ['image', 'stash_id', 'details', 'url', 'aliases', 'tags', 'rating'],
+  GroupFilterType: [
+    'aliases', 'description', 'director', 'date', 'url', 'rating', 'studio',
+    'performers', 'tags', 'front_image', 'back_image', 'scenes',
+  ],
+};
 
 /** The enum a criterion's value is drawn from, when it has one. */
 const ENUM_BY_TYPE = {
@@ -97,16 +128,16 @@ const ENUM_BY_TYPE = {
 // Listed in the builder rather than hidden: "all fields" silently meaning
 // "all fields except seven" is worse than saying which and why.
 const NESTED_REASON =
-  'Combining filters — a tree editor is its own project, and a half-built one that silently drops a branch is worse than none.';
+  'Combining filters: a tree editor is its own project, and a half-built one that silently drops a branch is worse than none.';
 const CUSTOM_FIELD_REASON =
-  'Custom fields — the value type depends on the field definition, which this app does not fetch.';
+  'Custom fields: the value type depends on the field definition, which this app does not fetch.';
 const EXOTIC_REASON = {
   DuplicationCriterionInput:
-    'Duplication detection — needs a phash and a distance the app has no way to choose.',
+    'Duplication detection: needs a phash and a distance the app has no way to choose.',
   FileDuplicationCriterionInput:
-    'Duplication detection — as above.',
+    'Duplication detection: as above.',
   OrientationCriterionInput:
-    'Orientation — a spatial/VR flag with no equivalent control in this app.',
+    'Orientation: a spatial/VR flag with no equivalent control in this app.',
 };
 
 /**
@@ -134,16 +165,18 @@ export function editorFor(field, fieldType) {
 // CriterionModifier enum. Two rules carry the weight: BETWEEN needs a second
 // operand, so it is offered only where the type declares `value2` (elsewhere
 // the translator drops the criterion as empty); and a type with no `modifier`
-// field gets none — emitting one is a 422.
+// field gets none, emitting one is a 422.
 const MODIFIERS = {
   [EDITOR.TEXT]: ['EQUALS', 'NOT_EQUALS', 'INCLUDES', 'EXCLUDES', 'MATCHES_REGEX', 'NOT_MATCHES_REGEX', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.NUMBER]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.DATE]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.TIMESTAMP]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.ENUM]: ['EQUALS', 'NOT_EQUALS', 'IS_NULL', 'NOT_NULL'],
-  [EDITOR.MULTI]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL', 'EQUALS', 'NOT_EQUALS'],
-  // No NOT_EQUALS: the server rejects it for hierarchical multi criteria.
-  [EDITOR.HIERARCHICAL]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL', 'EQUALS'],
+  // EQUALS/NOT_EQUALS are ignored by joined multi handlers and rejected by
+  // others, so they are not offered.
+  [EDITOR.MULTI]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL'],
+  // Hierarchical handlers accept neither NOT_EQUALS nor EQUALS.
+  [EDITOR.HIERARCHICAL]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL'],
   [EDITOR.BOOLEAN]: ['EQUALS'],
   [EDITOR.TRI]: ['EQUALS'],
   [EDITOR.PHASH]: ['EQUALS', 'NOT_EQUALS'],
@@ -161,7 +194,7 @@ export const RANGE = new Set(['BETWEEN', 'NOT_BETWEEN']);
  * The modifiers a given field can actually take.
  *
  * The field's own type is enough: `BASE` strips the input suffix, resolving
- * the ambiguity that matters — `String` is both `StringCriterionInput` and the
+ * the ambiguity that matters, `String` is both `StringCriterionInput` and the
  * bare `String` scalar, and those share no declared fields. Do not add the
  * enclosing filter type as a parameter; it has no effect.
  */
@@ -177,6 +210,8 @@ export function modifiersFor(field, fieldType) {
 
   return all.filter((m) => {
     if (RANGE.has(m) && !declared.includes('value2')) return false;
+    // The folder handler has no includes-all branch.
+    if (field === 'parent_folder' && m === 'INCLUDES_ALL') return false;
     // Every emitted modifier must be a real enum member, catching a typo here
     // rather than as a 422 on the TV.
     return ENUMS.CriterionModifier.includes(m);
@@ -299,7 +334,7 @@ const ENTITIES = new Set([
  * `filterTypeName` is needed because a field name is not always enough: a
  * tag's `parents` are tags, a studio's `parents` are studios. Without this the
  * Studio builder offers the Tag picker and writes tag ids into a Studio
- * criterion — the server accepts it and returns nothing, which looks like an
+ * criterion, the server accepts it and returns nothing, which looks like an
  * empty library rather than a bad query. Other aliases mean the same thing in
  * every filter type.
  */
@@ -364,6 +399,10 @@ export function criteriaFor(filterTypeName) {
     const type = fields[field];
     const editor = editorFor(field, type);
     const base = BASE(type);
+    const enumOptions = editor === EDITOR.ENUM ? (enumFor(type) || []) : null;
+    const vocabulary = editor === EDITOR.IS_MISSING
+      ? (IS_MISSING_FIELDS[filterTypeName] || [])
+      : null;
 
     return {
       field,
@@ -373,7 +412,16 @@ export function criteriaFor(filterTypeName) {
       common: common.includes(field),
       reason: editor ? null : unreachableReason(field, type),
       modifierOptions: editor ? modifiersFor(field, type) : [],
-      enumOptions: editor === EDITOR.ENUM ? (enumFor(type) || []) : null,
+      enumOptions,
+      // Stash's web UI persists display strings; show the same and convert at
+      // the save boundary (see enumStrings.js).
+      enumLabels: enumOptions
+        ? Object.fromEntries(enumOptions.map(v => [v, enumLabel(type, v)]))
+        : null,
+      vocabulary,
+      vocabularyLabels: vocabulary
+        ? Object.fromEntries(vocabulary.map(v => [v, labelFor(v)]))
+        : null,
       entity: editor === EDITOR.MULTI || editor === EDITOR.HIERARCHICAL
         ? entitySource(field, filterTypeName)
         : null,
@@ -381,16 +429,18 @@ export function criteriaFor(filterTypeName) {
       // `value2` is declared by Int/Float/Date/Timestamp, where a range is
       // meaningful. Read off the schema, not from a list.
       supportsRange: (CRITERION_FIELDS[base] || []).includes('value2'),
-      // A criterion whose `value` is declared as a list takes several
-      // answers. Schema-derived: `circumcised` and orientation (unreachable).
-      listValued: LIST_VALUED_CRITERIA.has(base),
+      // A criterion whose value is declared as a list takes several answers.
+      // Gender declares both `value` and `value_list`; the server prefers the
+      // latter, and sending the scalar is the H5 bug.
+      listValued: LIST_VALUED_CRITERIA.has(base)
+        || (CRITERION_FIELDS[base] || []).includes('value_list'),
     };
   });
 }
 
 /**
  * Reachable vs not, for the verify script and the builder's summary line.
- * Every field lands in exactly one list — the assertion — so a new Stash field
+ * Every field lands in exactly one list, the assertion, so a new Stash field
  * with an unfamiliar type fails it rather than disappearing.
  */
 export function coverage(filterTypeName) {

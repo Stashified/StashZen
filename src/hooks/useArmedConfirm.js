@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *
  * On the second press it disarms *before* running `commit`, so a commit that
  * throws or writes asynchronously cannot leave the button one press from
- * firing again. The timer is cleared on unmount — never left to fire into a
+ * firing again. The timer is cleared on unmount, never left to fire into a
  * component that is gone.
  */
 export function useArmedConfirm({ timeoutMs = 4000 } = {}) {

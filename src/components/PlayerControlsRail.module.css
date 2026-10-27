@@ -1,4 +1,4 @@
-/* PlayerControlsRail — see PlayerControlsRail.jsx for the focus contract. */
+/* PlayerControlsRail, see PlayerControlsRail.jsx for the focus contract. */
 
 .rail {
   display: flex;
@@ -18,7 +18,7 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.92);
-  /* Named properties, not `all` — see SceneDetailPage's actionBtn note. */
+  /* Named properties, not `all`, see SceneDetailPage's actionBtn note. */
   transition: background-color 0.15s var(--ease-tv), color 0.15s var(--ease-tv),
               transform 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
 }

@@ -3,8 +3,8 @@ import { needsTranscode } from '../../utils/playbackSource.js';
 /**
  * What to put on screen when nothing played.
  *
- * The codec is named only when `needsTranscode` says that is the reason — the
- * same judgement that sent the scene to the transcoder — so a scene that simply
+ * The codec is named only when `needsTranscode` says that is the reason, the
+ * same judgement that sent the scene to the transcoder, so a scene that simply
  * 404'd keeps the plain wording instead of a diagnosis it did not earn. A name
  * and never a path: where a scene lives on disk is not for a TV screen.
  */

@@ -1,10 +1,10 @@
 /**
- * videoService.js — fetch scenes from a Stash GraphQL endpoint.
+ * videoService.js: fetch scenes from a Stash GraphQL endpoint.
  *
  * URL, API key and Test/Live mode are read at request time from the settings
  * store so the user can configure them at runtime.
  *
- * Sort keys pass straight through to Stash — UI keys MUST match Stash's GraphQL
+ * Sort keys pass straight through to Stash, UI keys MUST match Stash's GraphQL
  * sort enum values (created_at, title, rating, etc).
  */
 
@@ -12,6 +12,7 @@ import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
+import { publishRowPatch } from './rowPatches.js';
 import { translateFilter } from './filterTranslate.js';
 import { SCENE_TITLES, STUDIOS } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
@@ -31,7 +32,7 @@ const MOCK_SORT_ALIAS = {
 // ═══════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════
-// MOCK DATA (Test mode — see mockLibrary.js and mockArt.js)
+// MOCK DATA (Test mode, see mockLibrary.js and mockArt.js)
 // ═══════════════════════════════════════════════════════════
 // Everything below is invented but stable: a PRNG seeded on the scene's id, so
 // a scene keeps its duration, rating and cover while the app is in Test mode.
@@ -128,7 +129,7 @@ const FIND_SCENES_QUERY = `
 `;
 
 function formatDuration(seconds) {
-  if (!seconds) return '—';
+  if (!seconds) return '–';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -192,7 +193,7 @@ const sceneCache = createListCache();
 
 /**
  * Drop every cached scene page. Anything that changes what a grid card draws
- * — a resume position, a rating, a like — has to call this, or the grid keeps
+ *, a resume position, a rating, a like, has to call this, or the grid keeps
  * serving the page it fetched before the change.
  */
 export function clearScenePages() {
@@ -201,7 +202,7 @@ export function clearScenePages() {
 
 /**
  * Cached page fetch. Switching tabs or returning to a sort already seen renders
- * from here instead of re-showing the spinner — the request is only ~28 ms, so
+ * from here instead of re-showing the spinner, the request is only ~28 ms, so
  * the win is perceived, not wall-clock.
  *
  * The key carries the full request identity, and listCacheKey folds in the
@@ -218,6 +219,7 @@ export async function fetchVideos({
   q = '',
   page = 1,
   limit = 40,
+  signal,
 } = {}) {
   // `random` re-shuffles server-side on every request, so page 2 would overlap
   // page 1 and the no-progress stop could end a short list early. Seed from the
@@ -225,7 +227,7 @@ export async function fetchVideos({
   const requestSort = stableSort(sort, 'scenes', mode, filter, q);
   return sceneCache.get(
     listCacheKey('scenes', mode, requestSort, order, filter, q, page, limit),
-    () => loadVideos({ mode, sort: requestSort, order, filter, q, page, limit }),
+    () => loadVideos({ mode, sort: requestSort, order, filter, q, page, limit, signal }),
   );
 }
 
@@ -237,6 +239,7 @@ async function loadVideos({
   q = '',
   page = 1,
   limit = 40,
+  signal,
 } = {}) {
 
   // ── Mock branch ──────────────────────────────────────────
@@ -268,7 +271,7 @@ async function loadVideos({
     scene_filter: translateFilter(filter, 'SceneFilterType'),
   };
 
-  const data = await runQuery(FIND_SCENES_QUERY, variables);
+  const data = await runQuery(FIND_SCENES_QUERY, variables, { signal });
   const scenes = data?.findScenes?.scenes || [];
 
   return {
@@ -279,13 +282,13 @@ async function loadVideos({
 }
 
 /**
- * Fetch the live state of one scene — used when reopening it to pick up the
+ * Fetch the live state of one scene, used when reopening it to pick up the
  * latest resume_time, since the grid's cached object may be stale.
  *
  * Markers ride along on the same request: the player's progress bar needs them
  * the moment the scene opens, so a second call would be another round trip for
  * data always wanted with the resume point. `Scene.scene_markers` is
- * unpaginated — a handful, not a listing.
+ * unpaginated, a handful, not a listing.
  *
  * Sorted here, not trusted from the server: the previous/next-marker buttons
  * binary-search by position, and Stash promises no order. Each carries its
@@ -295,7 +298,7 @@ async function loadVideos({
 export async function fetchSceneState(id) {
   if (getSettings().useMock) return null;
   if (!id) return null;
-  // Null means "there is nothing to say" — Test mode, or no id. A failed
+  // Null means "there is nothing to say", Test mode, or no id. A failed
   // request is not that answer: it means the resume point, the play counts
   // and the markers are *unknown*, and the player must not silently show the
   // scene as never watched. Callers get the error and report it.
@@ -327,12 +330,12 @@ const SCENE_STREAMS_QUERY = `
 `;
 
 /**
- * The endpoints Stash will serve this scene from — its own file first, then
+ * The endpoints Stash will serve this scene from, its own file first, then
  * the configured transcodes.
  *
  * Only asked for when the direct file will not work (see playbackSource.js) or
  * has already failed: it is a second round trip, and 94% of this library is
- * h264/mp4 where the direct stream is better — no server CPU, no transcode
+ * h264/mp4 where the direct stream is better, no server CPU, no transcode
  * startup, and full-range seeking.
  *
  * Returns `[]` rather than throwing: an empty list is a fact the caller acts
@@ -362,7 +365,7 @@ const SCENE_SAVE_ACTIVITY_MUTATION = `
 
 // `[Timestamp!]`, not `[Time!]`. Both scalars exist in this schema, so the
 // wrong one is easy to write: it surfaces only as a validation error naming a
-// position — i.e. a console.warn nobody sees on a TV.
+// position, i.e. a console.warn nobody sees on a TV.
 const SCENE_ADD_PLAY_MUTATION = `
   mutation SceneAddPlay($id: ID!, $times: [Timestamp!]) {
     sceneAddPlay(id: $id, times: $times) {
@@ -392,7 +395,7 @@ const FIND_SCENE_QUERY = `
  * to a running total while *overwriting* `resume_time`. Passing the position
  * would re-add the whole elapsed position on every save: a 40-minute scene
  * saves roughly 80 times over a sitting, so play_duration would reach tens of
- * hours. The caller sends seconds actually watched — see VideoPlayer.
+ * hours. The caller sends seconds actually watched, see VideoPlayer.
  *
  * Returns `{ok}` rather than throwing: a failed save must never interrupt
  * playback, but must not be invisible either. The caller shows it. No-op in
@@ -410,9 +413,10 @@ export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
     // Cached pages now hold a stale resume_time, which the card draws as its
     // resume bar. Drop them; the player saves rarely and Map.clear is O(1).
     clearScenePages();
+    publishRowPatch('scene', id, { resume_time: resumeTime ?? 0 });
     return { ok: true };
   } catch (e) {
-    // Never disturb playback — but say so, because a silent sync failure is
+    // Never disturb playback, but say so, because a silent sync failure is
     // the exact bug class this path exists to remove.
     console.warn('[saveSceneActivity] failed:', e.message);
     return { ok: false, error: e };
@@ -433,7 +437,7 @@ export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
  * good enough for a write the app cannot undo, and the harness can assert
  * exactly what left the client.
  *
- * Called once per scene per playback session, from the `playing` event — not on
+ * Called once per scene per playback session, from the `playing` event, not on
  * mount (which says nothing about watchability) and not per save (which would
  * make the count track the save timer, not the act of watching).
  */

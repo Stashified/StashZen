@@ -41,7 +41,7 @@ if (typeof window !== 'undefined') {
 
 // AppLock wraps App rather than sitting inside it: while locked, App is
 // unmounted, so nothing behind the PIN is fetched or focusable. FirstRun sits
-// inside AppLock for the same reason one level down — with no server there is
+// inside AppLock for the same reason one level down, with no server there is
 // no library to show, so App is not mounted rather than mounted and hidden.
 // A PIN can only be set from a running app, so the two gates cannot both want
 // the screen. ErrorBoundary wraps all of it: a throw in either gate would

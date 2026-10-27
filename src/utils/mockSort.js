@@ -1,16 +1,16 @@
 /**
- * mockSort — the Test-mode ordering, shared by every mock listing.
+ * mockSort, the Test-mode ordering, shared by every mock listing.
  *
  * A sort *value* is Stash's vocabulary and a mock row's field names are the
  * app's. When they differ the comparator looks up a key no row has, every
- * comparison ties, and the sort control silently does nothing — in the one mode
+ * comparison ties, and the sort control silently does nothing, in the one mode
  * a user opens to check that the controls work. `alias` maps the names each
  * service knows both of (`duration` → `durationSeconds`, `height` →
  * `height_cm`, `scenes_count` → `scene_count`).
  *
  * `random` is the second special case: the server reshuffles per request, but a
  * mock that reshuffled between pages would page through a list that drops and
- * duplicates rows — the order must be stable, so each id gets a hash as rank.
+ * duplicates rows, the order must be stable, so each id gets a hash as rank.
  *
  * Numbers compare numerically and strings case-insensitively; a null or missing
  * value sorts low rather than throwing, because a mock row is as likely to be
@@ -19,7 +19,7 @@
 
 const RANKS = new Map();
 
-/** FNV-1a, 32-bit — a stable, dependency-free rank for one id. */
+/** FNV-1a, 32-bit, a stable, dependency-free rank for one id. */
 function rankOf(id) {
   const key = String(id ?? '');
   let rank = RANKS.get(key);

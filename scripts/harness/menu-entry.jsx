@@ -2,7 +2,7 @@
  * Headless driver for the play queue, the long-press menu, and the resume
  * saves that the queue puts at risk.
  *
- * Mounts the real App — not a re-composition of its parts — because most of
+ * Mounts the real App, not a re-composition of its parts, because most of
  * what 2c adds is *wiring*: which component hands the listing to which, and
  * which of the four places that call `saveSceneActivity` gets the position
  * right. A driver that re-created App's handlers would test a copy of the
@@ -13,7 +13,7 @@
  * `saves`.
  *
  * The one thing no DOM can tell you: whether a real remote emits `keyup` for
- * its Enter/OK key. The long-press design depends on it — a remote that only
+ * its Enter/OK key. The long-press design depends on it, a remote that only
  * sends keydown would never fire the short action at all. That check is on
  * the TV, with the TV's own remote.
  */
@@ -40,7 +40,7 @@ const TOTAL = 100;
 const active = () => document.activeElement;
 
 // useFocusable listens on the *element*, useKeyHandler on the window, so every
-// key must be dispatched at the focused element and bubble from there — a
+// key must be dispatched at the focused element and bubble from there, a
 // window dispatch misses the per-element handlers entirely.
 function press(key, keyCode, { repeat = false } = {}) {
   const el = active() || document.body;
@@ -118,7 +118,7 @@ const playerOpen = () => !!document.querySelector(PLAYER);
 const detailOpen = () => !!document.querySelector(DETAIL);
 
 // Every overlay a card press could raise; assertions about *nothing* happening
-// must name all of them — watching only the menu and player stayed green while
+// must name all of them, watching only the menu and player stayed green while
 // the control opened the detail page behind them.
 const NO_OVERLAY = () => !detailOpen() && !menuOpen() && !playerOpen();
 const ONLY_MENU = () => menuOpen() && !detailOpen() && !playerOpen();
@@ -198,7 +198,7 @@ async function runKeys() {
   focusCard('1');
   press('Enter', 13);
   await sleep(150);
-  // Still held: nothing may have happened yet — the observable difference from
+  // Still held: nothing may have happened yet, the observable difference from
   // the old instant-on-keydown behaviour. The predicate must name every overlay
   // a short action could open; watching only menu+player stayed green.
   check('K2 a held Enter does nothing while it is held', NO_OVERLAY(), overlayState());
@@ -235,7 +235,7 @@ async function runKeys() {
 
   // ── A hold whose repeats are unflagged ───────────────────
   // A remote need not set `e.repeat`, leaving `longPressFired` as the only guard
-  // against a second timer — which re-records lastMenuCardRef from a menu row.
+  // against a second timer, which re-records lastMenuCardRef from a menu row.
   press('Escape', 27);
   await sleep(300);
   focusCard('6');
@@ -276,7 +276,7 @@ async function runKeys() {
     `focused: ${focusLabel()}, in menu: ${inMenu()}`);
 
   // Up from the first row must stay inside the menu rather than reaching the
-  // grid behind it — that is what role="dialog" buys.
+  // grid behind it, that is what role="dialog" buys.
   press('ArrowUp', 38);
   await sleep(120);
   press('ArrowUp', 38);
@@ -336,7 +336,7 @@ async function runMenu() {
 
   // ── Off the end of the loaded page, and on to the end of the listing ──
   // 40 rows are loaded; walking past them forces the queue to extend, and the
-  // walk must stay contiguous — a gap drops scenes, a repeat re-fetches one.
+  // walk must stay contiguous, a gap drops scenes, a repeat re-fetches one.
   await clearLogs();
   // One press to return from the seek bar to the buttons; from there each ↓
   // is a step (the cursor stays on the rail through a step), so the 35
@@ -385,7 +385,7 @@ async function runMenu() {
   await holdEnter(900);
   await sleep(250);
   check('M4 setup: the menu is up on card 9', inMenu() && menuOpen(), overlayState());
-  press('Enter', 13);          // Play — the first row, already focused
+  press('Enter', 13);          // Play, the first row, already focused
   await sleep(900);
   check('M4 setup: Play from the menu opened the player', playerOpen(), playingTitle());
   // The bar is up on open, so the first Back is the layering press, not the
@@ -422,7 +422,7 @@ async function runQueue() {
   check('Q1 Play all starts at the top', playingScene() === 1, `playing scene ${playingScene()}`);
   mediaEl()?.pause();
 
-  // Walk the whole thing. 100 scenes, so 99 steps — and the stop condition
+  // Walk the whole thing. 100 scenes, so 99 steps, and the stop condition
   // is what has to hold on the last one.
   for (let i = 0; i < 101; i++) {
     press('ArrowDown', 40);

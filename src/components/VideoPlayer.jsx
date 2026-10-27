@@ -1,5 +1,5 @@
 /**
- * VideoPlayer — full-screen video player overlay.
+ * VideoPlayer, full-screen video player overlay.
  *
  * Plays a `queue` (`{ items, total, page, startIndex, startSeconds, fetchPage }`,
  * see usePlayQueue): an ordered list plus the index to start at. A one-scene
@@ -23,7 +23,7 @@
  *
  * A one-scene queue has nowhere to step, so ↑/↓ raise the rail there instead.
  * With a foreign dialog up (add-marker, resume prompt, detail page) the player
- * owns no keys — see foreignDialogOpen.
+ * owns no keys, see foreignDialogOpen.
  *
  * ## Writes
  *
@@ -59,7 +59,6 @@ import { timelineDuration } from '../utils/playbackSource.js';
 import { sourceKey } from '../utils/enginePolicy.js';
 import { withApiKey } from '../utils/stashUrl.js';
 import { createMediaEngine } from './player/engine/mediaEngine.js';
-import { SKIP_SECONDS } from './player/constants.js';
 import { deriveDefaultTag } from './player/markerUtils.js';
 import { usePlaybackProgress } from './player/usePlaybackProgress.js';
 import { useSceneState } from './player/useSceneState.js';
@@ -134,11 +133,14 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const containerRef = useRef(null);
   const railRef = useRef(null);
   const startSeekedRef = useRef(false); // ensure we only auto-seek once
+  // A held skim defers its seek, so the element keeps playing at the old
+  // position: its `timeupdate` must not pull the timeline back to it.
+  const skimPendingRef = useRef(false);
   // `{sceneId, time}` so a source change belonging to a new scene cannot carry
   // the outgoing scene's position into it.
   const fallbackSeekRef = useRef({ sceneId: null, time: 0 });
 
-  // Write-back lifecycle — sync chip, unmount latch, pagehide, periodic save.
+  // Write-back lifecycle, sync chip, unmount latch, pagehide, periodic save.
   // Accounting lives in progressReporter.js; the media handlers below feed it
   // and `useSceneState` names the scene.
   const { progress, syncState } = usePlaybackProgress({ video, mediaRef, onActivityChange });
@@ -155,12 +157,13 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     setting: engineSetting, forcedBrowser, avplay, tvaudiocontrol, ready: engineReady,
   } = usePlayerEngine();
 
-  // What the media is pointed at — the scene's file, or a Stash transcode when
+  // What the media is pointed at, the scene's file, or a Stash transcode when
   // the engine cannot decode it, and the other of the two if the first fails.
   // The decision and fallback live in usePlaybackSource; this component only
   // supplies the queue item and the element.
   const {
     src: playbackSrc,
+    srcSceneId,
     sourceKind,
     engine,
     engineStatus,
@@ -219,7 +222,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const pendingLiveResumeRef = useRef(0);
 
   // What Stash knows about the scene: live resume point, markers, resume-prompt
-  // answer. The per-scene reset and fetch live here too — one commit, one
+  // answer. The per-scene reset and fetch live here too, one commit, one
   // reset.
   const {
     liveResumeTime, markers, addMarkers, resumeChoice, setResumeChoice,
@@ -254,7 +257,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   });
 
   /**
-   * Open the native AVPlay session — its load path, since AVPlay has no
+   * Open the native AVPlay session, its load path, since AVPlay has no
    * element (the browser's is the `<video>`'s `src`, set in the same commit).
    * The resume prompt owns whether playback may start; the transport starts it
    * once the prompt is gone.
@@ -309,7 +312,9 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     pendingLiveResumeRef,
     fallbackSeekRef,
     sourceFreshRef,
+    skimPendingRef,
     playbackSrc: mediaKey,
+    sourceSceneId: srcSceneId,
     sourceExhausted,
     reportSourceFailure,
     codecs,
@@ -323,7 +328,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
    * The poster above the AVPlay plane until the engine has a picture.
    *
    * AVPlay draws behind the page, so between `open()` and the first decoded
-   * frame the page is transparent over black — a thumbnail reads better than
+   * frame the page is transparent over black, a thumbnail reads better than
    * nothing. An `<img>`, never a `<video>`: a second decoder would compete with
    * the engine it is covering for.
    *
@@ -341,7 +346,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const showPoster = engine === 'avplay' && posterKey !== mediaKey && !!video?.thumbnail;
 
   /**
-   * The timeline the UI draws — not always the element's duration.
+   * The timeline the UI draws, not always the element's duration.
    *
    * `v.duration` is the truth whenever it exists: it is the range the transport
    * can reach, and matches a direct file or HLS playlist exactly. A Stash MP4
@@ -358,6 +363,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     duration,
     showControls,
     setCurrentTime,
+    mediaKey,
+    skimPendingRef,
   });
 
   const {
@@ -409,7 +416,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
   // What the controls bar says about the source; null while the resolver is
-  // still choosing — the spinner is the honest state then.
+  // still choosing, the spinner is the honest state then.
   const sourceLabel = sourceKind === 'transcode' ? 'Transcoded'
     : sourceKind === 'direct' ? 'Direct play'
       : null;
@@ -424,7 +431,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
       onMouseMove={showControls}
     >
       {/* No `autoPlay`: the effect above starts playback and holds back while
-          the resume prompt is up. `src` is the resolver's, not the scene's —
+          the resume prompt is up. `src` is the resolver's, not the scene's:
           the file itself, or Stash's transcode when the TV cannot decode it,
           and it can change mid-scene if the first choice fails. */}
       {engine !== 'avplay' && (
@@ -447,7 +454,6 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         skimFlash={skimFlash}
         buffering={buffering}
         error={error}
-        skipSeconds={SKIP_SECONDS}
       />
 
       <div className={`${styles.controls} ${controlsVisible ? styles.controlsVisible : ''}`}>
@@ -489,7 +495,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             onPlayPause={togglePlay}
             onSkim={skim}
             // Null at the ends of the queue, which the rail dims and makes
-            // un-navigable — otherwise both scene buttons ship enabled and
+            // un-navigable, otherwise both scene buttons ship enabled and
             // inert on the common one-scene path. `goNext` is still passed to
             // the `ended` handler above, where callable-at-the-end is the point.
             onPrevScene={hasPrev ? goPrev : null}
@@ -518,7 +524,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         />
       )}
 
-      {/* Outside `.controls` so the confirmation survives the rail hiding — the
+      {/* Outside `.controls` so the confirmation survives the rail hiding, the
           notice is the only evidence that a write landed. */}
       {markerNotice && (
         <p className={styles.toast} role="status" aria-live="polite">{markerNotice}</p>

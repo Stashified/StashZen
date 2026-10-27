@@ -1,8 +1,8 @@
 /**
- * stashClient.js — the single HTTP transport for Stash.
+ * stashClient.js: the single HTTP transport for Stash.
  *
  * Deliberately *pure*: it imports nothing and takes endpoint and API key as
- * arguments, keeping the dependency graph one-way — settings.js can use
+ * arguments, keeping the dependency graph one-way, settings.js can use
  * `fetchWithTimeout` without a `stashClient → settings → stashClient` cycle.
  *
  * Every request needs a timeout: on a TV a request to an unreachable-but-
@@ -11,8 +11,8 @@
  *
  * Tizen compatibility: `AbortController` is Chromium 66, `AbortSignal.timeout()`
  * Chromium 103; the floor is Tizen 6.5 (Chromium 94), so the controller exists
- * but the helper does not. We always race a timer — that is what settles the
- * promise — and *additionally* abort the socket when a controller exists. The
+ * but the helper does not. We always race a timer, that is what settles the
+ * promise, and *additionally* abort the socket when a controller exists. The
  * typeof guard is belt and braces: `check:compat` flags the controller on an
  * older engine.
  */
@@ -23,7 +23,7 @@ export const DEFAULT_TIMEOUT_MS = 12000;
 /**
  * Error carrying a machine-readable `code` so callers can distinguish a config
  * problem from a slow server without parsing prose. `message` is shown
- * directly to the user — several pages render it verbatim.
+ * directly to the user, several pages render it verbatim.
  *
  * `status` is the HTTP status when `code` is 'http', so a rejected API key
  * (401/403) is distinguishable from other server errors without prose-sniffing.
@@ -88,7 +88,7 @@ export async function fetchWithTimeout(
       // The caller cancelled it (the hook that owns it ignores the rejection,
       // but it must not be reported as a timeout).
       if (external?.aborted) throw e;
-      // Our own abort() surfaces as AbortError — report it as the timeout
+      // Our own abort() surfaces as AbortError, report it as the timeout
       // it was, not as a generic network failure.
       if (controller?.signal.aborted) {
         throw new StashError('The server took too long to respond.', 'timeout');
@@ -111,7 +111,7 @@ export async function fetchWithTimeout(
  * @param {object} variables
  * @param {{url?: string, key?: string, timeoutMs?: number}} target
  */
-export async function graphqlRequest(query, variables, { url, key, timeoutMs } = {}) {
+export async function graphqlRequest(query, variables, { url, key, timeoutMs, signal } = {}) {
   if (!url) {
     throw new StashError(
       'No Stash server configured. Open Settings and enter your server URL.',
@@ -122,14 +122,20 @@ export async function graphqlRequest(query, variables, { url, key, timeoutMs } =
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers['ApiKey'] = key;
 
-  const json = await fetchWithTimeout(`${url.replace(/\/+$/, '')}/graphql`, {
+  // The field accepts the documented GraphQL endpoint, so `…/graphql` must not
+  // become `…/graphql/graphql`.
+  const base = url.replace(/\/+$/, '').replace(/\/graphql$/i, '');
+  const json = await fetchWithTimeout(`${base}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ query, variables }),
+    // A superseded listing request must release its socket now, not at the
+    // 12 s timeout, or the newest request queues behind it.
+    signal,
   }, timeoutMs, async (res) => {
     if (!res.ok) {
       // Stash returns a rejected filter (a criterion in the wrong shape) as a
-      // non-2xx status — 400 in practice — whose body still carries a precise
+      // non-2xx status, 400 in practice, whose body still carries a precise
       // GraphQL error, e.g. `cannot use map as Boolean`. Throw on status alone
       // and the user sees only "GraphQL HTTP 400", with no idea which
       // criterion was wrong, so read the body before giving up on the detail.
@@ -138,7 +144,7 @@ export async function graphqlRequest(query, variables, { url, key, timeoutMs } =
         const body = await res.json();
         detail = body?.errors?.[0]?.message || null;
       } catch {
-        // Not JSON (a proxy error page, say) — the status is all we have.
+        // Not JSON (a proxy error page, say), the status is all we have.
       }
       throw new StashError(
         detail ? `GraphQL HTTP ${res.status}: ${detail}` : `GraphQL HTTP ${res.status}`,

@@ -1,5 +1,5 @@
 /**
- * VideoCoverflow — 3D coverflow layout.
+ * VideoCoverflow, 3D coverflow layout.
  *
  * Cards on a virtual rail: the centred card flat and forward, neighbours
  * rotated around Y with a floor reflection for depth. Follows focus via
@@ -9,11 +9,12 @@
  * trigger (the focused index nearing the end of the rail).
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import VideoCard from './VideoCard.jsx';
 import ListingState from './ListingState.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
+import { onFocusRestoreRequest } from '../utils/focus.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoCoverflow.module.css';
@@ -36,22 +37,23 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   // Named, not inline: the play queue is handed the same closure, so a queue
   // started here pages the rail's listing.
   const fetchPage = useCallback(
-    (page) =>
-      fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d.videos, total: d.total })),
     [sort, order, objectFilter, searchQuery],
   );
 
-  // `items` is aliased to `videos` — that is what this view lists.
+  // `items` is aliased to `videos`, that is what this view lists.
   const {
-    items: videos, total, page, loading, loadingMore, error, loadMore,
+    items: videos, total, page, loading, retrying, loadingMore, error, loadMore,
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // A restore by `video-<id>` must page forward past the first page — see
+    // A restore by `video-<id>` must page forward past the first page, see
     // utils/focus.js.
     focusPrefix: 'video',
+    entity: 'scene',
   });
 
   // Stable identity, as in the grid: focus restyles the slots, but the cards
@@ -85,7 +87,30 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
     document.addEventListener('focusin', onFocus);
     return () => document.removeEventListener('focusin', onFocus);
   }, [videos, focusedIndex]);
-  
+
+  // Only ±RENDER_RANGE slots are mounted, so a restore naming a card outside
+  // that window has no element to reach. Move the window to it, now or when
+  // the row pages in.
+  const pendingRestoreRef = useRef(null);
+  const moveToRestore = useCallback((fid) => {
+    const id = fid.slice('video-'.length);
+    const idx = videos.findIndex(v => String(v.id) === String(id));
+    if (idx < 0) return false;
+    setFocusedIndex(idx);
+    return true;
+  }, [videos]);
+
+  useEffect(() => onFocusRestoreRequest((fid) => {
+    if (!fid.startsWith('video-')) return;
+    pendingRestoreRef.current = moveToRestore(fid) ? null : fid;
+  }), [moveToRestore]);
+
+  useEffect(() => {
+    if (pendingRestoreRef.current && moveToRestore(pendingRestoreRef.current)) {
+      pendingRestoreRef.current = null;
+    }
+  }, [moveToRestore]);
+
 
   if (loading) return (
     <ListingState
@@ -93,7 +118,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
       styles={styles}
       loading
       spinnerLabel="Loading videos"
-      text="Loading videos…"
+      text={retrying ? 'Connection problem, retrying…' : 'Loading videos…'}
     />
   );
 
@@ -191,7 +216,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
       {error && !loadingMore && videos.length > 0 && (
         <div className={styles.loadingMore} style={{ color: 'var(--red)' }}>
-          <span>Couldn't load more — {error}</span>
+          <span>Couldn't load more: {error}</span>
         </div>
       )}
     </div>

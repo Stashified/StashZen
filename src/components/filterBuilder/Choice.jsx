@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../../hooks/useFocusable.js';
-import { TIZEN_BACK } from '../../utils/input.js';
+import { isBackCode } from '../../utils/input.js';
 import styles from '../FilterBuilder.module.css';
 
 // Modelled on ControlsPanel's, which is not extracted: that one is scoped to
@@ -32,7 +32,7 @@ export function Choice({ id, label, value, options, onChange, disabled, renderLa
     const el = wrapperRef.current;
     if (!el) return undefined;
     const handler = (e) => {
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK) {
+      if (e.key === 'Escape' || isBackCode(e.keyCode)) {
         e.preventDefault();
         e.stopPropagation();
         setOpen(false);
@@ -42,7 +42,7 @@ export function Choice({ id, label, value, options, onChange, disabled, renderLa
     return () => el.removeEventListener('keydown', handler, true);
   }, [open]);
 
-  const shown = renderLabel ? renderLabel(value) : (options.find(o => o.value === value)?.label ?? value ?? '—');
+  const shown = renderLabel ? renderLabel(value) : (options.find(o => o.value === value)?.label ?? value ?? '–');
 
   return (
     <div className={styles.choice} ref={wrapperRef} data-focus-trap={open ? '' : undefined}>

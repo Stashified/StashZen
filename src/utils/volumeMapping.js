@@ -1,5 +1,5 @@
 /**
- * volumeMapping — how the player's mute button is expressed on the TV.
+ * volumeMapping, how the player's mute button is expressed on the TV.
  *
  * Measured on this panel (Tizen 9.0): `avplay.setVolume` does not exist,
  * `disableAudioStream` is one-way (`enableAudioStream` does not restore sound),
@@ -71,7 +71,7 @@ export function mapMute({ capability, muted, level = 100 }) {
  * What to do when the player closes, falls back, hides or is torn down.
  *
  * Returns calls only when this app is the one that muted. A TV already muted by
- * the remote stays muted — restoring it would override a choice made outside
+ * the remote stays muted, restoring it would override a choice made outside
  * the app, which a system-wide mute must not do.
  */
 export function mapMuteRestore({ capability, appMuted, initialMuted, initialLevel = 100 }) {

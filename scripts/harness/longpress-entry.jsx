@@ -2,7 +2,7 @@
  * Headless driver for the long-press menus on Markers, Images and Galleries,
  * and for the slideshow the viewer's menu entries open.
  *
- * Mounts the real App: all of this is wiring — which card hands its listing to
+ * Mounts the real App: all of this is wiring, which card hands its listing to
  * which menu, where the queue's first timestamp comes from, and which card
  * focus returns to when an overlay closes. A driver re-creating those handlers
  * would test a copy.
@@ -116,7 +116,7 @@ const focusId = (id) => {
   return !!el;
 };
 
-// Every overlay is a `role="dialog"`, but the player is not modal — VideoPlayer
+// Every overlay is a `role="dialog"`, but the player is not modal, VideoPlayer
 // uses the role for its focus trap, not a backdrop. Querying only aria-modal
 // dialogs hid the player and made every title assertion read "".
 const dialogs = () => [...document.querySelectorAll('[role="dialog"]')];
@@ -262,7 +262,7 @@ async function runMarkers() {
     (mediaEl()?.currentTime ?? 99) < 3,
     `currentTime ${mediaEl()?.currentTime?.toFixed(1)}s on scene 2`);
   await closePlayer();
-  // Back returns to the marker of the scene last viewed — scene 2, marker 2 —
+  // Back returns to the marker of the scene last viewed, scene 2, marker 2:
   // not the one the queue started from. A marker queue plays scenes, so the
   // scene id names no card here; the row's `markerId` is what the restore reads.
   check('M3 closing the player returns to the marker of the scene last viewed',

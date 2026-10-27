@@ -1,5 +1,5 @@
 /**
- * usePlayQueue — the ordered list a playback session walks
+ * usePlayQueue: the ordered list a playback session walks
  *
  * "Play all" and "Play from here" mean the whole filtered result set, not the
  * pages the starting view had loaded. The queue is seeded with the view's
@@ -39,6 +39,11 @@ export function usePlayQueue(queue) {
 
   const [items, setItems] = useState(seedItems);
   const [total, setTotal] = useState(seedTotal);
+  // The extension gave up with nothing new. A marker queue reports its marker
+  // count, but its items are deduped by scene, so `items.length >= total` may
+  // never hold; without the latch every Next at the end re-asks.
+  const [ended, setEnded] = useState(false);
+  const endedRef = useRef(false);
   const [index, setIndexState] = useState(startIndex);
   // The page is deliberately *not* state: nothing renders it, and it is only
   // ever read to work out which page to ask for next.
@@ -58,10 +63,11 @@ export function usePlayQueue(queue) {
     setIndexState(next);
   }, []);
 
-  const exhausted = total > 0 && items.length >= total;
+  const exhausted = ended || (total > 0 && items.length >= total);
 
   const extend = useCallback(() => {
     if (!fetchPage) return Promise.resolve(false);
+    if (endedRef.current) return Promise.resolve(false);
     if (inFlightRef.current) return inFlightRef.current;
 
     const before = stateRef.current;
@@ -72,7 +78,7 @@ export function usePlayQueue(queue) {
         // More than one page per call because a single page can yield nothing
         // new: Stash's ordering shifts between requests, so a "next" page can
         // repeat rows already held. It still advanced the cursor, so ask for
-        // the one after — returning false stranded playback at the boundary.
+        // the one after, returning false stranded playback at the boundary.
         // Bounded so a server repeating one page cannot spin here forever.
         let requestedPage = before.page;
         for (let attempt = 0; attempt <= MAX_DUPLICATE_PAGES; attempt++) {
@@ -98,6 +104,14 @@ export function usePlayQueue(queue) {
           setTotal(next.total);
           if (fresh.length > 0) return true;
         }
+        // Nothing new after the whole budget: this queue is done. `total`
+        // becomes what we hold, because the server's marker count would
+        // promise rows that resolve to scenes already in the list. The latch
+        // stops the next press from asking again.
+        const cur = stateRef.current;
+        endedRef.current = true;
+        setEnded(true);
+        setTotal(cur.items.length);
         return false;
       } catch {
         // A failed extension is not worth interrupting playback for: the
@@ -127,7 +141,7 @@ export function usePlayQueue(queue) {
   }, [setIndex]);
 
   // Returns whether the cursor actually moved. `ended` uses that to decide
-  // between advancing and stopping, and it cannot ask `hasNext` — that is
+  // between advancing and stopping, and it cannot ask `hasNext`, that is
   // the value from the render that set up the handler.
   const goNext = useCallback(async () => {
     if (indexRef.current + 1 < stateRef.current.items.length) {

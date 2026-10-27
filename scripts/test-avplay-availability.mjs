@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * test-avplay-availability.mjs — how the app finds out whether a panel has
+ * test-avplay-availability.mjs: how the app finds out whether a panel has
  * AVPlay, and what it does when the answer is no.
  *
  *   node scripts/test-avplay-availability.mjs
  *
- * The load is attempted once per session and its result — present or absent —
+ * The load is attempted once per session and its result, present or absent:
  * is kept. "Absent" is a normal answer: every scene then plays on the browser,
  * and re-probing the WebAPI script per scene would add a measured 1.5 s stall.
  */

@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
 
   // A lib build does not substitute NODE_ENV, and react-dom reads it at import
-  // time — without this the page dies with "process is not defined". It also
+  // time, without this the page dies with "process is not defined". It also
   // halves the bundle (production React).
   //
   // `HARNESS_NODE_ENV=development` exposes StrictMode's mount/unmount/remount
@@ -29,6 +29,14 @@ export default defineConfig({
     // The build-level rollback, so a driver can prove Browser is today's
     // player. Off unless a driver asks.
     __FORCE_BROWSER_ENGINE__: JSON.stringify(process.env.HARNESS_FORCE_BROWSER === '1'),
+    // The public-only update check. Off unless a driver asks, so every other
+    // driver builds the private shape (no URL, no section).
+    __UPDATE_CHECK__: JSON.stringify(process.env.HARNESS_UPDATE_CHECK === '1'),
+    __UPDATE_URL__: JSON.stringify(
+      process.env.HARNESS_UPDATE_CHECK === '1'
+        ? (process.env.HARNESS_UPDATE_URL || 'https://updates.test/latest')
+        : '',
+    ),
   },
 
   build: {
@@ -39,7 +47,7 @@ export default defineConfig({
       fileName: () => 'verify.js',
     },
     cssCodeSplit: false,
-    // Outside the repo on purpose — not a build artifact.
+    // Outside the repo on purpose, not a build artifact.
     outDir: process.env.HARNESS_OUT || '/tmp/detailverify/dist',
     emptyOutDir: true,
     // Readable stack traces in the failure report.

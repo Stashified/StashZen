@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-avplay-errors.mjs — separating "this file is refused" from "the engine
+ * test-avplay-errors.mjs: separating "this file is refused" from "the engine
  * is broken"
  *
  *   node scripts/test-avplay-errors.mjs
@@ -119,7 +119,7 @@ check('a transient is not engine-level',
   check('an unknown file is not cached under a shared key',
     avplayFormatKey({ container: null, videoCodec: '', audioCodec: undefined }) === null);
 
-  // A partial triple is not coarser — it is a shared key. `mp4||` written by
+  // A partial triple is not coarser, it is a shared key. `mp4||` written by
   // the first unprobed scene to fail is then read by every other, turning one
   // refusal into a session-wide verdict.
   check('a known container and video but unknown audio is not a key',

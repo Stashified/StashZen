@@ -6,6 +6,7 @@ import * as enumEditor from './enum.js';
 import * as boolean from './boolean.js';
 import * as multi from './multi.js';
 import * as stashId from './stashId.js';
+import * as isMissing from './isMissing.js';
 
 /**
  * The criterion editor registry.
@@ -13,7 +14,7 @@ import * as stashId from './stashId.js';
  * Each editor exports two descriptions of the same controls, side by side:
  * `chainIds` (D-pad order, DOM order) and `parts` (what CriterionRow renders).
  * They are independent because `.rowBody` wraps, so wrapped controls fall back
- * to screen geometry — a footer button. A wrong chain and a missing entry look
+ * to screen geometry, a footer button. A wrong chain and a missing entry look
  * alike there, and only a remote shows either; `scripts/test-filter-chain.mjs`
  * compares them and the harness's F10 checks press the keys.
  *
@@ -32,6 +33,7 @@ export const EDITORS = {
   [EDITOR.HIERARCHICAL]: multi,
   [EDITOR.STASH_ID]: stashId,
   [EDITOR.STASH_IDS]: stashId,
+  [EDITOR.IS_MISSING]: isMissing,
 };
 
 export const editorFor = (editor) => EDITORS[editor] || null;

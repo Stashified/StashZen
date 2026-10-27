@@ -1,5 +1,5 @@
 /**
- * MuteToggle — speaker icon toggling preview audio app-wide; muted by default,
+ * MuteToggle, speaker icon toggling preview audio app-wide; muted by default,
  * persisted via the settings store.
  *
  * Lives in ControlsPanel and uses the controls zone so the D-pad reaches it.
@@ -20,7 +20,7 @@ export default function MuteToggle({ muted, onToggle }) {
     <button
       ref={ref}
       // Muted is the base .btn styling, so only the unmuted state needs a
-      // modifier — and it must name a class that exists, or the list gains a
+      // modifier, and it must name a class that exists, or the list gains a
       // literal "undefined".
       className={`${styles.btn} ${focused ? styles.focused : ''} ${muted ? '' : styles.unmuted}`}
       onClick={onToggle}

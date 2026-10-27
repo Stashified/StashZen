@@ -1,9 +1,9 @@
 /**
- * SettingsPanel — full-screen settings modal.
+ * SettingsPanel, full-screen settings modal.
  *
  * Composes the sections in `settings/`; this file is the shell that orders
  * them and owns the drafts, Save and the Back guard. Everything round-trips
- * through localStorage, including Test/Live mode — a mode that reverted on
+ * through localStorage, including Test/Live mode, a mode that reverted on
  * launch made a configured device look unconfigured.
  *
  * Keyboard: Backspace / Esc / Tizen Back closes the modal, except while the
@@ -23,6 +23,8 @@ import { TextField } from './settings/TextField.jsx';
 import { AppLockSection } from './settings/AppLockSection.jsx';
 import { LibraryStatsSection } from './settings/LibraryStatsSection.jsx';
 import { ServerStatusSection } from './settings/ServerStatusSection.jsx';
+import { UpdateSection } from './settings/UpdateSection.jsx';
+import { isNewerVersion, updateCheckArmed } from '../utils/updateCheck.js';
 import { useArmedConfirm } from '../hooks/useArmedConfirm.js';
 import { useSettingsDraft } from '../hooks/useSettingsDraft.js';
 import { useSettingsBack } from '../hooks/useSettingsBack.js';
@@ -37,6 +39,15 @@ export default function SettingsPanel({ onClose }) {
   // in use rather than a lever that cannot move. Compile-time constant, not
   // state.
   const forcedBrowser = readForcedBrowser();
+
+  // Public builds only. The header names the newer version even while the
+  // Updates section is scrolled away, and the section is not rendered at all
+  // when the gate is off.
+  const updateGate = updateCheckArmed();
+  const updateAvailable = updateGate
+    && isNewerVersion(settings.updateLatestVersion, __APP_VERSION__)
+    ? settings.updateLatestVersion
+    : '';
 
   // Drafts: only committed to the store on Save. See the hook for why every
   // field, appearance included, is a draft.
@@ -106,7 +117,7 @@ export default function SettingsPanel({ onClose }) {
     }
   }, [useMock]);
 
-  // Leaving with unsaved drafts asks first — backing out silently would throw
+  // Leaving with unsaved drafts asks first, backing out silently would throw
   // the change away, indistinguishably from a save. The prompt is the only
   // place a discard can happen, and it names the alternative.
   //
@@ -127,7 +138,7 @@ export default function SettingsPanel({ onClose }) {
   const requestClose = () => {
     // Back while the prompt is open answers "keep editing" rather than
     // re-opening it. The prompt registers no Back handler: this listener runs
-    // first, and sibling capture listeners cannot suppress each other — see
+    // first, and sibling capture listeners cannot suppress each other, see
     // useSettingsBack.
     if (leavePrompt) {
       dismissLeavePrompt();
@@ -155,7 +166,7 @@ export default function SettingsPanel({ onClose }) {
   }, [stashUrl, stashKey]);
 
   const [saved, setSaved] = useState(false);
-  // Held in a ref so it can be cleared on unmount — a stale timeout would
+  // Held in a ref so it can be cleared on unmount, a stale timeout would
   // close a panel reopened within the delay.
   const closeTimerRef = useRef(null);
 
@@ -201,7 +212,7 @@ export default function SettingsPanel({ onClose }) {
     if (!aliveRef.current || attempt !== testAttemptRef.current) return;
     setTesting(false);
     if (result.ok) {
-      setTestResult({ ok: true, message: `Connected — Stash v${result.version}` });
+      setTestResult({ ok: true, message: `Connected: Stash v${result.version}` });
     } else {
       setTestResult({ ok: false, message: result.reason });
     }
@@ -217,12 +228,21 @@ export default function SettingsPanel({ onClose }) {
           </div>
           <div className={styles.titleRow}>
             <h2 className={styles.title}>Settings</h2>
-            <div className={styles.version}>v{__APP_VERSION__}</div>
+            <div className={styles.version}>
+              v{__APP_VERSION__}
+              {updateAvailable && (
+                <span className={styles.versionUpdate}>
+                  {' '}· v{updateAvailable} available
+                </span>
+              )}
+            </div>
           </div>
           <p className={styles.subtitle}>Connection, data source &amp; security</p>
         </header>
 
         <div className={styles.body} ref={bodyRef}>
+          {updateGate && <UpdateSection />}
+
           <ModeToggle value={useMock} onChange={setUseMock} />
 
           {/* Unmounted in Test mode, not dimmed: a `.disabled` class leaves the
@@ -275,7 +295,7 @@ export default function SettingsPanel({ onClose }) {
               <p className={styles.saveError} role="alert">{saveError}</p>
             )}
             <p className={styles.hint}>
-              The mode is saved too — the app opens in whichever one you left it in.
+              The mode is saved too: the app opens in whichever one you left it in.
             </p>
           </div>
 
@@ -312,7 +332,7 @@ export default function SettingsPanel({ onClose }) {
             </p>
           </div>
 
-          {/* A draft like everything here — committed by Save, so backing out
+          {/* A draft like everything here, committed by Save, so backing out
               leaves it as it was. */}
           <div className={styles.section}>
             <div className={styles.sectionRow}>
@@ -335,7 +355,7 @@ export default function SettingsPanel({ onClose }) {
             </div>
 
             <p className={styles.hint}>
-              Previews are generated in Stash, not here —{' '}
+              Previews are generated in Stash, not here:{' '}
               <strong>Generate → Previews</strong>. Scenes without one keep
               their cover; nothing is left blank.
             </p>

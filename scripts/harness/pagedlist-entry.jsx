@@ -7,7 +7,7 @@
  * the second call saw the old value and fetched the same page too. Both got
  * the same rows (the list cache shares the in-flight request); the first
  * appended them, the second found no new ids and hit the "no progress" stop,
- * rewriting the total and marking the list exhausted — "40 performers",
+ * rewriting the total and marking the list exhausted, "40 performers",
  * unable to page again.
  *
  * The driver calls `loadMore()` twice from one effect rather than relying on
@@ -144,7 +144,7 @@ async function run() {
   check('L6 page 1 of listing A settles', aReady,
     keyProbe.list ? `${keyProbe.list.items.length} rows` : 'no listing');
 
-  // A:2 is held open; do not await — the promise is the response and stays in
+  // A:2 is held open; do not await, the promise is the response and stays in
   // flight below.
   const aPending = keyProbe.list.loadMore();
   check('L7 A asks for its second page', keyRequests.includes('A:2'), keyRequests.join(' '));

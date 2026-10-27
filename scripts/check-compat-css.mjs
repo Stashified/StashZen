@@ -1,5 +1,5 @@
 /**
- * CSS half of the compatibility floor check — the JS half is
+ * CSS half of the compatibility floor check, the JS half is
  * `eslint --config eslint.compat.mjs src`.
  *
  * Runs doiuse over the built stylesheet at the engine version the Tizen

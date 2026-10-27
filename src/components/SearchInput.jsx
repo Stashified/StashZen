@@ -1,5 +1,5 @@
 /**
- * SearchInput — debounced text input for the controls panel.
+ * SearchInput, debounced text input for the controls panel.
  *
  * The draft updates per keystroke for feedback; onChange fires after a
  * debounce so the listing is not refetched on every key.

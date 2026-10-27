@@ -9,19 +9,19 @@ import styles from '../VideoPlayer.module.css';
  * would take the spinner and error with it. The big ▶ is not here: it is the
  * flexible middle of `.controls`, and moving it would change the CSS nesting.
  */
-export function PlayerStatus({ skimFlash, buffering, error, skipSeconds }) {
+export function PlayerStatus({ skimFlash, buffering, error }) {
   return (
     <>
-      {skimFlash === 'backward' && (
+      {skimFlash?.direction === 'backward' && (
         <div className={`${styles.skimFlash} ${styles.skimLeft}`}>
           <span className={styles.skimIcon}>⏪</span>
-          <span className={styles.skimAmount}>−{skipSeconds}s</span>
+          <span className={styles.skimAmount}>−{skimFlash.seconds}s</span>
         </div>
       )}
-      {skimFlash === 'forward' && (
+      {skimFlash?.direction === 'forward' && (
         <div className={`${styles.skimFlash} ${styles.skimRight}`}>
           <span className={styles.skimIcon}>⏩</span>
-          <span className={styles.skimAmount}>+{skipSeconds}s</span>
+          <span className={styles.skimAmount}>+{skimFlash.seconds}s</span>
         </div>
       )}
 

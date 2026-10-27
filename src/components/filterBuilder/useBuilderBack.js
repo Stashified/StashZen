@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { TIZEN_BACK, isTextInput, focusScopeOf } from '../../utils/input.js';
+import { isBackCode, isTextInput, focusScopeOf } from '../../utils/input.js';
 
 /**
  * FilterBuilder's Back guard. Load-bearing, and for ordering reasons.
  *
  * Every layer listens for Back on `window` in the capture phase, and siblings
  * on one target run in registration order. The builder mounts first, so its
- * handler runs first — without this guard one Back closes the picker *and* the
+ * handler runs first, without this guard one Back closes the picker *and* the
  * builder. `stopPropagation` cannot help; only `stopImmediatePropagation`
  * would suppress a sibling.
  *
@@ -18,7 +18,7 @@ import { TIZEN_BACK, isTextInput, focusScopeOf } from '../../utils/input.js';
  * but the conditions should stay identical.
  *
  * The returned ref lets the guard tell "focus is in this builder" from "focus
- * is in a layer over it" — the DOM does not lag a commit the way a flag can.
+ * is in a layer over it", the DOM does not lag a commit the way a flag can.
  * It also covers the Choice menu, which closes on its own Back handler.
  */
 export function useBuilderBack({ open, onClose }) {
@@ -38,7 +38,7 @@ export function useBuilderBack({ open, onClose }) {
       if (overlayOpenRef.current) return;   // a nested layer owns Back right now
       const scope = focusScopeOf(document.activeElement);
       if (scope && scope !== rootRef.current) return;
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK
+      if (e.key === 'Escape' || isBackCode(e.keyCode)
         || (e.key === 'Backspace' && !isTextInput(document.activeElement))) {
         // A held Back is one press; repeats must not close what a nested
         // layer opened after the first one (see useBackKey).

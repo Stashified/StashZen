@@ -1,5 +1,5 @@
 /**
- * PlaybackInfoPanel — the "stats for nerds" readout, toggled from the rail.
+ * PlaybackInfoPanel, the "stats for nerds" readout, toggled from the rail.
  *
  * Owns its own 500 ms polling so the re-render stays in this panel rather than
  * the player and everything under it.

@@ -1,5 +1,5 @@
 /**
- * playbackSource — what the player hands the <video>, and when a scene must go
+ * playbackSource, what the player hands the <video>, and when a scene must go
  * through Stash's transcoder instead of its own file.
  *
  * Stash serves the file it has: `paths.stream` is that file, container and
@@ -20,7 +20,7 @@
  *
  * Two halves, deliberately different kinds of guess:
  *  1. `needsTranscode` is *pre-emptive* and fires only on a codec we are sure
- *     is unplayable. An absent field means "no opinion" — a wrong pre-emptive
+ *     is unplayable. An absent field means "no opinion", a wrong pre-emptive
  *     answer costs a transcode the server has to run.
  *  2. The player's error/stall fallback (usePlaybackSource) is *reactive* and
  *     covers what the list gets wrong in either direction.
@@ -32,7 +32,7 @@
 /**
  * Codecs and containers a `<video>` element is trusted to handle directly.
  *
- * Trusted, not verified on the device — the fallback makes that acceptable.
+ * Trusted, not verified on the device, the fallback makes that acceptable.
  * `matroska` is here because Samsung's engine plays MKV through its native
  * pipeline, where a `<video>` on Tizen ends up.
  */
@@ -83,7 +83,7 @@ export function needsTranscode({ videoCodec, audioCodec, container } = {}) {
  * `0` and `Infinity` need separate treatment: `Infinity` is truthy, so the
  * usual `|| sceneDuration` idiom would let it through and paint a NaN-width
  * bar; `0` means "not known yet" or "known to be nothing". The scene's own
- * duration — from the API, describing the same source media on both paths — is
+ * duration, from the API, describing the same source media on both paths, is
  * a better answer than either.
  */
 export function timelineDuration(elementDuration, sceneDuration) {
@@ -98,20 +98,20 @@ export function timelineDuration(elementDuration, sceneDuration) {
  *
  * **`mime_type` alone does not identify a transcode**, which is why this reads
  * the URL too. Of this server's 14 endpoints for one scene, the first is
- * labelled `video/mp4` and *is the unplayable original* — `paths.stream` under
- * another name, the very URL this module avoids — and the second is a remux of
+ * labelled `video/mp4` and *is the unplayable original*, `paths.stream` under
+ * another name, the very URL this module avoids, and the second is a remux of
  * the same codecs. Every real transcode, and nothing else, is a `/stream.<ext>`
  * URL. Both halves are load-bearing: filtering on mime alone still works while
  * an ORIGINAL tier exists (the resolution preference skips the passthroughs),
  * and breaks the day it does not, when the `!LOW` fallback selects
- * `Direct stream` — the bytes just refused, silently. The harness's K5 checks
+ * `Direct stream`, the bytes just refused, silently. The harness's K5 checks
  * pin this down; the integration check cannot.
  *
  * **Ordering: HLS first.** Stash's MP4 transcode is a *linear* stream with no
  * length and no seek support. Probed on a 1827.24 s scene: `/stream.mp4` uses
  * chunked transfer with no Content-Length or Accept-Ranges, `mvhd
  * duration=0` (timescale 1000), and a Range request answers 200 without
- * Content-Range — so the TV infers a ~10 s timeline that stops while playback
+ * Content-Range, so the TV infers a ~10 s timeline that stops while playback
  * runs on, with nowhere to seek. `/stream.m3u8` has `Content-Length` 201997,
  * `Accept-Ranges: bytes`, VOD with `#EXT-X-ENDLIST` and 914 segments summing to
  * 1827.2 s. HLS carries the duration in the playlist and addresses media by
@@ -142,7 +142,7 @@ const urlPath = (u) => String(u).split('?')[0].split('#')[0];
  *
  * A list so the player can *walk* it: all tiers transcode the same source, so
  * a second attempt is justified by a format the TV won't take (HLS being the
- * one untestable off-device), never a resolution — hence only each format's
+ * one untestable off-device), never a resolution, hence only each format's
  * best tier, not the whole matrix.
  *
  * An empty list is ordinary: transcoding disabled, or no file behind the scene.

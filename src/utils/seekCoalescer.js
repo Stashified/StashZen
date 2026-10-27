@@ -1,5 +1,5 @@
 /**
- * seekCoalescer — latest-wins seeks with a settle rule, retries, and a
+ * seekCoalescer, latest-wins seeks with a settle rule, retries, and a
  * degradation signal.
  *
  * AVPlay has no native seek queue. Issuing `seekTo` for every D-pad press while
@@ -15,11 +15,15 @@
  * - **Settle on position, not a callback.** AVPlay has no seek-complete event:
  *   a seek is done when `getTime()` is within tolerance *and* playing, or when
  *   the settle window expires.
+ * - **Arrival without playback is its own verdict.** The position at the target
+ *   with the engine not playing means the seek finished and the resume did not;
+ *   it degrades after 2.5 s, not the full deadline, so a wedged decoder is
+ *   recovered while the user is still looking at the new frame.
  * - **Never re-issue a seek being worked on.** A frozen position means the
  *   engine is scanning; calling `seekTo` again throws that work away and is how
  *   a slow seek never finishes. Extend the window instead, up to the overall
  *   deadline (maxWaitMs, possibly chosen per source).
- * - **Retry only an ignored seek** — the position ran on *away from* the
+ * - **Retry only an ignored seek**, the position ran on *away from* the
  *   target. Movement that shrinks the distance is progress (a forward seek
  *   plays on while scanning). An ignored seek is re-issued twice, then
  *   degraded.
@@ -48,13 +52,17 @@ export const SEEK_SETTLE_MS = 3000;
 // seek for seconds where browser-backed HLS was measured faster.
 export const SEEK_SETTLE_HLS_MS = 2500;
 export const SEEK_MAX_RETRIES = 2;
-// Total time the seeker waits on a non-moving position before failing the
-// burst. A 4K AV1 seek takes several seconds of decode (the probe's 763 ms was
-// H.264 1080p). This is the default and the AVPlay HLS deadline; a direct file
-// gets a shorter one, because its failure has somewhere to fall back to.
+// A position at the target that never starts playing is not a slow seek: the
+// seek itself is done. Waiting for the burst deadline kept the panel frozen
+// for ~8 s before recovery; this is enough to tell the two apart.
+export const SEEK_ARRIVED_MS = 2500;
+// Total time the seeker waits on a non-moving position before the burst gives
+// up. A 4K AV1 seek takes several seconds of decode (the probe's 763 ms was
+// H.264 1080p). The AVPlay backend uses it for every source: a direct failure
+// is recovered natively, not handed to another engine.
 export const SEEK_MAX_WAIT_MS = 8000;
 // Movement smaller than this is playback noise or a stale sample, not evidence
-// that the seek was ignored — the engine is still working on it.
+// that the seek was ignored, the engine is still working on it.
 export const SEEK_MOVED_SECONDS = 0.5;
 
 export function createSeekCoalescer({
@@ -67,6 +75,7 @@ export function createSeekCoalescer({
   tolerance = SEEK_TOLERANCE_SECONDS,
   maxRetries = SEEK_MAX_RETRIES,
   maxWaitMs = SEEK_MAX_WAIT_MS,
+  arrivedMs = SEEK_ARRIVED_MS,
 }) {
   let active = false;
   let target = null;
@@ -85,6 +94,8 @@ export function createSeekCoalescer({
   let burstReissued = false;
   let retries = 0;
   let degraded = false;
+  // When the position first sat at the target without playback starting.
+  let closeSince = 0;
 
   function settle() {
     active = false;
@@ -94,6 +105,7 @@ export function createSeekCoalescer({
     deadlineExtended = false;
     issuedPosition = null;
     issuedDistance = null;
+    closeSince = 0;
   }
 
   const readTime = () => {
@@ -107,26 +119,31 @@ export function createSeekCoalescer({
 
   // Allowed to be a function: the AVPlay backend does not know its source at
   // construction, and a captured number would pin every HLS seek to the direct
-  // window. HLS measured 1.52 s against 1.5 s — always a retry.
+  // window. HLS measured 1.52 s against 1.5 s, always a retry.
   const settleWindow = () => {
     const v = typeof settleMs === 'function' ? settleMs() : settleMs;
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : SEEK_SETTLE_MS;
   };
 
-  // Also per tick: a direct file gets a shorter deadline than a transcode,
-  // because a direct seek that has not landed by then is handed to the other
-  // engine rather than waited on for twice as long.
+  // Also per tick, so a caller can vary it by source.
   const maxWaitWindow = () => {
     const v = typeof maxWaitMs === 'function' ? maxWaitMs() : maxWaitMs;
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : SEEK_MAX_WAIT_MS;
   };
 
+  const arrivedWindow = () => {
+    const v = typeof arrivedMs === 'function' ? arrivedMs() : arrivedMs;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : SEEK_ARRIVED_MS;
+  };
+
   // Returns false when the native call throws.
   function issue(next) {
     target = next;
     issuedAt = now();
+    closeSince = 0;
     // Where the engine was at issue: tells "still working" (frozen) from
     // "ignored" (playback ran on *away* from the target).
     issuedPosition = readTime();
@@ -146,8 +163,8 @@ export function createSeekCoalescer({
    *   arrived   position reached the target but playback never resumed
    *   progress  still closing the gap at the second deadline
    *   threw     the native call keeps throwing
-   * A caller can recover some natively (a reopen keeps the hardware engine) and
-   * must hand the rest to the next candidate.
+   * A caller decides the recovery. The AVPlay backend reopens the native
+   * session at the target and never changes engines over a failed seek.
    */
   function degrade(failedTarget, reason = 'stuck') {
     settle();
@@ -159,7 +176,7 @@ export function createSeekCoalescer({
     /**
      * Ask for a new position. Finite, clamped at zero; anything else is
      * ignored. A request during an in-flight seek replaces it and resets the
-     * retry count — the latest target has had no chance yet.
+     * retry count, the latest target has had no chance yet.
      */
     request(seconds) {
       const n = Number(seconds);
@@ -172,6 +189,7 @@ export function createSeekCoalescer({
       active = true;
       degraded = false;
       retries = 0;
+      closeSince = 0;
       burstRequests += 1;
       burstReissued = false;
       burstStartedAt = now();
@@ -204,6 +222,21 @@ export function createSeekCoalescer({
         return;
       }
 
+      // Arrival without playback is checked on every poll, not once per settle
+      // window: the seek is over, only its resume is missing, and 8 s of
+      // frozen picture is what the panel showed before recovery began.
+      if (close) {
+        if (!closeSince) closeSince = now();
+        else if (now() - closeSince >= arrivedWindow()) {
+          // The seek itself is done; it is playback that did not resume. The
+          // engine gets a reason so it can recover without changing engines.
+          degrade(target, 'arrived');
+          return;
+        }
+      } else {
+        closeSince = 0;
+      }
+
       // The overall deadline is not debounced by the settle window: waiting for
       // the window to re-elapse after it passed added up to one more window
       // (3 s) of dead air before recovery (a 4 s deadline fired at 6.2 s).
@@ -215,8 +248,6 @@ export function createSeekCoalescer({
       // restarts that fetch and can loop forever on a slow seek, so wait.
       if (close) {
         if (expired) {
-          // The seek itself is done; it is playback that did not resume. The
-          // engine gets a reason so it can recover without changing engines.
           degrade(target, 'arrived');
           return;
         }
@@ -224,7 +255,7 @@ export function createSeekCoalescer({
         return;
       }
 
-      // A position frozen at the start is the engine still working — a 4K AV1
+      // A position frozen at the start is the engine still working, a 4K AV1
       // seek takes seconds. Restarting it here makes a slow seek never finish.
       const readable = Number.isFinite(t);
       const moved = readable && issuedPosition != null
@@ -270,7 +301,7 @@ export function createSeekCoalescer({
       degrade(target, 'ignored');
     },
 
-    /** Abandon any pending seek — source change, pause, teardown. */
+    /** Abandon any pending seek, source change, pause, teardown. */
     cancel() {
       settle();
     },

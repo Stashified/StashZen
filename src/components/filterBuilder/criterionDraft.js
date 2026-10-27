@@ -1,4 +1,5 @@
 import { EDITOR, NULLARY, RANGE } from '../../utils/filterCriteria.js';
+import { savedEnumValue, requestEnumValue } from '../../utils/enumStrings.js';
 
 // The one place that knows the four stored shapes. Nullary modifiers take no
 // operand, so their value is `{}` rather than `''`: the translator supplies the
@@ -18,6 +19,9 @@ export function blankCriterion(desc) {
       // schema rather than a field-name list. Getting this wrong sends a
       // scalar where a list is expected and the server rejects the filter.
       return { modifier, value: { value: desc.listValued ? [] : '' } };
+    case EDITOR.IS_MISSING:
+      // Bare String at the filter level; no modifier and a closed vocabulary.
+      return { modifier: null, value: { value: '' } };
     default:
       return { modifier, value: {} };
   }
@@ -86,11 +90,19 @@ export function seedCriterion(desc, c) {
       const fromList = Array.isArray(src.value_list) ? src.value_list : [];
       const list = Array.isArray(src.value) && src.value.length ? src.value : fromList;
       const scalar = src.value === '' || src.value == null ? fromList[0] : src.value;
+      // Stash's web UI stores display strings ("1080p", "Female"); the picker
+      // is keyed by member names.
       return {
         modifier,
-        value: { value: desc.listValued ? list : (scalar ?? '') },
+        value: {
+          value: desc.listValued
+            ? list.map(v => requestEnumValue(desc.type, v))
+            : requestEnumValue(desc.type, scalar ?? ''),
+        },
       };
     }
+    case EDITOR.IS_MISSING:
+      return { modifier: null, value: { value: typeof src.value === 'string' ? src.value : '' } };
     default:
       return {
         modifier,
@@ -153,6 +165,17 @@ export function isEffective(desc, c) {
     return true;
   }
   if (operand && (inner.value === '' || inner.value === undefined || inner.value === null)) return false;
+  // An Int criterion with a decimal is a GraphQL type error, and a text box is
+  // free to hold one; keep the row visible but out of the request.
+  if (desc.editor === EDITOR.NUMBER) {
+    const isInt = String(desc.type).replace(/[[\]!]/g, '') === 'IntCriterionInput';
+    const bad = (v) => {
+      const n = Number(v);
+      return !Number.isFinite(n) || (isInt && !Number.isInteger(n));
+    };
+    if (bad(inner.value)) return false;
+    if (RANGE.has(c.modifier) && bad(inner.value2)) return false;
+  }
   // A range needs both bounds: one-sided BETWEEN returns an empty result, not
   // an error.
   if (RANGE.has(c.modifier)
@@ -162,13 +185,56 @@ export function isEffective(desc, c) {
   return true;
 }
 
-/** The criteria that would actually be sent, in the builder's row order. */
+/**
+ * The criteria that would actually be sent, in the builder's row order.
+ * Fields the builder cannot render (AND/OR/NOT, custom fields, fields from a
+ * newer schema) pass through verbatim: dropping them would silently widen the
+ * filter, and the banner promises they are kept.
+ */
 export function effectiveCriteria(order, criteria, byField) {
   const out = {};
   for (const field of order) {
     const c = criteria[field];
-    if (!c || !byField.has(field)) continue;
-    if (isEffective(byField.get(field), c)) out[field] = c;
+    if (!c) continue;
+    const desc = byField.get(field);
+    if (!desc || !desc.editor) { out[field] = c; continue; }
+    if (isEffective(desc, c)) out[field] = c;
+  }
+  return out;
+}
+
+/**
+ * The builder's internal envelopes → the shape Stash's web UI persists.
+ * Only text and enums differ: the UI stores a bare string and display strings,
+ * while the rows need a nested value and enum member names. Other criterion
+ * types already use Stash's stored shape.
+ */
+export function storedCriterion(desc, c) {
+  const inner = c.value && typeof c.value === 'object' && !Array.isArray(c.value) ? c.value : {};
+  switch (desc.editor) {
+    case EDITOR.TEXT:
+      return { modifier: c.modifier, value: inner.value ?? '' };
+    case EDITOR.ENUM:
+      return {
+        modifier: c.modifier,
+        value: desc.listValued
+          ? (Array.isArray(inner.value) ? inner.value : []).map(v => savedEnumValue(desc.type, v))
+          : savedEnumValue(desc.type, inner.value ?? ''),
+      };
+    case EDITOR.IS_MISSING:
+      return inner.value ?? '';
+    default:
+      return c;
+  }
+}
+
+/** `effectiveCriteria` → the stored shape, for `saveFilter`. */
+export function storedCriteria(order, criteria, byField) {
+  const effective = effectiveCriteria(order, criteria, byField);
+  const out = {};
+  for (const [field, c] of Object.entries(effective)) {
+    const desc = byField.get(field);
+    out[field] = desc && desc.editor ? storedCriterion(desc, c) : c;
   }
   return out;
 }

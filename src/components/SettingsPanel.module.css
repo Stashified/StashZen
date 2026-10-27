@@ -284,6 +284,12 @@
   color: var(--text-muted);
 }
 
+/* The newer version, on the same line: the panel's own copy of the rail dot's
+   news, for a user already looking at the header. */
+.versionUpdate {
+  color: var(--accent);
+}
+
 /* Shared by App lock and the playback preferences; `.lockNotice` below is
    genuinely lock-specific and stays named for it. */
 .section {
@@ -292,6 +298,12 @@
   gap: 12px;
   padding-top: 20px;
   border-top: 1px dashed var(--border);
+}
+
+/* The first section in the body has nothing above it to separate from. */
+.sectionFirst {
+  padding-top: 0;
+  border-top: none;
 }
 
 .sectionRow {

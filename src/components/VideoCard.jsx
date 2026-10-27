@@ -1,5 +1,5 @@
 /**
- * VideoCard — individual video thumbnail card in the grid.
+ * VideoCard, individual video thumbnail card in the grid.
  *
  * Cover screenshot plus an optional focus preview layered on top. Takes its
  * record as `item`, like every card, so one container can render any of them
@@ -8,7 +8,7 @@
  * **The cover is never hidden.** `paths.preview` is a non-empty URL for every
  * scene whether or not the file was generated, so a preview-first design ends
  * black. The preview is a second layer at `opacity: 0`, revealed only on the
- * `<video>`'s own `playing` event — a decoded frame, not a load, a 200 or
+ * `<video>`'s own `playing` event, a decoded frame, not a load, a 200 or
  * `canplay`. If it never arrives, the cover is already there.
  *
  * The element is its own probe, the only honest one: a missing preview 404s,
@@ -17,7 +17,7 @@
  * from success by status code, so `onError` plus a watchdog is the design.
  *
  * Cost control: only the focused card mounts a `<video>`, and only once the
- * D-pad has settled — a held arrow crosses several cards a second. The signal
+ * D-pad has settled, a held arrow crosses several cards a second. The signal
  * is the `is-navigating` body class.
  */
 
@@ -33,7 +33,7 @@ const PREVIEW_ARM_DELAY_MS = 400;
 const PREVIEW_WATCHDOG_MS = 1200;
 
 /**
- * Scenes whose preview errored, so they are never tried again — otherwise
+ * Scenes whose preview errored, so they are never tried again, otherwise
  * every pass over the card re-requests a 404.
  *
  * Module-level, and partitioned by data source: the Map outlives the `dataKey`
@@ -70,13 +70,13 @@ function resolutionLabel(height) {
 }
 
 /**
- * `list` is the listing this card belongs to — array, total, page and fetch
+ * `list` is the listing this card belongs to, array, total, page and fetch
  * closure. Opaque here: the card hands it back up on select/long-press so a
  * queue opened here continues in the order the user was looking at. See
  * usePlayQueue.
  *
  * `onLongPress` is optional; its absence keeps every other card on instant
- * keydown — see the long-press note in useFocusable.
+ * keydown, see the long-press note in useFocusable.
  */
 function VideoCard({
   item, index, list, onSelect, onLongPress,
@@ -157,7 +157,7 @@ function VideoCard({
     if (!armed || playing) return;
     const t = setTimeout(() => {
       // No frame in time: stop for this focus and let the cover stay. NOT
-      // recorded in `badPreviews` — this window cannot tell slow from absent,
+      // recorded in `badPreviews`, this window cannot tell slow from absent,
       // and a real 404 reports through `onError` below; blacklisting on a
       // timeout would make one slow response permanent.
       setGaveUp(true);
@@ -167,7 +167,7 @@ function VideoCard({
 
   // Set on the element, not passed as a prop: React applies `muted` after the
   // element is in the tree, autoplay has already begun, and the browser refuses
-  // the unmuted video — so the preview silently never plays.
+  // the unmuted video, so the preview silently never plays.
   useEffect(() => {
     const el = previewRef.current;
     if (el) el.muted = settings.previewMuted;

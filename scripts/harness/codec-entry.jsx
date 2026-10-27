@@ -55,11 +55,11 @@ const setMode = (patch) => fetch('/mode', {
 
 // ── The element ─────────────────────────────────────────────
 const videoEl = () => document.querySelector('video');
-/** The URL the element is really on, resolved — not what React was passed. */
+/** The URL the element is really on, resolved, not what React was passed. */
 const currentSrc = () => videoEl()?.src || '';
 /**
  * The URL the element *accepted*. `src` is the attribute, `currentSrc` what the
- * element resolved — but that is not enough: handing the element a list sets
+ * element resolved, but that is not enough: handing the element a list sets
  * `src` to the array's stringified form, whose percent-encoded commas still
  * contain the path, so `includes(path)` passes on a build where nothing loads.
  * Every URL here is comma-free, so a comma means "not one addressable source".
@@ -221,7 +221,7 @@ function checkClassification() {
 
   // ── Which endpoint, and in what order ──
   // Identity, not substrings: only the third real MP4 is a transcode. HLS first
-  // is the fix — the MP4 transcode has no length or ranges, so assert positions.
+  // is the fix, the MP4 transcode has no length or ranges, so assert positions.
   const urls = pickTranscodeUrls(REAL);
   check('K5 the HLS playlist is preferred ahead of every MP4 transcode',
     urls[0] === REAL[8].url, `first is ${labelOf(urls[0])}`);
@@ -311,8 +311,8 @@ function checkClassification() {
     [sourceFormat(keyed), sourceFormat('/scene/1/stream.mp4'),
       sourceFormat('/scene/1/stream.webm'), sourceFormat('/tone.wav')].join(', '));
 
-  // A real MP4 transcode reports no usable duration — that is the TV bug this
-  // panel exists to diagnose — so Infinity must stay "unknown" rather than
+  // A real MP4 transcode reports no usable duration, that is the TV bug this
+  // panel exists to diagnose, so Infinity must stay "unknown" rather than
   // being coerced to a number or quietly replaced by the scene's metadata.
   const fakeEl = {
     videoWidth: 1920, videoHeight: 1080,
@@ -351,7 +351,7 @@ function checkClassification() {
       && row.Path === '/scene/9102/stream.mp4',
     row.Path);
 
-  // The frame API has two spellings — see frameCounts — and the TV's engine
+  // The frame API has two spellings, see frameCounts, and the TV's engine
   // has only the older one.
   const legacyFrames = frameCounts({
     webkitDecodedFrameCount: 500, webkitDroppedFrameCount: 2,
@@ -407,7 +407,7 @@ async function runPlayer() {
     !statsPanel(), statsPanel() ? 'still up' : 'closed');
 
   // ── I2: the reported bug ─────────────────────────────────
-  // The direct URL works — a playable WAV — so a direct build would pass "did it
+  // The direct URL works, a playable WAV, so a direct build would pass "did it
   // play". Firefox refuses HLS, so assert request order and that MP4 rescued it.
   await clearLog();
   await show(scene({
@@ -481,7 +481,7 @@ async function runPlayer() {
 
   // ── I5: the silent failure ───────────────────────────────
   // A source accepted and then never decoded: no error event, the element just
-  // sits there — "doesn't want to play" from the sofa. Only the watchdog sees it.
+  // sits there, "doesn't want to play" from the sofa. Only the watchdog sees it.
   await clearLog();
   await show(scene({
     id: '9105',

@@ -9,7 +9,7 @@ export function PlayerProgress({ progressPct, markers, duration, currentTime, cu
   return (
     <div className={styles.progressTrack}>
       <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
-      {/* Marker ticks. Decorative — the rail's marker buttons are the keyboard
+      {/* Marker ticks. Decorative, the rail's marker buttons are the keyboard
           path to the same positions, and a span is not focusable. */}
       {duration > 0 && markers.map(m => (
         <span

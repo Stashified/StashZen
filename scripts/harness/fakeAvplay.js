@@ -1,17 +1,17 @@
 /**
- * fakeAvplay — a stand-in for `window.webapis.avplay` (and the TV audio API)
+ * fakeAvplay, a stand-in for `window.webapis.avplay` (and the TV audio API)
  * in the headless harness.
  *
  * The harness proves structure (no `<video>` when AVPlay opens, a refusal
  * falls back and keeps its position, a hide suspends and a return restores),
- * not decoding — the real engine only exists on the TV. The contract here
+ * not decoding, the real engine only exists on the TV. The contract here
  * mirrors the Phase 0 probe:
  *   - `getCurrentTime`/`getDuration` are milliseconds, `getState` a string.
  *   - `prepareAsync` answers through callbacks, never a promise.
  *   - `restore()` takes no args; the three-argument form throws, as this
  *     panel's WebIDL did.
  *   - A refused codec arrives as `PLAYER_ERROR_CONNECTION_FAILED` after a
- *     short delay — the ambiguity the error classifier exists for.
+ *     short delay, the ambiguity the error classifier exists for.
  *
  * The clock runs on a real interval and on `advance(ms)`, so tests are
  * deterministic without sleeping for a scene's length.
@@ -73,7 +73,7 @@ export function installFakeAvplay({
     if (state !== 'PLAYING' || completed) {
       // A paused or suspended clock is stopped, so the wait is not credited to
       // the next playing tick: the position does not advance while hidden, and
-      // `restore()` can drift it — hence the backend re-asserts its cache.
+      // `restore()` can drift it, hence the backend re-asserts its cache.
       lastTick = 0;
       return;
     }
@@ -129,7 +129,7 @@ export function installFakeAvplay({
       state = 'PREPARING';
       setTimeout(() => {
         // `failDirect`: the original file is refused, the HLS transcode is not
-        // — an older TV playing fewer containers than the probe's panel.
+        //, an older TV playing fewer containers than the probe's panel.
         const directRefused = mode.has('failPrepare')
           || (mode.has('failDirect') && !/\.(m3u8|mp4|webm)(\?|$)/i.test(openUrl));
         if (directRefused) {
@@ -202,6 +202,22 @@ export function installFakeAvplay({
         state = 'PAUSED';
         lastTick = 0;
         setTimeout(() => { try { onSuccess?.(); } catch (e) { /* ignore */ } }, 10);
+        return;
+      }
+      if (mode.has('seekErrorOnce')) {
+        // The seek lands, then reading the new range fails: the panel's
+        // CONNECTION_FAILED after a deep 4K skim. Delayed past the settle poll
+        // so it is a runtime error, not a seek-phase one.
+        mode.delete('seekErrorOnce');
+        positionMs = target;
+        setTimeout(() => { fire('onerror'); }, 600);
+        return;
+      }
+      if (mode.has('stuckSeekOnce')) {
+        // Only this seek is lost; a reopen's seek lands, so the native recovery
+        // can be observed completing.
+        mode.delete('stuckSeekOnce');
+        seekHoldUntil = Infinity;
         return;
       }
       if (mode.has('stuckSeek')) {

@@ -2,14 +2,14 @@
  * Headless driver for per-section view modes.
  *
  * Mounts the whole App: App owns the mode, a page reads it and a section's cards
- * render under it. 1) The carousel is general — the `view` descriptor supplies
+ * render under it. 1) The carousel is general, the `view` descriptor supplies
  * service, card, `focusPrefix` and hero fields; a wrong prefix renders a good
  * strip that never tracks focus, so V2 walks and V1 asserts the prefix. 2) The
  * mode is per section and survives a restart: `viewModes` is persisted, so V4
  * reads localStorage and V6 pins the validator. 3) The hero's tag/studio
  * enrichment is bounded: V8 walks every populated/empty combination and measures
  * the two-line clamp; empty values must draw nothing. Seeding uses `setSettings`
- * before the first render, which is NOT a relaunch — see boot-entry.jsx.
+ * before the first render, which is NOT a relaunch, see boot-entry.jsx.
  * Not answerable here: whether portrait slots look right (V3 asserts 166px only).
  */
 
@@ -72,7 +72,7 @@ const focus = (id) => {
 const heroTitle = () => document.querySelector('[class*="heroTitle"]')?.textContent ?? null;
 const stripWrapper = () => document.querySelector('[class*="carouselWrapper"]');
 // ItemList keeps `role="grid"` (see its header), so the Classic check must
-// exclude it — otherwise List reads as "still a grid" and V5 passes for the
+// exclude it, otherwise List reads as "still a grid" and V5 passes for the
 // wrong reason.
 const gridEl = () => document.querySelector('[role="grid"]:not([data-list-mode])');
 const listEl = () => document.querySelector('[role="grid"][data-list-mode]');
@@ -167,7 +167,7 @@ async function run() {
     `hero reads "${firstTitle}"`);
 
   // Read the prefix out of the descriptor rather than naming 'performer-': the
-  // literal would make this insensitive to the field it tests — `video` would
+  // literal would make this insensitive to the field it tests, `video` would
   // still find performer cards on screen and pass.
   const prefix = PERFORMER_VIEW.focusPrefix;
   check('V1 the descriptor\'s focusPrefix is one its cards actually register',
@@ -333,7 +333,7 @@ async function run() {
     `meta="${metaText().slice(0, 100)}" blurb=${!!blurbEl()}`);
 
   // Row 4, not a later one: the strip pages five rows at a time, and focusing
-  // a card that is not mounted yet silently leaves the hero where it was —
+  // a card that is not mounted yet silently leaves the hero where it was:
   // which is how this check first passed the fixture and failed the run.
   focus('tag-4');
   await sleep(300);

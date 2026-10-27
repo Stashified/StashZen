@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-play-queue.mjs — what the player is opened with, and what it inherits
+ * test-play-queue.mjs: what the player is opened with, and what it inherits
  *
  *   node scripts/test-play-queue.mjs
  *
@@ -81,7 +81,7 @@ check('there is no page to extend into', queueOf(card).fetchPage, null);
 console.log('queueItemFromMarker');
 const item = queueItemFromMarker(marker);
 check('the id is the parent scene', item.id, '42');
-check('the title names marker and scene', item.title, 'A Scene — Marker One');
+check('the title names marker and scene', item.title, 'A Scene: Marker One');
 check('the stream is the parent scene stream', item.stream, '/scene/42/stream');
 check('the thumbnail prefers the marker screenshot', item.thumbnail, '/marker/m1/screenshot');
 check('the sprite is forwarded for skimming', item.sprite, '/scene/42/sprite');
@@ -191,7 +191,7 @@ check('the marker Play leaves restoreBy unset', 'restoreBy' in mCalls.at(-1), fa
 markerMenu[1].onSelect();
 check('Play all starts at the first loaded marker and walks scenes',
   [mCalls.at(-1).startSeconds, mCalls.at(-1).items.map(i => i.id)], [125, ['42', '43']]);
-// 'marker', not 'video': the queue rows are scenes, but the tab is markers —
+// 'marker', not 'video': the queue rows are scenes, but the tab is markers:
 // a scene id names no card here, so the restore must look for a marker id.
 check('Play all asks Back to restore the last-viewed marker card',
   mCalls.at(-1).restoreBy, 'marker');

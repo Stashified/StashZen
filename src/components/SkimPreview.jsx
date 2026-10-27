@@ -1,5 +1,5 @@
 /**
- * SkimPreview — sprite-tile preview that follows the seek point.
+ * SkimPreview, sprite-tile preview that follows the seek point.
  *
  * Renders the tile for `time` along the track at `progressPct` (0..100); the
  * caller shows/hides it. An off-screen <img> learns each sheet's natural size,

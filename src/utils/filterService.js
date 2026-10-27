@@ -1,11 +1,11 @@
 /**
- * filterService.js — Fetch user-saved filters from Stash.
+ * filterService.js: Fetch user-saved filters from Stash.
  *
  * `findSavedFilters(mode)` returns filters the user saved in the Stash UI:
- *   - find_filter   (q/sort/direction/per_page — pagination & sort)
+ *   - find_filter   (q/sort/direction/per_page, pagination & sort)
  *   - object_filter (the typed filter for scene_filter / performer_filter / …)
  *
- * Only `object_filter` is used here — sort and paging come from our own
+ * Only `object_filter` is used here, sort and paging come from our own
  * ControlsPanel. Stash returns it as an already-parsed **object** in its
  * *frontend* shape, which its GraphQL API does not accept; `filterTranslate.js`
  * converts at query time in the service loaders.
@@ -20,7 +20,7 @@
 import { getSettings } from './settings.js';
 import { runQuery } from './stashQuery.js';
 
-// SavedFilter modes — must match Stash's FilterMode enum exactly. Stash 0.31.1
+// SavedFilter modes, must match Stash's FilterMode enum exactly. Stash 0.31.1
 // declares SCENES, PERFORMERS, STUDIOS, GALLERIES, SCENE_MARKERS, MOVIES,
 // GROUPS, TAGS, IMAGES; this app omits the two with no section (a mode it
 // cannot browse has no filters to offer). A wrong string shows an empty list,
@@ -42,6 +42,7 @@ const FIND_SAVED_FILTERS_QUERY = `
       name
       find_filter { q page per_page sort direction }
       object_filter
+      ui_options
     }
   }
 `;
@@ -87,9 +88,12 @@ export async function fetchSavedFilters(mode, source = '') {
         id: f.id,
         name: f.name,
         objectFilter: parseObjectFilter(f.object_filter),
-        // find_filter holds q/sort/direction/per_page — many saved filters
+        // find_filter holds q/sort/direction/per_page, many saved filters
         // do their actual work via `q` (search) rather than typed criteria.
         findFilter: f.find_filter || null,
+        // Stash stores display options (columns, etc.) beside the filter. An
+        // update overwrites the whole row, so they must travel back on save.
+        uiOptions: f.ui_options ?? null,
       }));
       settle();
       if (gen === generation) cache.set(key, list);
@@ -126,6 +130,7 @@ const SAVE_FILTER_MUTATION = `
       name
       find_filter { q page per_page sort direction }
       object_filter
+      ui_options
     }
   }
 `;
@@ -139,7 +144,7 @@ const DESTROY_FILTER_MUTATION = `
 /**
  * Create or update a saved filter.
  *
- * `id` present means update — the same mutation Stash's own UI uses, so
+ * `id` present means update, the same mutation Stash's own UI uses, so
  * editing a user-made filter works and does not fork it into a duplicate.
  *
  * `objectFilter` is written in Stash's *stored* envelope (the shape
@@ -151,11 +156,14 @@ const DESTROY_FILTER_MUTATION = `
  * rename or reorder, and `saveFilter` returns no position. One extra fetch on
  * a deliberate user action is cheaper than a stale list.
  */
-export async function saveFilter({ id, mode, name, objectFilter, findFilter }) {
+export async function saveFilter({ id, mode, name, objectFilter, findFilter, uiOptions }) {
   const input = { mode, name };
   if (id != null) input.id = String(id);
   if (objectFilter != null) input.object_filter = objectFilter;
   if (findFilter != null) input.find_filter = findFilter;
+  // The update replaces the whole row; dropping this resets Stash's display
+  // options for the filter.
+  if (uiOptions != null) input.ui_options = uiOptions;
 
   const data = await runQuery(SAVE_FILTER_MUTATION, { input });
   clearSavedFiltersCache();
@@ -163,7 +171,7 @@ export async function saveFilter({ id, mode, name, objectFilter, findFilter }) {
 }
 
 /** Delete a saved filter. A `false` return (id gone, or token lacks
- *  permission) is surfaced, not swallowed — the caller has just told the user
+ *  permission) is surfaced, not swallowed, the caller has just told the user
  *  it worked. */
 export async function destroySavedFilter(id) {
   const data = await runQuery(DESTROY_FILTER_MUTATION, { input: { id: String(id) } });

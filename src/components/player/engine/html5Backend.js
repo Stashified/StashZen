@@ -1,5 +1,5 @@
 /**
- * html5Backend — the <video> element behind the media facade.
+ * html5Backend, the <video> element behind the media facade.
  *
  * Deliberately thin: it owns the element attachment and the re-dispatch of a
  * fixed set of events, delegating every property. Policy (stall watches, seeks,

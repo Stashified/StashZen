@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * stamp-manifest.mjs — put package.json's version into the staged Tizen manifest.
+ * stamp-manifest.mjs: put package.json's version into the staged Tizen manifest.
  *
  *   node scripts/stamp-manifest.mjs [dist/config.xml]
  *

@@ -63,7 +63,7 @@ async function enterLabel(label) {
 }
 
 // Enter by focus-registry id. The job rows have no DOM id and their labels
-// change between presses, so the registry is the stable handle — and using it
+// change between presses, so the registry is the stable handle, and using it
 // also proves the row registered the button.
 async function enterFocusId(id) {
   const entry = registry.get(id);
@@ -118,7 +118,7 @@ async function finish() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// #87 — Library stats
+// #87, Library stats
 // ═══════════════════════════════════════════════════════════
 async function runStats() {
   await mount({ mock: false });
@@ -249,7 +249,7 @@ async function runStats() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// #88 — Server status
+// #88, Server status
 // ═══════════════════════════════════════════════════════════
 async function runServer() {
   await mount({ mock: false });
@@ -402,7 +402,7 @@ async function runServer() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// #90 — Scan library
+// #90, Scan library
 // ═══════════════════════════════════════════════════════════
 const scanNote = () => dialogText().match(/Scan started[^.]*\.|Test mode[^.]*\.|Couldn't start a scan[^\n]*/)?.[0] || '';
 
@@ -445,7 +445,7 @@ async function runScan() {
   // construction. Key order is not contractual, so compare sorted keys.
   const sorted = o => JSON.stringify(Object.fromEntries(
     Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))));
-  // `ui.taskDefaults.scan` — the block Stash's own scan page writes when the
+  // `ui.taskDefaults.scan`, the block Stash's own scan page writes when the
   // user changes a checkbox; the answer the scan must use.
   const UI_DEFAULTS = {
     rescan: true,
@@ -458,7 +458,7 @@ async function runScan() {
     scanGenerateThumbnails: true,
     scanGenerateClipPreviews: false,
   };
-  // `configuration.defaults.scan` — the legacy system block, deliberately
+  // `configuration.defaults.scan`, the legacy system block, deliberately
   // different in every field. Sending this while the UI shows UI_DEFAULTS is
   // the reported bug.
   const SYSTEM_DEFAULTS = {
@@ -602,7 +602,7 @@ async function runScan() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// #88b — Stopping a job (item 10)
+// #88b, Stopping a job (item 10)
 // ═══════════════════════════════════════════════════════════
 const stopFetches = async () => getJSON('/stopfetches');
 const focusIdOf = (el) => [...registry.entries()]

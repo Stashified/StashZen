@@ -55,6 +55,7 @@ try {
     check('clean bundle: scans both text files', scan.filesScanned === 2, `got ${scan.filesScanned}`);
     check('clean bundle: no JWT hit', scan.jwtFiles.length === 0);
     check('clean bundle: no key hit', scan.keyFiles.length === 0);
+    check('clean bundle: no GitHub API hit', scan.githubApiFiles.length === 0);
   }
 
   writeFileSync(join(dist, 'assets', 'binary.bin'), Buffer.from([0, 1, 2]));
@@ -164,6 +165,55 @@ try {
       res.lines.some(l => l.includes('private-network') && l.includes('app.js')),
       res.lines.join(' | '),
     );
+  }
+
+  {
+    // The public update check's endpoint. Allowed only when the build was
+    // explicitly armed; a private build carrying it is a wiring bug.
+    const ghDist = join(root, 'gh');
+    mkdirSync(ghDist, { recursive: true });
+    writeFileSync(
+      join(ghDist, 'app.js'),
+      'const u = "https://api.github.com/repos/x/y/releases/latest";',
+    );
+
+    const off = checkBundle({ distDir: ghDist });
+    check('GitHub API URL fails an unarmed build', off.ok === false);
+    check(
+      'unarmed failure names the file',
+      off.lines.some(l => l.includes('app.js')),
+      off.lines.join(' | '),
+    );
+    check(
+      'unarmed failure says how to arm',
+      off.lines.some(l => l.includes('VITE_UPDATE_CHECK')),
+      off.lines.join(' | '),
+    );
+
+    const on = checkBundle({ distDir: ghDist, updateCheckEnabled: true });
+    check('GitHub API URL passes an armed build', on.ok === true, on.lines.join(' | '));
+    check(
+      'armed message is an ok line',
+      on.lines.some(l => l.startsWith('ok update check')),
+      on.lines.join(' | '),
+    );
+
+    // Independent of the credential switch: one must not wave the other past.
+    const baked = checkBundle({ distDir: ghDist, allowBaked: true });
+    check('ALLOW_BAKED_KEY does not bypass the URL check', baked.ok === false, baked.lines.join(' | '));
+  }
+
+  {
+    // Only the API host counts. The same repo's human URL is ordinary copy.
+    const plainDist = join(root, 'plain-gh');
+    mkdirSync(plainDist, { recursive: true });
+    writeFileSync(
+      join(plainDist, 'app.js'),
+      'const u = "https://github.com/Stashified/StashZen/releases";',
+    );
+    const scan = scanBundle({ distDir: plainDist });
+    check('plain github.com is not an API hit', scan.githubApiFiles.length === 0, scan.githubApiFiles.join(','));
+    check('plain github.com link passes', checkBundle({ distDir: plainDist }).ok === true);
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

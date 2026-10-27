@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-translate.mjs — pure-function tests for filterTranslate.js
+ * test-translate.mjs: pure-function tests for filterTranslate.js
  *
  *   node scripts/test-translate.mjs
  *
@@ -16,7 +16,7 @@ import { ENUMS } from '../src/utils/stashFilterSchema.js';
 let failed = 0;
 let passed = 0;
 
-/** Order-insensitive deep comparison — see the note in verify-filters.mjs. */
+/** Order-insensitive deep comparison, see the note in verify-filters.mjs. */
 function canonical(v) {
   if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
   if (v && typeof v === 'object') {
@@ -92,6 +92,35 @@ check('keeps an exclusion-only multi (empty items, non-empty excluded)',
   { tags: { value: [], excludes: ['2'], modifier: 'EXCLUDES' } });
 check('still drops a multi with neither items nor exclusions',
   t({ tags: { modifier: 'INCLUDES', value: { items: [], excluded: [] } } }), {});
+
+console.log('\n── gender and display-string enums');
+const performer = (raw) => translateFilter(raw, 'PerformerFilterType');
+check('a stored gender array becomes value_list',
+  performer({ gender: { modifier: 'INCLUDES', value: ['FEMALE'] } }),
+  { gender: { modifier: 'INCLUDES', value_list: ['FEMALE'] } });
+check('gender display strings become member names',
+  performer({ gender: { modifier: 'INCLUDES', value: ['Female', 'Non-Binary'] } }),
+  { gender: { modifier: 'INCLUDES', value_list: ['FEMALE', 'NON_BINARY'] } });
+check('a scalar gender is wrapped',
+  performer({ gender: { modifier: 'EQUALS', value: 'Female' } }),
+  { gender: { modifier: 'EQUALS', value_list: ['FEMALE'] } });
+check('an already-translated gender is kept',
+  performer({ gender: { modifier: 'INCLUDES', value_list: ['MALE'] } }),
+  { gender: { modifier: 'INCLUDES', value_list: ['MALE'] } });
+check('gender nullary stays valid',
+  performer({ gender: { modifier: 'IS_NULL' } }),
+  { gender: { modifier: 'IS_NULL', value: ENUMS.GenderEnum[0] } });
+check('a blank gender is dropped',
+  performer({ gender: { modifier: 'INCLUDES', value: [] } }), {});
+check('resolution display string maps to its member name',
+  t({ resolution: { modifier: 'EQUALS', value: '1080p' } }),
+  { resolution: { value: 'FULL_HD', modifier: 'EQUALS' } });
+check('circumcised display strings map inside the list',
+  performer({ circumcised: { modifier: 'INCLUDES', value: ['Cut'] } }),
+  { circumcised: { value: ['CUT'], modifier: 'INCLUDES' } });
+check('gender translation is idempotent',
+  performer(performer({ gender: { modifier: 'EXCLUDES', value: ['Transgender Female'] } })),
+  performer({ gender: { modifier: 'EXCLUDES', value: ['Transgender Female'] } }));
 
 console.log('\n── special-value criteria');
 check('phash_distance hoists distance',

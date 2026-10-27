@@ -1,5 +1,5 @@
 /**
- * useResumeSeek — where a scene starts: the prompt, the policy, and the seek
+ * useResumeSeek: where a scene starts: the prompt, the policy, and the seek
  * that has to be retried until the element can take it.
  *
  * One decision from four sides: whether to ask (`askingToResume`), what the
@@ -38,7 +38,7 @@ export function useResumeSeek({
    * Whether to ask before playing.
    *
    * Decided from the **prop**, not `resumeTime`: the grid already holds it, so
-   * opening never waits on a request — a slow or unreachable server must not
+   * opening never waits on a request, a slow or unreachable server must not
    * delay playback. The live fetch still wins for the seek target. A marker's
    * timestamp is never asked about; the user just named a position.
    */
@@ -74,7 +74,7 @@ export function useResumeSeek({
       setCurrentTime(resumeTime);
       startSeekedRef.current = true;
     } catch (e) {
-      // Not seekable yet — `onLoadedMd` will do it from `effectiveStart`.
+      // Not seekable yet, `onLoadedMd` will do it from `effectiveStart`.
     }
   }, [mediaRef, setResumeChoice, usableResume, resumeTime, setCurrentTime, startSeekedRef]);
 
@@ -98,6 +98,9 @@ export function useResumeSeek({
     if (liveResumeTime == null) return;
     const v = mediaRef.current;
     if (!v) return;
+    // Only while still at the start: a value arriving after the viewer has
+    // watched past it would teleport them mid-scene without asking.
+    if (v.currentTime > RESUME_SKIP_THRESHOLD_S) return;
     // Don't override an explicit marker activation
     if (startSeconds > 0) return;
     // Nor while the question is up, nor after "start from the beginning". This
@@ -114,7 +117,7 @@ export function useResumeSeek({
       startSeekedRef.current = true;
     } catch (e) {
       // No metadata yet: keep it for `onLoadedMd`. A throwing seek must not be
-      // lost — the latch alone would hide the value from every other path.
+      // lost, the latch alone would hide the value from every other path.
       pendingLiveResumeRef.current = liveResumeTime;
     }
   }, [

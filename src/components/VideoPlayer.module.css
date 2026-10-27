@@ -190,7 +190,7 @@
   margin-top: 2px;
 }
 
-/* Position within the play queue — shown only when there is one. */
+/* Position within the play queue, shown only when there is one. */
 .queueCounter {
   display: flex;
   align-items: baseline;

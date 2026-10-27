@@ -1,5 +1,5 @@
 /**
- * randomSort — make Stash's `random` sort page-stable.
+ * randomSort, make Stash's `random` sort page-stable.
  *
  * Stash reads `sort: "random"` as "shuffle for this request", so page 2
  * overlaps page 1, the client dedupes repeats, and under the no-progress stop a
@@ -7,8 +7,8 @@
  *
  * Stash also accepts `random_<seed>`, which permutes once per seed and returns
  * the same order on every page (verified: `random_123` repeats page 1 exactly
- * and continues on page 2). The seed is derived from the request identity —
- * kind, filter, search text — so every page of a listing shares a permutation
+ * and continues on page 2). The seed is derived from the request identity:
+ * kind, filter, search text, so every page of a listing shares a permutation
  * and changing the filter starts a new one.
  *
  * The mock comparator does not know the seeded spelling; `baseSort` maps it

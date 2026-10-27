@@ -1,5 +1,5 @@
 /**
- * UnsavedPrompt — "you changed settings and did not press Save".
+ * UnsavedPrompt, "you changed settings and did not press Save".
  *
  * Raised when Back / Esc / Cancel would close the Settings panel with a dirty
  * draft, which used to discard changes silently.

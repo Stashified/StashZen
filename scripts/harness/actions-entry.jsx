@@ -1,5 +1,5 @@
 /**
- * Headless driver for the two TV action surfaces — SettingsPanel and
+ * Headless driver for the two TV action surfaces, SettingsPanel and
  * ExitPrompt.
  *
  * The observable contract of the button: which element holds focus, what a
@@ -111,8 +111,8 @@ async function runSettings() {
   await sleep(700);
 
   // ── A1  Every action is on screen, and is a button ───────
-  // The label list is the point: a shared component that dropped one — or
-  // rendered a non-focusable node — fails here. The toggle's default is pinned
+  // The label list is the point: a shared component that dropped one, or
+  // rendered a non-focusable node, fails here. The toggle's default is pinned
   // by preview-entry's P0; this checks only that the control exists.
   const want = [
     'Test connection', 'Run setup again', 'On',
@@ -180,7 +180,7 @@ async function runSettings() {
     saveBg !== cancelBg, `Save ${saveBg} vs Cancel ${cancelBg}`);
 
   // ── C: the live connection block belongs to Live mode ───
-  // Test mode used to dim these fields and leave them in the focus order — the
+  // Test mode used to dim these fields and leave them in the focus order, the
   // D-pad could select the endpoint while the hint said otherwise. They are
   // now unmounted, so the result line cannot outlive the mode.
   check('C0 the live fields are present in Live mode',

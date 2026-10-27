@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * contact-sheet.mjs — render Test mode's covers as one image, and look at it.
+ * contact-sheet.mjs: render Test mode's covers as one image, and look at it.
  *
  *   node scripts/contact-sheet.mjs                 # scene-0 … scene-47
  *   node scripts/contact-sheet.mjs --portrait      # performer-*, taller tiles

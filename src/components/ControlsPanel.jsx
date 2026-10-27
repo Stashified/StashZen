@@ -1,5 +1,5 @@
 /**
- * ControlsPanel — configurable controls bar.
+ * ControlsPanel, configurable controls bar.
  *
  * Sort accepts legacy flat `sortOptions` or grouped `sortGroups` (which wins):
  * `[{ group: 'Title', options: [{ value, label }] }]`.
@@ -7,14 +7,14 @@
  * ## Zone: 'controls', with `crossZone` to open the way up
  *
  * A zone is what Left/Right move within, so 'controls' keeps the bar's controls
- * walkable in a row and the grid from stepping sideways into them — without it,
+ * walkable in a row and the grid from stepping sideways into them, without it,
  * Right from video-2 went to the mute toggle, 21px right and 166px up, beating
  * video-3.
  *
  * The zone also made the bar unreachable from below: useKeyHandler adds
  * CROSS_ZONE_PENALTY (100000) to any Up/Down candidate from another zone, so Up
  * out of the first card row always landed on the nav rail. Every control here
- * therefore passes `crossZone: true`, read off both candidate and mover — the
+ * therefore passes `crossZone: true`, read off both candidate and mover, the
  * mover half is not optional because a zone is symmetric, and Left from the
  * Filter dropdown would do nothing otherwise.
  *
@@ -28,7 +28,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { TIZEN_BACK, isTextInput } from '../utils/input.js';
+import { isBackCode, isTextInput } from '../utils/input.js';
 import styles from './ControlsPanel.module.css';
 import SearchInput from './SearchInput.jsx';
 import MuteToggle from './MuteToggle.jsx';
@@ -68,7 +68,7 @@ function useDropdown(id) {
     // the target and bubbling to useKeyHandler's window listener, so App never
     // sees this Back.
     const handler = (e) => {
-      if (e.key === 'Escape' || e.keyCode === TIZEN_BACK ||
+      if (e.key === 'Escape' || isBackCode(e.keyCode) ||
           (e.key === 'Backspace' && !isTextInput(document.activeElement))) {
         e.preventDefault();
         e.stopPropagation();
@@ -275,7 +275,7 @@ export default function ControlsPanel({
   modeOptions = null,
   // View mode is per section and lives in the settings store, not `controls`,
   // so it arrives as its own pair. Both fall back to `controls.mode` /
-  // `onChange({ mode })` when absent — that keeps the performer detail page's
+  // `onChange({ mode })` when absent, that keeps the performer detail page's
   // scoped copy and the harness drivers working unchanged.
   mode = null,
   onModeChange = null,
@@ -369,7 +369,7 @@ export default function ControlsPanel({
             onChange={v => onChange({ filterId: v || null })}
           />
           {/* Beside the dropdown: that picks a saved filter, this makes one.
-              Hidden, not disabled, on tabs with no filter mode — there is
+              Hidden, not disabled, on tabs with no filter mode: there is
               nothing there for it to build. */}
           {onBuildFilter && (
             <PanelButton id="ctrl-build-filter" label="Build…" onClick={onBuildFilter} />

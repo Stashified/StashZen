@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-criterion-draft.mjs — pure-function tests for criterionDraft.js
+ * test-criterion-draft.mjs: pure-function tests for criterionDraft.js
  *
  *   node scripts/test-criterion-draft.mjs
  *
@@ -14,6 +14,7 @@
 
 import {
   blankCriterion, seedCriterion, isEffective, effectiveCriteria,
+  storedCriteria,
 } from '../src/components/filterBuilder/criterionDraft.js';
 import { EDITOR } from '../src/utils/filterCriteria.js';
 
@@ -42,15 +43,17 @@ function check(label, actual, expected) {
   }
 }
 
-// Minimal descriptors — only the fields the functions read.
-const textDesc = { field: 'title', editor: EDITOR.TEXT, modifierOptions: ['MATCHES_REGEX', 'IS_NULL', 'NOT_NULL'] };
-const multiDesc = { field: 'tags', editor: EDITOR.MULTI, modifierOptions: ['INCLUDES', 'EXCLUDES'] };
-const hierDesc = { field: 'tags', editor: EDITOR.HIERARCHICAL, modifierOptions: ['INCLUDES'] };
-const enumDesc = { field: 'resolution', editor: EDITOR.ENUM, modifierOptions: ['EQUALS'], listValued: false };
-const listEnumDesc = { field: 'circumcised', editor: EDITOR.ENUM, modifierOptions: ['EQUALS'], listValued: true };
-const boolDesc = { field: 'organized', editor: EDITOR.BOOLEAN, modifierOptions: ['EQUALS', 'NOT_EQUALS'] };
-const triDesc = { field: 'has_markers', editor: EDITOR.TRI, modifierOptions: ['EQUALS', 'NOT_EQUALS'] };
-const numberDesc = { field: 'duration', editor: EDITOR.NUMBER, modifierOptions: ['GREATER_THAN', 'BETWEEN'] };
+// Minimal descriptors, only the fields the functions read.
+const textDesc = { field: 'title', type: 'StringCriterionInput', editor: EDITOR.TEXT, modifierOptions: ['MATCHES_REGEX', 'IS_NULL', 'NOT_NULL'] };
+const multiDesc = { field: 'tags', type: 'MultiCriterionInput', editor: EDITOR.MULTI, modifierOptions: ['INCLUDES', 'EXCLUDES'] };
+const hierDesc = { field: 'tags', type: 'HierarchicalMultiCriterionInput', editor: EDITOR.HIERARCHICAL, modifierOptions: ['INCLUDES'] };
+const enumDesc = { field: 'resolution', type: 'ResolutionCriterionInput', editor: EDITOR.ENUM, modifierOptions: ['EQUALS'], listValued: false };
+const listEnumDesc = { field: 'circumcised', type: 'CircumcisionCriterionInput', editor: EDITOR.ENUM, modifierOptions: ['EQUALS'], listValued: true };
+const boolDesc = { field: 'organized', type: 'Boolean', editor: EDITOR.BOOLEAN, modifierOptions: ['EQUALS', 'NOT_EQUALS'] };
+const triDesc = { field: 'has_markers', type: 'String', editor: EDITOR.TRI, modifierOptions: ['EQUALS', 'NOT_EQUALS'] };
+const numberDesc = { field: 'duration', type: 'IntCriterionInput', editor: EDITOR.NUMBER, modifierOptions: ['GREATER_THAN', 'BETWEEN'] };
+const floatDesc = { field: 'rating100', type: 'FloatCriterionInput', editor: EDITOR.NUMBER, modifierOptions: ['EQUALS'] };
+const isMissingDesc = { field: 'is_missing', type: 'String', editor: EDITOR.IS_MISSING, modifierOptions: [] };
 const stashIdDesc = { field: 'stash_id', editor: EDITOR.STASH_ID, modifierOptions: ['EQUALS'] };
 const stashIdsDesc = { field: 'stash_ids', editor: EDITOR.STASH_IDS, modifierOptions: ['EQUALS'] };
 const noEditorDesc = { field: 'weird', editor: null, modifierOptions: [] };
@@ -66,6 +69,8 @@ check('scalar enum starts empty string', blankCriterion(enumDesc),
   { modifier: 'EQUALS', value: { value: '' } });
 check('list-valued enum starts empty array', blankCriterion(listEnumDesc),
   { modifier: 'EQUALS', value: { value: [] } });
+check('is_missing starts blank with no modifier', blankCriterion(isMissingDesc),
+  { modifier: null, value: { value: '' } });
 check('operand editor starts with an empty object', blankCriterion(textDesc),
   { modifier: 'MATCHES_REGEX', value: {} });
 check('no modifiers starts with null', blankCriterion({ ...textDesc, modifierOptions: [] }),
@@ -78,6 +83,11 @@ check('a bare scalar is wrapped for the row', seedCriterion(textDesc, 'url'),
 check('a bare scalar on a no-modifier field seeds a null modifier',
   seedCriterion({ ...textDesc, modifierOptions: [] }, 'url'),
   { modifier: null, value: { value: 'url' } });
+check('is_missing reads its scalar', seedCriterion(isMissingDesc, 'url'),
+  { modifier: null, value: { value: 'url' } });
+check('is_missing keeps an envelope from an older build',
+  seedCriterion(isMissingDesc, { modifier: 'EQUALS', value: { value: 'tags' } }),
+  { modifier: 'EQUALS', value: { value: 'tags' } });
 const stored = { modifier: 'MATCHES_REGEX', value: { value: 'x' } };
 check('a stored envelope passes through unchanged', seedCriterion(textDesc, stored), stored);
 check('a stored boolean envelope is left alone', seedCriterion(boolDesc, { modifier: 'EQUALS', value: 'false' }),
@@ -107,6 +117,9 @@ check('stash id keeps camelCase spellings', seedCriterion(stashIdDesc,
   { modifier: 'EQUALS', value: { endpoint: '/x', stashID: '9' } });
 check('scalar enum keeps its value', seedCriterion(enumDesc,
   { modifier: 'EQUALS', value: 'FULL_HD' }),
+  { modifier: 'EQUALS', value: { value: 'FULL_HD' } });
+check("Stash's display string becomes the member name", seedCriterion(enumDesc,
+  { modifier: 'EQUALS', value: '1080p' }),
   { modifier: 'EQUALS', value: { value: 'FULL_HD' } });
 check('list-valued enum discards a scalar (the request side sends a list)',
   seedCriterion(listEnumDesc, { modifier: 'EQUALS', value: 'CUT' }),
@@ -160,6 +173,18 @@ check('stash id with both is effective',
   isEffective(stashIdDesc, { modifier: 'EQUALS', value: { endpoint: '/x', stashID: '9' } }), true);
 check('stash ids: an empty id is not effective',
   isEffective(stashIdsDesc, { modifier: 'EQUALS', value: { endpoint: '/x', stashIDs: '' } }), false);
+check('is_missing with a field is effective',
+  isEffective(isMissingDesc, { modifier: null, value: { value: 'url' } }), true);
+check('is_missing blank is not effective',
+  isEffective(isMissingDesc, { modifier: null, value: { value: '' } }), false);
+check('an Int criterion with a decimal is not effective',
+  isEffective(numberDesc, { modifier: 'EQUALS', value: { value: 7.5 } }), false);
+check('an Int criterion given as a whole number string is effective',
+  isEffective(numberDesc, { modifier: 'EQUALS', value: { value: '7' } }), true);
+check('a Float criterion keeps its decimal',
+  isEffective(floatDesc, { modifier: 'EQUALS', value: { value: 7.5 } }), true);
+check('an Int range with a decimal bound is not effective',
+  isEffective(numberDesc, { modifier: 'BETWEEN', value: { value: 1, value2: 2.5 } }), false);
 
 console.log('effectiveCriteria');
 const byField = new Map([
@@ -180,13 +205,49 @@ const result = effectiveCriteria(
   byField,
 );
 check('only the real criteria come out, in row order',
-  Object.keys(result), ['title', 'duration', 'resolution', 'organized']);
+  Object.keys(result), ['title', 'duration', 'resolution', 'organized', 'gone']);
 check('the values are carried unchanged', result.duration,
   { modifier: 'BETWEEN', value: { value: 0, value2: 5 } });
 check('a field with no entry in criteria is skipped',
   effectiveCriteria(['title'], {}, byField), {});
-check('a field missing from the schema map is skipped',
-  effectiveCriteria(['gone'], { gone: { modifier: 'EQUALS', value: { value: 'z' } } }, byField), {});
+check('a field missing from the schema map is kept verbatim',
+  effectiveCriteria(['gone'], { gone: { modifier: 'EQUALS', value: { value: 'z' } } }, byField),
+  { gone: { modifier: 'EQUALS', value: { value: 'z' } } });
+const nestedMap = new Map([['weird', noEditorDesc]]);
+check('a field the builder cannot render is kept verbatim',
+  effectiveCriteria(['weird'], { weird: { nest: true } }, nestedMap),
+  { weird: { nest: true } });
+
+console.log('storedCriteria');
+const storedMap = new Map([
+  ['title', textDesc], ['resolution', enumDesc], ['circumcised', listEnumDesc],
+  ['duration', numberDesc], ['tags', multiDesc], ['is_missing', isMissingDesc],
+]);
+const storedOut = storedCriteria(
+  ['title', 'resolution', 'circumcised', 'duration', 'tags', 'is_missing', 'gone'],
+  {
+    title: { modifier: 'MATCHES_REGEX', value: { value: 'a b' } },
+    resolution: { modifier: 'EQUALS', value: { value: 'FULL_HD' } },
+    circumcised: { modifier: 'INCLUDES', value: { value: ['CUT'] } },
+    duration: { modifier: 'BETWEEN', value: { value: 1, value2: 2 } },
+    tags: { modifier: 'INCLUDES', value: { items: [{ id: '1' }], excluded: [] } },
+    is_missing: { modifier: null, value: { value: 'url' } },
+    gone: { kept: true },
+  },
+  storedMap,
+);
+check('text is a bare string', storedOut.title,
+  { modifier: 'MATCHES_REGEX', value: 'a b' });
+check('resolution is its display string', storedOut.resolution,
+  { modifier: 'EQUALS', value: '1080p' });
+check('a list-valued enum is a list of display strings', storedOut.circumcised,
+  { modifier: 'INCLUDES', value: ['Cut'] });
+check('numbers already match Stash', storedOut.duration,
+  { modifier: 'BETWEEN', value: { value: 1, value2: 2 } });
+check('multi already matches Stash', storedOut.tags,
+  { modifier: 'INCLUDES', value: { items: [{ id: '1' }], excluded: [] } });
+check('is_missing is a bare string', storedOut.is_missing, 'url');
+check('an unknown field is carried as it came', storedOut.gone, { kept: true });
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

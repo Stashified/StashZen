@@ -1,5 +1,5 @@
 /**
- * useTabNavigation — which section is showing, and the two ways it moves.
+ * useTabNavigation: which section is showing, and the two ways it moves.
  *
  * `activeTab` and `tabEpoch` are both part of the page's remount key;
  * `changeTab` is the only writer of either.
@@ -10,7 +10,7 @@ import { clearAllListCaches } from '../utils/listCache.js';
 
 export function useTabNavigation(initial = 'home') {
   const [activeTab, setActiveTab] = useState(initial);
-  // Bumped only when the rail's *current* row is pressed — an explicit
+  // Bumped only when the rail's *current* row is pressed, an explicit
   // reload of the tab already on screen. It is part of `<main>`'s key, so the
   // bump remounts the page the same way a tab change does.
   const [tabEpoch, setTabEpoch] = useState(0);

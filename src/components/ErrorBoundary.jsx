@@ -1,5 +1,5 @@
 /**
- * ErrorBoundary — keeps one render error from turning the TV black.
+ * ErrorBoundary, keeps one render error from turning the TV black.
  *
  * React unmounts the whole tree on an uncaught render throw, which on a TV
  * means no devtools and no way out but force-quitting; this wraps it (main.jsx)
@@ -44,7 +44,7 @@ function ErrorButton({ id, label, primary, onClick, autoFocus }) {
 }
 
 function ErrorScreen({ error, onRetry, onRestart }) {
-  // Arrow keys only; Back must not dismiss the screen — there is nothing
+  // Arrow keys only; Back must not dismiss the screen, there is nothing
   // behind it to go back to.
   useKeyHandler({});
 

@@ -1,5 +1,5 @@
 /**
- * settings.js — runtime configuration store.
+ * settings.js: runtime configuration store.
  *
  * Persists the Stash endpoint, API key, Test/Live mode, preview preferences,
  * theme, playback engine and first-run answer to localStorage, so a device is
@@ -58,7 +58,7 @@ export function readTheme(value) {
 /**
  * Apply the theme to the document root.
  *
- * Called at module init — before React renders — and on every change.
+ * Called at module init, before React renders, and on every change.
  * Deliberately outside React: AppLock and FirstRun unmount App by design, so an
  * effect in App would leave the PIN and first-run screens in the old theme and
  * flash on unlock. `standard` is the attribute's absence, so `:root` applies.
@@ -79,7 +79,7 @@ applyTheme(state.theme);
  *
  * A sparse map: an absent tab means 'classic'. Keys and values must be strings,
  * since this came back from JSON. Exported because it is the validation
- * boundary — `views-entry.jsx` asserts on it directly, while `boot-entry.jsx`
+ * boundary, `views-entry.jsx` asserts on it directly, while `boot-entry.jsx`
  * covers the real relaunch path by writing storage before the first import.
  */
 export function readViewModes(saved) {
@@ -115,12 +115,12 @@ function loadFromStorage() {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) saved = JSON.parse(raw) || {};
   } catch (e) {
-    // Corrupt or unavailable storage — ignore, fall back to env
+    // Corrupt or unavailable storage, ignore, fall back to env
   }
 
   // Scenes was split out of Home. Absent tabs already mean "use the default",
   // so this only carries the user's *choice* over: Home's mode and column
-  // count become Scenes'. Non-destructive — the old `home` keys stay.
+  // count become Scenes'. Non-destructive, the old `home` keys stay.
   const viewModes = readViewModes(saved.viewModes);
   const gridCols = readGridCols(saved.gridCols);
   if (viewModes.scenes === undefined && viewModes.home !== undefined) {
@@ -131,8 +131,11 @@ function loadFromStorage() {
   }
 
   return {
-    stashUrl: saved.stashUrl || ENV_URL,
-    stashKey: saved.stashKey || ENV_KEY,
+    // A saved empty string is a decision ("this device has no key") and must
+    // not resurrect the build's baked credentials. Only a value never saved
+    // falls back to env.
+    stashUrl: typeof saved.stashUrl === 'string' ? saved.stashUrl : ENV_URL,
+    stashKey: typeof saved.stashKey === 'string' ? saved.stashKey : ENV_KEY,
     // Preview mute is per-device user preference; persists.
     previewMuted: saved.previewMuted !== undefined ? !!saved.previewMuted : true,
     // On by default: a fresh install should see previews without hunting
@@ -142,7 +145,7 @@ function loadFromStorage() {
     previewsEnabled: saved.previewsEnabled !== undefined ? !!saved.previewsEnabled : true,
     // Persisted, or the Test/Live switch would be forgotten on every launch.
     useMock: saved.useMock !== undefined ? !!saved.useMock : ENV_MOCK,
-    // The appearance theme. Standard on every device that has never chosen —
+    // The appearance theme. Standard on every device that has never chosen:
     // an upgrade must not restyle a working TV unasked.
     theme: readTheme(saved.theme),
     // Which engine `Auto` means: the browser first, AVPlay as fallback.
@@ -150,7 +153,7 @@ function loadFromStorage() {
     // unrecognised value falls back to `auto`, like every validated setting.
     playbackEngine: readPlaybackEngine(saved.playbackEngine),
     // Which view each section is in, keyed by tab: { scenes: 'coverflow' }.
-    // Absent means 'classic' — a sparse map so a new section needs no
+    // Absent means 'classic', a sparse map so a new section needs no
     // migration. Values are validated on the way in, not trusted.
     viewModes,
     // Per-section column counts, keyed by tab: { performers: 6 }. Absent means
@@ -158,7 +161,7 @@ function loadFromStorage() {
     gridCols,
     // The first-run answer; null means "never asked", which the setup screen
     // gates on. A device with an endpoint or key already saved is inferred to
-    // have answered `live` — without that, every configured device would be
+    // have answered `live`, without that, every configured device would be
     // asked to re-enter a working connection. Only `live` can be inferred:
     // nothing recorded could mean "sample data".
     onboarded: saved.onboarded === 'live' || saved.onboarded === 'test'
@@ -167,8 +170,13 @@ function loadFromStorage() {
     // Set by "Run setup again". Separate from `onboarded` rather than blanking
     // it, so Back can cancel a re-run and return to the running app.
     setupRequested: !!saved.setupRequested,
+    // Public-build update check. Off on every device that has never opted in;
+    // the timestamp is written after every attempt, success or failure.
+    updateCheckEnabled: saved.updateCheckEnabled !== undefined ? !!saved.updateCheckEnabled : false,
+    lastUpdateCheckAt: Number.isFinite(saved.lastUpdateCheckAt) ? saved.lastUpdateCheckAt : 0,
+    updateLatestVersion: typeof saved.updateLatestVersion === 'string' ? saved.updateLatestVersion : '',
     // Derived, never persisted: has this device ever saved an endpoint? The
-    // setup screen prefills the URL only if so — `stashUrl` always falls back
+    // setup screen prefills the URL only if so, `stashUrl` always falls back
     // to ENV_URL's localhost, and prefilled localhost on a TV reads as real.
     hasSavedEndpoint: !!(saved.stashUrl || saved.stashKey),
   };
@@ -188,11 +196,14 @@ function persistToStorage() {
       gridCols: state.gridCols,
       onboarded: state.onboarded,
       setupRequested: state.setupRequested,
-      // hasSavedEndpoint is deliberately absent — derived, so it could only
+      updateCheckEnabled: state.updateCheckEnabled,
+      lastUpdateCheckAt: state.lastUpdateCheckAt,
+      updateLatestVersion: state.updateLatestVersion,
+      // hasSavedEndpoint is deliberately absent, derived, so it could only
       // disagree with the two fields above.
     }));
   } catch (e) {
-    // Storage full / disabled — fail silently, runtime state still works
+    // Storage full / disabled, fail silently, runtime state still works
   }
 }
 
@@ -225,7 +236,7 @@ function fingerprint(secret) {
  *
  * App.jsx uses this as the `key` on <main>, remounting the data tree on a
  * Test↔Live switch. Module caches *survive* that remount, so they partition
- * themselves with this same string — see listCache.js.
+ * themselves with this same string, see listCache.js.
  *
  * The key's *value* is part of the identity, via a digest rather than the
  * secret itself: regenerating a token for the same server must not leave
@@ -250,7 +261,8 @@ export function setSettings(patch) {
       || 'previewsEnabled' in patch || 'useMock' in patch || 'theme' in patch
       || 'playbackEngine' in patch
       || 'viewModes' in patch || 'gridCols' in patch || 'onboarded' in patch
-      || 'setupRequested' in patch) {
+      || 'setupRequested' in patch || 'updateCheckEnabled' in patch
+      || 'lastUpdateCheckAt' in patch || 'updateLatestVersion' in patch) {
     persistToStorage();
   }
   // Applied here, not by the panel, so every path that changes the theme also
@@ -265,7 +277,7 @@ export function subscribeSettings(fn) {
 }
 
 /**
- * React hook — returns the current settings and re-renders on change.
+ * React hook, returns the current settings and re-renders on change.
  */
 export function useSettings() {
   const [snapshot, setSnapshot] = useState(state);
@@ -292,7 +304,7 @@ export async function testStashConnection({ url, key }) {
       return { ok: false, reason: 'Authentication failed. Check the API key.' };
     }
     // Any other non-2xx. `{ version { version } }` takes no arguments, so the
-    // status is the whole story — there is no rejected-input detail.
+    // status is the whole story, there is no rejected-input detail.
     if (e?.code === 'http') return { ok: false, reason: `Server returned HTTP ${e.status}.` };
     if (e?.code === 'parse') return { ok: false, reason: 'Server returned invalid JSON.' };
     // 'graphql' | 'timeout' | 'network' | 'config' carry a user-facing message.
@@ -310,20 +322,24 @@ export async function testStashConnection({ url, key }) {
  * Wipe persisted settings, reset in-memory state, and notify subscribers. The
  * data tree remounts via the dataKey change in App.jsx.
  *
- * This genuinely clears the endpoint and key — do not restore ENV_URL/ENV_KEY
+ * This genuinely clears the endpoint and key, do not restore ENV_URL/ENV_KEY
  * here. A reset that brought back the baked-in build credentials would make
  * the button a no-op, and a following Save would commit an empty stashUrl,
  * sending every request to a path relative to the app.
+ *
+ * The reset is *written*, not just the storage removed: an absent record means
+ * "never saved" and falls back to env, which is the same resurrection by
+ * another route. Persisting the empty strings makes the cleared state survive
+ * a relaunch.
  */
 export function clearSettings() {
-  try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ }
   state = {
     stashUrl: '',
     stashKey: '',
     previewMuted: true,
     previewsEnabled: true,
     useMock: ENV_MOCK,
-    // The documented reset includes appearance — and the document must be
+    // The documented reset includes appearance, and the document must be
     // re-themed here because clearSettings does not go through setSettings.
     theme: 'standard',
     // `auto` is the safe default on an unknown device: it degrades to the
@@ -335,11 +351,15 @@ export function clearSettings() {
     // crashes the tab-change effect instead of defaulting.
     gridCols: {},
     // Back to "never asked": a reset device should meet the setup screen, not
-    // a dead endpoint — the whole reason onboarding exists.
+    // a dead endpoint, the whole reason onboarding exists.
     onboarded: null,
     setupRequested: false,
+    updateCheckEnabled: false,
+    lastUpdateCheckAt: 0,
+    updateLatestVersion: '',
     hasSavedEndpoint: false,
   };
   applyTheme(state.theme);
+  persistToStorage();
   notify();
 }

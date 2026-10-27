@@ -6,7 +6,7 @@
  * dead URL. The observable is `/graphqlcalls`, which records every operation
  * (not just findScenes): A = gate closed sends nothing, B = gate opened mounts
  * App and persists, D = live mode sends traffic, so the empty log is trustworthy.
- * A5 repeats A4 with a working endpoint — only the gate can keep that log empty.
+ * A5 repeats A4 with a working endpoint, only the gate can keep that log empty.
  *
  * PIN: Skip holds a pending patch and opens the step, so B2/B3 assert storage,
  * not the screen; C asserts the commit on decline. G sets a real PIN and
@@ -89,7 +89,7 @@ const pressPadButton = (label) => {
   b.click();
 };
 
-/** Type a PIN. The pad auto-submits on the last digit — no separate OK. */
+/** Type a PIN. The pad auto-submits on the last digit, no separate OK. */
 const enterPin = (pin) => { for (const digit of pin) pressPadButton(digit); };
 
 /** The persisted blob, read the way the next launch would read it. */
@@ -103,7 +103,7 @@ const storedLock = () => {
   catch { return null; }
 };
 
-/** A real press of a registered element — the button's own onClick handler. */
+/** A real press of a registered element, the button's own onClick handler. */
 function press(id) {
   const el = registry.get(id)?.el;
   if (!el) throw new Error(`nothing registered as ${id}`);
@@ -153,7 +153,7 @@ async function run() {
     + `registry size ${registry.size}`);
 
   // `stashUrl` itself falls back to the env default, so a screen that prefilled
-  // from the store would show `http://localhost:9999` — wrong on a TV, yet it
+  // from the store would show `http://localhost:9999`, wrong on a TV, yet it
   // looks like a real answer. Prefill must follow `hasSavedEndpoint`.
   const urlInput = registry.get('firstrun-url')?.el?.querySelector('input');
   check('A3 a fresh device is not handed a placeholder address to clear',
@@ -266,7 +266,7 @@ async function run() {
       phaseC.length === 0, `logged: ${JSON.stringify(phaseC)}`);
   }
 
-  // ── D: control — the same log does see traffic ──────────
+  // ── D: control, the same log does see traffic ──────────
   // Everything except the mode held fixed, so the only difference between A5
   // and D1 is whether the gate is open.
   setSettings({

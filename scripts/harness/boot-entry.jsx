@@ -4,7 +4,7 @@
  *
  * `settings.js` runs `let state = loadFromStorage()` at module scope, and
  * `loadFromStorage` validated saved `viewModes` through `readViewModes`, which
- * read a `const VIEW_MODES` declared below that call — a temporal dead zone
+ * read a `const VIEW_MODES` declared below that call, a temporal dead zone
  * `ReferenceError`. The throw only fired when a `viewModes` map existed to
  * iterate (`readViewModes` early-returns for undefined/null/string/array), and
  * the module threw during import, so the launch rendered nothing: no grid, no
@@ -53,7 +53,7 @@ const seed = (obj) => {
 };
 
 // Exercises every field `loadFromStorage` validates, with `viewModes` present
-// and non-empty — the condition that made init throw.
+// and non-empty, the condition that made init throw.
 const SAVED = {
   stashUrl: `http://127.0.0.1:${PORT}`,
   stashKey: 'harness',

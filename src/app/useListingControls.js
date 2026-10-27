@@ -1,5 +1,5 @@
 /**
- * useListingControls — the controls bar's state, and the rules that arrive
+ * useListingControls: the controls bar's state, and the rules that arrive
  * with it.
  *
  * `controls` is one shared object for every section, so most of this hook is
@@ -20,7 +20,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   const [controls, setControls] = useState(DEFAULT_CONTROLS);
 
   // ── View mode, per section ───────────────────────────────
-  // Absent means 'classic' — see readViewModes in settings.js. Keyed by tab so
+  // Absent means 'classic', see readViewModes in settings.js. Keyed by tab so
   // setting Performers to Carousel leaves Scenes alone.
   //
   // The whole map is written on every change because `setSettings` spreads a
@@ -37,7 +37,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   // written every change because `setSettings` replaces the field wholesale.
   //
   // The defaults differ because the art does: scenes, markers and entity grids
-  // are landscape at 4, while performer cards are 3:4 portrait — at 4 they read
+  // are landscape at 4, while performer cards are 3:4 portrait, at 4 they read
   // as oversized on a TV. 6 is the measured choice.
   const gridCols = settings.gridCols;
   const gridColsFor = (tab) => gridCols[tab] ?? (tab === 'performers' ? 6 : 4);
@@ -47,7 +47,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   // Switching between Live and Test, or pointing at another server, remounts
   // `<main>` through its key, but App's state is not: a saved-filter id names a
   // row on the *old* server, and kept across the switch it either names nothing
-  // — so the listing runs unfiltered while the bar shows a filter — or a
+  //, so the listing runs unfiltered while the bar shows a filter, or a
   // different filter. The detail pages hold ids from the old library too.
   //
   // Cleared in render, not an effect: the new source's first fetch must not go
@@ -76,7 +76,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   //
   // Arriving at a section adopts its declared `defaultSort`/`defaultOrder`
   // (Tags and Studios by name ascending, the rest newest first), replacing the
-  // carried value even when it is valid for the new tab — a default that only
+  // carried value even when it is valid for the new tab, a default that only
   // applies sometimes is not a default.
   //
   // The exception is a See-all hand-off: `openShowroomListing` stages the
@@ -89,7 +89,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   //
   // Render-phase, not an effect: effects fire child-first, so the arriving
   // grid would already have fetched page 1 with the previous tab's sort and
-  // then refetch — the "small delay switching to Markers" seen on the TV. A
+  // then refetch, the "small delay switching to Markers" seen on the TV. A
   // render-phase update re-renders before anything commits, so the grid mounts
   // already carrying its tab's controls and fetches once. `controlsForTab` is
   // the ticker that keeps this from running every render.
@@ -102,7 +102,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
     setControls(prev => {
       // Columns follow the section, not the session: `controls` is shared, so
       // without this the Performers count would carry onto Scenes. Written
-      // unconditionally — arrival always adopts the tab's count, stored or
+      // unconditionally, arrival always adopts the tab's count, stored or
       // default.
       //
       // Search goes too for the same reason: a term narrows the listing it was
@@ -144,7 +144,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       // change) invalidates the selection. The working marker is the exception
       // while its filter is staying: it is not a server id, and clearing it
       // would deselect the dropdown entry for the filter that caused this
-      // change. Every other case — including a dropped filter's marker — clears.
+      // change. Every other case, including a dropped filter's marker, clears.
       if (prev.filterId && !(prev.filterId === WORKING_FILTER_ID && filterIsForThisTab)) {
         patch.filterId = null;
       }
@@ -156,7 +156,7 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   const updateControls = (patch, savedFilters) => {
     // A column change is a preference: persist it so the section reopens at the
     // same count. Done outside the updater below, which StrictMode can run
-    // twice — writing storage from one would double-persist.
+    // twice, writing storage from one would double-persist.
     if (patch.cols !== undefined) {
       setSettings({ gridCols: { ...gridCols, [activeTab]: patch.cols } });
     }
@@ -180,7 +180,16 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       // The user can still override afterwards.
       if (patch.filterId && patch.filterId !== prev.filterId) {
         const f = savedFilters.find(x => String(x.id) === String(patch.filterId));
-        if (f?.findFilter?.sort) patch.sort = f.findFilter.sort;
+        // A filter made in Stash's web UI can carry a sort this tab does not
+        // offer. Adopting it would leave the Sort control showing a value it
+        // cannot select. Same check the See-all hand-off gets.
+        const validSorts = flattenSortGroups(
+          TAB_CONTROL_CONFIG[activeTab]?.sortGroups,
+        ).map(o => o.value);
+        if (f?.findFilter?.sort
+            && (!validSorts.length || validSorts.includes(f.findFilter.sort))) {
+          patch.sort = f.findFilter.sort;
+        }
         if (f?.findFilter?.direction) {
           patch.order = f.findFilter.direction.toLowerCase() === 'asc' ? 'asc' : 'desc';
         }

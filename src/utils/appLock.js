@@ -1,5 +1,5 @@
 /**
- * appLock.js — optional PIN gate for the whole app.
+ * appLock.js: optional PIN gate for the whole app.
  *
  * Stores a salted SHA-256 of a 4-digit PIN under its own localStorage key,
  * deliberately not in settings.js: `persistToStorage()` writes a whitelist of
@@ -57,7 +57,7 @@ function loadFromStorage() {
     if (!raw) return null;
     blob = JSON.parse(raw);
   } catch (e) {
-    // Corrupt JSON, or storage unavailable — fail open (see header).
+    // Corrupt JSON, or storage unavailable, fail open (see header).
     return null;
   }
 

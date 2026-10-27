@@ -2,8 +2,8 @@
  * Headless verification driver for the player's transport rail and add-marker
  * form.
  *
- * Mounts `VideoPlayer` directly: everything under test is inside it — key
- * routing, rail and form — with the real key handler, focus registry and
+ * Mounts `VideoPlayer` directly: everything under test is inside it, key
+ * routing, rail and form, with the real key handler, focus registry and
  * service layer against the fake endpoint (scripts/harness/server.py). The queue
  * is a prop, so the scene, markers and duration are fixed here.
  *
@@ -107,7 +107,7 @@ async function runStrictProbe() {
 
   if (loaded) {
     // A save is skipped when the position has not moved, so give it one to
-    // report before pausing — the chip only exists because a write happened.
+    // report before pausing, the chip only exists because a write happened.
     sv.currentTime = 20;
     await waitFor(() => sv.currentTime >= 19, 2000);
     sv.pause();
@@ -207,8 +207,12 @@ const tickCount = () => {
   return player().querySelectorAll('[class*="_markerTick_"]').length;
 };
 
-/** The progress track itself — the "seek bar" ↑ is supposed to reveal. */
+/** The progress track itself, the "seek bar" ↑ is supposed to reveal. */
 const progressTrack = () => player()?.querySelector('[class*="_progressTrack_"]') || null;
+
+/** The playhead dot, positioned as a percentage of the timeline. */
+const progressDot = () => player()?.querySelector('[class*="_progressDot_"]') || null;
+const dotPct = () => parseFloat(progressDot()?.style.left || 'NaN');
 
 /**
  * The controls container, found by walking up from the rail. `_controls_` does
@@ -229,7 +233,7 @@ const controlsOpacity = () => {
 
 /**
  * The player's marker-confirmation status, not the sync chip. Both carry
- * `role="status"` with the chip first, so exclude it by class — MK10 is about
+ * `role="status"` with the chip first, so exclude it by class, MK10 is about
  * which element announced something.
  */
 const notice = () => {
@@ -273,7 +277,7 @@ function press(el, key = 'Enter', keyCode = 13) {
   return e;
 }
 
-/** Enter on `document.activeElement` — the OK button on a remote. */
+/** Enter on `document.activeElement`, the OK button on a remote. */
 const ok = (el) => press(el || document.activeElement, 'Enter', 13);
 
 const focusRailButton = (id) => registry.get(id).el.focus();
@@ -507,6 +511,56 @@ async function run() {
     v.currentTime > 55,
     `currentTime=${v.currentTime.toFixed(2)} from 50.0 (a zero clamp lands near 0)`);
   delete v.duration;
+
+  // ── R4c: a held skim is one seek, not one per press ─────
+  // In the browser every currentTime assignment aborts the previous range
+  // request, which the panel heard as heavy disk reads. A gesture now reaches
+  // the element twice at most: the first press at once so a discrete tap keeps
+  // its latency, and the merged final target once the presses stop.
+  // Past the accel reset and past R4b's deferred seek, so this is a clean run.
+  await sleep(1000);
+  await seekTo(10);
+  // Playing, or there is no `timeupdate` to fight the timeline: the yoyo only
+  // exists while the element advances at the old position.
+  await setPlaying(true);
+  const nativeTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+  let seekSets = 0;
+  const seekMarks = [];
+  const markT0 = performance.now();
+  Object.defineProperty(v, 'currentTime', {
+    configurable: true,
+    get() { return nativeTime.get.call(this); },
+    set(seconds) {
+      seekSets += 1;
+      seekMarks.push(`${Math.round(performance.now() - markT0)}:${Number(seconds).toFixed(1)}`);
+      nativeTime.set.call(this, seconds);
+    },
+  });
+  // The accepted cadence of a held key: above the 300 ms repeat throttle. Each
+  // press used to reach the element on its own; now the quiet window restarts
+  // on every press and only the final target is sent.
+  press(document.body, 'ArrowRight', 39);
+  await sleep(350);
+  press(document.body, 'ArrowRight', 39);
+  // The element plays on at the old position while the target is unsent; its
+  // timeupdate pulled the bar back to it, the yoyo the panel saw. Sample inside
+  // the quiet window, after a tick has had time to arrive.
+  await sleep(50);
+  const dotAfterPress = dotPct();
+  await sleep(400);              // a `timeupdate` or two, still inside the quiet window
+  check('R4c the timeline follows the unsent target, not the frame on screen',
+    dotPct() >= dotAfterPress - 0.5, `${dotAfterPress}% then ${dotPct()}%`);
+  press(document.body, 'ArrowRight', 39);
+  await sleep(350);
+  press(document.body, 'ArrowRight', 39);
+  await sleep(750);
+  check('R4c a held skim reaches the element once per gesture, not per press',
+    seekSets === 2, `sets=${seekSets} over 4 presses [${seekMarks.join(', ')}]`);
+  check('R4c ...and lands on the merged final target',
+    v.currentTime > 25, `currentTime=${v.currentTime.toFixed(2)} from 10.0`);
+  delete v.currentTime;
+  // MK2's marker arithmetic assumes a still playhead; leave the state found.
+  await setPlaying(false);
 
   // ── R11: on a lone scene, ↑/↓ raise the rail ────────────
   // With no neighbouring scene both keys were claimed and did nothing. They
@@ -1192,7 +1246,7 @@ async function run() {
     upBeforeBack && !resumePrompt(),
     `up before=${upBeforeBack} after=${!!resumePrompt()}`);
   // Wait, don't sleep: a seek completes on its own schedule, and one still in
-  // flight reports a position between the two — a plausible-looking failure of
+  // flight reports a position between the two, a plausible-looking failure of
   // the assertion rather than of the app.
   const resumed = await waitFor(() => (video()?.currentTime || 0) > 20, 2500);
   check('RS4 ...by resuming from the saved position and playing',

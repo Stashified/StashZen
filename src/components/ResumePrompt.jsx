@@ -1,5 +1,5 @@
 /**
- * ResumePrompt — "resume, or start from the beginning?"
+ * ResumePrompt, "resume, or start from the beginning?"
  *
  * Raised before anything plays, because intent is genuinely split: reopening a
  * half-watched scene is usually a resume, but often a rewatch.
@@ -8,7 +8,7 @@
  * does not yield, and `foreignDialogOpen` is what it yields to. That also buys
  * the focus trap, so ←/→ cannot wander onto the rail behind.
  *
- * Back takes the default rather than dismissing — there is no third meaning,
+ * Back takes the default rather than dismissing, there is no third meaning,
  * and an unreachable default would trap people. Neither answer writes
  * anything, so there is nothing to undo.
  */

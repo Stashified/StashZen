@@ -1,8 +1,8 @@
 /**
- * usePlayback — the player, the long-press menu, and every way into both.
+ * usePlayback: the player, the long-press menu, and every way into both.
  *
- * Every entry point produces the same shape — a queue plus the index to start
- * at — so the player has one code path. The long-press menu is not scene-only:
+ * Every entry point produces the same shape, a queue plus the index to start
+ * at, so the player has one code path. The long-press menu is not scene-only:
  * markers, images and galleries each carry a `kind` so the overlay can ask
  * actionMenus.js for the right rows. Focus bookkeeping is shared: the menu
  * remembers the card it opened on, the player where to return.
@@ -32,7 +32,7 @@ export function usePlayback({
   const [actionMenu, setActionMenu] = useState(null);
   // The queue row the player shows *now*: a listing queue can be skipped
   // through, and Back returns to the card of the scene actually on screen. The
-  // row, not its id — a marker queue names its card with `markerId`.
+  // row, not its id, a marker queue names its card with `markerId`.
   const lastItemRef = useRef(null);
 
   const openPlayer = (session) => {
@@ -95,7 +95,7 @@ export function usePlayback({
 
   const handleMenuDetails = (video) => {
     // The card takes focus back when the detail page closes, so hand it over
-    // now — the menu is about to be gone.
+    // now, the menu is about to be gone.
     sceneCardFocus.remember(menuCardFocus.targetRef.current);
     setActionMenu(null);
     setSelectedScene(video);
@@ -103,8 +103,8 @@ export function usePlayback({
 
   // Play and a marker differ only in where playback starts; both restore focus
   // to the card when the player closes. `resumeTime` is the detail page's
-  // freshly fetched value — the card may be stale because the listing behind
-  // is not refetched after a save — and a marker's `seconds` means "start
+  // freshly fetched value, the card may be stale because the listing behind
+  // is not refetched after a save, and a marker's `seconds` means "start
   // here", suppressing the resume prompt.
   const playSceneAt = (seconds = 0, resumeTime = null) => {
     mainFocus.remember(sceneCardFocus.targetRef.current);
@@ -119,7 +119,7 @@ export function usePlayback({
   const handleMarkerSelect = (marker) => {
     mainFocus.remember(document.activeElement);
     // A marker is a timestamp inside a scene, so the queue item is built by
-    // hand — see queueItemFromMarker for the fields it must forward.
+    // hand, see queueItemFromMarker for the fields it must forward.
     openPlayer(queueOf(queueItemFromMarker(marker), marker.seconds || 0));
   };
 
@@ -128,7 +128,7 @@ export function usePlayback({
   // restores that listing's card, a marker queue its marker card; a
   // single-scene Play sets neither and keeps the element restore.
   //
-  // The id prefix comes from the listing — not every scene card is
+  // The id prefix comes from the listing, not every scene card is
   // `video-<id>`; Home's shelves use `showroom-<shelf>-video-<id>`.
   const handlePlayerClose = () => {
     const session = playSession;
@@ -144,14 +144,17 @@ export function usePlayback({
     // no longer exists (the queue left the listing, or a resume point cleared
     // the scene out of Continue Watching).
     const fallback = () => mainFocus.restore({ fallback: focusFirstControl });
+    // Deferred: a dialog that opened while the player closed (the crash
+    // panel's prompt) owns focus, and restoring would steal it.
     if (focusId) {
-      // Deferred like every overlay close, then retried until the card exists:
-      // the queue can have walked past the loaded page, and the listing pages
-      // forward — see utils/focus.js.
-      setTimeout(() => focusByIdWhenReady(focusId, { fallback }), 50);
+      setTimeout(() => {
+        if (!document.querySelector('[role="dialog"]')) focusByIdWhenReady(focusId, { fallback });
+      }, 50);
       return;
     }
-    fallback();
+    setTimeout(() => {
+      if (!document.querySelector('[role="dialog"]')) fallback();
+    }, 50);
   };
 
   return {

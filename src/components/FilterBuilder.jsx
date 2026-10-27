@@ -1,5 +1,5 @@
 /**
- * FilterBuilder — compose a filter in the app instead of in Stash's web UI.
+ * FilterBuilder, compose a filter in the app instead of in Stash's web UI.
  *
  * Writes Stash's *stored* envelope (what `saveFilter` persists), not the
  * GraphQL shape: GraphQL shape here would produce a filter Stash's own web UI
@@ -19,7 +19,7 @@ import { criteriaFor } from '../utils/filterCriteria.js';
 import EntityPicker from './EntityPicker.jsx';
 import styles from './FilterBuilder.module.css';
 import {
-  blankCriterion, seedCriterion, effectiveCriteria,
+  blankCriterion, seedCriterion, effectiveCriteria, storedCriteria,
 } from './filterBuilder/criterionDraft.js';
 import { CriterionRow } from './filterBuilder/CriterionRow.jsx';
 import { FieldPicker } from './filterBuilder/FieldPicker.jsx';
@@ -126,7 +126,12 @@ export default function FilterBuilder({
     setSaving(true);
     setError(null);
     try {
-      await onSave?.({ name: name.trim(), objectFilter: effective });
+      // Saved filters are opened by Stash's web UI too, which needs its own
+      // stored envelope (bare text, display-string enums), not the rows'.
+      await onSave?.({
+        name: name.trim(),
+        objectFilter: storedCriteria(order, criteria, byField),
+      });
     } catch (e) {
       setError(e.message || 'Could not save');
     } finally {

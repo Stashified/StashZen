@@ -1,9 +1,9 @@
 /**
- * PlayerControlsRail — the transport rail at the bottom of the video player.
+ * PlayerControlsRail, the transport rail at the bottom of the video player.
  *
  * On-screen transport for actions the remote already has, plus mute, details,
- * marker creation and the playback-info toggle. The arrow-skim keys remain —
- * see VideoPlayer's key table — so this is additive.
+ * marker creation and the playback-info toggle. The arrow-skim keys remain:
+ * see VideoPlayer's key table, so this is additive.
  *
  * ## Focus
  *
@@ -23,7 +23,7 @@
  *
  * The icon swaps with playback state; the *button* must not. React reuses a DOM
  * node only while type and position are stable, so swapping the child SVG keeps
- * the node and its focus — rendering two components or keying the button on
+ * the node and its focus, rendering two components or keying the button on
  * `playing` would remount it, drop focus to `<body>`, and make the next OK
  * press re-focus instead of resuming.
  */
@@ -186,7 +186,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
 
   return (
     <div ref={railElRef} className={styles.rail} role="toolbar" aria-label="Player controls">
-      <RailButton id="player-rail-rew" label="Rewind 15 seconds" onEnter={() => onSkim(-15)}>
+      <RailButton id="player-rail-rew" label="Rewind" onEnter={() => onSkim(-1)}>
         <RewindIcon />
       </RailButton>
 
@@ -204,7 +204,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
         {playing ? <PauseIcon /> : <PlayIcon />}
       </button>
 
-      <RailButton id="player-rail-ff" label="Forward 15 seconds" onEnter={() => onSkim(15)}>
+      <RailButton id="player-rail-ff" label="Forward" onEnter={() => onSkim(1)}>
         <ForwardIcon />
       </RailButton>
 
@@ -241,7 +241,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
 
       <span className={styles.sep} aria-hidden="true" />
 
-      {/* Disabled when there is no mute path at all — `tvaudiocontrol` and
+      {/* Disabled when there is no mute path at all, `tvaudiocontrol` and
           `avplay.setVolume` both missing (measured on this TV's peer
           generation). A silent no-op is worse than a button saying it cannot.
           The stats panel reports the same reason. */}

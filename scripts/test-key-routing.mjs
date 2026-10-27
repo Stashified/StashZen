@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-key-routing.mjs — the player's key map
+ * test-key-routing.mjs: the player's key map
  *
  *   node scripts/test-key-routing.mjs
  *
@@ -8,7 +8,7 @@
  * one-scene queue) times every key. The prevent/stop flags matter as much as
  * the action: a wrongly consumed ←/→ breaks spatial nav, and an unconsumed
  * arrow drops the cursor onto a rail the user never opened. Back depends on
- * whether the controls are on screen — the bar goes first, the player on the
+ * whether the controls are on screen, the bar goes first, the player on the
  * next press. The harness cannot know what a given TV's remote emits, so the
  * mapping is pinned here.
  */
@@ -83,6 +83,7 @@ check('rail, single: ArrowUp still reaches the seek bar',
 check('rail: Escape leaves the rail', is(ev('Escape', 27), RAIL, 'leave-rail', true, true));
 check('rail: Backspace leaves the rail', is(ev('Backspace', 8), RAIL, 'leave-rail', true, true));
 check('rail: Tizen Back leaves the rail', is(ev('', 10009), RAIL, 'leave-rail', true, true));
+check('rail: 413 Back leaves the rail', is(ev('', 413), RAIL, 'leave-rail', true, true));
 check('rail: ArrowLeft is passed to the rail', is(ev('ArrowLeft', 37), RAIL, 'rail-pass', false, false));
 check('rail: ArrowRight is passed to the rail', is(ev('ArrowRight', 39), RAIL, 'rail-pass', false, false));
 check('rail: Enter activates the focused button', is(ev('Enter', 13), RAIL, 'rail-pass', false, false));
@@ -96,7 +97,7 @@ check('no rail: Tizen Back closes', is(ev('', 10009), NO_RAIL, 'close', true, tr
 // ── A held Back is one press ────────────────────────────────
 // Repeats used to walk the two-stop ladder and close the player from the same
 // hold, then reach the app's own Back handler after the player unmounted.
-for (const e of [repeatEv('Escape', 27), repeatEv('Backspace', 8), repeatEv('', 10009)]) {
+for (const e of [repeatEv('Escape', 27), repeatEv('Backspace', 8), repeatEv('', 10009), repeatEv('', 413)]) {
   for (const [name, ctx] of [['no rail', NO_RAIL], ['bar up', VISIBLE], ['rail', RAIL]]) {
     check(`repeat Back on ${name} is swallowed and inert`,
       is(e, ctx, 'none', true, true), show(route(e, ctx)));

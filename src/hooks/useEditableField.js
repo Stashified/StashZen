@@ -1,5 +1,5 @@
 /**
- * useEditableField — a text field the D-pad selects before it can be typed in
+ * useEditableField: a text field the D-pad selects before it can be typed in
  *
  * Focusing an editable <input> raises the TV keyboard, so focus lands on a
  * *wrapper* element instead and moves onto the real <input> only on Enter. The
@@ -24,7 +24,7 @@
  *
  *  1. Never pass `onBlur` to useFocusable: it binds `blur` on the wrapper, and
  *     focusing the input blurs the wrapper, clearing `editing` the instant the
- *     field is activated — the keyboard is up, but the ring and hint still say
+ *     field is activated, the keyboard is up, but the ring and hint still say
  *     "selected". `editing` is driven only by the input's own onBlur.
  *
  *  2. useFocusable binds a NATIVE keydown listener on the wrapper, and React
@@ -43,7 +43,7 @@ export function useEditableField({
   onCommit,
   externalRef,
   // Forwarded verbatim to useFocusable: this hook builds its own call, so an
-  // option not named here is silently dropped — the bug that put Right from
+  // option not named here is silently dropped, the bug that put Right from
   // the Home row on the search box. `autoFocus` is for the first-run screen,
   // which has no navigation above it to arrive from.
   verticalOnly = false,
@@ -75,7 +75,7 @@ export function useEditableField({
     },
   });
 
-  // Merged so callers can hand the wrapper elsewhere — SettingsPanel lands
+  // Merged so callers can hand the wrapper elsewhere, SettingsPanel lands
   // focus on the URL field when the user flips to Live. The *wrapper*, so the
   // keyboard does not open.
   const setWrapperRef = useCallback((el) => {
@@ -92,7 +92,7 @@ export function useEditableField({
 
   const finishEdit = useCallback(() => {
     setEditing(false);
-    // Focus back explicitly — merely blurring leaves focus on <body>, with
+    // Focus back explicitly, merely blurring leaves focus on <body>, with
     // nothing for the D-pad to navigate from.
     ref.current?.focus();
   }, [ref]);
@@ -104,7 +104,7 @@ export function useEditableField({
       finishEdit();
     },
     onBlur: () => {
-      // Trap 1: this — not useFocusable's onBlur — owns `editing`.
+      // Trap 1: this, not useFocusable's onBlur, owns `editing`.
       setEditing(false);
       // The IME's Done/close blurs the input; if nothing claimed focus, put it
       // back on the wrapper, but leave it if a nav target already took it

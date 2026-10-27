@@ -1,5 +1,5 @@
 /**
- * ScenesPage — the scene listing's grid, list, carousel or coverflow.
+ * ScenesPage, the scene listing's grid, list, carousel or coverflow.
  *
  * `mode` arrives as a prop, not off `controls`: it is a per-section preference
  * (`settings.viewModes[tab]`, owned by App), whereas `controls` is shared

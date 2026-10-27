@@ -1,5 +1,5 @@
 /**
- * VideoGrid — NxM grid of VideoCard with infinite scroll.
+ * VideoGrid, NxM grid of VideoCard with infinite scroll.
  *
  * A change to `controls.sort` or `controls.order` resets and refetches from
  * page 1. Paging lives in usePagedList; this supplies the request and the
@@ -24,22 +24,23 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
   // Named, not inline: the play queue shares this closure, so a queue started
   // here pages exactly the listing the grid shows.
   const fetchPage = useCallback(
-    (page) =>
-      fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      fetchVideos({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d.videos, total: d.total })),
     [sort, order, objectFilter, searchQuery],
   );
 
-  // `items` is aliased to `videos` — that is what this view lists.
+  // `items` is aliased to `videos`, that is what this view lists.
   const {
-    items: videos, total, page, loading, loadingMore, error, exhausted, loadMore,
+    items: videos, total, page, loading, retrying, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // sort and order MUST be in the key
     requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
-    // A restore by `video-<id>` pages forward past the loaded page — see
+    // A restore by `video-<id>` pages forward past the loaded page, see
     // utils/focus.js.
     focusPrefix: 'video',
+    entity: 'scene',
   });
 
   // Stable identity with live getters, so a page append renders only the new
@@ -69,7 +70,7 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
       styles={styles}
       loading
       spinnerLabel="Loading videos"
-      text="Loading videos…"
+      text={retrying ? 'Connection problem, retrying…' : 'Loading videos…'}
     />
   );
 
@@ -115,7 +116,7 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
           )}
           {error && !loadingMore && (
             <span className={styles.loadingMoreText} style={{ color: 'var(--red)' }}>
-              Couldn't load more — {error}
+              Couldn't load more: {error}
             </span>
           )}
         </div>

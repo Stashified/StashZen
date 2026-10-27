@@ -1,5 +1,5 @@
 /**
- * PerformerCard — cover image + name + scene count, portrait (3:4) to match
+ * PerformerCard, cover image + name + scene count, portrait (3:4) to match
  * Stash's `image_path`.
  *
  * Takes its record as `item`, like every card, so one container can render any

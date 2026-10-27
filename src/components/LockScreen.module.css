@@ -1,4 +1,4 @@
-/* LockScreen — the only thing rendered while the app is locked. */
+/* LockScreen, the only thing rendered while the app is locked. */
 
 .cover {
   position: fixed;

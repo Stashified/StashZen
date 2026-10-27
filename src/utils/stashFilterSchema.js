@@ -1,5 +1,5 @@
 /**
- * stashFilterSchema.js — GENERATED FILE, DO NOT EDIT BY HAND.
+ * stashFilterSchema.js: GENERATED FILE, DO NOT EDIT BY HAND.
  *
  * The field → GraphQL input type map for every filter type the app can send.
  * `filterTranslate.js` dispatches on these type names: it is what tells a
@@ -22,7 +22,7 @@
  * pinned snapshot makes a translator change reviewable as a diff.
  *
  * The map is additive and read-only at runtime. A field missing from here is
- * NOT an error — filterTranslate.js passes unrecognised fields through
+ * NOT an error, filterTranslate.js passes unrecognised fields through
  * verbatim, so a filter saved by a newer Stash still reaches the server.
  */
 
@@ -400,10 +400,10 @@ export const FILTER_TYPES = {
   },
 };
 
-/** Criterion types with no `modifier` field — emitting one is a 422. */
+/** Criterion types with no `modifier` field, emitting one is a 422. */
 export const CRITERIA_WITHOUT_MODIFIER = new Set(["DuplicationCriterionInput","FileDuplicationCriterionInput","OrientationCriterionInput"]);
 
-/** Criterion types whose `value` is a list — a bare scalar must be wrapped. */
+/** Criterion types whose `value` is a list, a bare scalar must be wrapped. */
 export const LIST_VALUED_CRITERIA = new Set(["CircumcisionCriterionInput","CustomFieldCriterionInput","HierarchicalMultiCriterionInput","MultiCriterionInput","OrientationCriterionInput"]);
 
 /**

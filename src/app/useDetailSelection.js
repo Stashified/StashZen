@@ -1,5 +1,5 @@
 /**
- * useDetailSelection — what is open *in front of* a listing: a scene detail
+ * useDetailSelection: what is open *in front of* a listing: a scene detail
  * page, a performer page, or the image viewer.
  *
  * Each is an id-carrying record from the listing rather than a fetch, so the
@@ -72,7 +72,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   }, [activeTab]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Enter on a scene card opens the detail page; playback moved to its Play
-  // button. Markers stay on the old path (see handleMarkerSelect) — a scene
+  // button. Markers stay on the old path (see handleMarkerSelect), a scene
   // browser in front of one would drop the position asked for. `remember` is
   // stable; depending on the fresh useRestoreFocus() object would defeat the
   // memoised cards this feeds.
@@ -99,7 +99,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     if (patch?.resumeTime !== 0) return;
     const id = String(sceneId);
     // `selectedScene` is the card the queue is built from, so clear its resume
-    // time too — otherwise the next Play raises the prompt for a position the
+    // time too, otherwise the next Play raises the prompt for a position the
     // user just discarded.
     setSelectedScene(s => (s && String(s.id) === id ? { ...s, resume_time: 0 } : s));
     setClearedContinueIds(prev => {
@@ -138,7 +138,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
       return;
     }
     // The Performers grid remounts in this commit and fetches page 1, so the
-    // card is gone now — or, after scrolling, not in that page. The restore
+    // card is gone now, or, after scrolling, not in that page. The restore
     // waits and pages the grid forward; see utils/focus.js.
     if (performer) focusByIdWhenReady(`performer-${performer.id}`);
   };

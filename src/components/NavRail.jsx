@@ -1,5 +1,5 @@
 /**
- * NavRail — the left navigation rail.
+ * NavRail, the left navigation rail.
  *
  * Zone: 'grid'. Load-bearing: useKeyHandler excludes cross-zone candidates for
  * Left/Right, so a rail in its own zone would trap the cursor (Right finds no
@@ -7,7 +7,7 @@
  * Right walk into the nearest card in the facing row and Left walk back.
  *
  * Every row except the active one is `verticalOnly` (see useFocusable), so
- * Left out of the content can only land on the tab you are already on — the one
+ * Left out of the content can only land on the tab you are already on, the one
  * the sliding indicator is under and whose content is showing. Up/Down are
  * unaffected.
  */
@@ -19,7 +19,7 @@ import styles from './NavRail.module.css';
 // `next` is the row below, declared rather than left to the layout. Settings
 // sits across a flexible spacer, so past a certain viewport height the nearest
 // grid card scores better than a destination hundreds of pixels straight down
-// — and with Settings `verticalOnly` that left it unreachable by remote at all.
+//, and with Settings `verticalOnly` that left it unreachable by remote at all.
 //
 // Every entry must name its own successor: one added without `next` is a row
 // Down cannot leave, which on the TV reads as a dead remote. Settings names the
@@ -126,7 +126,9 @@ function IconSettings() {
   );
 }
 
-function RailItem({ id, label, Icon, active, onSelect, autoFocus, registerRef, next, prev }) {
+function RailItem({
+  id, label, Icon, active, onSelect, autoFocus, registerRef, next, prev, hasUpdate,
+}) {
   // The rail's own order, which spatial search cannot recover across the spacer
   // above Settings (see ITEMS). Declared one edge at a time; an undeclared
   // direction falls through to the geometry.
@@ -140,7 +142,7 @@ function RailItem({ id, label, Icon, active, onSelect, autoFocus, registerRef, n
     nextId: chain,
     // Left returns you to the tab you are already on (`!active`); every other
     // row is unreachable sideways, so Left from a card cannot land on a
-    // neighbour — in particular not on Settings, which opened a modal on a
+    // neighbour, in particular not on Settings, which opened a modal on a
     // sideways press. Moving between rows is Up/Down, which is unguarded.
     verticalOnly: !active,
     // Down out of the content must not land here: while a page is loading there
@@ -173,11 +175,17 @@ function RailItem({ id, label, Icon, active, onSelect, autoFocus, registerRef, n
     >
       <Icon />
       <span className={styles.label}>{label}</span>
+      {hasUpdate && (
+        <>
+          <span className={styles.updateDot} aria-hidden="true" />
+          <span className="sr-only">Update available</span>
+        </>
+      )}
     </button>
   );
 }
 
-export default function NavRail({ activeTab, onTabChange, onOpenSettings }) {
+export default function NavRail({ activeTab, onTabChange, onOpenSettings, hasUpdate }) {
   const itemRefs = useRef({});
   const [indicatorStyle, setIndicatorStyle] = useState({ top: 0, height: 0, opacity: 0 });
 
@@ -196,7 +204,7 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings }) {
     // Inset so the bar sits inside the row's rounded corner. `opacity: 1`
     // starts the fade-in: the initial state is 0 so it does not slide in from
     // the top on mount, and CSS transitions top/height/opacity together. Keep
-    // top, height and opacity in one setState — splitting them loses the fade.
+    // top, height and opacity in one setState, splitting them loses the fade.
     setIndicatorStyle({
       top: el.offsetTop + 7,
       height: el.offsetHeight - 14,
@@ -244,6 +252,7 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings }) {
         // a grid card and Down left the rail.
         next="settings"
         registerRef={registerItemRef}
+        hasUpdate={hasUpdate}
       />
     </nav>
   );

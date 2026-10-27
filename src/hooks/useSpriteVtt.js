@@ -1,5 +1,5 @@
 /**
- * useSpriteVtt — fetch and parse a Stash sprite VTT file
+ * useSpriteVtt: fetch and parse a Stash sprite VTT file
  *
  * `paths.sprite` is the tile sheet and `paths.vtt` maps time ranges to tile
  * rects, encoded in the `xywh` URL fragment of each cue payload:
@@ -8,7 +8,7 @@
  *   sprite_abc123.jpg#xywh=0,0,160,90
  *
  * Returns `{ ready, getCue(seconds) → { x, y, w, h, src } | null, error }`.
- * `src` is resolved relative to the VTT URL — Stash sometimes gives a relative
+ * `src` is resolved relative to the VTT URL, Stash sometimes gives a relative
  * filename, sometimes a full URL.
  */
 
@@ -108,7 +108,7 @@ export function useSpriteVtt(vttUrl) {
 
     if (!vttUrl) return undefined;
 
-    // Cache hit — touch it so it is not the next entry evicted.
+    // Cache hit, touch it so it is not the next entry evicted.
     if (vttCache.has(vttUrl)) {
       const cues = vttCache.get(vttUrl);
       vttCache.delete(vttUrl);
@@ -158,7 +158,7 @@ export function useSpriteVtt(vttUrl) {
       else if (seconds >= c.end) lo = mid + 1;
       else return c;
     }
-    // Past the last cue — return last; before the first — return first
+    // Past the last cue, return last; before the first, return first
     if (seconds < cues[0].start) return cues[0];
     return cues[cues.length - 1];
   }, []);

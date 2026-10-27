@@ -1,7 +1,7 @@
 /*
  * FilterBuilder and EntityPicker/FieldPicker all import this file, so the
  * `.pick*` block below is shared by every nested layer. The nesting is DOM
- * nesting (no portal — see EntityPicker), so inner layers size against the
+ * nesting (no portal, see EntityPicker), so inner layers size against the
  * outer panel, not the viewport.
  */
 
@@ -9,7 +9,7 @@
   position: fixed;
   inset: 0;
   z-index: 900;
-  /* Opaque scrim, not a backdrop blur — see SettingsPanel's note. */
+  /* Opaque scrim, not a backdrop blur, see SettingsPanel's note. */
   background: rgba(var(--scrim-rgb), 0.88);
   display: flex;
   align-items: center;
@@ -322,7 +322,7 @@
   color: var(--text-primary);
 }
 
-/* DOM children of `.panel`, so they cover it rather than the viewport — which
+/* DOM children of `.panel`, so they cover it rather than the viewport, which
    is also what makes `focusScopeOf` find them as the nearest dialog. */
 .pickOverlay {
   position: absolute;

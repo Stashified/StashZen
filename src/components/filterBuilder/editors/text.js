@@ -2,7 +2,7 @@ import { EDITOR } from '../../../utils/filterCriteria.js';
 import { innerOf } from './common.js';
 
 /**
- * TEXT and PHASH — one text box each. PHASH is plain text too; its distance
+ * TEXT and PHASH, one text box each. PHASH is plain text too; its distance
  * travels in the criterion's other fields (see criterionDraft).
  */
 export const chainIds = (field) => [`fb-val-${field}`];

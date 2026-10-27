@@ -4,7 +4,7 @@ import { beginRestore, endRestore } from './restorePending.js';
 /** Focus a card by id, waiting for it to exist.
  *
  * Back out of a filtered listing crosses a tab switch that unmounts the grid,
- * and the listing may still be fetching — so the element does not exist when
+ * and the listing may still be fetching, so the element does not exist when
  * the tab returns. Retried rather than deferred by a guessed interval, because
  * the guess is a race.
  *
@@ -14,7 +14,7 @@ import { beginRestore, endRestore } from './restorePending.js';
  * **A remounted listing only holds page 1** (listings page 40 at a time), so a
  * card from page 3 needs paging. Listings register a driver
  * (`registerFocusListing`); the restore asks the owning listing for one more
- * page at a time and focuses the card as it lands — the position is the card,
+ * page at a time and focuses the card as it lands, the position is the card,
  * not the page number.
  *
  * Bounds: 8 s and 12 extra pages, so a deleted card cannot walk a 10 000-row
@@ -31,7 +31,7 @@ const listings = new Map();
 
 // Restore requests, for listings that only mount the slots near the centre
 // (the Carousel). The last request is kept so a listener that mounts after the
-// call — a tab remount — still hears it.
+// call, a tab remount, still hears it.
 const restoreListeners = new Set();
 let pendingRestoreId = null;
 let restoreSeq = 0;

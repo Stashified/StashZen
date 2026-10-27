@@ -71,12 +71,12 @@ export function LibraryStatsSection() {
         aria-live="polite"
       >
         {phase === 'error'
-          ? `Couldn't load library stats${message ? ` — ${message}` : ''}`
+          ? `Couldn't load library stats${message ? `: ${message}` : ''}`
           : ''}
       </div>
 
       <p className={styles.hint}>
-        Reads the saved connection — unsaved edits above are not used.
+        Reads the saved connection: unsaved edits above are not used.
       </p>
     </div>
   );

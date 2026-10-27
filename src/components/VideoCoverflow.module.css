@@ -99,7 +99,7 @@
   position: relative;
   flex: 1;
   width: 100%;
-  /* No `overflow: hidden` — it would clip the video. The cards fade out as
+  /* No `overflow: hidden`, it would clip the video. The cards fade out as
      they rotate; if they do not, clip a parent instead. */
 }
 
@@ -128,7 +128,7 @@
 
 /* A box-shadow rather than `filter: drop-shadow()`: the card is an opaque
    rectangle, so they look the same, but `filter` forces a render surface and a
-   blur pass re-run every frame while the coverflow animates — the most
+   blur pass re-run every frame while the coverflow animates: the most
    expensive declaration in this file. It lands on the slot's own box, so it
    sits under the card rather than under the out-of-flow `.reflection`. */
 .slotFocused {

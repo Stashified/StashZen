@@ -16,8 +16,11 @@ export const parts = (field, desc, criterion) => {
     apply: 'enum',
     value: choiceOf(inner.value, desc.listValued),
     options: [
-      { value: '', label: '—' },
-      ...(desc.enumOptions || []).map(v => ({ value: v, label: prettyEnum(v) })),
+      { value: '', label: '–' },
+      ...(desc.enumOptions || []).map(v => ({
+        value: v,
+        label: desc.enumLabels?.[v] || prettyEnum(v),
+      })),
     ],
   }];
 };

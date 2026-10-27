@@ -1,5 +1,5 @@
 /**
- * useStableListing — a listing object whose identity never changes, for the
+ * useStableListing: a listing object whose identity never changes, for the
  * memoised VideoCard. A `useMemo` keyed on `items` breaks on every page
  * append; the getters instead read the latest values, so a handler sees
  * current data at a fixed identity. A layout effect updates them before paint

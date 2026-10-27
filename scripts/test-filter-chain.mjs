@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-filter-chain.mjs — the row's D-pad chain against the editor's controls
+ * test-filter-chain.mjs: the row's D-pad chain against the editor's controls
  *
  *   node scripts/test-filter-chain.mjs
  *

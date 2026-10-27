@@ -56,14 +56,14 @@ const focusCard = (id) => {
 
 /** The card element for a scene id, or null. */
 const cardEl = (id) => registry.get(`video-${id}`)?.el ?? null;
-/** The card's cover — the <img> when the screenshot loaded, else the fallback. */
+/** The card's cover, the <img> when the screenshot loaded, else the fallback. */
 const coverEl = (id) => {
   const thumb = cardEl(id)?.querySelector('div');
   return thumb?.firstElementChild ?? null;
 };
 const videoEl = (id) => cardEl(id)?.querySelector('video') ?? null;
 const opacityOf = (el) => (el ? parseFloat(getComputedStyle(el).opacity) : null);
-/** A video is "on screen" only at full opacity — the design's whole contract. */
+/** A video is "on screen" only at full opacity, the design's whole contract. */
 const videoVisible = (id) => opacityOf(videoEl(id)) === 1;
 const countFetches = (rows, id) => rows.filter(r => String(r) === String(id)).length;
 

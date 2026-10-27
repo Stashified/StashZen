@@ -1,7 +1,7 @@
 /**
  * The tag to offer first in the add-marker form: whichever tag this scene's own
  * markers use most. Not most-recently-used (markers arrive without timestamps)
- * and not the library's most-used — the scene's own history predicts better.
+ * and not the library's most-used, the scene's own history predicts better.
  *
  * Ties go to the earliest tag, since a position is replaced only on a strictly
  * greater count; that keeps the answer stable rather than iteration-dependent.

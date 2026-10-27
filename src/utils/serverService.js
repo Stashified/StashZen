@@ -1,9 +1,9 @@
 /**
- * serverService.js — a snapshot of the Stash server's version, health and
+ * serverService.js: a snapshot of the Stash server's version, health and
  * running jobs, plus starting a library scan and stopping a queued job.
  *
  * The status query is one request: `version`, `systemStatus` and `jobQueue` are
- * all zero-argument roots. Deliberately no polling — on a D-pad a snapshot with
+ * all zero-argument roots. Deliberately no polling, on a D-pad a snapshot with
  * a visible Refresh is predictable, whereas a timer re-renders under the cursor
  * and spends requests.
  *
@@ -18,7 +18,7 @@
  * `configuration.ui.taskDefaults.scan` (its UI calls `saveUI({ taskDefaults })`
  * on every toggle); `configuration.defaults.scan` is the older system-level
  * default the UI does not write. Read `ui.taskDefaults.scan` first, then
- * `defaults.scan`, matching Stash's `LibraryTasks.tsx` — otherwise a user who
+ * `defaults.scan`, matching Stash's `LibraryTasks.tsx`, otherwise a user who
  * turned generation options off still gets covers, previews and phashes.
  *
  * `ScanMetadataOptions` and `ScanMetadataInput` share the boolean fields; the
@@ -54,7 +54,7 @@ const SCAN_OPTION_FIELDS = [
   'scanGenerateClipPreviews',
 ];
 
-// `ui` is a JSON scalar on `ConfigResult`, so it must be selected whole —
+// `ui` is a JSON scalar on `ConfigResult`, so it must be selected whole:
 // GraphQL cannot reach into `ui.taskDefaults.scan`. It is where Stash's scan
 // page stores the toggles (see the header).
 const SCAN_DEFAULTS_QUERY = `
@@ -194,7 +194,7 @@ export function mockServerStatus() {
         description: 'Scanning thumbnails',
         progress: 0.18,
         subTasks: [],
-        error: 'Could not read the media folder — check that it is mounted.',
+        error: 'Could not read the media folder; check that it is mounted.',
         startTime: '2024-01-01T09:05:00Z',
       },
     ].filter(job => !mockStoppedJobs.has(job.id)),
@@ -219,7 +219,7 @@ export async function loadServerStatus() {
  * `jobQueue`, and an unqueued scan would read as "started" with no progress.
  *
  * A failed defaults read is a failure too, not a reason to send an empty input
- * — that fallback is the bug this exists to fix: the scan succeeds, the app
+ *, that fallback is the bug this exists to fix: the scan succeeds, the app
  * says so, and the configured artwork is silently never generated.
  */
 export async function startLibraryScan() {
@@ -238,7 +238,7 @@ export async function startLibraryScan() {
 }
 
 /**
- * Ask Stash to stop one job. Resolves when the stop has been *requested* — the
+ * Ask Stash to stop one job. Resolves when the stop has been *requested*, the
  * job may still report RUNNING or STOPPING, so the caller refreshes the
  * snapshot rather than removing the row itself.
  *

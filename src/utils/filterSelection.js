@@ -1,5 +1,5 @@
 /**
- * filterSelection.js — pure rules for turning the controls bar into the
+ * filterSelection.js: pure rules for turning the controls bar into the
  * listing that gets fetched.
  *
  * Nothing here touches React. Each rule is a distinction that looks like a
@@ -33,7 +33,7 @@ export function resolveObjectFilter(controls, activeFilter) {
  * the new id in the same batch that bumps the epoch, so for at least one render
  * the id names nothing, `activeFilter` is null, and the listing flashes the
  * unfiltered library before refetching. The echo stands in for the entry the
- * server is about to return — only while the real list lacks the id, and only
+ * server is about to return, only while the real list lacks the id, and only
  * for the mode and source that saved it (ids are namespaced per mode/server).
  */
 export function mergeFilterEcho(savedFilters, echo, filterMode, dataKey) {
@@ -51,7 +51,7 @@ export function mergeFilterEcho(savedFilters, echo, filterMode, dataKey) {
  * saved filters appear underneath.
  *
  * A working filter gets its own row: "Custom filter" when the builder made it,
- * its own name when activating a tag or studio did — otherwise landing on
+ * its own name when activating a tag or studio did, otherwise landing on
  * Scenes under a filter looks like the app acting on its own.
  */
 export function buildFilterOptions(filterMode, controls, filterChoices) {

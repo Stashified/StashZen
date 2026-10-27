@@ -1,4 +1,4 @@
-import { TIZEN_BACK } from '../../utils/input.js';
+import { isBackCode } from '../../utils/input.js';
 
 /**
  * True when a dialog other than the player's own overlay is in the document.
@@ -6,7 +6,7 @@ import { TIZEN_BACK } from '../../utils/input.js';
  * The overlay carries `role="dialog"` itself, so ours must be excluded. The
  * marker modal and the scene detail page are separate elements rendered inside
  * it. Presence is tested rather than focus, so the yield also covers the ~50 ms
- * before a new dialog's autoFocus lands — a focus test would let the player eat
+ * before a new dialog's autoFocus lands, a focus test would let the player eat
  * its first press.
  */
 export function foreignDialogOpen(ownOverlay) {
@@ -23,7 +23,7 @@ export function foreignDialogOpen(ownOverlay) {
  * table in the player testable without a browser.
  *
  * Three states, not two. With the rail up the cursor owns ←/→ and Enter, so
- * those pass untouched (`rail-pass`) — consuming them would break spatial nav
+ * those pass untouched (`rail-pass`), consuming them would break spatial nav
  * and the focused button. Outside the rail every key is stopped: when focus is
  * on <body> the global handler falls back to "any open dialog", which is this
  * overlay, so an unconsumed arrow would land on a rail the user never opened.
@@ -58,7 +58,7 @@ export function routePlayerKey(
 
   if (foreignDialog) return { action: 'yield', prevent: false, stop: false };
 
-  const isBack = key === 'Escape' || key === 'Backspace' || code === TIZEN_BACK;
+  const isBack = key === 'Escape' || key === 'Backspace' || isBackCode(code);
   const isMedia = key === ' ' || code === 32 || code === 415 || code === 19 || code === 10252;
 
   // A held Back is one press: its repeats would otherwise walk the two-stop
@@ -76,22 +76,22 @@ export function routePlayerKey(
     // a visible timeline. The stop is load-bearing: without it the rail's own
     // focusable handler would walk the cursor.
     if (key === 'ArrowUp' || code === 38) return { action: 'leave-rail-seek', prevent: true, stop: true };
-    // ↓ steps to the next scene directly — the buttons are the top stop of the
+    // ↓ steps to the next scene directly, the buttons are the top stop of the
     // downward ladder. A one-scene queue has nowhere to step, so the press is
     // consumed rather than jumping to play/pause.
     if (key === 'ArrowDown' || code === 40) {
       return { action: singleScene ? 'none' : 'step-next', prevent: true, stop: true };
     }
 
-    // Back leaves the rail as well — "one level up", all Back ever means here.
+    // Back leaves the rail as well, "one level up", all Back ever means here.
     if (isBack) return { action: 'leave-rail', prevent: true, stop: true };
 
     return { action: 'rail-pass', prevent: false, stop: false };
   }
 
   // Back is one level up, and the controls bar is a level: it goes first, the
-  // next press closes the player. 413 is the same key by another code.
-  if (isBack || code === 413) {
+  // next press closes the player.
+  if (isBack) {
     return controlsVisible
       ? { action: 'hide-controls', prevent: true, stop: true }
       : { action: 'close', prevent: true, stop: true };
@@ -108,7 +108,7 @@ export function routePlayerKey(
   // Off the buttons, ↑ steps the scene on the seek bar too: the seek bar is the
   // *bottom* stop of the upward ladder. ↓ is buttons when the bar is up and a
   // step when it is hidden. A one-scene queue has nowhere to step, so ↑/↓ raise
-  // the controls instead — doing nothing reads as a dropped key.
+  // the controls instead, doing nothing reads as a dropped key.
   if (key === 'ArrowUp' || code === 38) {
     return { action: singleScene ? 'reveal-rail' : 'step-prev', prevent: true, stop: true };
   }

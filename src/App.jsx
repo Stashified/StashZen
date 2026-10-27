@@ -10,6 +10,7 @@ import ControlsPanel from './components/ControlsPanel.jsx';
 import { useRestoreFocus } from './hooks/useRestoreFocus.js';
 import styles from './App.module.css';
 import { useSettings, setSettings, dataSourceKey } from './utils/settings.js';
+import { useAutoUpdateCheck } from './hooks/useAutoUpdateCheck.js';
 import { TAB_CONTROL_CONFIG } from './app/tabConfig.js';
 import { useTabNavigation } from './app/useTabNavigation.js';
 import { useListingControls } from './app/useListingControls.js';
@@ -27,6 +28,10 @@ export default function App() {
   // in-flight fetches and state from the previous source are discarded.
   const settings = useSettings();
   const dataKey = dataSourceKey(settings);
+
+  // Public builds only, and inside the PIN/FirstRun gates because App is what
+  // they unmount: nothing is fetched before the user reaches the app.
+  const updateCheck = useAutoUpdateCheck(settings);
 
   const { activeTab, tabEpoch, changeTab } = useTabNavigation();
 
@@ -69,6 +74,7 @@ export default function App() {
     setControls,
     setFiltersEpoch,
     setSavedFilterEcho,
+    activeFilter,
     mainFocus,
   });
 
@@ -206,6 +212,7 @@ export default function App() {
           mainFocus.remember(document.activeElement);
           setSettingsOpen(true);
         }}
+        hasUpdate={!!updateCheck.availableVersion}
       />
 
       {/* The rail is fixed; the top bar sits above the page in the content

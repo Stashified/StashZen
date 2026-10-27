@@ -1,5 +1,5 @@
 /**
- * contracts — the small shared vocabulary of the media facade. Its own module
+ * contracts, the small shared vocabulary of the media facade. Its own module
  * so `mediaEngine.js` and the backends do not form an import cycle.
  */
 

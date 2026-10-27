@@ -1,5 +1,5 @@
 /**
- * EntityGrid — infinite-scroll grid for the four browse-only sections.
+ * EntityGrid, infinite-scroll grid for the four browse-only sections.
  *
  * As in the other grids, `usePagedList` owns the state machine while this
  * supplies the request and the trigger. service, itemsKey, card, noun and
@@ -26,14 +26,14 @@ export default function EntityGrid({
   const { Card, service, itemsKey, noun, gridLabel } = view;
 
   const fetchPage = useCallback(
-    (page) =>
-      service({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE })
+    (page, signal) =>
+      service({ sort, order, filter: objectFilter, q: searchQuery, page, limit: PAGE_SIZE, signal })
         .then(d => ({ items: d[itemsKey], total: d.total })),
     [service, itemsKey, sort, order, objectFilter, searchQuery],
   );
 
   const {
-    items, total, page, loading, loadingMore, error, exhausted, loadMore,
+    items, total, page, loading, retrying, loadingMore, error, exhausted, loadMore,
   } = usePagedList({
     fetchPage,
     // sort and order MUST be in the key
@@ -71,7 +71,7 @@ export default function EntityGrid({
       styles={styles}
       loading
       spinnerLabel={`Loading ${noun}`}
-      text={`Loading ${noun}…`}
+      text={retrying ? 'Connection problem, retrying…' : `Loading ${noun}…`}
     />
   );
 
@@ -116,7 +116,7 @@ export default function EntityGrid({
             )}
             {error && !loadingMore && (
               <span className={styles.loadingMoreText} style={{ color: 'var(--red)' }}>
-                Couldn't load more — {error}
+                Couldn't load more: {error}
               </span>
             )}
           </div>

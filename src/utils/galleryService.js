@@ -1,9 +1,9 @@
 /**
- * galleryService.js — Fetch galleries from the Stash GraphQL endpoint.
+ * galleryService.js: Fetch galleries from the Stash GraphQL endpoint.
  *
  * The loader is `entityService.js`; what is specific to galleries is here.
  *
- * A Gallery is a *container* of images — a folder — where an Image is one file.
+ * A Gallery is a *container* of images, a folder, where an Image is one file.
  * Gallery has `folder`, `image_count` and a nested `cover: Image`; Image has
  * none. `paths.cover` is what the card draws; the nested `cover` would pull a
  * whole Image per row for a field the paths object already answers.
@@ -106,7 +106,7 @@ const service = createEntityService({
   mockSortKey: { images_count: 'image_count' },
 });
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchGalleries(opts = {}) {
   return service.fetch(opts);
 }

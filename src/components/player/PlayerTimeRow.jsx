@@ -6,7 +6,7 @@ import { SYNC_LABEL } from './playerMessages.js';
  * Elapsed time, the key hint, the sync chip and the total.
  *
  * `syncState` is `idle | saving | saved | failed`; `syncError` is the last
- * rejected write's message. The error is a tooltip only — the chip has to stand
+ * rejected write's message. The error is a tooltip only, the chip has to stand
  * on its own at couch distance.
  */
 export function PlayerTimeRow({ currentTime, duration, syncState, syncError }) {

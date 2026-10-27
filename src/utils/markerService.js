@@ -1,5 +1,5 @@
 /**
- * markerService.js — fetch scene markers from the Stash GraphQL endpoint.
+ * markerService.js: fetch scene markers from the Stash GraphQL endpoint.
  *
  * A marker holds id, title and `seconds` (a timestamp into the parent scene),
  * plus its parent `scene`. Activating it plays that scene in full, seeking to
@@ -33,7 +33,7 @@ function generateMockMarkers(count = 60) {
 
     return {
       id: `marker-${i + 1}`,
-      // Twelve prefixes by five suffixes — sixty markers, sixty names.
+      // Twelve prefixes by five suffixes, sixty markers, sixty names.
       title: `${MARKER_PREFIXES[i % MARKER_PREFIXES.length]}`
            + ` ${MARKER_SUFFIXES[Math.floor(i / MARKER_PREFIXES.length) % MARKER_SUFFIXES.length]}`,
       seconds: Math.round(60 + rng() * 3000),
@@ -105,7 +105,7 @@ function normalizeMarker(m) {
       audioCodec: m.scene?.files?.[0]?.audio_codec || null,
       container: m.scene?.files?.[0]?.format || null,
       // Duration, for the same reason: without it a marker-opened scene has
-      // `durationSeconds: 0`, which the player reads as "unknown" — the
+      // `durationSeconds: 0`, which the player reads as "unknown", the
       // timeline falls back to the element's (0 for an MP4 transcode) and the
       // resume end threshold is disabled.
       durationSeconds: m.scene?.files?.[0]?.duration || 0,
@@ -119,7 +119,7 @@ function normalizeMarker(m) {
 // ═══════════════════════════════════════════════════════════
 const markerCache = createListCache();
 
-/** Cached page fetch — see the note on fetchVideos in videoService.js. */
+/** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchMarkers({
   sort = 'title',
   order = 'asc',
@@ -127,13 +127,14 @@ export async function fetchMarkers({
   page = 1,
   limit = 40,
   filter = null,
+  signal,
 } = {}) {
-  // Seeded per request identity, not per page — see videoService.fetchVideos
+  // Seeded per request identity, not per page, see videoService.fetchVideos
   // and randomSort.js.
   const requestSort = stableSort(sort, 'markers', filter, q);
   return markerCache.get(
     listCacheKey('markers', requestSort, order, q, page, limit, filter),
-    () => loadMarkers({ sort: requestSort, order, q, page, limit, filter }),
+    () => loadMarkers({ sort: requestSort, order, q, page, limit, filter, signal }),
   );
 }
 
@@ -153,6 +154,7 @@ async function loadMarkers({
   page = 1,
   limit = 40,
   filter = null,
+  signal,
 } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
@@ -174,11 +176,11 @@ async function loadMarkers({
       sort,
       direction: order === 'asc' ? 'ASC' : 'DESC',
     },
-    // Translated at query time — see the note in videoService.js.
+    // Translated at query time, see the note in videoService.js.
     scene_marker_filter: translateFilter(filter, 'SceneMarkerFilterType'),
   };
 
-  const data = await runQuery(FIND_MARKERS_QUERY, variables);
+  const data = await runQuery(FIND_MARKERS_QUERY, variables, { signal });
   const markers = data?.findSceneMarkers?.scene_markers || [];
 
   return {
@@ -199,7 +201,7 @@ const FIND_TAGS_QUERY = `
       tags {
         id
         name
-        # Singular field, plural sort key — see the note below. Getting these
+        # Singular field, plural sort key: see the note below. Getting these
         # the same way round is a validation error either way.
         scene_marker_count
       }
@@ -281,7 +283,7 @@ const RECENT_TAGS_QUERY = `
  * share a tag, so a short scan could yield a "recent" row of two entries.
  *
  * Not cached: it runs once per form open and its whole value is being current,
- * including a marker created seconds ago — so `clearMarkerCache` would be the
+ * including a marker created seconds ago, so `clearMarkerCache` would be the
  * wrong instinct here.
  */
 export const MARKER_RECENT_TAG_LIMIT = 12;
@@ -290,7 +292,7 @@ const RECENT_TAG_SCAN = 60;
 export async function fetchRecentMarkerTags(limit = MARKER_RECENT_TAG_LIMIT) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 150));
-    // Same ids as fetchTagOptions' mock so the two rows agree in mock mode —
+    // Same ids as fetchTagOptions' mock so the two rows agree in mock mode:
     // which is also where the real duplicate-chip case gets exercised.
     return MARKER_TAGS.slice(0, 4).map((name, i) => ({ id: `tag-${i}`, name }));
   }
@@ -334,7 +336,7 @@ const SCENE_MARKER_CREATE_MUTATION = `
  *
  * Throws rather than returning a partial result: a create has no prior state
  * to fall back to, and the caller's only correct response to an error is to
- * keep the form open — impossible if this resolves.
+ * keep the form open, impossible if this resolves.
  */
 // Test mode has no server, so a created marker is only an id for the player to
 // merge into the scene it is showing; it is not persisted anywhere.

@@ -47,7 +47,7 @@
   /* Named properties, not `all`: focus adds a box-shadow, which `all` would
      transition. */
   transition: color 0.15s var(--ease-tv), border-color 0.15s var(--ease-tv);
-  /* Flat scrim, not a backdrop-filter blur — see SettingsPanel.module.css. */
+  /* Flat scrim, not a backdrop-filter blur, see SettingsPanel.module.css. */
   background: rgba(var(--scrim-rgb), 0.6);
 }
 

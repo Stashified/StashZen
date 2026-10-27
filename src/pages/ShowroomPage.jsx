@@ -22,13 +22,14 @@ import { fetchVideos } from '../utils/videoService.js';
 import { fetchStudios } from '../utils/studioService.js';
 import { fetchPerformers } from '../utils/performerService.js';
 import { fetchGalleries } from '../utils/galleryService.js';
+import { onRowPatch } from '../utils/rowPatches.js';
 import styles from './ShowroomPage.module.css';
 
 // Five cards plus the See-all tile make six equal columns.
 export const ROW_SIZE = 5;
 
 // "In progress" in the one shape both the shelf and its See-all hand-off send.
-// A `resume_time` of 0 means never played or finished and reset — not resumable.
+// A `resume_time` of 0 means never played or finished and reset, not resumable.
 const CONTINUE_FILTER = { resume_time: { modifier: 'GREATER_THAN', value: 0 } };
 
 /**
@@ -158,6 +159,24 @@ export default function ShowroomPage({
     });
     return () => { cancelled = true; };
   }, []);
+
+  // A write publishes the fields it changed; patch the shelf card in place,
+  // since these fetches only re-run on remount.
+  useEffect(() => onRowPatch('scene', (id, patch) => {
+    setRows((prev) => {
+      if (!prev) return prev;
+      let changed = false;
+      const next = prev.map((row) => {
+        if (!row.items.some(it => String(it.id) === id)) return row;
+        changed = true;
+        return {
+          ...row,
+          items: row.items.map(it => (String(it.id) === id ? { ...it, ...patch } : it)),
+        };
+      });
+      return changed ? next : prev;
+    });
+  }), []);
 
   if (rows === null) {
     return (
