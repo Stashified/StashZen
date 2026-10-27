@@ -245,7 +245,7 @@ async function run() {
   const markerLabels = markerChips.map(c => c.getAttribute('aria-label'));
   check('T13 markers render in timestamp order with formatted times',
     markerLabels.join('|')
-      === 'Play from 02:05 — VERIFY marker one|Play from 10:40 — VERIFY marker two|Play from 31:45 — VERIFY marker three',
+      === 'Play from 02:05: VERIFY marker one|Play from 10:40: VERIFY marker two|Play from 31:45: VERIFY marker three',
     markerLabels.join(' | '));
   check('T13 each chip shows its primary tag',
     markerChips.length === 3
@@ -711,7 +711,7 @@ async function run() {
     .map(c => c.getAttribute('aria-label'));
   check('T13 Test mode renders its two mock markers',
     mockLabels.join('|')
-      === 'Play from 02:00 — VERIFY tag A|Play from 10:00 — VERIFY tag B',
+      === 'Play from 02:00: VERIFY tag A|Play from 10:00: VERIFY tag B',
     mockLabels.join(' | '));
   mockRoot.unmount();
   mockHost.remove();

@@ -235,7 +235,7 @@ async function runMarkers() {
   const v1 = mediaEl();
   const sought = await waitFor(() => v1 && v1.currentTime >= 5, 4000);
   check('M2 Play opens the scene the marker belongs to',
-    playingTitle() === 'VERIFY scene 1 — VERIFY marker 1', `playing "${playingTitle()}"`);
+    playingTitle() === 'VERIFY scene 1: VERIFY marker 1', `playing "${playingTitle()}"`);
   check('M2 ...and starts at the marker, not at zero',
     sought, `currentTime ${v1?.currentTime?.toFixed(1)}s after 4 s (marker at 0:06)`);
   await closePlayer();
@@ -250,14 +250,14 @@ async function runMarkers() {
   const v2 = mediaEl();
   const allStarted = await waitFor(() => v2 && v2.currentTime >= 5, 4000);
   check('M3 Play all starts on the first marker\'s scene, at its time',
-    playingTitle() === 'VERIFY scene 1 — VERIFY marker 1' && allStarted,
+    playingTitle() === 'VERIFY scene 1: VERIFY marker 1' && allStarted,
     `playing "${playingTitle()}" at ${v2?.currentTime?.toFixed(1)}s`);
 
   await stepNext();
   await waitFor(() => /VERIFY scene 2\b/.test(playingTitle()), 3000);
   await sleep(700);
   check('M3 Down walks to the next scene, not the next marker row',
-    playingTitle() === 'VERIFY scene 2 — VERIFY marker 2', `playing "${playingTitle()}"`);
+    playingTitle() === 'VERIFY scene 2: VERIFY marker 2', `playing "${playingTitle()}"`);
   check('M3 ...and a non-starting scene opens at zero',
     (mediaEl()?.currentTime ?? 99) < 3,
     `currentTime ${mediaEl()?.currentTime?.toFixed(1)}s on scene 2`);
@@ -278,7 +278,7 @@ async function runMarkers() {
   const v3 = mediaEl();
   const hereSought = await waitFor(() => v3 && v3.currentTime >= 7, 4000);
   check('M4 Play from here opens the marker it was invoked from',
-    playingTitle() === 'VERIFY scene 3 — VERIFY marker 3' && hereSought,
+    playingTitle() === 'VERIFY scene 3: VERIFY marker 3' && hereSought,
     `playing "${playingTitle()}" at ${v3?.currentTime?.toFixed(1)}s (marker at 0:08)`);
   await closePlayer();
 
