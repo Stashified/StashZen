@@ -19,7 +19,9 @@
  *   ALLOW_BAKED_KEY=1 npm run build     # local, private package only
  */
 
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
+import {
+  readdirSync, readFileSync, statSync, existsSync, openSync, readSync, closeSync,
+} from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDotenv } from './parse-dotenv.mjs';
@@ -56,6 +58,18 @@ function walk(dir, base = dir) {
   return files;
 }
 
+// A big file's first block tells binary from text without reading all of it.
+function peekBinary(path) {
+  const fd = openSync(path, 'r');
+  try {
+    const head = Buffer.alloc(8192);
+    const n = readSync(fd, head, 0, head.length, 0);
+    return head.subarray(0, n).includes(0);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
  * Scan `distDir` for credential-shaped content.
  *
@@ -72,15 +86,14 @@ export function scanBundle({ distDir, secret = '' }) {
   for (const rel of walk(distDir)) {
     const full = join(distDir, rel);
     const st = statSync(full);
-    // Bundles are small text files; skip anything obviously binary rather than
-    // risk a false positive from compressed bytes. A skip is reported, not
-    // silent: a file this check did not read must not count as clean.
-    if (st.size > 8 * 1024 * 1024) {
-      result.skippedFiles.push(rel);
-      continue;
-    }
+    // Skip only binary files. A big *text* file is still readable and may
+    // carry the key, so it must be scanned rather than reported as clean.
     let text;
     try {
+      if (st.size > 8 * 1024 * 1024 && peekBinary(full)) {
+        result.skippedFiles.push(rel);
+        continue;
+      }
       text = readFileSync(full, 'utf8');
     } catch {
       result.skippedFiles.push(rel); // unreadable: nothing this check can conclude
@@ -118,7 +131,7 @@ export function scanBundle({ distDir, secret = '' }) {
  */
 export function checkBundle({
   distDir, envText = null, secret = '', allowBaked = false, isCI = false,
-  updateCheckEnabled = false,
+  updateCheckEnabled = false, updateCheckUrl = '',
 }) {
   const lines = [];
 
@@ -139,16 +152,18 @@ export function checkBundle({
   const scan = scanBundle({ distDir, secret });
   const credentialFiles = [...new Set([...scan.jwtFiles, ...scan.keyFiles])];
   const baked = credentialFiles.length > 0;
+  // Enforced here too, not only in main(): CI never gets the opt-out.
+  const effectiveAllowBaked = allowBaked && !isCI;
 
   if (baked) {
     lines.push(
-      allowBaked
+      effectiveAllowBaked
         ? '! A Stash API key is inlined into dist/ (ALLOW_BAKED_KEY=1).'
         : 'x A Stash API key is inlined into dist/ — refusing to package it.',
     );
     lines.push(`  Found in: ${credentialFiles.join(', ')}`);
     lines.push('  A .wgt built from this dist/ hands the key to whoever installs it.');
-    if (!allowBaked) {
+    if (!effectiveAllowBaked) {
       lines.push('  Rebuild without .env.production (CI does this automatically).');
       lines.push('  For a local package that is only for your own TV: ALLOW_BAKED_KEY=1 npm run build');
     }
@@ -166,22 +181,28 @@ export function checkBundle({
     lines.push(`! A private-network address is inlined into dist/: ${scan.lanFiles.join(', ')}`);
   }
 
-  // Fail closed: the URL is allowed only when the build was explicitly armed.
-  // A private build can then never carry the endpoint even if the gate code is
-  // changed later.
+  // Fail closed both ways. An unarmed build must not carry the endpoint, and
+  // an armed one must carry the exact URL: an empty or mistyped URL left the
+  // public release with a hidden or 404ing check and a green guard.
   let updateBlocked = false;
-  if (scan.githubApiFiles.length > 0) {
-    if (updateCheckEnabled) {
-      lines.push(`ok update check: the public GitHub API URL is in dist/ (${scan.githubApiFiles.join(', ')}).`);
-    } else {
+  const endpointFound = !!updateCheckUrl && scan.githubApiFiles.some(rel =>
+    readFileSync(join(distDir, rel), 'utf8').includes(updateCheckUrl));
+  if (!updateCheckEnabled) {
+    if (scan.githubApiFiles.length > 0) {
       updateBlocked = true;
       lines.push('x A GitHub API URL is inlined into dist/ but the update check is not armed.');
       lines.push(`  Found in: ${scan.githubApiFiles.join(', ')}`);
       lines.push('  Only the public build may carry it: set VITE_UPDATE_CHECK=true and VITE_UPDATE_CHECK_URL.');
     }
+  } else if (!endpointFound) {
+    updateBlocked = true;
+    lines.push('x The update check is armed but its endpoint is not in dist/.');
+    lines.push('  Set VITE_UPDATE_CHECK_URL to the release endpoint.');
+  } else {
+    lines.push(`ok update check: the public GitHub API URL is in dist/ (${scan.githubApiFiles.join(', ')}).`);
   }
 
-  return { ok: (!baked || allowBaked) && !updateBlocked, lines };
+  return { ok: (!baked || effectiveAllowBaked) && !updateBlocked, lines };
 }
 
 function main() {
@@ -199,6 +220,7 @@ function main() {
     allowBaked,
     isCI,
     updateCheckEnabled: process.env.VITE_UPDATE_CHECK === 'true',
+    updateCheckUrl: process.env.VITE_UPDATE_CHECK_URL || '',
   });
 
   for (const line of lines) console.log(line);

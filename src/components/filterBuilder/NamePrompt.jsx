@@ -13,7 +13,9 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
   });
 
   // Escape and the hardware Back only, Backspace stays inert, as it was.
-  useBackKey(onCancel, { isBack: isHardBackKey });
+  // A save in flight cannot be cancelled: tearing the prompt down would hide
+  // the failure and keep the save, whose reply closes the builder anyway.
+  useBackKey(() => { if (!saving) onCancel?.(); }, { isBack: isHardBackKey });
 
   const { ref: okRef, focused: okFocused } = useFocusable({
     id: 'fb-name-ok',
@@ -23,7 +25,7 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
   const { ref: noRef, focused: noFocused } = useFocusable({
     id: 'fb-name-cancel',
     zone: 'fb-name-prompt',
-    onEnter: () => onCancel?.(),
+    onEnter: () => { if (!saving) onCancel?.(); },
   });
 
   return (
@@ -64,7 +66,8 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
             type="button"
             ref={noRef}
             className={`${styles.btn} ${noFocused ? styles.focused : ''}`}
-            onClick={onCancel}
+            onClick={() => { if (!saving) onCancel?.(); }}
+            disabled={saving}
           >
             Cancel
           </button>

@@ -37,6 +37,8 @@ let pendingRestoreId = null;
 let restoreSeq = 0;
 
 /** Subscribe to focus-restore requests. Returns the unsubscribe function. */
+// A listener receives the id to restore, or null when the request ends
+// without landing (a user key or the deadline).
 export function onFocusRestoreRequest(fn) {
   restoreListeners.add(fn);
   if (pendingRestoreId) fn(pendingRestoreId);
@@ -105,7 +107,12 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
   const settle = () => {
     if (settled) return;
     settled = true;
-    if (token === restoreSeq) pendingRestoreId = null;
+    if (token === restoreSeq) {
+      pendingRestoreId = null;
+      // A null tells listeners the request is over. Without it a strip keeps
+      // a target that may never arrive and re-centres on it pages later.
+      for (const listener of restoreListeners) listener(null);
+    }
     clearTimer();
     window.removeEventListener('keydown', onUserKey, true);
     endRestore();

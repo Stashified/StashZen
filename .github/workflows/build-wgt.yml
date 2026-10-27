@@ -86,13 +86,12 @@ jobs:
           java-version: '11'
 
       # The CLI download is ~1.5 GB, so cache both the installer and the
-      # installed tree. Bump the `-v1` suffix to force a clean reinstall.
+      # installed tree. The key carries the pinned digest: a new SDK URL or
+      # checksum gets a fresh tree instead of silently reusing the old one.
       - name: Cache Tizen Studio CLI
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          # v2: the first generation predates the pinned checksum, and a fresh
-          # install is the only way to know the tool tree is verified.
-          key: tizen-studio-5.1-web-cli-v2
+          key: tizen-studio-5.1-web-cli-${{ env.TIZEN_SHA256 }}
           path: |
             ${{ github.workspace }}/${{ env.TIZEN_BIN }}
             ${{ github.workspace }}/tizen-studio
@@ -173,9 +172,15 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building version $VERSION"
 
-          # Stamp before the build so vite's __APP_VERSION__ picks it up.
+          # Stamp before the build so vite's __APP_VERSION__ picks it up, then
+          # verify: a reformatted package.json would leave the old version and
+          # the release would ship it.
           sed -i -E "s|(\"version\":[[:space:]]*\")[^\"]*(\")|\1${VERSION}\2|" package.json
-          node -p "require('./package.json').version"
+          STAMPED="$(node -p "require('./package.json').version")"
+          if [ "$STAMPED" != "$VERSION" ]; then
+            echo "::error::package.json still says $STAMPED after stamping $VERSION"
+            exit 1
+          fi
 
           npm run build
 
@@ -185,7 +190,9 @@ jobs:
           cp tizen/config.xml dist/
           cp tizen/icon.png dist/
           cp tizen/icon-black.png dist/
-          sed -i -E "s|(<widget[^>]*version=\")[^\"]*(\")|\1${VERSION}\2|" dist/config.xml
+          # Multiline-aware, and it fails if the attribute cannot be found;
+          # the old sed left the old version silently.
+          node scripts/stamp-manifest.mjs dist/config.xml
 
       # `npm run build` already ran this as its postbuild step. It runs again so
       # the credential check has its own named step in the summary, and a future
@@ -342,10 +349,13 @@ jobs:
           echo "WGT=$OUT" >> "$GITHUB_ENV"
           ls -lh "$OUT"
 
-          # A .wgt is a zip; confirm the manifest and entry point really made it in.
-          unzip -l "$OUT"
-          unzip -l "$OUT" | grep -q 'config.xml' || { echo "::error::.wgt has no config.xml"; exit 1; }
-          unzip -l "$OUT" | grep -q 'index.html' || { echo "::error::.wgt has no index.html"; exit 1; }
+          # A .wgt is a zip; confirm the manifest and entry point really made it
+          # in. One listing, because `grep -q` on a big archive exits early and
+          # SIGPIPE kills unzip under pipefail.
+          LISTING="$(unzip -l "$OUT")"
+          printf '%s\n' "$LISTING"
+          grep -q 'config.xml' <<<"$LISTING" || { echo "::error::.wgt has no config.xml"; exit 1; }
+          grep -q 'index.html' <<<"$LISTING" || { echo "::error::.wgt has no index.html"; exit 1; }
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

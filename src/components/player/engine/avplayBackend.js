@@ -689,9 +689,10 @@ export function createAvplayBackend({
   // ── App lifecycle ────────────────────────────────────────
   function suspendSession() {
     if (!prepared || closed || suspended || error) return;
-    // A deferred target is where the user asked to be; the live clock is still
-    // at the position the burst started from.
-    const t = deferredSeek ?? readTime();
+    // A deferred target is where the user asked to be, then the burst's issued
+    // target: the live clock is still at the position the burst started from,
+    // and cancel() below discards both.
+    const t = deferredSeek ?? coalescer.pendingTarget() ?? readTime();
     cancelDeferredSeek();
     if (t != null) lastTime = t;
     cachedPosition = lastTime;
@@ -800,9 +801,14 @@ export function createAvplayBackend({
     completed = false;
     error = null;
     lastFailure = null;
-    // A new scene gets its own reopen budget. The reopen passes the same URL, so
-    // it does not reset the count.
-    if (String(url || '') !== activeUrl) seekReopenCount = 0;
+    // A new scene gets its own reopen budget and its own failure verdict. The
+    // reopen passes the same URL, so it keeps both; inheriting the old scene's
+    // recovery here would reopen the new scene at the old target and report a
+    // refused prepare as a seek failure.
+    if (String(url || '') !== activeUrl) {
+      seekReopenCount = 0;
+      cancelRecovery();
+    }
     activeUrl = String(url || '');
     startAt = Math.max(0, Number(startSeconds) || 0);
     wantPlaying = !!autoplay;

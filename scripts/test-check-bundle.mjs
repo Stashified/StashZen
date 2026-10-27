@@ -110,6 +110,20 @@ try {
   }
 
   {
+    // No envText, so this reaches the key branch rather than the CI-env early
+    // return above.
+    const res = checkBundle({
+      distDir: dist,
+      secret: FAKE_KEY,
+      allowBaked: true,
+      isCI: true,
+    });
+    check('CI ignores ALLOW_BAKED_KEY for an inlined key', res.ok === false);
+    check('...and says the key is inlined',
+      res.lines.some(l => l.includes('A Stash API key is inlined')));
+  }
+
+  {
     const res = checkBundle({
       distDir: dist,
       envText: 'VITE_STASH_API_KEY=' + FAKE_KEY,
@@ -117,8 +131,26 @@ try {
       allowBaked: true,
       isCI: true,
     });
-    check('CI ignores ALLOW_BAKED_KEY', res.ok === false);
+    check('CI refuses a present .env.production', res.ok === false);
     check('CI reports .env.production', res.lines.some(l => l.includes('.env.production')));
+  }
+
+  {
+    // A big text file is still readable. Treating it as binary would let a
+    // large asset carry the key past a green check.
+    const bigDist = join(root, 'big');
+    mkdirSync(bigDist, { recursive: true });
+    writeFileSync(join(bigDist, 'big.js'), `${'a'.repeat(8 * 1024 * 1024)}const k = "${FAKE_KEY}";`);
+    const scan = scanBundle({ distDir: bigDist, secret: FAKE_KEY });
+    check('a big text file is scanned, not skipped',
+      scan.keyFiles.includes('big.js') && !scan.skippedFiles.includes('big.js'),
+      `key=${scan.keyFiles.join(',')} skipped=${scan.skippedFiles.join(',')}`);
+
+    const bigBin = join(root, 'bigbin');
+    mkdirSync(bigBin, { recursive: true });
+    writeFileSync(join(bigBin, 'big.bin'), Buffer.alloc(9 * 1024 * 1024));
+    const binScan = scanBundle({ distDir: bigBin, secret: FAKE_KEY });
+    check('a big binary file is still skipped', binScan.skippedFiles.includes('big.bin'));
   }
 
   {
@@ -190,13 +222,36 @@ try {
       off.lines.join(' | '),
     );
 
-    const on = checkBundle({ distDir: ghDist, updateCheckEnabled: true });
+    const ENDPOINT = 'https://api.github.com/repos/x/y/releases/latest';
+    const on = checkBundle({
+      distDir: ghDist, updateCheckEnabled: true, updateCheckUrl: ENDPOINT,
+    });
     check('GitHub API URL passes an armed build', on.ok === true, on.lines.join(' | '));
     check(
       'armed message is an ok line',
       on.lines.some(l => l.startsWith('ok update check')),
       on.lines.join(' | '),
     );
+
+    // Armed is not enough: the exact endpoint must be inlined, or a typo ships
+    // a check that never fetches and CI stays green.
+    const noUrl = checkBundle({ distDir: ghDist, updateCheckEnabled: true });
+    check('an armed build without the URL fails', noUrl.ok === false, noUrl.lines.join(' | '));
+    const wrongUrl = checkBundle({
+      distDir: ghDist, updateCheckEnabled: true,
+      updateCheckUrl: 'https://api.github.com/repos/x/z/releases/latest',
+    });
+    check('an armed build with another endpoint fails',
+      wrongUrl.ok === false, wrongUrl.lines.join(' | '));
+
+    const emptyDist = join(root, 'armed-empty');
+    mkdirSync(emptyDist, { recursive: true });
+    writeFileSync(join(emptyDist, 'app.js'), 'console.log("hi");');
+    const missing = checkBundle({
+      distDir: emptyDist, updateCheckEnabled: true, updateCheckUrl: ENDPOINT,
+    });
+    check('an armed build with no API URL at all fails',
+      missing.ok === false, missing.lines.join(' | '));
 
     // Independent of the credential switch: one must not wave the other past.
     const baked = checkBundle({ distDir: ghDist, allowBaked: true });
