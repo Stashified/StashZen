@@ -147,10 +147,11 @@ const DESTROY_FILTER_MUTATION = `
  * `id` present means update, the same mutation Stash's own UI uses, so
  * editing a user-made filter works and does not fork it into a duplicate.
  *
- * `objectFilter` is written in Stash's *stored* envelope (the shape
- * `filterCriteria.js` builds), NOT the GraphQL shape: it is the same field the
- * read path parses, so writing GraphQL shape would produce a filter Stash's
- * web UI cannot open. `translateFilter` converts on the way out.
+ * `objectFilter` is written in Stash's *stored* envelope, the shape Stash's own
+ * UI persists. Text criteria happen to match the GraphQL shape, but
+ * multi-selects nest `items`/`excluded`; writing the request shape for those
+ * produces a filter Stash's web UI cannot open. `translateFilter` converts on
+ * the way out.
  *
  * The whole list cache is cleared rather than one key: a save can create,
  * rename or reorder, and `saveFilter` returns no position. One extra fetch on

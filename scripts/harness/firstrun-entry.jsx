@@ -484,7 +484,7 @@ async function run() {
   await sleep(1000);
   const statusLine = setupDialog()?.querySelector('[role="status"]');
   check('K1 a Test still answers after the double mount',
-    !!statusLine && /Connected — Stash v0\.31\.1-harness/.test(statusLine.textContent),
+    !!statusLine && /Connected: Stash v0\.31\.1-harness/.test(statusLine.textContent),
     `status ${JSON.stringify(statusLine?.textContent)}`);
 
   check('K2 ...and the button is not left stuck on Testing…',

@@ -101,13 +101,13 @@ async function run() {
   await typePin('0002');
   await waitFor(() => errorText().includes('wait'), 1500);
   check('P6 the third wrong PIN names the delay',
-    /^Incorrect PIN — wait [12]s before trying again$/.test(errorText()),
+    /^Incorrect PIN, wait [12]s before trying again$/.test(errorText()),
     JSON.stringify(errorText()));
 
   await typePin('1234');
   await waitFor(() => errorText().includes('Too many attempts'), 1500);
   check('P7 a correct PIN during the delay is refused with the remaining time',
-    /^Too many attempts — try again in [12]s$/.test(errorText()) && unlockCount === 0,
+    /^Too many attempts, try again in [12]s$/.test(errorText()) && unlockCount === 0,
     `${JSON.stringify(errorText())} unlocks=${unlockCount}`);
 
   await sleep(1100);

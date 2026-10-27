@@ -492,8 +492,8 @@ async function run() {
   await sleep(120);
   check('R4 setup: the controls were hidden before the arrow', hiddenAgain,
     `opacity=${controlsOpacity()} before`);
-  check('R4 Right from behind the rail skims +15s',
-    v.currentTime > 44 && v.currentTime < 46, `currentTime=${v.currentTime.toFixed(2)}`);
+  check('R4 Right from behind the rail skims +5s',
+    v.currentTime > 34 && v.currentTime < 36, `currentTime=${v.currentTime.toFixed(2)}`);
   check('R4 ...and reveals the rail as a hint',
     controlsOpacity() === 1, `opacity=${controlsOpacity()}`);
   check('R4 ...without taking the cursor into it', !inRail() && !inModal(),
@@ -506,9 +506,11 @@ async function run() {
   await seekTo(50);
   Object.defineProperty(v, 'duration', { configurable: true, get: () => NaN });
   press(document.body, 'ArrowRight', 39);
-  await sleep(300);
+  // Past the 400 ms coalescing quiet window: the press continues R4's run, so
+  // its seek is deferred.
+  await sleep(600);
   check('R4b a forward skim with no element duration clamps to the timeline, not to zero',
-    v.currentTime > 55,
+    v.currentTime > 54 && v.currentTime < 56,
     `currentTime=${v.currentTime.toFixed(2)} from 50.0 (a zero clamp lands near 0)`);
   delete v.duration;
 

@@ -451,8 +451,11 @@ async function run() {
 
   if (saved.length) {
     check('F8d …under SCENES, not another mode', saved[0].mode === 'SCENES', `mode ${saved[0].mode}`);
-    check('F8e …carrying the builder\'s stored envelope, not GraphQL shape',
-      saved[0].object_filter?.title?.value?.value === 'saveme',
+    // Stash's own UI stores a text criterion as a bare string at `value`
+    // (measured from the live library), so this is the shape it reopens.
+    check('F8e …carrying the stored envelope Stash\'s own UI writes',
+      saved[0].object_filter?.title?.value === 'saveme'
+        && saved[0].object_filter?.title?.modifier === 'EQUALS',
       `object_filter: ${JSON.stringify(saved[0].object_filter)}`);
     check('F8f …and a sort, so reopening elsewhere is not Stash\'s default order',
       !!saved[0].find_filter?.sort, JSON.stringify(saved[0].find_filter));

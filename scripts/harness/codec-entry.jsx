@@ -335,7 +335,7 @@ function checkClassification() {
   check('K7 the panel reports the source the resolver chose',
     row.Source === 'Transcoded · MP4', row.Source);
   check('K7 an unmeasurable stream duration stays unknown, not invented',
-    row['Stream duration'] === '—' && row['Scene duration'] === '30:27',
+    row['Stream duration'] === '–' && row['Scene duration'] === '30:27',
     `${row['Stream duration']} · ${row['Scene duration']}`);
   check('K7 resolution, buffer and seekable range come from the element',
     row.Resolution === '1920×1080' && row['Buffer ahead'] === '8.4 s'
