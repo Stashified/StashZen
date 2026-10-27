@@ -146,7 +146,10 @@ under **Settings → Connection setup → Run setup again**.
   <img src="docs/screenshots/image-viewer.png" alt="Image viewer with its info panel open" width="49%">
 </p>
 <p align="center">
+  <img src="docs/screenshots/settings-updates.png" alt="Settings — update check" width="49%">
   <img src="docs/screenshots/settings-stats.png" alt="Settings — library stats" width="49%">
+</p>
+<p align="center">
   <img src="docs/screenshots/settings-server.png" alt="Settings — server jobs and scan progress" width="49%">
 </p>
 
