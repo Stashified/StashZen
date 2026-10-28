@@ -90,15 +90,18 @@ under **Settings → Connection setup → Run setup again**.
 
 | Key | Action |
 |---|---|
-| ← / → | Previous or next image. An open info panel stays open and reloads. |
+| ← / → | Previous or next image. An open info panel stays open and reloads. While zoomed, pan instead. |
 | ↑ | Reach **Info**; **OK** opens the image's metadata panel. |
-| Back | Close an open info panel first, then the viewer. |
+| OK | Zoom 2× and 3×, then back to full size. |
+| Back | Close an open info panel, then reset the zoom, then the viewer. |
 
 ## Features
 
 **Browse**
 - **Home**: Stash's shelves, five cards each, with **Continue Watching** under Recently Added
-  Scenes. **See all** opens that shelf's listing.
+  Scenes. "see all" opens that shelf's listing.
+- **Search**: one field finds scenes, performers, tags and studios; "see all" opens that
+  section's tab with the query.
 - **Seven sections**: Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
   search, sort, filters and a view mode (grid, carousel or list; Scenes also coverflow) remembered
   per tab. Sort, filter and search reset on arrival. Gallery cards show the studio or folder; tag
@@ -109,11 +112,13 @@ under **Settings → Connection setup → Run setup again**.
 
 **Details**
 - **Scene detail**: metadata and rating; resume, play from a marker, clear progress or mark
-  played; a **Galleries** row when the scene belongs to one.
+  played; a marker can be edited or deleted from its long-press menu; a **Galleries** row when
+  the scene belongs to one.
 - **Performer pages**: full profile, scene/image/gallery counts, and **Rating** / **Favourite**
   editable and written back to Stash.
-- **Image viewer**: full size, stepped with ←/→, with a six-second slideshow. **Info** shows what
-  Stash holds for the image; an untitled image shows its file name.
+- **Image viewer**: full size, stepped with ←/→, with a six-second slideshow that keeps running
+  under the info panel. **OK** zooms between 2× and 3× and the arrows pan while zoomed. **Info**
+  shows what Stash holds for the image; an untitled image shows its file name.
 
 **Playback**
 - **Player**: resumes where you stopped, queues the whole listing, seeks 15 s at a time, and
