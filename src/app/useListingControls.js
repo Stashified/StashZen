@@ -107,10 +107,17 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       //
       // Search goes too for the same reason: a term narrows the listing it was
       // typed against, and carried onto another section it silently narrows a
-      // listing the user never searched. The See-all hand-off clears it
-      // explicitly; pressing the current rail row reloads in place (`tabEpoch`)
-      // and keeps the query.
-      const patch = { cols: gridColsFor(activeTab), sortForTab: null, search: '' };
+      // listing the user never searched. The one exception is the global search
+      // page's See-all hand-off, which stages its query for this arrival;
+      // pressing the current rail row reloads in place (`tabEpoch`) and keeps
+      // the query.
+      const searchHandoff = prev.searchForTab === activeTab;
+      const patch = {
+        cols: gridColsFor(activeTab),
+        sortForTab: null,
+        searchForTab: null,
+        search: searchHandoff ? prev.search : '',
+      };
       if (flat.length) {
         const validValues = flat.map(o => o.value);
         const handoff = prev.sortForTab === activeTab && validValues.includes(prev.sort);

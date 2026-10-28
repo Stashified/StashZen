@@ -21,6 +21,15 @@ const CROSS_ZONE_PENALTY = 100000;
 // cross-zone one even when the latter is much nearer. See scrollContainerOf.
 const CONTAINER_EXIT_PENALTY = 1000000;
 const MIN_REPEAT_MS = 90;          // throttle held arrows to ~11 Hz
+// The focus ring lifts a card 4 px (4.2 after the 1.05 scale), so a neighbour
+// in the same row measures about 4 px below it. Anything that close is level,
+// not in that direction; at a 4 px test Down walked sideways along a
+// six-column row instead of reaching the section below.
+const LEVEL_TOLERANCE = 8;
+// Between the two, a candidate is level, and up/down only takes it across a
+// zone boundary: along a row that would be a sideways hop, while the controls
+// bar sits level with the rail's top row and is the way in from there.
+const LEVEL_FALLBACK = 4;
 const NAV_CLASS_RELEASE_MS = 180;  // when keys idle this long, drop is-navigating
 
 // ── Rect cache ───────────────────────────────────────────
@@ -147,6 +156,10 @@ function findBestCandidate(direction, currentEl, currentEntry) {
 
   let bestEl = null;
   let bestScore = Infinity;
+  // A level candidate, kept apart so a real move in the direction always wins.
+  // See LEVEL_FALLBACK.
+  let levelEl = null;
+  let levelScore = Infinity;
 
   // The rail's rows share the grid's zone (see NavRail), so Down out of the last
   // loaded card found Settings at the screen's foot whenever the next page was
@@ -200,19 +213,31 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     }
 
     let primary, secondary;
+    let level = false;
     switch (direction) {
-      case 'up':    if (dy >= -4) return; primary = -dy; secondary = dx < 0 ? -dx : dx; break;
-      case 'down':  if (dy <=  4) return; primary =  dy; secondary = dx < 0 ? -dx : dx; break;
+      case 'up':
+        if (dy >= -LEVEL_FALLBACK) return;
+        level = dy >= -LEVEL_TOLERANCE;
+        primary = -dy; secondary = dx < 0 ? -dx : dx; break;
+      case 'down':
+        if (dy <= LEVEL_FALLBACK) return;
+        level = dy <= LEVEL_TOLERANCE;
+        primary = dy; secondary = dx < 0 ? -dx : dx; break;
       case 'left':  if (dx >= -4) return; primary = -dx; secondary = dy < 0 ? -dy : dy; break;
       case 'right': if (dx <=  4) return; primary =  dx; secondary = dy < 0 ? -dy : dy; break;
       default: return;
     }
 
+    // Level means the next thing along this row, not the next row.
+    if (level && zone === currentZone) return;
+
     let score = primary + secondary * 1.5;
     if (!isHorizontal && zone !== currentZone && !crossZone) score += CROSS_ZONE_PENALTY;
     if (currentScroll && !currentScroll.contains(el)) score += CONTAINER_EXIT_PENALTY;
 
-    if (score < bestScore) { bestScore = score; bestEl = el; }
+    if (level) {
+      if (score < levelScore) { levelScore = score; levelEl = el; }
+    } else if (score < bestScore) { bestScore = score; bestEl = el; }
   });
 
   // End of a wrapped line: continue at the start of the next, chosen by line
@@ -240,7 +265,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     });
   }
 
-  return bestEl;
+  return bestEl || levelEl;
 }
 
 export function useKeyHandler({ onBack } = {}) {

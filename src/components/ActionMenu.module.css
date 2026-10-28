@@ -91,6 +91,11 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Colour only the label, so focus still draws the normal ring. */
+.item.danger .itemLabel {
+  color: var(--red);
+}
+
 .itemLabel {
   font-family: var(--font-condensed);
   font-size: 17px;

@@ -2,7 +2,7 @@
  * Smaller than the marker modal's 980px: one question with two answers would
  * read as a page at full width.
  *
- * `z-index: 40` clears the marker modal's 30; VideoPlayer's 1000 is in a
+ * `z-index: 940` clears the marker modal's 930; VideoPlayer's 1000 is in a
  * different stacking context, so the numbers are not compared.
  */
 
@@ -13,7 +13,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.72);
-  z-index: 40;
+  z-index: 940;
 }
 
 .panel {

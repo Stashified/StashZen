@@ -11,20 +11,22 @@
  * focus stayed on the card behind, Left/Right would move the grid's focus *and*
  * step this image, since the grid is still mounted underneath.
  *
- * The slideshow's Play/Pause and Info are header buttons for the same reason:
- * the viewer opens on Enter, and a surface binding would let that press's
+ * The Slideshow and Info buttons are header buttons for the same reason: the
+ * viewer opens on Enter, and a surface binding would let that press's
  * auto-repeat toggle them thirty times. Focus path is surface → Up → Info →
- * Left → Play, so the D-pad never needs a letter key. The media keys (play,
- * pause, play/pause) work anywhere, like the player's.
+ * Left → Slideshow, so the D-pad never needs a letter key. The media keys
+ * (play, pause, play/pause) work anywhere, like the player's.
  *
  * ## Slideshow
  *
  * `autoPlay` advances every SLIDE_MS, preloading the next picture. It stops at
- * the last image rather than looping, pauses while the info panel is open and
- * resumes on close, and any manual Left/Right stops it, browsing is a decision,
- * not a nudge to the timer. In gallery mode it holds on the last picture in
- * hand while the background loop is still fetching and stops only at the real
- * end, so a slideshow that outran a slow server does not stop halfway.
+ * the last image rather than looping, and any manual Left/Right stops it,
+ * browsing is a decision, not a nudge to the timer. The info panel does not
+ * pause it: the panel follows the picture that is on screen, and the header
+ * button reads Stop slideshow while it runs. In gallery mode it holds on the
+ * last picture in hand while the background loop is still fetching and stops
+ * only at the real end, so a slideshow that outran a slow server does not stop
+ * halfway.
  *
  * ## Two sources
  *
@@ -60,6 +62,18 @@ const INFO_FETCH_DELAY_MS = 180;
 // configurable: one sensible pace, not one more Settings entry.
 const SLIDE_MS = 6000;
 
+// Enter cycles these. Pan is in pixels, bounded per axis by how much the
+// scaled picture actually overflows the stage: a portrait picture at 2× may
+// still be narrower than a 16:9 stage, where any sideways pan would only
+// reveal black. One press moves a twelfth of the picture, a step you can see
+// without overshooting the edge.
+const ZOOM_MAX = 3;
+const PAN_STEP = 12.5;
+
+function panLimit(zoom, picture, stage) {
+  return Math.max(0, (zoom * picture - stage) / 2);
+}
+
 const GALLERY_PAGE_SIZE = 40;
 // 4,000 images. A cap so one pathological gallery cannot hold the loop open;
 // Back out to View images, which lists every one, is the escape hatch.
@@ -75,9 +89,21 @@ export default function ImageViewer({
   onClose,
   onIndexChange,
 }) {
-  const [imgError, setImgError] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  // Which picture has arrived, not a bare flag: a preloaded next image can fire
+  // its load event before React runs the effect that used to clear the flag,
+  // which left the spinner up over an invisible picture for good.
+  const [loadedId, setLoadedId] = useState(null);
+  const [errorId, setErrorId] = useState(null);
   const [playing, setPlaying] = useState(!!autoPlay);
+  // Milliseconds until the next slide, for the footer readout. Recomputed from
+  // the clock rather than decremented so a stalled interval cannot drift.
+  const [slideLeft, setSlideLeft] = useState(SLIDE_MS);
+  // 1 is fit-to-screen. Enter cycles 1 → 2 → 3 → 1, and Back resets before it
+  // closes. `pan` is a pixel offset from centre.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const imgRef = useRef(null);
+  const stageRef = useRef(null);
 
   // Read-only. A header button rather than a surface key: the viewer opens on
   // Enter, and a surface binding would let that press's repeats toggle it.
@@ -104,12 +130,30 @@ export default function ImageViewer({
     zone: 'image-viewer',
     autoFocus: true,
     nextId: { up: 'image-viewer-info' },
+    // A zoom is a browse action: the slideshow must not step away while the
+    // user is looking closer. Both halves of the guard are load-bearing: the
+    // header buttons are children of this surface, so their Enter keydown
+    // bubbles here, and a handler that moves focus back to the surface (Play
+    // closing the info panel) makes the activeElement test true from under us.
+    onEnter: (e) => {
+      if (e?.target !== ref.current || document.activeElement !== ref.current) return;
+      setPlaying(false);
+      setZoom(z => (z >= ZOOM_MAX ? 1 : z + 1));
+      setPan({ x: 0, y: 0 });
+    },
   });
+  const closeInfo = useCallback(() => {
+    setInfoOpen(false);
+    ref.current?.focus();
+  }, [ref]);
+
+  const togglePlaying = () => setPlaying(p => !p);
+
   const playBtn = useFocusable({
     id: 'image-viewer-play',
     zone: 'image-viewer',
     nextId: { right: 'image-viewer-info', down: 'image-viewer' },
-    onEnter: () => setPlaying(p => !p),
+    onEnter: togglePlaying,
   });
   const infoBtn = useFocusable({
     id: 'image-viewer-info',
@@ -132,6 +176,8 @@ export default function ImageViewer({
   const itemId = item?.id ?? null;
   const canPrev = currentIndex > 0;
   const canNext = currentIndex < sourceItems.length - 1;
+  const loaded = itemId !== null && loadedId === itemId;
+  const imgError = itemId !== null && errorId === itemId;
 
   // App builds `onIndexChange` inline. A ref keeps `goTo` stable, it is in the
   // slide timer's dependencies, where an unstable identity would restart the
@@ -145,9 +191,21 @@ export default function ImageViewer({
     else onIndexChangeRef.current?.(next);
   }, [gallery]);
 
-  // Reset on picture change, or the second image inherits the first's failure
-  // and shows the fallback.
-  useEffect(() => { setImgError(false); setLoaded(false); }, [item?.id]);
+  // Reset on picture change, or the second image inherits the first's zoom and
+  // pan. Load and error state are keyed by id instead, see above.
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [item?.id]);
+
+  // The preloader fetches the next picture during the six-second wait, so its
+  // load can beat React's listener and leave a spinner over a picture that is
+  // already there. `complete` answers for both orderings.
+  useLayoutEffect(() => {
+    const el = imgRef.current;
+    if (!el || itemId === null) return;
+    if (el.complete && el.naturalWidth > 0) setLoadedId(itemId);
+  }, [itemId]);
 
   // Stepping races the info request: image 5's answer can land after the
   // viewer is on image 6. The resolve checks this ref.
@@ -250,12 +308,10 @@ export default function ImageViewer({
   }, [gallery?.id, shuffle]);
 
   // ── The slideshow ─────────────────────────────────────────
-  // Not while the info panel is open: the user asked to read about this
-  // picture, and stepping away would answer a question they did not ask.
-  // Closing resumes (`playing` is still true), opening Info is a browse
-  // action, not a stop.
+  // Runs with the info panel open too, so the panel is a readout of the picture
+  // on screen and its fetch follows each step. Only a press stops it.
   useEffect(() => {
-    if (!playing || infoOpen || !itemId) return undefined;
+    if (!playing || !itemId) return undefined;
     if (!canNext) {
       // Gallery mode: the loop may still be bringing pictures in. This is the
       // last one *in hand*, so hold, the effect re-runs when the next page
@@ -267,25 +323,32 @@ export default function ImageViewer({
     }
     const timer = setTimeout(() => goTo(currentIndex + 1), SLIDE_MS);
     return () => clearTimeout(timer);
-  }, [playing, infoOpen, itemId, canNext, currentIndex, gallery, galleryDone, goTo]);
+  }, [playing, itemId, canNext, currentIndex, gallery, galleryDone, goTo]);
+
+  // The countdown only exists while the timer does: same conditions, same
+  // reset points, so the number on screen is the wait that is actually armed.
+  useEffect(() => {
+    setSlideLeft(SLIDE_MS);
+    if (!playing || !itemId || !canNext) return undefined;
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      setSlideLeft(Math.max(0, SLIDE_MS - (Date.now() - startedAt)));
+    }, 250);
+    return () => clearInterval(tick);
+  }, [playing, itemId, canNext, currentIndex]);
 
   // Warm the next picture while the current one is up. Only while running:
   // manual browsing should not pull a full-resolution file per step. Held in a
   // ref so the browser does not discard the load with the Image object.
   useEffect(() => {
-    if (!playing || infoOpen) return;
+    if (!playing) return;
     const next = sourceItems[currentIndex + 1];
     const src = next?.full || next?.image_path;
     if (!src) return;
     const img = new Image();
     img.src = src;
     preloadRef.current = img;
-  }, [playing, infoOpen, sourceItems, currentIndex]);
-
-  const closeInfo = useCallback(() => {
-    setInfoOpen(false);
-    ref.current?.focus();
-  }, [ref]);
+  }, [playing, sourceItems, currentIndex]);
 
   // A *layout* effect, deliberately. The closure reads the index it was
   // registered with, and the slideshow changes that index on a timer. A
@@ -319,17 +382,44 @@ export default function ImageViewer({
       if (e.key === 'Escape' || e.key === 'Backspace' || isBackCode(e.keyCode)) {
         e.preventDefault();
         e.stopPropagation();
-        // Back peels one layer at a time: the panel first, then the viewer.
+        // Back peels one layer at a time: the panel, then the zoom, then the
+        // viewer.
         if (infoOpen) closeInfo();
-        else onClose?.();
+        else if (zoom > 1) {
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+        } else onClose?.();
         return;
       }
-      // ArrowLeft/ArrowRight only, not the TV's channel keys. With the panel
-      // closed and the Info button focused, the arrows belong to the D-pad:
-      // changing the picture behind a focused button would be invisible. With
-      // the panel open they browse anyway, the footer advertises ◀ ▶ Browse
-      // and the panel reloads for the new image without a Down press first.
-      if (!infoOpen && document.activeElement !== ref.current) return;
+      // While zoomed the arrows pan, and they must not also move focus off the
+      // surface (Up would go to Info). The footer says so. The press moves the
+      // window, not the picture: Right reveals the right side, as scrolling
+      // does, so the image itself shifts the other way.
+      if (!infoOpen && document.activeElement === ref.current && zoom > 1) {
+        const dx = e.key === 'ArrowLeft' ? 1 : e.key === 'ArrowRight' ? -1 : 0;
+        const dy = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
+        if (dx || dy) {
+          e.preventDefault();
+          e.stopPropagation();
+          const img = imgRef.current;
+          const stage = stageRef.current;
+          if (!img || !stage) return;
+          const w = img.offsetWidth;
+          const h = img.offsetHeight;
+          const limitX = panLimit(zoom, w, stage.clientWidth);
+          const limitY = panLimit(zoom, h, stage.clientHeight);
+          setPan(p => ({
+            x: Math.max(-limitX, Math.min(limitX, p.x + (dx * w * PAN_STEP) / 100)),
+            y: Math.max(-limitY, Math.min(limitY, p.y + (dy * h * PAN_STEP) / 100)),
+          }));
+          return;
+        }
+      }
+      // ArrowLeft/ArrowRight only, not the TV's channel keys. With a header
+      // button focused the arrows belong to the D-pad: changing the picture
+      // behind a focused button reads as the button changing it, and the
+      // selected ring is the only clue which thing a press acts on.
+      if (document.activeElement !== ref.current) return;
       if (e.key === 'ArrowLeft' && canPrev) {
         e.preventDefault();
         e.stopPropagation();
@@ -344,7 +434,7 @@ export default function ImageViewer({
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [currentIndex, canPrev, canNext, onClose, infoOpen, closeInfo, ref, goTo]);
+  }, [currentIndex, canPrev, canNext, onClose, infoOpen, closeInfo, ref, goTo, zoom]);
 
   if (!gallery && !item) return null;
 
@@ -359,6 +449,9 @@ export default function ImageViewer({
     : [];
   const title = gallery ? (gallery.title || 'Gallery') : (item?.title || 'Image');
   const empty = gallery && galleryStatus === 'ready' && !item;
+  // One of the header buttons holds the D-pad; the footer then names its
+  // neighbour instead of advertising a browse that the press will not do.
+  const headerFocused = playBtn.focused || infoBtn.focused;
 
   return (
     <div
@@ -369,7 +462,7 @@ export default function ImageViewer({
       aria-label={title}
       tabIndex={-1}
     >
-      <div className={styles.stage}>
+      <div ref={stageRef} className={styles.stage}>
         {gallery && !item && !empty && (
           galleryStatus === 'error' ? (
             <p className={styles.unavailable}>
@@ -392,11 +485,13 @@ export default function ImageViewer({
             {!loaded && <div className={styles.spinner} />}
             <img
               key={item.id}
+              ref={imgRef}
               src={src}
               alt=""
               className={`${styles.image} ${loaded ? styles.imageLoaded : ''}`}
-              onLoad={() => setLoaded(true)}
-              onError={() => setImgError(true)}
+              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+              onLoad={() => setLoadedId(item.id)}
+              onError={() => setErrorId(item.id)}
               draggable={false}
             />
           </>
@@ -438,10 +533,10 @@ export default function ImageViewer({
           <button
             ref={playBtn.ref}
             className={`${styles.infoBtn} ${styles.playBtn} ${playBtn.focused ? styles.infoBtnFocused : ''}`}
-            onClick={() => setPlaying(p => !p)}
+            onClick={togglePlaying}
             aria-pressed={playing}
           >
-            {playing ? 'Pause' : 'Play'}
+            {playing ? 'Stop slideshow' : 'Slideshow'}
           </button>
           <button
             ref={infoBtn.ref}
@@ -461,12 +556,37 @@ export default function ImageViewer({
         {sourceItems.length > 0 && (
           <span className={styles.counter}>
             {currentIndex + 1} <span className={styles.counterSep}>of</span> {sourceItems.length} loaded
+            {zoom > 1 && <span className={styles.zoomLevel}>{zoom}×</span>}
+            {playing && canNext && (
+              <span className={styles.nextIn}>
+                Next in {Math.max(1, Math.ceil(slideLeft / 1000))}s
+              </span>
+            )}
           </span>
         )}
         <span className={styles.hint}>
-          <kbd>▲</kbd> Info
-          {canPrev || canNext ? <><kbd>◀</kbd> <kbd>▶</kbd> Browse</> : null}
-          <kbd>Back</kbd> Close
+          {headerFocused ? (
+            <>
+              {infoBtn.focused
+                ? <><kbd>◀</kbd> {playing ? 'Stop' : 'Slideshow'}</>
+                : <><kbd>▶</kbd> Info</>}
+              <kbd>▼</kbd> Picture
+              <kbd>Back</kbd> {infoOpen ? 'Close info' : 'Close'}
+            </>
+          ) : zoom > 1 && !infoOpen ? (
+            <>
+              <kbd>◀</kbd> <kbd>▶</kbd> <kbd>▲</kbd> <kbd>▼</kbd> Pan
+              <kbd>Enter</kbd> Zoom
+              <kbd>Back</kbd> Reset
+            </>
+          ) : (
+            <>
+              <kbd>▲</kbd> Info
+              {canPrev || canNext ? <><kbd>◀</kbd> <kbd>▶</kbd> Browse</> : null}
+              <kbd>Enter</kbd> Zoom
+              <kbd>Back</kbd> {infoOpen ? 'Close info' : 'Close'}
+            </>
+          )}
         </span>
       </footer>
     </div>

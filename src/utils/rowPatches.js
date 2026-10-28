@@ -9,6 +9,7 @@
  */
 
 const listeners = new Map();
+const removers = new Map();
 
 /** Subscribe to patches for one entity. Returns the unsubscribe function. */
 export function onRowPatch(entity, fn) {
@@ -21,4 +22,17 @@ export function onRowPatch(entity, fn) {
 export function publishRowPatch(entity, id, patch) {
   if (id == null) return;
   for (const fn of listeners.get(entity) || []) fn(String(id), patch);
+}
+
+/** Subscribe to deletions for one entity. Returns the unsubscribe function. */
+export function onRowRemove(entity, fn) {
+  if (!removers.has(entity)) removers.set(entity, new Set());
+  removers.get(entity).add(fn);
+  return () => { removers.get(entity)?.delete(fn); };
+}
+
+/** Announce that a row no longer exists. */
+export function publishRowRemove(entity, id) {
+  if (id == null) return;
+  for (const fn of removers.get(entity) || []) fn(String(id));
 }

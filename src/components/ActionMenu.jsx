@@ -22,7 +22,7 @@ import styles from './ActionMenu.module.css';
 // delay before the rows become focusable.
 const PRESS_END_MS = 150;
 
-function MenuItem({ id, label, hint, onSelect, autoFocus }) {
+function MenuItem({ id, label, hint, danger, onSelect, autoFocus }) {
   const { ref, focused } = useFocusable({
     id,
     zone: 'action-menu',
@@ -33,7 +33,11 @@ function MenuItem({ id, label, hint, onSelect, autoFocus }) {
     <button
       ref={ref}
       type="button"
-      className={`${styles.item} ${focused ? styles.focused : ''}`}
+      className={[
+        styles.item,
+        danger ? styles.danger : '',
+        focused ? styles.focused : '',
+      ].join(' ')}
       onClick={onSelect}
     >
       <span className={styles.itemLabel}>{label}</span>
@@ -85,6 +89,7 @@ export default function ActionMenu({ title, subtitle, items = [], onClose }) {
               id={item.id}
               label={item.label}
               hint={item.hint}
+              danger={item.danger}
               onSelect={item.onSelect}
               autoFocus={armed && i === 0}
             />

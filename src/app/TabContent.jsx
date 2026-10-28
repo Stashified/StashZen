@@ -6,6 +6,7 @@
  */
 
 import ShowroomPage from '../pages/ShowroomPage.jsx';
+import SearchPage from '../pages/SearchPage.jsx';
 import ScenesPage from '../pages/ScenesPage.jsx';
 import PerformersPage from '../pages/PerformersPage.jsx';
 import MarkersPage from '../pages/MarkersPage.jsx';
@@ -38,6 +39,12 @@ export default function TabContent({
   onMuteToggle,
   onEntitySelect,
   onEntityLongPress,
+  searchText,
+  onSearchQueryChange,
+  onSearchPerformerSelect,
+  onSearchTagSelect,
+  onSearchStudioSelect,
+  onSearchSeeAll,
 }) {
   return (
     /* Keying main remounts the active page on a data-source change (Test↔Live,
@@ -47,6 +54,7 @@ export default function TabContent({
         cleared by `changeTab` before this remount. */
     <main key={`${dataKey}\u0000${tabEpoch}`} className={styles.main} role="main">
       {activeTab === 'home'       && <ShowroomPage   onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} onStudioSelect={onStudioSelect} onPerformerSelect={onShowroomPerformerSelect} onGallerySelect={onGallerySelect} onSeeAll={onSeeAll} clearedSceneIds={clearedSceneIds} />}
+      {activeTab === 'search'     && <SearchPage     query={searchText} onQueryChange={onSearchQueryChange} onSceneSelect={onVideoSelect} onPerformerSelect={onSearchPerformerSelect} onTagSelect={onSearchTagSelect} onStudioSelect={onSearchStudioSelect} onSeeAll={onSearchSeeAll} />}
       {activeTab === 'scenes'     && <ScenesPage     mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} />}
       {activeTab === 'performers' && (
         selectedPerformer

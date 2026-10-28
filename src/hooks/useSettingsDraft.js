@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getSettings, setSettings, clearSettings } from '../utils/settings.js';
+import { normalizeEndpointUrl } from '../utils/endpointUrl.js';
 
 /**
  * The Settings panel's draft form.
@@ -49,23 +50,16 @@ export function useSettingsDraft(initial) {
    *  endpoint cannot be used. The first-run flow tests the connection first;
    *  this is the only check Settings has. */
   const save = () => {
+    let url = stashUrl.trim();
     if (!useMock) {
-      const url = stashUrl.trim();
-      if (!url) {
-        setSaveError('Enter the Stash endpoint before saving.');
+      // Same rule as first-run, so a scheme-less entry is not accepted on one
+      // screen and refused on the other.
+      const endpoint = normalizeEndpointUrl(url);
+      if (!endpoint.ok) {
+        setSaveError(endpoint.error);
         return false;
       }
-      let valid = false;
-      try {
-        const parsed = new URL(url);
-        valid = parsed.protocol === 'http:' || parsed.protocol === 'https:';
-      } catch {
-        // Not a URL at all.
-      }
-      if (!valid) {
-        setSaveError('The endpoint must be an http:// or https:// URL.');
-        return false;
-      }
+      url = endpoint.url;
     }
     setSaveError(null);
     setSettings({
@@ -73,7 +67,7 @@ export function useSettingsDraft(initial) {
       // Test mode hides the connection fields, so their drafts may hold a
       // half-typed Live value. Keep what is stored instead of committing it
       // unseen.
-      ...(useMock ? {} : { stashUrl: stashUrl.trim(), stashKey: stashKey.trim() }),
+      ...(useMock ? {} : { stashUrl: url, stashKey: stashKey.trim() }),
       previewsEnabled,
       theme,
       playbackEngine,

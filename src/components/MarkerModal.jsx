@@ -1,7 +1,8 @@
 /**
- * MarkerModal, create a scene marker without leaving the player.
+ * MarkerModal, create or edit a scene marker.
  *
- * The player pauses while this is up: a scene running behind a three-field form
+ * It opens over the player, and now also from the Markers tab's long-press
+ * menu. The player pauses while this is up: a scene running behind a form
  * makes "the current timestamp" drift between reading and saving it.
  *
  * ## Keys
@@ -24,10 +25,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
 import { useBackKey } from '../hooks/useBackKey.js';
+import { useArmedConfirm } from '../hooks/useArmedConfirm.js';
 import {
   fetchTagOptions,
   fetchRecentMarkerTags,
   createMarker,
+  updateMarker,
+  destroyMarker,
   MARKER_TAG_LIMIT,
 } from '../utils/markerService.js';
 import { formatTime } from '../utils/format.js';
@@ -36,8 +40,15 @@ import styles from './MarkerModal.module.css';
 const ZONE = 'marker-modal';
 const NUDGE_SECONDS = 5;
 
-function ModalButton({ id, label, primary, disabled, onEnter, children }) {
-  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter });
+function ModalButton({ id, label, primary, danger, disabled, onEnter, children }) {
+  // `disabled` here is transient: busy, or a nudge at its bound. It is
+  // `aria-disabled`, never native, because a natively disabled button cannot
+  // hold focus: the press that reached the bound, or started the write, would
+  // drop the cursor to <body> with the form still open.
+  const { ref, focused } = useFocusable({
+    id, zone: ZONE,
+    onEnter: () => { if (!disabled) onEnter?.(); },
+  });
   return (
     <button
       ref={ref}
@@ -45,10 +56,11 @@ function ModalButton({ id, label, primary, disabled, onEnter, children }) {
       className={[
         styles.btn,
         primary ? styles.btnPrimary : '',
+        danger ? styles.btnDanger : '',
         focused ? styles.focused : '',
       ].join(' ')}
-      onClick={onEnter}
-      disabled={disabled}
+      onClick={() => { if (!disabled) onEnter?.(); }}
+      aria-disabled={disabled || undefined}
       // Visible text is only "5s", so the direction must come from here.
       aria-label={label}
     >
@@ -60,16 +72,20 @@ function ModalButton({ id, label, primary, disabled, onEnter, children }) {
 export default function MarkerModal({
   sceneId,
   sceneTitle,
+  marker = null,
   initialSeconds,
   duration,
   defaultTag,
   onClose,
   onCreated,
+  onSaved,
+  onDeleted,
 }) {
+  const editing = !!marker;
   // Captured once here and moved only by the nudge buttons. Not read from the
   // element at save time: the capture is what the user positioned, and a value
   // following playback would differ from what they were looking at.
-  const [seconds, setSeconds] = useState(initialSeconds);
+  const [seconds, setSeconds] = useState(marker?.seconds ?? initialSeconds);
   const [tagId, setTagId] = useState(defaultTag?.id || null);
   const [tags, setTags] = useState([]);
   // Empty is normal for a library with no markers AND what a failed lookup
@@ -77,7 +93,10 @@ export default function MarkerModal({
   const [recentTags, setRecentTags] = useState([]);
   const [tagsFailed, setTagsFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
+  const [deleteArmed, runDelete, resetDelete] = useArmedConfirm({ timeoutMs: 5000 });
+  const busy = saving || deleting;
 
   const title = useEditableField({
     id: 'marker-title',
@@ -133,8 +152,8 @@ export default function MarkerModal({
 
   // Back and `submit` are both registered once but must see the live flag, so
   // read it through a ref rather than capturing the registering render.
-  const savingRef = useRef(false);
-  useEffect(() => { savingRef.current = saving; });
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = busy; });
 
   // Back/Escape, capture phase, see the header. The default predicate counts
   // Escape and TIZEN_BACK always; Backspace belongs to its text field.
@@ -142,7 +161,7 @@ export default function MarkerModal({
     // Mid-save there is nothing safe to close: the write may be in flight, and
     // closing would orphan it, the marker could be created with the player
     // back on screen and no confirmation shown.
-    if (savingRef.current) return;
+    if (busyRef.current) return;
     onClose?.();
   });
 
@@ -154,7 +173,7 @@ export default function MarkerModal({
   }, [duration]);
 
   const submit = useCallback(async () => {
-    if (savingRef.current) return;
+    if (busyRef.current) return;
     // The rows have different sources: `options` is the usage head (60 tags),
     // the recent row comes from markers. A tag outside the head is selectable
     // only on the recent row, so searching `options` alone rejected the form's
@@ -168,28 +187,59 @@ export default function MarkerModal({
     setSaving(true);
     setError(null);
     try {
-      const created = await createMarker({
-        sceneId,
+      const fields = {
         seconds,
         primaryTagId: tag.id,
         primaryTagName: tag.name,
         title: title.inputRef.current?.value || '',
-      });
+      };
+      if (editing) {
+        const saved = await updateMarker({ id: marker.id, ...fields });
+        onSaved?.(saved);
+      } else {
+        const created = await createMarker({ sceneId, ...fields });
+        onCreated?.(created);
+      }
       // Only now, everything above can fail without having written anything.
-      onCreated?.(created);
       onClose?.();
     } catch (e) {
       // Keep the form, the tag and the title exactly as they were.
       setError(e?.message ? `Could not save: ${e.message}` : 'Could not save the marker');
       setSaving(false);
     }
-  }, [sceneId, seconds, tagId, options, recentTags, title.inputRef, onClose, onCreated]);
+  }, [
+    sceneId, seconds, tagId, options, recentTags, title.inputRef,
+    editing, marker?.id, onClose, onCreated, onSaved,
+  ]);
+
+  // Two presses, like the other destructive buttons: the first only arms.
+  const remove = useCallback(() => {
+    if (!editing || busyRef.current) return;
+    runDelete(async () => {
+      setDeleting(true);
+      setError(null);
+      try {
+        await destroyMarker(marker.id);
+        onDeleted?.(marker);
+        onClose?.();
+      } catch (e) {
+        setError(e?.message ? `Could not delete: ${e.message}` : 'Could not delete the marker');
+        setDeleting(false);
+        resetDelete();
+      }
+    });
+  }, [editing, marker, runDelete, resetDelete, onDeleted, onClose]);
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Add marker">
+    <div
+      className={styles.overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label={editing ? 'Edit marker' : 'Add marker'}
+    >
       <div className={styles.panel}>
         <header className={styles.header}>
-          <h2 className={styles.title}>Add marker</h2>
+          <h2 className={styles.title}>{editing ? 'Edit marker' : 'Add marker'}</h2>
           {sceneTitle && <p className={styles.subtitle}>{sceneTitle}</p>}
         </header>
 
@@ -197,7 +247,7 @@ export default function MarkerModal({
           <ModalButton
             id="marker-nudge-back"
             label={`Back ${NUDGE_SECONDS} seconds`}
-            disabled={saving || seconds <= 0}
+            disabled={busy || seconds <= 0}
             onEnter={() => nudge(-NUDGE_SECONDS)}
           >
             <span aria-hidden="true">⏪</span> {NUDGE_SECONDS}s
@@ -206,7 +256,7 @@ export default function MarkerModal({
           <ModalButton
             id="marker-nudge-fwd"
             label={`Forward ${NUDGE_SECONDS} seconds`}
-            disabled={saving || (duration > 0 && seconds >= duration)}
+            disabled={busy || (duration > 0 && seconds >= duration)}
             onEnter={() => nudge(NUDGE_SECONDS)}
           >
             {NUDGE_SECONDS}s <span aria-hidden="true">⏩</span>
@@ -228,7 +278,7 @@ export default function MarkerModal({
               idPrefix="marker-recent"
               tags={recentTags}
               selectedId={tagId}
-              disabled={saving}
+              disabled={busy}
               onSelect={setTagId}
             />
           </div>
@@ -250,7 +300,7 @@ export default function MarkerModal({
             idPrefix="marker-tag"
             tags={options}
             selectedId={tagId}
-            disabled={saving}
+            disabled={busy}
             onSelect={setTagId}
             // The tag is the one required decision, so the cursor starts on the
             // default, the user sees the guess and can accept it or move along.
@@ -275,6 +325,7 @@ export default function MarkerModal({
               type="text"
               tabIndex={-1}
               aria-label="Marker label"
+              defaultValue={marker?.title || ''}
               placeholder={options.find(t => t.id === tagId)?.name || 'Label'}
               {...title.inputHandlers}
             />
@@ -284,21 +335,33 @@ export default function MarkerModal({
         {/* Announced, not merely drawn: a failed create that looked fine is the
             failure this form exists to prevent. */}
         <p className={styles.error} role="status" aria-live="polite">
-          {saving ? 'Saving…' : (error || '')}
+          {deleting ? 'Deleting…' : saving ? 'Saving…' : (error || '')}
         </p>
 
         <footer className={styles.footer}>
-          <ModalButton id="marker-cancel" label="Cancel" disabled={saving} onEnter={onClose}>
+          {editing && (
+            <ModalButton
+              id="marker-delete"
+              label={deleteArmed ? 'Press again to delete' : 'Delete marker'}
+              danger
+              disabled={busy}
+              onEnter={remove}
+            >
+              {deleteArmed ? 'Press again to delete' : 'Delete marker'}
+            </ModalButton>
+          )}
+          <span className={styles.footerSpacer} />
+          <ModalButton id="marker-cancel" label="Cancel" disabled={busy} onEnter={onClose}>
             Cancel
           </ModalButton>
           <ModalButton
             id="marker-save"
-            label="Add marker"
+            label={editing ? 'Save' : 'Add marker'}
             primary
-            disabled={saving || !tagId}
+            disabled={busy || !tagId}
             onEnter={submit}
           >
-            {saving ? 'Saving…' : 'Add marker'}
+            {saving ? 'Saving…' : (editing ? 'Save' : 'Add marker')}
           </ModalButton>
         </footer>
       </div>
@@ -330,7 +393,12 @@ function TagRow({ idPrefix, tags, selectedId, disabled, onSelect, autoFocusSelec
 }
 
 function TagChip({ id, tag, selected, disabled, onSelect, autoFocus }) {
-  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter: onSelect, autoFocus });
+  // `disabled` is the busy state, so it must not be native: the chip that held
+  // the cursor when Save was pressed would blur to <body> mid-write.
+  const { ref, focused } = useFocusable({
+    id, zone: ZONE, autoFocus,
+    onEnter: () => { if (!disabled) onSelect?.(); },
+  });
   return (
     <button
       ref={ref}
@@ -340,8 +408,8 @@ function TagChip({ id, tag, selected, disabled, onSelect, autoFocus }) {
         selected ? styles.chipSelected : '',
         focused ? styles.focused : '',
       ].join(' ')}
-      onClick={onSelect}
-      disabled={disabled}
+      onClick={() => { if (!disabled) onSelect?.(); }}
+      aria-disabled={disabled || undefined}
       aria-pressed={selected}
       // Recent-row tags carry no usage count (read off markers, not the tag
       // listing), so the count is conditional rather than "undefined".

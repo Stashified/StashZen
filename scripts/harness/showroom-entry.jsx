@@ -811,12 +811,21 @@ async function run() {
   await sleep(120);
   await tapEnter();
   const clearOffered = await waitFor(
-    () => registry.has('scene-clear-progress') && !registry.get('scene-clear-progress').el.disabled,
+    () => registry.has('scene-clear-progress')
+      && registry.get('scene-clear-progress').el.getAttribute('aria-disabled') !== 'true',
     5000);
   focus('scene-clear-progress');
   await tapEnter();
   const cleared = await waitFor(
     () => /Progress cleared/.test(document.body.textContent), 3000);
+  // The press itself mutes the button. `aria-disabled`, not native, so the ring
+  // stays where the user put it instead of falling to <body>. Checked before
+  // Back, which moves it on purpose.
+  check('H21 ...and the ring stays on the button it was pressed from',
+    focusedId() === 'scene-clear-progress'
+      && registry.get('scene-clear-progress').el.getAttribute('aria-disabled') === 'true',
+    `focus is ${focusedId()}, aria-disabled=`
+    + `${registry.get('scene-clear-progress').el.getAttribute('aria-disabled')}`);
   await pressBack();
   const cardGone = await waitFor(
     () => !registry.has('showroom-continue-video-41')
@@ -846,7 +855,8 @@ async function run() {
   await sleep(120);
   await tapEnter();
   const clear42 = await waitFor(
-    () => registry.has('scene-clear-progress') && !registry.get('scene-clear-progress').el.disabled,
+    () => registry.has('scene-clear-progress')
+      && registry.get('scene-clear-progress').el.getAttribute('aria-disabled') !== 'true',
     5000);
   focus('scene-clear-progress');
   await tapEnter();

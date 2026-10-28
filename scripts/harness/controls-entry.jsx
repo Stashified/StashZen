@@ -743,10 +743,18 @@ async function run() {
   // posted second is 30.7 − 5, not 30.7.
 
   // ── MK11: a failed write keeps the form ──────────────────
+  // Pressed from the button itself: while the write is in flight it is
+  // `aria-disabled`, not native, so the cursor must survive the round trip.
   await setMode({ markerCreate: 'fail' });
-  press(byLabel('Add marker', modal()));
+  const saveBtn = byLabel('Add marker', modal());
+  saveBtn.focus();
+  await sleep(80);
+  press(saveBtn);
   await sleep(600);
   check('MK11 a failed create keeps the form open', !!modal());
+  check('MK11 ...and the cursor stays on the button it was pressed from',
+    document.activeElement === byLabel('Add marker', modal()),
+    `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
   check('MK11 ...and says why, in the announced line',
     /could not save/i.test(modalStatus() || ''), `status="${modalStatus()}"`);
   check('MK11 ...and keeps the chosen tag',
@@ -791,6 +799,29 @@ async function run() {
   check('MK12 Cancel closes the form', !modal());
   check('MK12 ...and does not start a scene that was paused',
     v.paused === true, `paused=${v.paused}`);
+
+  // ── MK4b: the nudge at its bound keeps the cursor ────────
+  // The form opens on the playhead, and the scene is at most a minute long, so
+  // twelve presses reach 0. Reaching the bound used to natively disable the
+  // pressed button and drop the cursor to <body> mid-gesture.
+  focusRailButton('player-rail-marker-add');
+  ok(document.activeElement);
+  await sleep(400);
+  const backNudge = byLabel('Back 5 seconds', modal());
+  backNudge.focus();
+  await sleep(60);
+  for (let i = 0; i < 12; i++) {
+    press(backNudge);
+    await sleep(60);
+  }
+  check('MK4b nudging to the start holds the form at 00:00',
+    formTime() === '00:00', `formTime=${formTime()}`);
+  check('MK4b ...and keeps the cursor on the nudge button, muted',
+    document.activeElement === byLabel('Back 5 seconds', modal())
+      && byLabel('Back 5 seconds', modal())?.getAttribute('aria-disabled') === 'true',
+    `activeElement="${document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName}"`);
+  press(byLabel('Cancel', modal()));
+  await sleep(300);
 
   // ── MK7: Back out of the form, and where the cursor goes ──
   focusRailButton('player-rail-marker-add');

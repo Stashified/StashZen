@@ -389,9 +389,13 @@ async function run() {
   // The card says resume 0, the detail fetch 1800; the bar and enabled action
   // prove the fetched value. Failure runs first to prove rollback.
   const clearBtn = () => byText('Clear progress', true);
+  // Offered means muted-or-not: the button is never natively disabled once it
+  // exists, it carries `aria-disabled` instead, see T11's focus check below.
+  const clearOffered = () => !!clearBtn() && !clearBtn().disabled
+    && clearBtn().getAttribute('aria-disabled') !== 'true';
   check('T11 the page offers Clear progress, enabled by the fetched resume point',
-    !!clearBtn() && !clearBtn().disabled && !!resumeBar(),
-    `button=${clearBtn()?.disabled === false ? 'enabled' : 'missing/disabled'}, bar=${!!resumeBar()}`);
+    clearOffered() && !!resumeBar(),
+    `button=${clearOffered() ? 'enabled' : 'missing/muted'}, bar=${!!resumeBar()}`);
 
   await setServer({ sceneResetActivity: 'fail' });
   press(clearBtn());
@@ -407,6 +411,10 @@ async function run() {
     activityEvents.length === 0, `${activityEvents.length} event(s)`);
 
   await setServer({ sceneResetActivity: 'ok' });
+  // Focused first, the way the remote reaches it. The press itself mutes the
+  // button; the cursor must stay on it.
+  clearBtn().focus();
+  await sleep(60);
   press(clearBtn());
   await sleep(60);
   check('T11 the retry clears optimistically too', !resumeBar(), `bar=${!!resumeBar()}`);
@@ -425,8 +433,13 @@ async function run() {
     activityEvents.length === 1 && activityEvents[0].id === '4242'
       && activityEvents[0].patch?.resumeTime === 0,
     JSON.stringify(activityEvents));
-  check('T11 ...and the action disables once there is nothing to clear',
-    clearBtn()?.disabled === true, `disabled=${clearBtn()?.disabled}`);
+  check('T11 ...and the action mutes once there is nothing to clear',
+    clearBtn()?.disabled === false
+      && clearBtn()?.getAttribute('aria-disabled') === 'true',
+    `disabled=${clearBtn()?.disabled}, aria-disabled=${clearBtn()?.getAttribute('aria-disabled')}`);
+  check('T11 ...with the cursor still on it rather than on <body>',
+    document.activeElement === clearBtn(),
+    `activeElement=${document.activeElement?.tagName || 'none'}`);
 
   // ── T12: mark played ────────────────────────────────────
   // Optimistic (2 → 3 at 60 ms) and one `sceneAddPlay` with one explicit
@@ -501,9 +514,11 @@ async function run() {
     `landed on "${labelOf(document.activeElement)}"`);
 
   // ── T10: the whole row is walkable, not just the first hop ─
+  // Seven controls to cross: the muted Clear progress stays in the walk, as the
+  // inert "−" at zero stars does (T8).
   play.focus();
   const path = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     press(document.activeElement, 'ArrowRight', 39);
     await sleep(140);   // clear the 90ms repeat throttle
     path.push(labelOf(document.activeElement));
@@ -529,6 +544,7 @@ async function run() {
   // ── T15: the wrap is reversible ─────────────────────────
   // Left out of line two enters line one at its right edge; a nearest-centre
   // score would instead climb to whatever sits left of the current control.
+  // Clear progress is muted here, T11 cleared it, and stays in the walk.
   const backPath = [];
   for (let i = 0; i < 3; i++) {
     press(document.activeElement, 'ArrowLeft', 37);
@@ -536,7 +552,7 @@ async function run() {
     backPath.push(labelOf(document.activeElement));
   }
   check('T15 Left walks the wrapped row back in reverse reading order',
-    backPath.join(' → ') === 'Mark played → 💦o-count 2 → ✓Organised',
+    backPath.join(' → ') === 'Mark played → Clear progress → 💦o-count 2',
     `path: ${backPath.join(' → ')}`);
 
   // ── T9: control for T8 ──────────────────────────────────

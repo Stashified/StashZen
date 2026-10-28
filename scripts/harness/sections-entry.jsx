@@ -670,6 +670,12 @@ async function run() {
   check('S10b Enter on Info opens the panel and asks once for this image',
     panelUp && info1.length === 1 && info1[0].id === '1',
     `open=${panelUp}; fetches=${JSON.stringify(info1.map(f => f.id))}`);
+  // The header buttons are children of the focusable surface, so their Enter
+  // bubbles into its zoom handler. The footer's level readout is the observable
+  // and it must stay blank; a zoom here also turns the next arrows into pan.
+  const zoomLabel = () => document.querySelector('[class*="zoomLevel"]')?.textContent ?? '';
+  check('S10b …and that press does not also zoom the picture',
+    zoomLabel() === '', zoomLabel() || 'no zoom');
   // `visual_files` is the union field Image carries; `files` does not exist,
   // but the fake answers either. Only the query text shows the difference.
   check('S10b the query asks for visual_files, not the invalid `files`',
@@ -739,32 +745,60 @@ async function run() {
     info2.length === 2 && info2[1].id === '2',
     `${info2.length} fetch(es): ${JSON.stringify(info2.map(f => f.id))}`);
 
-  // The Info button holds focus here and Left/Right must still browse. The
-  // handler once ignored arrows unless the picture held focus, so a step took
-  // a Down press first. Both targets are cached, so this must add no fetch.
+  // The Info button holds focus here. Arrows belong to the D-pad, so Left
+  // moves the ring to the Slideshow button rather than stepping the picture
+  // behind it, which read as Info changing the image.
+  const beforeLeft = titleOf();
+  await press('ArrowLeft');
+  check('S11b Left from Info moves focus to the Slideshow button',
+    focusedId() === 'image-viewer-play' && titleOf() === beforeLeft && !!infoPanel(),
+    `focus: ${focusedId()}; "${beforeLeft}" → "${titleOf()}"; panel=${!!infoPanel()}`);
+  check('S11b the header action is labelled Slideshow, not Play',
+    (registry.get('image-viewer-play')?.el?.textContent || '').trim() === 'Slideshow',
+    JSON.stringify(registry.get('image-viewer-play')?.el?.textContent || ''));
+
+  // Arrows belong to the D-pad while a header button holds focus, so browse from
+  // the picture: Down returns the ring to the surface, where the arrows step
+  // again. Both targets are cached, so this must add no fetch.
+  await press('ArrowDown');
   await press('ArrowLeft');             // image 2 → 1, panel stays open
-  const steppedWithInfo = await waitFor(
+  const steppedWithPanel = await waitFor(
     () => /image 1\b/.test(titleOf()) && /VERIFY image studio 1/.test(panelText()),
     3000,
   );
-  check('S11b Left steps while the Info button holds focus',
-    steppedWithInfo && focusedId() === 'image-viewer-info' && !!infoPanel(),
+  check('S11b with the picture focused, the arrows still browse under the panel',
+    steppedWithPanel && focusedId() === 'image-viewer' && !!infoPanel(),
     `"${titleOf()}"; focus: ${focusedId()}; panel=${!!infoPanel()}`);
-  // Compare against the title before the press: on the old guard both presses
-  // were no-ops, so the expected title was already on screen and the check
-  // passed on the broken build.
-  const beforeRight = titleOf();
   await press('ArrowRight');            // back to image 2
-  const steppedBackWithInfo = await waitFor(
+  await waitFor(
     () => /image 2\b/.test(titleOf()) && /VERIFY image studio 2/.test(panelText()),
     3000,
   );
-  check('S11b …and Right steps back with the panel still open',
-    steppedBackWithInfo && beforeRight !== titleOf(),
-    `"${beforeRight}" → "${titleOf()}"`);
+
+  // With the panel closed the button runs the slideshow. The footer countdown
+  // is the observable; a second press stops it without advancing the picture.
   await pressBack();
   await waitFor(() => !infoPanel(), 2000);
-  await press('ArrowLeft');             // back to image 1
+  await press('ArrowUp');               // surface → Info
+  await press('ArrowLeft');             // Info → Slideshow
+  await tapEnter();
+  const countdown = () => (document.querySelector('[class*="nextIn"]')?.textContent || '');
+  const playLabel = () => (registry.get('image-viewer-play')?.el?.textContent || '').trim();
+  const counting = await waitFor(() => /\d+s/.test(countdown()), 2000);
+  check('S11b Slideshow starts a countdown to the next picture',
+    counting && /Next in/.test(countdown()), countdown() || '(no countdown)');
+  check('S11b …and the button says Stop slideshow while it runs',
+    playLabel() === 'Stop slideshow', playLabel());
+  await tapEnter();
+  const countGone = await waitFor(
+    () => !document.querySelector('[class*="nextIn"]'), 2000,
+  );
+  check('S11b …and pressing it again stops the countdown, on the same picture',
+    countGone && /image 2\b/.test(titleOf()) && playLabel() === 'Slideshow',
+    `"${titleOf()}"; label "${playLabel()}"`);
+
+  await press('ArrowDown');             // back to the picture
+  await press('ArrowLeft');             // image 2 → 1
   await press('ArrowUp');
   await tapEnter();
   await waitFor(() => /VERIFY image studio 1/.test(panelText()), 3000);
@@ -774,6 +808,51 @@ async function run() {
     `${info2b.length} fetch(es): ${JSON.stringify(info2b.map(f => f.id))}`);
   await pressBack();
   await waitFor(() => !infoPanel(), 2000);
+
+  // ── S11b  the open panel does not stop the show ─────────
+  // The timer and its countdown run with the panel up, so the panel is a readout
+  // of the picture on screen and follows each step.
+  await press('ArrowUp');               // surface → Info
+  await tapEnter();
+  await waitFor(() => !!infoPanel(), 2000);
+  await press('ArrowLeft');             // Info → Slideshow
+  check('S11b Left from Info reaches Slideshow with the panel open',
+    focusedId() === 'image-viewer-play' && !!infoPanel(),
+    `focus: ${focusedId()}; panel=${!!infoPanel()}`);
+  const beforeSlide = titleOf();
+  await tapEnter();
+  const countingOpen = await waitFor(
+    () => !!infoPanel() && /\d+s/.test(countdown()), 2000,
+  );
+  check('S11b Slideshow starts with the panel open and leaves it open',
+    countingOpen, `panel=${!!infoPanel()}; ${countdown() || '(no countdown)'}`);
+
+  // The advance is the claim. The next picture was preloaded, so this is also
+  // where the cached load could land before the reset and leave a spinner over
+  // an invisible picture for good.
+  const advanced = await waitFor(
+    () => titleOf() !== beforeSlide && /VERIFY image studio 2/.test(panelText()),
+    9000,
+  );
+  const stepImg = viewer.querySelector('img');
+  check('S11b with the panel open, the picture still steps on the timer',
+    advanced,
+    `"${beforeSlide}" → "${titleOf()}"; panel="${panelText().replace(/\s+/g, ' ').slice(0, 60)}"`);
+  check('S11b the picture it steps to is drawn, not left behind a spinner',
+    !!stepImg && /imageLoaded/.test(stepImg.className)
+      && !document.querySelector('[class*="spinner"]'),
+    `class="${stepImg?.className || '(no img)'}"`);
+
+  // Stop the show and hand S11c the first picture with the panel closed.
+  await tapEnter();
+  await waitFor(() => !document.querySelector('[class*="nextIn"]'), 2000);
+  await press('ArrowDown');             // Slideshow → picture
+  await press('ArrowLeft');             // image 2 → 1
+  await waitFor(() => /image 1\b/.test(titleOf()), 2000);
+  await pressBack();                    // close the panel
+  await waitFor(() => !infoPanel(), 2000);
+  check('S11b the picture has focus again for the next case',
+    focusedId() === 'image-viewer', focusedId());
 
   // ── S11c  a slow answer cannot land on the image stepped to ──
   // Open the panel on image 3, return to the picture and step to 4 while 3's
@@ -839,6 +918,42 @@ async function run() {
   // Back on image 1, which is the card S12's focus restore is about.
   for (let i = 0; i < 4; i += 1) await press('ArrowLeft');
   check('S11e stepped back to the opening image', titleOf() === before, `"${titleOf()}"`);
+
+  // ── S11f  a zoomed picture pans the way the press points ──
+  // The fixture serves a picture larger than the stage for `full.png`, so a 2x
+  // zoom genuinely overflows and the clamp cannot hide the step. The press
+  // moves the window, not the picture: Right reveals the right side.
+  const imgEl = () => viewer.querySelector('img');
+  await waitFor(() => !!imgEl() && imgEl().complete && imgEl().naturalWidth > 0, 3000);
+  await tapEnter();                     // 1x → 2x
+  // The CSSOM collapses `translate(x, 0px)` to `translate(x)`, so the Y part
+  // is optional in what is read back.
+  const panOf = () => {
+    const m = /translate\((-?[\d.]+)px(?:, (-?[\d.]+)px)?\)/
+      .exec(imgEl()?.style.transform || '');
+    return m ? { x: Number(m[1]), y: Number(m[2] ?? 0) } : null;
+  };
+  const picSize = () => ({
+    w: imgEl()?.offsetWidth || 0, h: imgEl()?.offsetHeight || 0,
+  });
+  const p0 = panOf();
+  await press('ArrowRight');
+  const p1 = panOf();
+  check('S11f Right reveals the right side of the picture',
+    !!p0 && !!p1 && p1.x < p0.x && Math.abs(p1.x - p0.x) >= picSize().w * 0.1,
+    `${JSON.stringify(p1)} from ${JSON.stringify(p0)}, ${picSize().w}x${picSize().h}; `
+      + `transform="${imgEl()?.style.transform}"`);
+  await press('ArrowDown');
+  const p2 = panOf();
+  check('S11f Down reveals the lower part',
+    !!p1 && !!p2 && p2.y < p1.y && Math.abs(p2.y - p1.y) >= picSize().h * 0.1,
+    `${JSON.stringify(p2)} from ${JSON.stringify(p1)}, ${picSize().w}x${picSize().h}`);
+  check('S11f the zoom readout follows the zoom', zoomLabel() === '2×', zoomLabel());
+
+  await pressBack();                    // 2x → 1x, not close
+  check('S11f Back resets the zoom before it closes the viewer',
+    !!document.querySelector('[role="dialog"][aria-modal="true"]') && zoomLabel() === '',
+    `open=${!!document.querySelector('[role="dialog"][aria-modal="true"]')}; zoom="${zoomLabel()}"`);
 
   // ── S12  Back closes it and returns focus to the card ───
   await pressBack();

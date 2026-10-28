@@ -8,6 +8,8 @@ import { useState } from 'react';
 import NavRail from './components/NavRail.jsx';
 import ControlsPanel from './components/ControlsPanel.jsx';
 import { useRestoreFocus } from './hooks/useRestoreFocus.js';
+import { focusFirstControl } from './utils/focus.js';
+import { publishRowPatch, publishRowRemove } from './utils/rowPatches.js';
 import styles from './App.module.css';
 import { useSettings, setSettings, dataSourceKey } from './utils/settings.js';
 import { useAutoUpdateCheck } from './hooks/useAutoUpdateCheck.js';
@@ -63,6 +65,12 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exitPromptOpen, setExitPromptOpen] = useState(false);
+  const [markerEditor, setMarkerEditor] = useState(null);
+  const [markerDelete, setMarkerDelete] = useState(null);
+  // The global search page's query. App owns it because opening a performer
+  // leaves the page for the Performers tab, and Back has to return to the same
+  // results rather than an empty field.
+  const [searchText, setSearchText] = useState('');
 
   const {
     builderOpen, setBuilderOpen, closeBuilder, applyWorkingFilter, saveBuiltFilter,
@@ -98,6 +106,7 @@ export default function App() {
     handleSceneActivityChange,
     handlePerformerSelect,
     handleShowroomPerformerSelect,
+    handleSearchPerformerSelect,
     handlePerformerBack,
     handleImageSelect,
     openImageViewer,
@@ -159,6 +168,49 @@ export default function App() {
     setExitPromptOpen(false);
     // Same deferred restore as the other closes: drop the prompt's DOM first.
     mainFocus.restore();
+  };
+
+  // ── Marker edit / delete ─────────────────────────────────
+  // Both start from the long-press menu, so the card it opened on is the
+  // return target. A deleted card is gone, hence the fallback.
+  const closeMarkerOverlay = () => {
+    setMarkerEditor(null);
+    setMarkerDelete(null);
+    menuCardFocus.restore({ fallback: focusFirstControl });
+  };
+
+  const editMarkerFromMenu = (marker) => {
+    dismissActionMenu();
+    setMarkerEditor(marker);
+  };
+
+  const deleteMarkerFromMenu = (marker) => {
+    dismissActionMenu();
+    setMarkerDelete(marker);
+  };
+
+  // The open listing patches itself; the modal closes through onClose.
+  const handleMarkerSaved = (saved) => {
+    publishRowPatch('marker', saved.id, {
+      title: saved.title,
+      seconds: saved.seconds,
+      primaryTag: saved.primaryTag?.name || null,
+      primaryTagId: saved.primaryTag?.id || null,
+    });
+  };
+
+  const handleMarkerDeleted = (marker) => {
+    publishRowRemove('marker', marker.id);
+  };
+
+  // A search section's See-all hands its query to that tab. The query must
+  // arrive with the tab's first fetch, hence `searchForTab`; the arrival rule
+  // otherwise clears search as a term typed against another section. The
+  // origin takes Back out of the full listing and back to the results.
+  const openSearchListing = (tab, query, focusId) => {
+    setFilterOrigin({ tab: 'search', focusId, to: tab });
+    setControls(prev => ({ ...prev, search: query, searchForTab: tab }));
+    changeTab(tab);
   };
 
   // One dispatcher, not four `onSelect` props: one `<EntityPage>` draws all
@@ -271,6 +323,12 @@ export default function App() {
           onMuteToggle={togglePreviewMuted}
           onEntitySelect={handleEntitySelect}
           onEntityLongPress={handleEntityLongPress}
+          searchText={searchText}
+          onSearchQueryChange={setSearchText}
+          onSearchPerformerSelect={handleSearchPerformerSelect}
+          onSearchTagSelect={handleTagSelect}
+          onSearchStudioSelect={handleStudioSelect}
+          onSearchSeeAll={openSearchListing}
         />
       </div>
 
@@ -298,7 +356,20 @@ export default function App() {
           openImageViewer: openImageViewerFromMenu,
           openGallery: openGalleryFromMenu,
           openGallerySlideshow,
+          onEditMarker: editMarkerFromMenu,
+          onDeleteMarker: deleteMarkerFromMenu,
           onClose: closeActionMenu,
+        }}
+        markerEditor={{
+          marker: markerEditor,
+          onClose: closeMarkerOverlay,
+          onSaved: handleMarkerSaved,
+          onDeleted: handleMarkerDeleted,
+        }}
+        markerDelete={{
+          marker: markerDelete,
+          onClose: closeMarkerOverlay,
+          onDeleted: handleMarkerDeleted,
         }}
         imageViewer={{
           viewer: imageViewer,

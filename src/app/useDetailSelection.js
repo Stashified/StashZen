@@ -116,25 +116,28 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     setSelectedPerformer(performer);
   };
 
-  // A performer opened from the Home shelf. The page only renders under
-  // `activeTab === 'performers'`, and the pressed card unmounts with the
-  // switch, so the origin names it by id.
-  const handleShowroomPerformerSelect = (performer) => {
-    setPerformerOrigin({ focusId: `performer-${performer.id}` });
+  // A performer opened from the Home shelf or the search page. The page only
+  // renders under `activeTab === 'performers'`, and the pressed card unmounts
+  // with the switch, so the origin names the tab and card by id.
+  const openPerformerFrom = (performer, tab) => {
+    setPerformerOrigin({ focusId: `performer-${performer.id}`, tab });
     setSelectedPerformer(performer);
     changeTab('performers');
   };
+
+  const handleShowroomPerformerSelect = (performer) => openPerformerFrom(performer, 'home');
+  const handleSearchPerformerSelect = (performer) => openPerformerFrom(performer, 'search');
 
   const handlePerformerBack = () => {
     const performer = selectedPerformer;
     setSelectedPerformer(null);
     if (performerOrigin) {
-      const { focusId } = performerOrigin;
+      const { focusId, tab } = performerOrigin;
       setPerformerOrigin(null);
-      changeTab('home');
-      // Home remounts and refetches its shelves, so the card does not exist
-      // yet; retry as `activateFiltered`'s Back does.
-      focusByIdWhenReady(focusId);
+      changeTab(tab || 'home');
+      // The origin tab remounts and refetches, so the card does not exist yet;
+      // retry as `activateFiltered`'s Back does.
+      focusByIdWhenReady(focusId, { fallback: focusFirstControl });
       return;
     }
     // The Performers grid remounts in this commit and fetches page 1, so the
@@ -195,6 +198,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     handleSceneActivityChange,
     handlePerformerSelect,
     handleShowroomPerformerSelect,
+    handleSearchPerformerSelect,
     handlePerformerBack,
     handleImageSelect,
     openImageViewer,

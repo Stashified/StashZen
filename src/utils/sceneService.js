@@ -267,8 +267,8 @@ async function sceneUpdate(input) {
 }
 
 /**
- * rating100 is Stash's 0–100 rating. 0 means unrated and is written as 0, not
- * null: the field is a plain Int, and 0 is what Stash's UI stores on clear.
+ * rating100 is Stash's 1–100 rating; unrated is **null**. Stash's own UI sends
+ * null on clear, and 0 is a real value its filters and sorts count as rated.
  */
 export async function updateSceneRating(id, rating100) {
   // The clamp lets NaN through; GraphQL's Int cannot hold it.
@@ -276,8 +276,12 @@ export async function updateSceneRating(id, rating100) {
     throw new RangeError('rating100 must be a finite number');
   }
   const clamped = Math.max(0, Math.min(100, Math.round(rating100)));
-  const result = await sceneUpdate({ id: String(id), rating100: clamped });
-  const saved = result?.rating100 ?? clamped;
+  const next = clamped > 0 ? clamped : null;
+  const result = await sceneUpdate({ id: String(id), rating100: next });
+  // A zero the server echoes back is still "unrated" to this app.
+  const saved = result
+    ? (Number.isFinite(result.rating100) && result.rating100 > 0 ? result.rating100 : null)
+    : next;
   // The card draws the display string normalizeVideo builds.
   publishRowPatch('scene', id, {
     rating: saved != null ? (saved / 10).toFixed(1) : null,

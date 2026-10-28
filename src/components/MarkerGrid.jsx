@@ -39,6 +39,7 @@ export default function MarkerGrid({
     // A restore by `marker-<id>` pages forward through unloaded markers, see
     // utils/focus.js.
     focusPrefix: 'marker',
+    entity: 'marker',
   });
 
   // The listing travels to every card so the menu can offer "Play all" and

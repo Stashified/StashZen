@@ -45,3 +45,7 @@ avspike/
 # Python bytecode from the harness server.
 __pycache__/
 *.pyc
+
+# Local roadmap notes from the 2026-10-28 additions scan. Working material,
+# not repo content.
+planning.md

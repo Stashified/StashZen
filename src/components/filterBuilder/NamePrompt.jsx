@@ -67,7 +67,7 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
             ref={noRef}
             className={`${styles.btn} ${noFocused ? styles.focused : ''}`}
             onClick={() => { if (!saving) onCancel?.(); }}
-            disabled={saving}
+            aria-disabled={saving || undefined}
           >
             Cancel
           </button>
@@ -76,7 +76,10 @@ export function NamePrompt({ value, onChange, onConfirm, onCancel, saving, error
             ref={okRef}
             className={`${styles.btn} ${styles.btnPrimary} ${okFocused ? styles.focused : ''}`}
             onClick={() => { if (value.trim() && !saving) onConfirm?.(); }}
-            disabled={!value.trim() || saving}
+            // Save is pressed with the cursor on it, so it must not go native
+            // disabled for the in-flight state: the blur would leave a failed
+            // save with the prompt open and nothing focused.
+            aria-disabled={(!value.trim() || saving) || undefined}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

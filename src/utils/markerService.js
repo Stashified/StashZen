@@ -69,7 +69,7 @@ const FIND_MARKERS_QUERY = `
           files { video_codec audio_codec format duration }
           performers { name }
         }
-        primary_tag { name }
+        primary_tag { id name }
         tags { name }
       }
     }
@@ -90,6 +90,7 @@ function normalizeMarker(m) {
     // for servers that do generate real marker frames.
     screenshot: withApiKey(m.scene?.paths?.screenshot || m.screenshot) || null,
     primaryTag: m.primary_tag?.name || null,
+    primaryTagId: m.primary_tag?.id || null,
     tags: m.tags?.map(t => t.name) || [],
     scene: {
       id: m.scene?.id,
@@ -378,4 +379,77 @@ export async function createMarker({ sceneId, seconds, primaryTagId, primaryTagN
     seconds: created.seconds || Number(seconds) || 0,
     primaryTag: { id: created.primary_tag?.id, name: created.primary_tag?.name || primaryTagName || null },
   };
+}
+
+// ═══════════════════════════════════════════════════════════
+// UPDATE / DELETE
+// ═══════════════════════════════════════════════════════════
+
+const SCENE_MARKER_UPDATE_MUTATION = `
+  mutation SceneMarkerUpdate($input: SceneMarkerUpdateInput!) {
+    sceneMarkerUpdate(input: $input) {
+      id
+      title
+      seconds
+      primary_tag { id name }
+    }
+  }
+`;
+
+export async function updateMarker({
+  id, seconds, primaryTagId, primaryTagName, title = '',
+}) {
+  if (!id || !primaryTagId) throw new Error('A marker needs an id and a primary tag');
+
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    return {
+      id,
+      title: title.trim() || primaryTagName || '',
+      seconds: Number(seconds) || 0,
+      primaryTag: { id: primaryTagId, name: primaryTagName || null },
+    };
+  }
+
+  const data = await runQuery(SCENE_MARKER_UPDATE_MUTATION, {
+    input: {
+      id: String(id),
+      seconds: Number(seconds) || 0,
+      primary_tag_id: String(primaryTagId),
+      title: title.trim() || primaryTagName || '',
+    },
+  });
+
+  const updated = data?.sceneMarkerUpdate;
+  if (!updated?.id) throw new Error('Stash did not return the updated marker');
+
+  clearMarkerCache();
+
+  return {
+    id: updated.id,
+    title: updated.title || title.trim() || primaryTagName || '',
+    seconds: updated.seconds || Number(seconds) || 0,
+    primaryTag: { id: updated.primary_tag?.id, name: updated.primary_tag?.name || primaryTagName || null },
+  };
+}
+
+const SCENE_MARKER_DESTROY_MUTATION = `
+  mutation SceneMarkerDestroy($id: ID!) {
+    sceneMarkerDestroy(id: $id)
+  }
+`;
+
+export async function destroyMarker(id) {
+  if (!id) throw new Error('A marker needs an id');
+
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    return true;
+  }
+
+  const data = await runQuery(SCENE_MARKER_DESTROY_MUTATION, { id: String(id) });
+  if (!data?.sceneMarkerDestroy) throw new Error('Stash did not delete the marker');
+
+  clearMarkerCache();
+  return true;
 }

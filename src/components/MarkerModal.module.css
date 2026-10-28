@@ -11,7 +11,9 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.72);
-  z-index: 30;
+  /* Above the controls bar now that the form also opens from the Markers tab;
+     inside the player its parent overlay is the stacking context. */
+  z-index: 930;
 }
 
 .panel {
@@ -117,7 +119,8 @@
               color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
 }
 
-.chip:disabled {
+.chip:disabled,
+.chip[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -176,7 +179,8 @@
               color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -198,12 +202,21 @@
   border-color: var(--accent);
 }
 
+.btnDanger {
+  color: var(--red);
+}
+
 .footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 4px;
+}
+
+/* Pushes Delete away from the buttons that keep the marker. */
+.footerSpacer {
+  margin-left: auto;
 }
 
 /*

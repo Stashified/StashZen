@@ -350,7 +350,8 @@
   transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv);
 }
 
-.actionBtn:disabled {
+.actionBtn:disabled,
+.actionBtn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }

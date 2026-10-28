@@ -24,19 +24,25 @@ import { getSettings } from './settings.js';
 export function withApiKey(url) {
   if (!url || typeof url !== 'string') return url;
 
+  // The fragment never reaches the server, so the key goes before it.
+  const hashAt = url.indexOf('#');
+  const base = hashAt === -1 ? url : url.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : url.slice(hashAt);
+
   // Already authenticated, Stash's own `paths.stream` arrives this way.
-  if (/[?&]apikey=/i.test(url)) return url;
+  if (/[?&]apikey=/i.test(base)) return url;
 
   const { stashUrl, stashKey } = getSettings();
   if (!stashKey) return url;
 
   try {
-    if (new URL(url, stashUrl).host !== new URL(stashUrl).host) return url;
+    // Origin, not host: another scheme on the same host is another server.
+    if (new URL(base, stashUrl).origin !== new URL(stashUrl).origin) return url;
   } catch (e) {
     // Unparseable, or no usable base, leave it alone rather than guess.
     return url;
   }
 
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}apikey=${encodeURIComponent(stashKey)}`;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}apikey=${encodeURIComponent(stashKey)}${fragment}`;
 }

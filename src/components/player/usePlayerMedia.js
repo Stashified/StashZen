@@ -14,8 +14,9 @@
  *     widening the list would tear the listeners down mid-playback.
  */
 
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { playbackFailureMessage } from './playerMessages.js';
+import { timelineDuration } from '../../utils/playbackSource.js';
 
 export function usePlayerMedia({
   video,
@@ -42,6 +43,12 @@ export function usePlayerMedia({
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
 
+  // Latest scene duration for the completion latch. A ref, not a dependency:
+  // the wiring effect must not tear its listeners down when the scene detail
+  // fills the duration in.
+  const sceneDurationRef = useRef(video?.durationSeconds);
+  sceneDurationRef.current = video?.durationSeconds;
+
   // Wire up the media events.
   //
   // A **layout** effect, not for layout reasons: the AVPlay session opens from
@@ -57,8 +64,12 @@ export function usePlayerMedia({
 
     const onPlay      = () => {
       // Replaying a finished scene is a new sitting: its position is reportable
-      // again, or the completion latch would keep writing 0.
-      if (v.currentTime < (v.duration || 0) - 1) progress.reopen();
+      // again, or the completion latch would keep writing 0. The app's own
+      // duration rule, because the element reports NaN/Infinity on some
+      // streams (AVPlay before prepare, the MP4 transcode).
+      if (v.currentTime < timelineDuration(v.duration, sceneDurationRef.current) - 1) {
+        progress.reopen();
+      }
       setPlaying(true);
       setBuffering(false);
     };
@@ -87,7 +98,9 @@ export function usePlayerMedia({
       progress.tick(t, v.paused || v.seeking);
       // A paused seek back from the end emits no `play`, so the completion
       // latch must be cleared here or the teardown saves 0.
-      if (v.currentTime < (v.duration || 0) - 1) progress.reopen();
+      if (v.currentTime < timelineDuration(v.duration, sceneDurationRef.current) - 1) {
+        progress.reopen();
+      }
       // A held skim owns the timeline until its seek lands: the element is
       // still playing at the old position, and syncing to it here made the
       // bar yoyo between the gesture target and the frame on screen.

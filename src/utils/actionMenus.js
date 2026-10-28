@@ -99,7 +99,10 @@ export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetai
  * `restoreBy: 'marker'`: Back returns to the last-viewed scene's marker card;
  * rows carry the marker id because a scene id names no card in this tab.
  */
-export function buildMarkerMenuItems({ item, list, index }, { openPlayer, onDetails }) {
+export function buildMarkerMenuItems(
+  { item, list, index },
+  { openPlayer, onDetails, onEditMarker, onDeleteMarker },
+) {
   const loaded = list?.items?.length ? list.items : [item];
   const start = Math.max(0, Math.min(index, loaded.length - 1));
   const here = markerQueueItems(loaded.slice(start));
@@ -129,6 +132,17 @@ export function buildMarkerMenuItems({ item, list, index }, { openPlayer, onDeta
         }),
       },
     ] : []),
+    ...(onEditMarker ? [{
+      id: 'menu-marker-edit',
+      label: 'Edit marker',
+      onSelect: () => onEditMarker(item),
+    }] : []),
+    ...(onDeleteMarker ? [{
+      id: 'menu-marker-delete',
+      label: 'Delete marker',
+      danger: true,
+      onSelect: () => onDeleteMarker(item),
+    }] : []),
     {
       id: 'menu-details',
       label: 'Details',

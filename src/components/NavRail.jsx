@@ -32,7 +32,9 @@ const ITEMS = [
   { id: 'tags',       label: 'Tags',       Icon: IconTags,       next: 'studios' },
   { id: 'studios',    label: 'Studios',    Icon: IconStudios,    next: 'galleries' },
   { id: 'galleries',  label: 'Galleries',  Icon: IconGalleries,  next: 'images' },
-  { id: 'images',     label: 'Images',     Icon: IconImages,     next: 'settings' },
+  { id: 'images',     label: 'Images',     Icon: IconImages,     next: 'search' },
+  // Last, below the library: search is a utility, not another browse section.
+  { id: 'search',     label: 'Search',     Icon: IconSearch,     next: 'settings' },
 ];
 
 // Stroke-only and `currentColor`, so the focus/active rules colour them by
@@ -54,6 +56,15 @@ function Svg({ children }) {
 
 function IconHome() {
   return <Svg><path d="M3 9.3 10 3.2l7 6.1V16a1.2 1.2 0 0 1-1.2 1.2h-3.3v-4.6H8.5v4.6H4.2A1.2 1.2 0 0 1 3 16z" /></Svg>;
+}
+
+function IconSearch() {
+  return (
+    <Svg>
+      <circle cx="8.6" cy="8.6" r="5.2" />
+      <path d="m12.5 12.5 4.1 4.1" />
+    </Svg>
+  );
 }
 
 function IconScenes() {
@@ -245,7 +256,7 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings, hasUpd
         // The other end of the same edge. Down into Settings is declared in
         // ITEMS; without `prev`, Up fell back to geometry and landed mid-grid.
         // Up is the only way back, since Settings is `verticalOnly`.
-        prev="images"
+        prev="search"
         // Down *from* Settings is declared as itself: a forced edge resolving to
         // the focused element blocks that direction (see useKeyHandler), so
         // Down stays put and Right is the only way out. Otherwise geometry found

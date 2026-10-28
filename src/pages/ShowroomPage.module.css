@@ -1,4 +1,4 @@
-/* Four shelves, each exactly one screen wide. The page is the vertical scroll
+/* Five shelves, each exactly one screen wide. The page is the vertical scroll
    container (the same shape as VideoGrid's wrapper, so
    useKeyHandler's scrollContainerOf sees it). At 1920x1080 the first three
    shelves are fully in view and the fourth peeks above the fold: measured,

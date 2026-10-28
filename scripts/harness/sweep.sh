@@ -2,64 +2,149 @@
 # Runs every driver and collects the result JSONs under /tmp/diff/$1/<name>.json,
 # so two revisions can be compared byte-for-byte.
 #
-# The comparison is a *differential*: run it against two revisions and diff the
-# result files. Two rules follow from that.
-#
 #   A differential proves neutrality, never coverage. A check red on both sides
-#   leaves a clean diff and is still red — read the tally on both sides and name
-#   the checks red in both.
+#   leaves a clean diff and is still red — read the tally on both sides.
 #
 #   Run it *before* any version bump. __APP_VERSION__ is interpolated into the
-#   DOM by FirstRun.jsx and SettingsPanel.jsx, so bumping package.json partway
-#   changes firstrun, controls and actions-settings and reads as a regression.
+#   DOM, so bumping package.json partway changes firstrun, controls and
+#   actions-settings and reads as a regression.
 #
-# One at a time, deliberately: concurrent runs are where this harness has hung.
+#   Lint runs first and aborts the sweep: it is a step of the CI build, and no
+#   driver can see a tree CI would not build. SKIP_LINT=1 escapes it.
 #
 #   Disk is a real failure mode. Each run leaves a Firefox profile and a bundle
-#   under /tmp/diff-<label>-<name>, 50–160 MB apiece. When the tmpfs fills, a
-#   driver whose server cannot write result.json dies but its server stays up,
-#   and the sweep hangs while later drivers run on. Green drivers delete their
-#   dir; a red one keeps it for post-mortem. `df -h /tmp` when stuck.
+#   under /tmp/diff-<label>-<name>, 50–160 MB apiece. Green drivers delete their
+#   dir; a red one keeps it. `df -h /tmp` when one stalls.
 #
-#   Lint runs first and aborts the sweep: this sweep stands in for CI's build,
-#   and `npm run lint` is a step *of* that build, so a lint error is a release
-#   that never produces a .wgt and no driver can see it. Abort rather than warn,
-#   because a red line in a tally gets scrolled past. SKIP_LINT=1 escapes it.
+#   The drivers run in a pool, WORKERS at a time (default 3). Concurrency hung
+#   in the past because every run shared port 8850; each job now gets its own
+#   port and NAME dir. Drivers whose assertions read the clock (`serial=1`) run
+#   one at a time after the pool, so load cannot move their timings.
 #
-# Usage:  bash scripts/harness/sweep.sh <label>
+# Usage:  bash scripts/harness/sweep.sh [--quick] <label>
 set -u
 
-LABEL=${1:?usage: sweep.sh <label>}
+MODE=full
+if [ "${1:-}" = "--quick" ]; then MODE=quick; shift; fi
+LABEL=${1:?usage: sweep.sh [--quick] <label>}
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=/tmp/diff/$LABEL
+BASE_PORT=8850
+SERIAL_PORT=8889
+WORKERS=${WORKERS:-3}
 mkdir -p "$OUT"
 # Leftovers from an interrupted round of the same label. Safe because sweeps
 # are run one at a time; never while one is in flight.
 rm -rf /tmp/diff-"$LABEL"-*
 
-# A driver with no result file did not run at all — a missing observation, not
-# a red check, and it must not read as a pass. So it is counted and the sweep
-# exits non-zero.
-MISSING=0
+# name|entry|query|update-check|serial
+FULL_JOBS=(
+  "list-grid|list-entry.jsx|?view=grid|0|0"
+  "list-carousel|list-entry.jsx|?view=carousel|0|0"
+  "list-coverflow|list-entry.jsx|?view=coverflow|0|0"
+  # `?view=random` is not a key in VIEWS, so the `|| VIEWS.grid` fallback renders
+  # the same VideoGrid as list-grid. It is not a byte-duplicate: G6 tests the raw
+  # query string, so `random` takes the skip branch and reports 21 checks to
+  # grid's 27. It stays because its count is a baseline other runs are diffed
+  # against.
+  "list-random|list-entry.jsx|?view=random|0|0"
+  "list-list|list-entry.jsx|?view=list|0|0"
+  "boot|boot-entry.jsx||0|0"
+  "markerfix|markerfix-entry.jsx||0|0"
+  # The focus-move paint contract of all four classic-grid cards. Structural,
+  # not a timing test, but it reads paint order and runs alone.
+  "focuspaint|focuspaint-entry.jsx||0|1"
+  "roworder|roworder-entry.jsx||0|0"
+  "rail|rail-entry.jsx||0|0"
+  # The Search tab: one card type per section, the hand-off into a tab with the
+  # query applied, and the return trip to the same results.
+  "search|search-entry.jsx||0|0"
+  "sections|sections-entry.jsx||0|0"
+  "showroom|showroom-entry.jsx||0|0"
+  # Leaving a tab is the TV's refresh: the arriving page must go to the wire
+  # rather than the module-scoped list cache.
+  "refresh|refresh-entry.jsx||0|1"
+  "menu|menu-entry.jsx||0|0"
+  "menu-actions|menu-entry.jsx|?view=menu|0|0"
+  "menu-queue|menu-entry.jsx|?view=queue|0|0"
+  "menu-saves|menu-entry.jsx|?view=saves|0|0"
+  "menu-buttons|menu-entry.jsx|?view=buttons|0|0"
+  "preview|preview-entry.jsx||0|1"
+  "codec|codec-entry.jsx||0|0"
+  # The TV engine against a fake AVPlay: the decisions around the engine, not
+  # that it decodes. Its arrival verdict is a 2.5 s clock.
+  "avplay|avplay-entry.jsx||0|1"
+  "controls|controls-entry.jsx||0|0"
+  "detail|entry.jsx||0|0"
+  "performer|performer-entry.jsx||0|0"
+  "performerback|performerback-entry.jsx||0|0"
+  "filter|filter-entry.jsx||0|0"
+  "firstrun|firstrun-entry.jsx||0|0"
+  "theme|theme-entry.jsx||0|0"
+  "actions-settings|actions-entry.jsx|?view=settings|0|0"
+  "actions-exit|actions-entry.jsx|?view=exit|0|0"
+  "settings-status|settings-status-entry.jsx||0|0"
+  # Ordering, cache slots and key strings rather than a screen; the in-flight
+  # identity checks read timing, so it runs alone.
+  "datalayer|datalayer-entry.jsx||0|1"
+  "errorboundary|errorboundary-entry.jsx||0|0"
+  "pinlock|pinlock-entry.jsx||0|0"
+  "views|views-entry.jsx||0|0"
+  "longpress|longpress-entry.jsx||0|0"
+  # The public-only update check, in both build shapes: `update` is the public
+  # build, `update-off` proves the private one has no section and no request.
+  "update|update-entry.jsx||1|1"
+  "update-off|update-entry.jsx||0|1"
+)
 
-run() {  # run <name> <entry> [query] [update-check 0|1]
-  local name=$1 entry=$2 query=${3:-} update=${4:-0}
-  ENTRY="scripts/harness/$entry" NAME="diff-$LABEL-$name" PORT=8850 QUERY="$query" \
+# The lane for iterating on a change: the fast, broad drivers. The full sweep
+# stays the release gate.
+QUICK_JOBS=(
+  "boot|boot-entry.jsx||0|0"
+  "list-grid|list-entry.jsx|?view=grid|0|0"
+  "rail|rail-entry.jsx||0|0"
+  "search|search-entry.jsx||0|0"
+  "sections|sections-entry.jsx||0|0"
+  "menu|menu-entry.jsx||0|0"
+  "views|views-entry.jsx||0|0"
+  "longpress|longpress-entry.jsx||0|0"
+)
+
+JOBS=("${FULL_JOBS[@]}")
+[ "$MODE" = quick ] && JOBS=("${QUICK_JOBS[@]}")
+
+run_one() {  # run_one <port> <name> <entry> [query] [update]
+  local port=$1 name=$2 entry=$3 query=${4:-} update=${5:-0}
+  ENTRY="scripts/harness/$entry" NAME="diff-$LABEL-$name" PORT="$port" QUERY="$query" \
     HARNESS_UPDATE_CHECK="$update" \
     "$HERE/run.sh" >"$OUT/$name.log" 2>&1
   if [ -f "/tmp/diff-$LABEL-$name/result.json" ]; then
     cp "/tmp/diff-$LABEL-$name/result.json" "$OUT/$name.json"
     local n
     n=$(python3 -c "import json;r=json.load(open('$OUT/$name.json'));print(f\"{sum(1 for x in r if x['pass'])}/{len(r)}\")")
-    echo "  $name: $n"
+    printf '%s\n' "$n" > "$OUT/$name.tally"
     # Green drivers give back their 50–160 MB as they finish; a red one keeps
     # its dir for post-mortem. `${n%%/*}` vs `${n##*/}` is "all passed".
     if [ "${n%%/*}" = "${n##*/}" ]; then rm -rf "/tmp/diff-$LABEL-$name"; fi
   else
-    echo "  $name: NO RESULTS — the driver did not execute (see $OUT/$name.log)"
-    MISSING=$((MISSING + 1))
+    printf 'NO RESULTS\n' > "$OUT/$name.tally"
   fi
+}
+export -f run_one
+export LABEL OUT HERE
+
+# Each job gets its own port (index-based, so no two can collide) and its own
+# NAME dir (run_one derives it). xargs keeps the pool at WORKERS processes.
+dispatch_pool() {  # stdin: one name|entry|query|update line per job
+  local idx=0 line
+  while IFS= read -r line; do
+    printf '%s|%s\n' "$idx" "$line"
+    idx=$((idx + 1))
+  done | xargs -r -P "$WORKERS" -I{} bash -c '
+    IFS="|" read -r idx name entry query update <<< "$1"
+    run_one $((8850 + idx)) "$name" "$entry" "$query" "$update"
+  ' _ {}
 }
 
 cd "$ROOT" || exit 1
@@ -73,105 +158,33 @@ if [ "${SKIP_LINT:-}" != "1" ]; then
     exit 1
   fi
 fi
-run list-grid      list-entry.jsx      '?view=grid'
-run list-carousel  list-entry.jsx      '?view=carousel'
-run list-coverflow list-entry.jsx      '?view=coverflow'
-# `?view=random` does not mean what it says: 'random' is not a key in VIEWS, so
-# the `|| VIEWS.grid` fallback renders the same VideoGrid as `list-grid`. It is
-# not a byte-duplicate, though: runGrid's G6 guard tests the raw query string, so
-# `random` takes the skip branch and reports 18 checks to grid's 19, with the
-# race assertions replaced by a "skipped" line. It stays, with this note, because
-# its count is a baseline other runs are diffed against.
-run list-random    list-entry.jsx      '?view=random'
-# The one-column List mode: the grid's paging contract plus the shape
-# assertions that distinguish it from a four-column grid.
-run list-list      list-entry.jsx      '?view=list'
-run boot           boot-entry.jsx
-run markerfix      markerfix-entry.jsx
-# The focus-move paint contract of all four classic-grid cards. Structural,
-# not a timing test: see the header of focuspaint-entry.jsx for why this
-# harness cannot honestly time a TV paint.
-run focuspaint     focuspaint-entry.jsx
-# Left/Right walks every visual line of every screen in reading order, both
-# directions; see roworder-entry.jsx for the triaged exclusions (carousel/list
-# are one shape each, dropdowns are one column) and why the expected order is
-# derived from rectangles rather than from the navigator.
-run roworder       roworder-entry.jsx
-run rail           rail-entry.jsx
-# The four browse-only sections, and the two things only they exercise: a
-# listing whose *content* has to be its own (S1 — each section must not draw
-# another tab's rows under its own prefix), and an activation that switches tab
-# while applying a filter.
-run sections       sections-entry.jsx
-# Home as the showroom, and the See-all hand-off into the listing tabs it points
-# at. The one driver that lives on Home since the scene listing split out to
-# Scenes.
-run showroom       showroom-entry.jsx
-# Leaving a tab is the TV's refresh: the arriving page must go to the wire
-# rather than be served the module-scoped list cache, or server-side changes
-# stay invisible until relaunch.
-run refresh        refresh-entry.jsx
-# Long-press and play-queue coverage. menu-entry.jsx has five runners
-# (`?view=keys|menu|queue|saves|buttons`); registering each separately gives it
-# its own result file and diff line, so a red view cannot hide behind a green
-# default. The `saves` view's assertion must match the completed-scene contract
-# (see the note at S3 there).
-run menu           menu-entry.jsx
-run menu-actions   menu-entry.jsx      '?view=menu'
-run menu-queue     menu-entry.jsx      '?view=queue'
-run menu-saves     menu-entry.jsx      '?view=saves'
-run menu-buttons   menu-entry.jsx      '?view=buttons'
-run preview        preview-entry.jsx
-run codec          codec-entry.jsx
-# The TV engine, with a fake AVPlay that records calls and has no picture. It
-# asserts the decisions around the engine — which URL opens, that no <video>
-# exists while the plane is up, the page's compositing, skims, hide/restore,
-# content fallback, the format cache, HLS-before-MP4 and the session kill
-# switch. It cannot assert that AVPlay decodes anything; that is the TV pass.
-run avplay         avplay-entry.jsx
-run controls       controls-entry.jsx
-run detail         entry.jsx
-# The performer detail page's one profile query: card-first paint, the adopted
-# server values, the empty-field hiding and the failure path, against a fixture
-# designed to disagree with the card.
-run performer      performer-entry.jsx
-# Back while the player is open over the performer page. The page's Back handler
-# and the player's are sibling window-capture listeners; the page's focus-only
-# guard cannot see a player that leaves focus on <body>, so one press closes
-# both.
-run performerback  performerback-entry.jsx
-run filter         filter-entry.jsx
-run firstrun       firstrun-entry.jsx
-# The appearance theme: module-init application (a relaunch) and the Settings
-# row's draft/Save contract.
-run theme          theme-entry.jsx
-run actions-settings actions-entry.jsx '?view=settings'
-run actions-exit   actions-entry.jsx   '?view=exit'
-# The two read-only Settings panels: library stats and server status. Each gets
-# its own loading/ready/error path, a Test-mode branch and a fetch count, plus
-# the two ordering traps the fake server can spring.
-run settings-status settings-status-entry.jsx
-# The data-layer fixes, where the observable is ordering/a cache slot/a key
-# string rather than a screen: Test-mode sorts, the queue's page-boundary skip,
-# listCache's in-flight identity, the source key's digest, and the folder
-# picker. See datalayer-entry.jsx.
-run datalayer      datalayer-entry.jsx
-# The two recovery surfaces. ErrorBoundary replaces a black screen after a
-# render throw; the PIN limiter puts a cost on repeated guesses. Both are
-# self-contained drivers — see their headers.
-run errorboundary  errorboundary-entry.jsx
-run pinlock        pinlock-entry.jsx
-run views          views-entry.jsx
-# The long-press menus for Markers, Images and Galleries, and the slideshow
-# entries they open. A gallery's pictures are served only when this driver asks
-# for them (`/mode galleryImages=populate`) — the default empty answer is what
-# Sections S6 depends on.
-run longpress      longpress-entry.jsx
-# The public-only update check, in both build shapes. The gate is a compile-time
-# constant, so one bundle cannot show both: `update` is the public build and
-# `update-off` proves the private one has no section and makes no request.
-run update         update-entry.jsx '' 1
-run update-off     update-entry.jsx '' 0
+
+PARALLEL=()
+SERIAL=()
+for job in "${JOBS[@]}"; do
+  IFS='|' read -r name entry query update serial <<< "$job"
+  if [ "$serial" = 1 ]; then SERIAL+=("$name|$entry|$query|$update")
+  else PARALLEL+=("$name|$entry|$query|$update"); fi
+done
+
+if [ "${#PARALLEL[@]}" -gt 0 ]; then
+  echo "  running ${#PARALLEL[@]} drivers, $WORKERS at a time"
+  printf '%s\n' "${PARALLEL[@]}" | dispatch_pool
+fi
+for job in "${SERIAL[@]}"; do
+  IFS='|' read -r name entry query update <<< "$job"
+  run_one "$SERIAL_PORT" "$name" "$entry" "$query" "$update"
+done
+
+# A driver with no result file did not run at all — a missing observation, not
+# a red check, and it must not read as a pass.
+MISSING=0
+for job in "${JOBS[@]}"; do
+  name=${job%%|*}
+  tally=$(cat "$OUT/$name.tally" 2>/dev/null || printf 'NO RESULTS')
+  echo "  $name: $tally"
+  [ "$tally" = "NO RESULTS" ] && MISSING=$((MISSING + 1))
+done
 echo "── $LABEL done ──"
 if [ "$MISSING" -gt 0 ]; then
   echo "!! $MISSING driver(s) produced no results — the sweep did not cover them."
