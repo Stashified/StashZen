@@ -11,6 +11,8 @@
 
 import SceneDetailPage from '../pages/SceneDetailPage.jsx';
 import ActionMenu from '../components/ActionMenu.jsx';
+import MarkerModal from '../components/MarkerModal.jsx';
+import MarkerDeletePrompt from '../components/MarkerDeletePrompt.jsx';
 import ImageViewer from '../components/ImageViewer.jsx';
 import VideoPlayer from '../components/VideoPlayer.jsx';
 import PlayerErrorBoundary from '../components/PlayerErrorBoundary.jsx';
@@ -22,6 +24,8 @@ import { buildActionMenu } from '../utils/actionMenus.js';
 export default function AppOverlays({
   sceneDetail,
   actionMenu,
+  markerEditor,
+  markerDelete,
   imageViewer,
   player,
   builder,
@@ -37,6 +41,8 @@ export default function AppOverlays({
       openImageViewer: actionMenu.openImageViewer,
       openGallery: actionMenu.openGallery,
       openGallerySlideshow: actionMenu.openGallerySlideshow,
+      onEditMarker: actionMenu.onEditMarker,
+      onDeleteMarker: actionMenu.onDeleteMarker,
     })
     : null;
 
@@ -64,6 +70,33 @@ export default function AppOverlays({
           subtitle={action.subtitle}
           items={action.items}
           onClose={actionMenu.onClose}
+        />
+      )}
+
+      {/* Keyed per marker: the form is uncontrolled, so a second marker must
+          mount a fresh one rather than keep the first one's title. */}
+      {markerEditor.marker && (
+        <MarkerModal
+          key={markerEditor.marker.id}
+          marker={markerEditor.marker}
+          sceneId={markerEditor.marker.scene?.id}
+          sceneTitle={markerEditor.marker.scene?.title}
+          duration={markerEditor.marker.scene?.durationSeconds || 0}
+          defaultTag={{
+            id: markerEditor.marker.primaryTagId,
+            name: markerEditor.marker.primaryTag,
+          }}
+          onClose={markerEditor.onClose}
+          onSaved={markerEditor.onSaved}
+          onDeleted={markerEditor.onDeleted}
+        />
+      )}
+
+      {markerDelete.marker && (
+        <MarkerDeletePrompt
+          marker={markerDelete.marker}
+          onClose={markerDelete.onClose}
+          onDeleted={markerDelete.onDeleted}
         />
       )}
 

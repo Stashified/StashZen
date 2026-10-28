@@ -8,14 +8,19 @@
  * Stash also accepts `random_<seed>`, which permutes once per seed and returns
  * the same order on every page (verified: `random_123` repeats page 1 exactly
  * and continues on page 2). The seed is derived from the request identity:
- * kind, filter, search text, so every page of a listing shares a permutation
- * and changing the filter starts a new one.
+ * kind, filter, search text, plus a per-launch salt, so every page of a listing
+ * shares a permutation and changing the filter starts a new one, while "Random"
+ * deals a fresh order next time the app starts.
  *
  * The mock comparator does not know the seeded spelling; `baseSort` maps it
  * back so Test mode keeps shuffling by id.
  */
 
 const SEEDED = /^random_\d+$/;
+
+// Captured once at module load: stable for every page of this session, new on
+// the next launch.
+const SESSION_SALT = Date.now();
 
 /** FNV-1a, 32-bit. Deterministic and dependency-free. */
 function hash(text) {
@@ -36,7 +41,7 @@ export function stableSort(sort, ...identity) {
   if (sort !== 'random') return sort;
   // Keep the seed in the positive 31-bit range: it is a number in Stash's
   // sort grammar, and 0 is a perfectly valid seed but reads like a bug.
-  const seed = (hash(JSON.stringify(identity)) % 2147483646) + 1;
+  const seed = (hash(JSON.stringify([SESSION_SALT, ...identity])) % 2147483646) + 1;
   return `random_${seed}`;
 }
 

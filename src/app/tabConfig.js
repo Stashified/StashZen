@@ -31,11 +31,12 @@ export const DEFAULT_CONTROLS = {
   // Which tab this filter was composed against, what makes the tab-change
   // effect idempotent.
   workingFilterFor: null,
-  // One-shot hand-off marker for the showroom's See-all tile: it names the tab
-  // being opened, so the tab-change effect keeps its staged sort for that one
-  // arrival. State, not a ref, because the effect's updater must stay pure
+  // One-shot hand-off markers for a See-all tile: each names the tab being
+  // opened, so the tab-change effect keeps the staged sort or search for that
+  // one arrival. State, not a ref, because the effect's updater must stay pure
   // under StrictMode's double invocation.
   sortForTab: null,
+  searchForTab: null,
   search: '',
 };
 
@@ -296,11 +297,17 @@ export const ENTITY_VIEWS = {
 // share criteria (a marker has no resolution, a scene no primary_tag), so their
 // field lists differ.
 export const TAB_CONTROL_CONFIG = {
-  // Home is the showroom (four fixed shelves, no request state), so it takes no
+  // Home is the showroom (five fixed shelves, no request state), so it takes no
   // controls; `showControls: false` hides the bar. Carrying no
   // `filterMode`/`filterType` keeps it out of the saved-filter dropdown and the
   // filter-origin machinery.
   home: {
+    showControls: false,
+  },
+  // One query across four sections, each with a See-all hand-off into its own
+  // tab. No controls bar: the page owns the one field that matters, and sort
+  // and filter would narrow only one section of four.
+  search: {
     showControls: false,
   },
   // The full scene listing, moved off Home in 0.15.0: grid/carousel/coverflow,

@@ -43,7 +43,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { registerFocusListing } from '../utils/focus.js';
-import { onRowPatch } from '../utils/rowPatches.js';
+import { onRowPatch, onRowRemove } from '../utils/rowPatches.js';
 
 // One initial request plus two retries: enough to ride out a TV's flaky Wi-Fi
 // without turning a persistent failure into a request loop.
@@ -117,7 +117,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
   // so the card is current without a refetch (which would reset focus).
   useEffect(() => {
     if (!entity) return undefined;
-    return onRowPatch(entity, (id, patch) => {
+    const offPatch = onRowPatch(entity, (id, patch) => {
       setItems((prev) => {
         let changed = false;
         const next = prev.map((it) => {
@@ -128,6 +128,28 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
         return changed ? next : prev;
       });
     });
+    // Deleting a row this list has loaded must also drop its count, or the
+    // grid keeps a sentinel for a page that no longer exists.
+    const offRemove = onRowRemove(entity, (id) => {
+      if (!seenIdsRef.current.has(id)) return;
+      seenIdsRef.current.delete(id);
+      setItems((prev) => {
+        const next = prev.filter(it => String(it.id) !== id);
+        if (next.length === prev.length) return prev;
+        itemsLenRef.current = next.length;
+        return next;
+      });
+      setTotal((prev) => {
+        if (!prev) return prev;
+        const next = Math.max(0, prev - 1);
+        totalRef.current = next;
+        return next;
+      });
+    });
+    return () => {
+      offPatch();
+      offRemove();
+    };
   }, [entity]);
 
   // Latest `loadMore` for the retry timer, which fires between renders holding
@@ -187,6 +209,13 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
         })
         .catch(e => {
           if (cancelled || reqId !== requestIdRef.current) return;
+          // A reset aborted a request this identity then joined through
+          // listCache's in-flight map. That abort is not this attempt's verdict:
+          // our own signal is live, so start again without spending the budget.
+          if (e?.name === 'AbortError') {
+            attemptFirstPage();
+            return;
+          }
           attemptsRef.current += 1;
           if (attemptsRef.current >= MAX_PAGE_ATTEMPTS) {
             // Block further pages too: page 2 of a list whose page 1 never

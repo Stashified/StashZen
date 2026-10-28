@@ -36,6 +36,7 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
 import { useKeyHandler } from '../hooks/useKeyHandler.js';
 import { useSettings, setSettings, testStashConnection } from '../utils/settings.js';
+import { normalizeEndpointUrl } from '../utils/endpointUrl.js';
 import { setPin, PIN_LENGTH } from '../utils/appLock.js';
 import PinPad from './PinPad.jsx';
 import styles from './FirstRun.module.css';
@@ -247,21 +248,26 @@ function SetupScreen({ settings }) {
   const attemptRef = useRef(0);
 
   const runTest = async () => {
+    // The same rule Settings uses: a scheme-less address would otherwise be
+    // fetched relative and reported as a network failure.
+    const endpoint = normalizeEndpointUrl(url);
+    if (!endpoint.ok) return { result: { ok: false, reason: endpoint.error }, url: '' };
+
     const attempt = ++attemptRef.current;
     setBusy(true);
     setStatus(null);
-    const result = await testStashConnection({ url: url.trim(), key: key.trim() });
+    const result = await testStashConnection({ url: endpoint.url, key: key.trim() });
     if (!aliveRef.current || attempt !== attemptRef.current) return null;
     setBusy(false);
-    return result;
+    return { result, url: endpoint.url };
   };
 
   const handleTest = async () => {
-    const result = await runTest();
-    if (!result) return;
-    setStatus(result.ok
-      ? { ok: true, message: `Connected: Stash v${result.version}` }
-      : { ok: false, message: result.reason });
+    const answer = await runTest();
+    if (!answer) return;
+    setStatus(answer.result.ok
+      ? { ok: true, message: `Connected: Stash v${answer.result.version}` }
+      : { ok: false, message: answer.result.reason });
   };
 
   /**
@@ -271,14 +277,14 @@ function SetupScreen({ settings }) {
    * cannot be saved from here; Skip, then Settings, is the way through.
    */
   const handleConnect = async () => {
-    const result = await runTest();
-    if (!result) return;
-    if (!result.ok) {
-      setStatus({ ok: false, message: result.reason });
+    const answer = await runTest();
+    if (!answer) return;
+    if (!answer.result.ok) {
+      setStatus({ ok: false, message: answer.result.reason });
       return;
     }
     advance({
-      stashUrl: url.trim(),
+      stashUrl: answer.url,
       stashKey: key.trim(),
       useMock: false,
       onboarded: 'live',

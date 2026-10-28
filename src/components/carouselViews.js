@@ -87,6 +87,7 @@ export const MARKER_VIEW = {
   service: fetchMarkers,
   itemsKey: 'markers',
   focusPrefix: 'marker',
+  entity: 'marker',
   noun: 'markers',
   ariaLabel: 'Marker carousel',
   // A marker's art is a scene screenshot: `screenshot`, not `thumbnail`, which

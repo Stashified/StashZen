@@ -144,9 +144,10 @@ const viewerCounter = () => {
   const m = text.match(/(\d+)\s*of\s*(\d+)\s*loaded/);
   return m ? Number(m[1]) : null;
 };
-const viewerButton = (label) =>
-  [...(viewerEl()?.querySelectorAll('header button') || [])]
-    .find(b => b.textContent.trim() === label) || null;
+// The label flips between Slideshow and Stop slideshow, so read the button's
+// own state by id, not by the text that named it a second ago.
+const viewerPlaying = () =>
+  registry.get('image-viewer-play')?.el?.getAttribute('aria-pressed') === 'true';
 
 const infoPanel = () => viewerEl()?.querySelector('[aria-label="Image info"]') || null;
 // The stage's <img>; the info panel holds none, so the viewer's first image is
@@ -218,8 +219,10 @@ async function runMarkers() {
   const opened = await openMenuOn('marker-1');
   check('M1 holding OK on a marker opens its menu', opened && menuOpen(),
     `menu ${menuOpen()}, focus ${active()?.tagName}`);
-  check('M1 the rows are Play / Play all / Play from here / Details',
-    JSON.stringify(menuLabels()) === JSON.stringify(['Play', 'Play all', 'Play from here', 'Details']),
+  check('M1 the rows are Play / Play all / Play from here / Edit marker / Delete marker / Details',
+    JSON.stringify(menuLabels()) === JSON.stringify([
+      'Play', 'Play all', 'Play from here', 'Edit marker', 'Delete marker', 'Details',
+    ]),
     `rows ${JSON.stringify(menuLabels())}`);
   check('M1 the subtitle names the timestamp and the parent scene',
     menuSubtitle() === 'at 0:06 in VERIFY scene 1',
@@ -335,9 +338,9 @@ async function runImages() {
   // ── Slideshow: advance on the timer, stop on a manual step ──
   await openMenuOn('image-2');
   await chooseMenuRow('menu-image-slideshow-start');
-  await waitFor(() => viewerOpen() && !!viewerButton('Pause'), 4000);
+  await waitFor(() => viewerOpen() && viewerPlaying(), 4000);
   check('I3 Slideshow from start opens on image 1, already playing',
-    viewerTitle() === 'VERIFY image 1' && !!viewerButton('Pause'),
+    viewerTitle() === 'VERIFY image 1' && viewerPlaying(),
     `viewer "${viewerTitle()}", buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
 
   // Press Left in the same microtask as the advance's DOM commit, not a task
@@ -370,7 +373,7 @@ async function runImages() {
   await sleep(350);
   check('I3 a manual step goes back one', viewerTitle() === 'VERIFY image 1',
     `viewer "${viewerTitle()}"`);
-  check('I3 ...and stops the slideshow', !!viewerButton('Play'),
+  check('I3 ...and stops the slideshow', !viewerPlaying(),
     `buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
   await sleep(6800);
   check('I3 ...so it does not advance past the next beat', viewerTitle() === 'VERIFY image 1',
@@ -415,7 +418,7 @@ async function runGalleries() {
     galReqs.some(r => r.image_filter.galleries.value?.[0] === '2'),
     `${galReqs.length} filtered image listing(s), last ${JSON.stringify(galReqs.at(-1)?.image_filter ?? null)}`);
   check('G2 ...and the slideshow is running',
-    !!viewerButton('Pause'), `buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
+    viewerPlaying(), `buttons ${[...(viewerEl()?.querySelectorAll('header button') || [])].map(b => b.textContent.trim())}`);
 
   const galleryAdvanced = await waitFor(() => viewerCounter() === 2, 8000);
   check('G2 the gallery slideshow advances by itself', galleryAdvanced,

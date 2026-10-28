@@ -127,13 +127,14 @@ async function run() {
   await sleep(300);
 
   // ── R1  the rail is there, with the right rows ──────────
-  // Nine rows, Scenes between Home and Performers. Written out because the
-  // order is what the `next` chain depends on; a count passes on any permutation.
+  // Ten rows, Search last below the library sections. Written out because the
+  // order is what the `next` chain depends on; a count passes on any
+  // permutation.
   const labels = railRows().map(b => b.textContent.trim());
-  check('R1 the rail renders its nine rows',
+  check('R1 the rail renders its ten rows',
     JSON.stringify(labels) === JSON.stringify([
       'Home', 'Scenes', 'Performers', 'Markers', 'Tags', 'Studios',
-      'Galleries', 'Images', 'Settings',
+      'Galleries', 'Images', 'Search', 'Settings',
     ]),
     labels.join(' · ') || '(no rail)');
 
@@ -185,7 +186,7 @@ async function run() {
   await press('ArrowUp');
   check('R5 Up walks it back', getCurrentFocusId() === 'nav-home', getCurrentFocusId());
 
-  // ── R5b the whole chain, which is now nine deep ─────────
+  // ── R5b the whole chain, which is now ten deep ──────────
   // The `next` chain exists because geometry cannot find Settings past the
   // spacer. Every row must name its successor or it becomes a row Down cannot
   // leave. Walk end to end: one missing link stops the walk, so its length is
@@ -203,7 +204,7 @@ async function run() {
 
   await press('ArrowUp');
   check('R5b Up walks the chain back one',
-    getCurrentFocusId() === 'nav-images', getCurrentFocusId());
+    getCurrentFocusId() === 'nav-search', getCurrentFocusId());
 
   // ── R5c  the foot of the rail is the foot ───────────────
   // Settings is last; Down must do nothing, since Right is the way into the
@@ -270,7 +271,7 @@ async function run() {
     // Listed rather than derived from `labels`: a stale list is how R8 once
     // reported `nav-tags ↓undefined` after rows were added.
     'nav-home', 'nav-scenes', 'nav-performers', 'nav-markers',
-    'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images',
+    'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images', 'nav-search',
     'nav-settings',
     ...barIds,                             // every control, so the bar's own
                                            // Left/Right walk is in the graph
@@ -402,14 +403,16 @@ async function run() {
   // far end of a flexible spacer. Assert named edges, not "reachable in four
   // presses": the weaker form was green wherever geometry happened to agree and
   // failed the bug at the TV's 1080 height.
-  const railChain = ['nav-home', 'nav-scenes', 'nav-performers', 'nav-markers',
-    'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images'];
+  const railChain = ['nav-home', 'nav-scenes', 'nav-performers',
+    'nav-markers', 'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images',
+    'nav-search'];
   const nextRow = {
-    'nav-home': 'nav-scenes', 'nav-scenes': 'nav-performers',
+    'nav-home': 'nav-scenes',
+    'nav-scenes': 'nav-performers',
     'nav-performers': 'nav-markers',
     'nav-markers': 'nav-tags', 'nav-tags': 'nav-studios',
     'nav-studios': 'nav-galleries', 'nav-galleries': 'nav-images',
-    'nav-images': 'nav-settings',
+    'nav-images': 'nav-search', 'nav-search': 'nav-settings',
   };
   const broken = railChain.filter(id => edges[id]?.ArrowDown !== nextRow[id]);
   check('R8 Down walks the rail row by row to Settings',
@@ -422,8 +425,8 @@ async function run() {
   // and land on a grid card; Up is the only exit, since Settings is
   // `verticalOnly`. Check the graph: this is the declared chain, not pixels.
   check('R8 Up out of Settings returns to the rail',
-    edges['nav-settings']?.ArrowUp === 'nav-images',
-    `nav-settings ↑${edges['nav-settings']?.ArrowUp ?? '—'} (wanted nav-images)`);
+    edges['nav-settings']?.ArrowUp === 'nav-search',
+    `nav-settings ↑${edges['nav-settings']?.ArrowUp ?? '—'} (wanted nav-search)`);
 
   // The user's path from a cold focus, ending with the panel open: the graph
   // proves edges, this proves the walk. Bound by `labels.length`, not a

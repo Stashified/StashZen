@@ -15,6 +15,9 @@
  * short action necessarily moves to keyup (~80–150 ms), the price of one press
  * meaning both "play" and "open the menu". Moving focus cancels the press:
  * blur kills the timer.
+ *
+ * `onEnter` receives the keydown event, so a surface with focusable children
+ * can tell its own Enter from one bubbling up from a child.
  */
 
 import { useRef, useState, useEffect, useCallback, useId } from 'react';
@@ -201,7 +204,7 @@ export function useFocusable({
       }
 
       if (!longPress) {
-        onEnter?.();
+        onEnter?.(e);
         e.preventDefault();
         return;
       }
@@ -232,7 +235,7 @@ export function useFocusable({
       // No timer means no keydown reached us (or it was already consumed).
       const wasDown = pressTimer !== null;
       cancelPress();
-      if (wasDown) callbacksRef.current.onEnter?.();
+      if (wasDown) callbacksRef.current.onEnter?.(e);
     };
 
     // A hold that spans the app going to the background is not a hold the

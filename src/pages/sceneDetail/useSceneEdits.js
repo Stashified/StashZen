@@ -51,7 +51,8 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
 
   const setRating = (stars) => {
     const next = stars * 10;
-    if (detail.rating100 === next) return;
+    // null and 0 both mean unrated: a second clear is a no-op, not a write.
+    if ((detail.rating100 ?? 0) === next) return;
     const sceneId = detail.id;
     const attempt = ++ratingAttemptRef.current;
     setDetail(d => ({ ...d, rating100: next }));

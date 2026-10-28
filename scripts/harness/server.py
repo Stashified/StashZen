@@ -103,6 +103,11 @@ PLAY_ADDS = []
 # `reset_duration: true` would erase watch time while looking identical.
 ACTIVITY_RESETS = []
 
+# Ids whose resume point a successful reset erased. The detail query reads this,
+# as Stash would: the page refetches after App patches the card it came from, and
+# an answer that still says 1800 un-mutes the button the user just pressed.
+CLEARED_RESUME = set()
+
 # ── The o-counter ────────────────────────────────────────────
 #
 # It has to remember: a tally (0 → 1 → 2) is distinguishable from a toggle only
@@ -187,11 +192,12 @@ TONE_RE = re.compile(r"/tone\d*\.wav(\?[^#]*)?")
 PREVIEW_RE = re.compile(r"/scene/(\d+)/preview(\?[^#]*)?")
 # /scene/{id}/thumb.png — the parent scene's screenshot.
 THUMB_RE = re.compile(r"/scene/(\d+)/thumb\.png(\?[^#]*)?")
-# The four browse-only sections' artwork: tag/studio/gallery/image PNGs. One
-# route because they differ only in tint (see do_GET); anchored on the section
-# name so it cannot swallow the scene thumbnail.
+# Section artwork: tag/studio/gallery/image PNGs, plus performer portraits,
+# which the search results draw with the performer card. One route because
+# they differ only in tint (see do_GET); anchored on the section name so it
+# cannot swallow the scene thumbnail.
 ENTITY_IMG_RE = re.compile(
-    r"/(tag|studio|gallery|image)/(\d+)/(?:image|cover|thumb|full)\.png(\?[^#]*)?")
+    r"/(tag|studio|gallery|image|performer)/(\d+)/(?:image|cover|thumb|full)\.png(\?[^#]*)?")
 # /scene/{id}/stream.mp4 — one of the transcoded endpoints sceneStreams
 # advertises. See do_GET.
 STREAM_MP4_RE = re.compile(r"/scene/\d+/stream\.mp4(\?[^#]*)?")
@@ -228,17 +234,17 @@ def _hls_playlist(scene_id, segments=3, seconds=10.0):
     return "\n".join(head + body + ["#EXT-X-ENDLIST", ""]).encode()
 
 
-def _png(rgb):
-    """A solid-colour 8x8 PNG."""
+def _png(rgb, width=8, height=8):
+    """A solid-colour PNG, 8x8 unless a caller needs a picture with size."""
     import struct, zlib
 
     def chunk(tag, data):
         return (struct.pack(">I", len(data)) + tag + data
                 + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff))
 
-    raw = b"".join(b"\x00" + bytes(rgb) * 8 for _ in range(8))
+    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
     return (b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0))
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw))
             + chunk(b"IEND", b""))
 
@@ -1002,12 +1008,19 @@ class Handler(SimpleHTTPRequestHandler):
             # differs; two of these four sections share an id space.
             kind = m.group(1)
             n = int(m.group(2))
-            tint = {"tag": 0x00, "studio": 0x40, "gallery": 0x80, "image": 0xC0}[kind]
+            tint = {"tag": 0x00, "performer": 0x20, "studio": 0x40,
+                    "gallery": 0x80, "image": 0xC0}[kind]
             # `full.png` is a different colour from the row's thumbnail, making
             # "the viewer opened the full image" checkable.
-            full = 0x30 if m.group(0).endswith("full.png") else 0x00
+            # The keyed URL ends in `?apikey=...`, so test the path alone.
+            full = 0x30 if m.group(0).split("?")[0].endswith("full.png") else 0x00
+            # The viewer's picture must be larger than the stage or a 2x zoom
+            # has nothing to pan. Cards crop whatever they are given, so only
+            # this route needs dimensions.
+            width, height = (1600, 1200) if kind == "image" and full else (8, 8)
             return self._png_response(
-                _png(((0x30 + tint + (n * 37) % 160) & 0xFF, 0x50 + full, 0x60)))
+                _png(((0x30 + tint + (n * 37) % 160) & 0xFF, 0x50 + full, 0x60),
+                     width, height))
         m = THUMB_RE.fullmatch(self.path)
         if m:
             # Tinted by scene id, so two scenes' screenshots are distinguishable
@@ -1153,6 +1166,9 @@ class Handler(SimpleHTTPRequestHandler):
             # MODE["resume"], so a stale card can disagree with the fresh fetch.
             if MODE.get("detailResume") is not None:
                 scene["resume_time"] = MODE["detailResume"]
+            with LOCK:
+                if str(variables.get("id")) in CLEARED_RESUME:
+                    scene["resume_time"] = 0
             if MODE.get("sceneFile") == "rounding":
                 # 3599.6 s is the formatter's trap: rounding only the seconds
                 # remainder prints "59m 60s" instead of rolling over to 1h 0m.
@@ -1556,6 +1572,9 @@ class Handler(SimpleHTTPRequestHandler):
                 # state unobservable, so rollback looks like "never changed".
                 time.sleep(1.2)
                 return self._json({"errors": [{"message": "simulated reset failure"}]})
+            if variables.get("reset_resume"):
+                with LOCK:
+                    CLEARED_RESUME.add(str(variables.get("id")))
             return self._json({"data": {"sceneResetActivity": True}})
 
         # The driver's App asks for saved filters on every tab. The store starts

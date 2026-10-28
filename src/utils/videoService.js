@@ -251,6 +251,11 @@ async function loadVideos({
       videos = videos.filter(v => v.category.toLowerCase() === mode.toLowerCase());
     }
 
+    const needle = (q || '').trim().toLowerCase();
+    if (needle) {
+      videos = videos.filter(v => String(v.title || '').toLowerCase().includes(needle));
+    }
+
     // `sort` may be `random_<n>`; the comparator knows only `random`.
     videos.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
 

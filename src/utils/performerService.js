@@ -306,6 +306,11 @@ async function loadPerformers({
     await new Promise(r => setTimeout(r, 400));
     let performers = generateMockPerformers(60);
 
+    const needle = (q || '').trim().toLowerCase();
+    if (needle) {
+      performers = performers.filter(p => String(p.name || '').toLowerCase().includes(needle));
+    }
+
     // `sort` may be `random_<n>`; the comparator knows only `random`.
     performers.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
 

@@ -235,7 +235,8 @@ export default function SceneDetailPage({
             <ActionButton
               id="scene-clear-progress"
               label="Clear progress"
-              disabled={!canEdit || !(detail.resumeTime > 0)}
+              disabled={!canEdit}
+              inert={!(detail.resumeTime > 0)}
               title="Removes the resume point; watch time is kept"
               onEnter={clearProgress}
             />
