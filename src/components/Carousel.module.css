@@ -212,17 +212,3 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-
-.heroPreview {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 360px;
-  height: 202px;
-  margin-left: -180px;
-  margin-top: -101px;
-  border-radius: 8px;
-  z-index: 5;
-  pointer-events: none;
-  object-fit: cover;
-}

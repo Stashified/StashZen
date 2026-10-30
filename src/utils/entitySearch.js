@@ -178,19 +178,6 @@ export async function searchEntities(entity, q = '', limit = 40) {
   });
 }
 
-/**
- * Resolve `[{id, label}]` for ids the builder already holds.
- *
- * Saved filters store their own labels, so this only fills in a missing or
- * stale one (entity renamed or deleted), where the raw id beats nothing.
- */
-export function labelForIds(items) {
-  return (items || []).map(i => ({
-    id: String(i.id),
-    label: i.label || `#${i.id}`,
-  }));
-}
-
 /** The GraphQL filter-type name for an entity, e.g. tags → TagFilterType. */
 function entityFilterType(entity) {
   return {

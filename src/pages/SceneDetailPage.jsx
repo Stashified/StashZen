@@ -15,11 +15,13 @@ import { useBackKey } from '../hooks/useBackKey.js';
 import styles from './SceneDetailPage.module.css';
 import { fmtDuration, fmtBytes, fmtResolution, fmtDate, hostOf } from './sceneDetail/format.js';
 import { useSceneDetailData } from './sceneDetail/useSceneDetailData.js';
+import { useRelatedScenes } from './sceneDetail/useRelatedScenes.js';
 import { useSceneEdits } from './sceneDetail/useSceneEdits.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { Chips } from './sceneDetail/Chips.jsx';
 import { GalleryChip } from './sceneDetail/GalleryChip.jsx';
 import { MarkerChip } from './sceneDetail/MarkerChip.jsx';
+import { RelatedScenes } from './sceneDetail/RelatedScenes.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
 
 const NOTICE_MS = 4000;
@@ -32,12 +34,16 @@ const MAX_GALLERIES = 4;
 
 export default function SceneDetailPage({
   scene, onClose, onPlay, onPlayAt, onActivityChange, onGallerySelect,
+  onTagSelect, onStudioSelect, onPerformerSelect, onRelatedSceneSelect,
 }) {
   // Transient status line, cleared on unmount, see useFlash. Called first so
   // its unmount effect is registered before the others.
   const [notice, flash] = useFlash(NOTICE_MS);
 
   const { detail, setDetail, status, loadError, canEdit } = useSceneDetailData(scene);
+  // No handler means no rows: a page mounted without App cannot make them do
+  // anything, and two extra requests on every open would be for nothing.
+  const relatedRows = useRelatedScenes(detail, !!onRelatedSceneSelect);
 
   // Back owns this page: capture phase and stopPropagation, so App's global
   // handler never sees it. No text inputs exist here, so Backspace is unambiguous.
@@ -50,8 +56,9 @@ export default function SceneDetailPage({
   if (!detail) return null;
 
   const liked = (detail.oCounter || 0) > 0;
+  // The studio is a chip of its own above the performers, so it is not
+  // repeated here.
   const metaBits = [
-    detail.studio?.name,
     fmtDate(detail.date),
     fmtDuration(detail.durationSeconds),
     fmtResolution(detail.width, detail.height),
@@ -126,14 +133,32 @@ export default function SceneDetailPage({
 
           {loadError && <div className={styles.warn}>{loadError}</div>}
 
-          {detail.performers?.length > 0 && (
-            <Chips items={detail.performers} className={styles.chipsPerformers} />
+          {detail.studio && (
+            <div className={styles.markers} role="group" aria-label="Studio">
+              <span className={styles.markersLabel}>Studio</span>
+              <Chips
+                items={[detail.studio]}
+                kind="studio"
+                onSelect={onStudioSelect}
+              />
+            </div>
           )}
 
-          {detail.tags?.length > 0 && <Chips items={detail.tags} />}
+          {detail.performers?.length > 0 && (
+            <Chips
+              items={detail.performers}
+              className={styles.chipsPerformers}
+              kind="performer"
+              onSelect={onPerformerSelect}
+            />
+          )}
 
-          {/* Enter leaves for the Galleries tab; the tab change closes this
-              page through useDetailSelection (see GalleryChip). */}
+          {detail.tags?.length > 0 && (
+            <Chips items={detail.tags} kind="tag" onSelect={onTagSelect} />
+          )}
+
+          {/* Enter leaves for the Images tab filtered to this gallery; the tab
+              change closes this page through useDetailSelection (see GalleryChip). */}
           {detail.galleries?.length > 0 && (
             <div className={styles.markers} role="group" aria-label="Galleries">
               <span className={styles.markersLabel}>Galleries</span>
@@ -266,6 +291,10 @@ export default function SceneDetailPage({
           <div className={styles.notice} role="status" aria-live="polite">
             {notice}
           </div>
+
+          {/* Below the actions on purpose: the page opens with Play focused,
+              and a row above it would push the actions out of view. */}
+          <RelatedScenes rows={relatedRows} onSelect={onRelatedSceneSelect} />
         </div>
       </div>
     </div>

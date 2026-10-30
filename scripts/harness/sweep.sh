@@ -50,6 +50,9 @@ FULL_JOBS=(
   # against.
   "list-random|list-entry.jsx|?view=random|0|0"
   "list-list|list-entry.jsx|?view=list|0|0"
+  # The usePagedList re-entrancy probe: one tick, two page triggers, and the
+  # identity change while a page is in flight. Red control in the entry header.
+  "pagedlist|pagedlist-entry.jsx||0|0"
   "boot|boot-entry.jsx||0|0"
   "markerfix|markerfix-entry.jsx||0|0"
   # The focus-move paint contract of all four classic-grid cards. Structural,

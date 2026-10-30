@@ -14,7 +14,7 @@
  * `list` is `list?.items` here, and a section wanting the rest can ask later.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './EntityCard.module.css';
 
@@ -30,7 +30,7 @@ function initialsOf(text) {
     .toUpperCase() || '?';
 }
 
-export default function EntityCard({
+function EntityCard({
   item, index, list, onSelect, onLongPress, view,
   autoFocus = index === 0,
   // Only the Home shelf passes this, to send Up to the rail; undefined is the
@@ -107,3 +107,7 @@ export default function EntityCard({
     </button>
   );
 }
+
+// Same reasoning as VideoCard: the grids and carousel pass a stable listing, so
+// an append renders only the new cards.
+export default memo(EntityCard);

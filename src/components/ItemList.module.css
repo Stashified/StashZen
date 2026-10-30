@@ -13,6 +13,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 24px 48px 48px;
+  /* Matches the top padding, so an upward scroll leaves the focused row clear
+     of the top edge. See VideoGrid.module.css. */
+  scroll-padding-top: 24px;
   /* Instant, not smooth: useFocusable scrolls with behavior:'auto'. */
   scroll-behavior: auto;
 }

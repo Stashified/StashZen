@@ -85,6 +85,18 @@ async function clearLog() {
   await fetch('/clear', { method: 'POST', body: '{}' });
 }
 
+/** The last filter once it satisfies `pred`; the caller asserts on it either way. */
+async function lastSceneFilterWhen(pred, ms = 3000) {
+  const end = Date.now() + ms;
+  let last = null;
+  while (Date.now() < end) {
+    last = await lastSceneFilter();
+    if (pred(last)) return last;
+    await sleep(50);
+  }
+  return last;
+}
+
 // ── The run ─────────────────────────────────────────────────
 // A probe for `useSavedFilters`. App never switches to a mode whose read fails
 // with a saved filter showing, so drive the hook directly: clear-on-mode-change.
@@ -126,6 +138,85 @@ async function run() {
     `scenes cards=${registry.has('video-1')} build=${!!registry.get('ctrl-build-filter')} `
     + `rail=${document.querySelector('nav[aria-label="Main navigation"] [aria-current="page"]')?.textContent?.trim() ?? '(none)'}`);
   await sleep(300);
+
+  // ── Q: the quick chips narrow the listing on their own ──
+  // A chip is a criterion that composes with the dropdown's filter, so the
+  // observable is the request: the server's record of `scene_filter`. Asserting
+  // aria-pressed alone would pass on a chip that toggles a class.
+  const chip = (id) => registry.get(`quick-${id}`)?.el || null;
+  const pressed = (id) => chip(id)?.getAttribute('aria-pressed');
+  const chipLabels = Array.from(document.querySelectorAll('[class*="quickRow"] button'))
+    .map(b => b.textContent.trim());
+
+  check('Q1 Scenes offers the five chips, none active',
+    chipLabels.join('|') === 'Unwatched|Rated 4+|Has markers|Favourite performers|Added this year'
+      && chipLabels.every((_, i) => pressed(['unwatched', 'rated4', 'markers', 'favorites', 'addedThisYear'][i]) === 'false'),
+    `labels ${chipLabels.join(' | ') || '<none>'}`);
+  check('Q1b a chip is a focus stop in the controls zone',
+    ['unwatched', 'rated4', 'markers', 'favorites', 'addedThisYear']
+      .every(id => registry.get(`quick-${id}`)?.zone === 'controls'),
+    `zones ${['unwatched', 'rated4'].map(id => registry.get(`quick-${id}`)?.zone ?? 'MISSING').join(',')}`);
+
+  await clearLog();
+  chip('unwatched')?.focus();
+  await tapEnter();
+  const onlyUnwatched = await lastSceneFilterWhen(
+    f => f?.play_count?.value === 0 && !f?.rating100);
+  check('Q2 Unwatched reaches the server as a play-count criterion',
+    pressed('unwatched') === 'true'
+      && onlyUnwatched?.play_count?.value === 0
+      && onlyUnwatched?.play_count?.modifier === 'EQUALS',
+    `pressed=${pressed('unwatched')} scene_filter=${JSON.stringify(onlyUnwatched)}`);
+
+  await clearLog();
+  chip('rated4')?.focus();
+  await tapEnter();
+  const twoChips = await lastSceneFilterWhen(
+    f => f?.play_count?.value === 0 && f?.rating100?.value === 39);
+  check('Q3 a second chip composes with the first rather than replacing it',
+    pressed('unwatched') === 'true' && pressed('rated4') === 'true'
+      && twoChips?.play_count?.value === 0
+      && twoChips?.rating100?.value === 39
+      && twoChips?.rating100?.modifier === 'GREATER_THAN',
+    `pressed=${pressed('unwatched')},${pressed('rated4')} scene_filter=${JSON.stringify(twoChips)}`);
+
+  await clearLog();
+  chip('unwatched')?.focus();
+  await tapEnter();
+  const oneChip = await lastSceneFilterWhen(
+    f => f && !f.play_count && f.rating100?.value === 39);
+  check('Q4 pressing an active chip removes just its criterion',
+    pressed('unwatched') === 'false' && pressed('rated4') === 'true'
+      && oneChip?.play_count === undefined && oneChip?.rating100?.value === 39,
+    `pressed=${pressed('unwatched')},${pressed('rated4')} scene_filter=${JSON.stringify(oneChip)}`);
+
+  // ── Q5  chips do not travel between tabs ────────────────
+  // Ids are per section and Galleries' schema has no play count, so a chip left
+  // on would be either a filter nobody chose or a field the type rejects.
+  registry.get('nav-galleries')?.el.focus();
+  await sleep(120);
+  await tapEnter();
+  await waitFor(() => registry.has('ctrl-build-filter') && !registry.has('video-1'), 3000);
+  const galleryChips = Array.from(document.querySelectorAll('[class*="quickRow"] button'))
+    .map(b => b.textContent.trim());
+  check('Q5 Galleries offers only the chips its schema supports',
+    galleryChips.join('|') === 'Rated 4+|Favourite performers|Added this year',
+    `labels ${galleryChips.join(' | ') || '<none>'}`);
+  check('Q5b arriving on the tab starts with none pressed',
+    !registry.has('quick-unwatched')
+      && [...document.querySelectorAll('[class*="quickRow"] button')]
+        .every(b => b.getAttribute('aria-pressed') === 'false'),
+    `pressed ${[...document.querySelectorAll('[class*="quickRow"] button')]
+      .map(b => `${b.textContent.trim()}=${b.getAttribute('aria-pressed')}`).join(',')}`);
+
+  registry.get('nav-scenes')?.el.focus();
+  await sleep(120);
+  await tapEnter();
+  await waitFor(() => registry.has('video-1'), 3000);
+  check('Q5c returning to Scenes does not restore the chips it left behind',
+    pressed('rated4') === 'false' && pressed('unwatched') === 'false',
+    `rated4=${pressed('rated4')} unwatched=${pressed('unwatched')}`);
+  await sleep(250);
 
   // ── F1  the entry point ─────────────────────────────────
   const buildBtn = btnByText(document, 'Build…');

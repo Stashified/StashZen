@@ -1,7 +1,7 @@
 import { useFocusable } from '../../hooks/useFocusable.js';
 import styles from '../SceneDetailPage.module.css';
 
-// A hand-off, not an overlay: Enter opens the Galleries tab focused on this
+// A hand-off, not an overlay: Enter opens the Images tab filtered to this
 // gallery. The parent must *not* also close the scene page, the tab change
 // already unmounts it, and closing here would race that effect and restore
 // focus onto a card on the tab being replaced.

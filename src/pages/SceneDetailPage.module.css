@@ -123,7 +123,14 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 6px;
+  /* The scrollport clips box-shadow, and the focus ring reaches 5px outside
+     the item: inset both sides by 6px so the first chip, button and related
+     card of every row keep their ring (and the cards' 1.05 scale). */
+  padding: 0 6px;
+  /* An unset overflow-x computes to auto beside overflow-y: auto, so the
+     column could scroll sideways and slide every row left. A chip wider than
+     the column is capped instead, see .chip. */
+  overflow-x: hidden;
 }
 
 .title {
@@ -211,6 +218,12 @@
   color: var(--text-secondary);
   font-size: 14px;
   white-space: nowrap;
+  /* A tag name can outrun the column. Capped with an ellipsis rather than
+     left to overflow, which would make the details column scroll sideways.
+     The hidden overflow also zeroes the flex item's automatic minimum. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Performers are who the scene is *of*, so they get more weight than the
@@ -221,10 +234,59 @@
   font-weight: 500;
 }
 
+/* The chip is a <button> now, so the span's look has to be re-stated with the
+   button defaults removed. */
+.chipButton {
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-tv), background-color 0.15s var(--ease-tv);
+}
+
+.chipButton:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.chipFocused {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  box-shadow: var(--focus-ring);
+}
+
 .chipMore {
   padding: 3px 10px;
   color: var(--text-muted);
   font-size: 14px;
+}
+
+/* ── Related rows ───────────────────────────────────────── */
+.related {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.relatedRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.relatedLabel {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.relatedCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .details {

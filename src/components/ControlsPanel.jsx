@@ -234,6 +234,28 @@ function PanelButton({ id, label, onClick }) {
   );
 }
 
+// A one-press filter, same zone and `crossZone` rules as the controls above.
+// `aria-pressed`, not a radio: the chips combine.
+function QuickChip({ id, label, active, onClick }) {
+  const { ref, focused } = useFocusable({
+    id: `quick-${id}`,
+    zone: 'controls',
+    crossZone: true,
+    onEnter: onClick,
+  });
+
+  return (
+    <button
+      ref={ref}
+      className={`${styles.quickChip} ${active ? styles.quickChipActive : ''} ${focused ? styles.focused : ''}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      {label}
+    </button>
+  );
+}
+
 function NumberStepper({ id, value, min, max, onChange }) {
   const { ref: decRef, focused: decFocused } = useFocusable({
     id: `${id}-dec`,
@@ -288,6 +310,11 @@ export default function ControlsPanel({
   showSearch = false,
   previewMuted = true,
   onMuteToggle = null,
+  // The one-press chips, as definitions plus the ids in force. A tab that
+  // declares none renders no row.
+  quickFilterOptions = [],
+  quickFilters = [],
+  onQuickFilterToggle = null,
 }) {
   const { sort, order, cols } = controls;
   const activeMode = mode ?? controls.mode;
@@ -295,109 +322,127 @@ export default function ControlsPanel({
   const showDivider = (a, b) => a && b;
 
   const hasSort = (sortGroups && sortGroups.length) || sortOptions.length;
+  const hasQuick = quickFilterOptions.length > 0 && onQuickFilterToggle;
 
   return (
     <div className={styles.panel} role="toolbar" aria-label="Controls">
-      {showSearch && (
-        <>
-          <SearchInput
-            value={controls.search || ''}
-            onChange={v => onChange({ search: v })}
-          />
-          {(modeOptions || sortGroups || sortOptions.length > 0 || showOrder || filterOptions || showGridSize) && (
-            <div className={styles.divider} />
-          )}
-        </>
-      )}
-      {modeOptions && (
-        <SelectControl
-          id="ctrl-mode"
-          label="Mode"
-          options={modeOptions}
-          value={activeMode}
-          onChange={changeMode}
-        />
-      )}
-
-      {showDivider(modeOptions, hasSort) && <div className={styles.divider} />}
-
-      {sortGroups && sortGroups.length > 0 && (
-        <SortGroupedControl
-          id="ctrl-sort"
-          label="Sort"
-          groups={sortGroups}
-          value={sort}
-          onChange={v => onChange({ sort: v })}
-        />
-      )}
-
-      {!sortGroups && sortOptions.length > 0 && (
-        <SelectControl
-          id="ctrl-sort"
-          label="Sort"
-          options={sortOptions}
-          value={sort}
-          onChange={v => onChange({ sort: v })}
-        />
-      )}
-
-      {showOrder && (
-        <div className={styles.orderGroup}>
-          <ToggleBtn
-            id="ctrl-asc"
-            label="ASC ↑"
-            active={order === 'asc'}
-            onClick={() => onChange({ order: 'asc' })}
-          />
-          <ToggleBtn
-            id="ctrl-desc"
-            label="DESC ↓"
-            active={order === 'desc'}
-            onClick={() => onChange({ order: 'desc' })}
-          />
-        </div>
-      )}
-
-      {filterOptions && (
-        <>
-          {showDivider(hasSort || showOrder, true) && <div className={styles.divider} />}
+      <div className={styles.mainRow}>
+        {showSearch && (
+          <>
+            <SearchInput
+              value={controls.search || ''}
+              onChange={v => onChange({ search: v })}
+            />
+            {(modeOptions || sortGroups || sortOptions.length > 0 || showOrder || filterOptions || showGridSize) && (
+              <div className={styles.divider} />
+            )}
+          </>
+        )}
+        {modeOptions && (
           <SelectControl
-            id="ctrl-filter"
-            label="Filter"
-            options={filterOptions}
-            value={controls.filterId || ''}
-            onChange={v => onChange({ filterId: v || null })}
+            id="ctrl-mode"
+            label="Mode"
+            options={modeOptions}
+            value={activeMode}
+            onChange={changeMode}
           />
-          {/* Beside the dropdown: that picks a saved filter, this makes one.
-              Hidden, not disabled, on tabs with no filter mode: there is
-              nothing there for it to build. */}
-          {onBuildFilter && (
-            <PanelButton id="ctrl-build-filter" label="Build…" onClick={onBuildFilter} />
-          )}
-        </>
-      )}
+        )}
 
-      {showGridSize && showDivider(hasSort || showOrder || filterOptions, true) && (
-        <div className={styles.divider} />
-      )}
-      
-      {showGridSize && (
-        <div className={styles.control}>
-          <span className={styles.controlLabel}>Columns</span>
-          <NumberStepper
-            id="grid-cols"
-            value={cols}
-            min={1}
-            max={8}
-            onChange={v => onChange({ cols: v })}
+        {showDivider(modeOptions, hasSort) && <div className={styles.divider} />}
+
+        {sortGroups && sortGroups.length > 0 && (
+          <SortGroupedControl
+            id="ctrl-sort"
+            label="Sort"
+            groups={sortGroups}
+            value={sort}
+            onChange={v => onChange({ sort: v })}
           />
+        )}
+
+        {!sortGroups && sortOptions.length > 0 && (
+          <SelectControl
+            id="ctrl-sort"
+            label="Sort"
+            options={sortOptions}
+            value={sort}
+            onChange={v => onChange({ sort: v })}
+          />
+        )}
+
+        {showOrder && (
+          <div className={styles.orderGroup}>
+            <ToggleBtn
+              id="ctrl-asc"
+              label="ASC ↑"
+              active={order === 'asc'}
+              onClick={() => onChange({ order: 'asc' })}
+            />
+            <ToggleBtn
+              id="ctrl-desc"
+              label="DESC ↓"
+              active={order === 'desc'}
+              onClick={() => onChange({ order: 'desc' })}
+            />
+          </div>
+        )}
+
+        {filterOptions && (
+          <>
+            {showDivider(hasSort || showOrder, true) && <div className={styles.divider} />}
+            <SelectControl
+              id="ctrl-filter"
+              label="Filter"
+              options={filterOptions}
+              value={controls.filterId || ''}
+              onChange={v => onChange({ filterId: v || null })}
+            />
+            {/* Beside the dropdown: that picks a saved filter, this makes one.
+                Hidden, not disabled, on tabs with no filter mode: there is
+                nothing there for it to build. */}
+            {onBuildFilter && (
+              <PanelButton id="ctrl-build-filter" label="Build…" onClick={onBuildFilter} />
+            )}
+          </>
+        )}
+
+        {showGridSize && showDivider(hasSort || showOrder || filterOptions, true) && (
+          <div className={styles.divider} />
+        )}
+
+        {showGridSize && (
+          <div className={styles.control}>
+            <span className={styles.controlLabel}>Columns</span>
+            <NumberStepper
+              id="grid-cols"
+              value={cols}
+              min={1}
+              max={8}
+              onChange={v => onChange({ cols: v })}
+            />
+          </div>
+        )}
+        {onMuteToggle && (
+          <>
+            {showGridSize && <div className={styles.divider} />}
+            <MuteToggle muted={previewMuted} onToggle={onMuteToggle} />
+          </>
+        )}
+      </div>
+
+      {hasQuick && (
+        <div className={styles.quickRow}>
+          <span className={styles.controlLabel}>Quick</span>
+          {quickFilterOptions.map(opt => (
+            <QuickChip
+              key={opt.id}
+              id={opt.id}
+              label={opt.label}
+              active={quickFilters.includes(opt.id)}
+              onClick={() => onQuickFilterToggle(opt.id)}
+            />
+          ))}
         </div>
-      )}
-      {onMuteToggle && (
-        <>
-          {showGridSize && <div className={styles.divider} />}
-          <MuteToggle muted={previewMuted} onToggle={onMuteToggle} />
-        </>
       )}
     </div>
   );

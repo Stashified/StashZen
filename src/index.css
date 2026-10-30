@@ -199,3 +199,26 @@ button {
    whole document twice per keypress, and `[class*="focused"]` is a substring
    match no engine can fast-path. The ring is one unblurred layer, so there is
    nothing worth hiding mid-navigation. */
+
+/*
+ * Reduce motion: collapse every transition and one-shot animation to a single
+ * instant frame. Attribute-driven so the PIN and first-run screens inherit it
+ * before React mounts; settings.js is the only writer.
+ *
+ * Spinners are the exception: a still spinner reads as a frozen app. Their
+ * class is kept in the CSS-modules name, so a substring match restores the
+ * rotation without naming every module's hashed class.
+ */
+:root[data-reduce-motion] *,
+:root[data-reduce-motion] *::before,
+:root[data-reduce-motion] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+:root[data-reduce-motion] [class*="spinner"] {
+  animation-duration: 1s !important;
+  animation-iteration-count: infinite !important;
+}

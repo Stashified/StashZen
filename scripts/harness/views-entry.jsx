@@ -242,6 +242,23 @@ async function run() {
       && getSettings().viewModes.scenes === 'list',
     JSON.stringify(getSettings().viewModes));
 
+  // ── 5b. Tags and Studios open as lists ──────────────────
+  // Both declare List as their default, so an unset tab must show rows. The
+  // map must stay unset: a default written into storage would become a stored
+  // choice the tab could no longer fall back from.
+  await switchTab('nav-tags');
+  const tagsList = await waitFor(() => !!listEl(), 6000);
+  check('V7 Tags opens in List without a stored mode',
+    tagsList && modeControlText() === 'List' && getSettings().viewModes.tags === undefined,
+    `list=${!!listEl()} control="${modeControlText()}" `
+    + `stored=${JSON.stringify(getSettings().viewModes)}`);
+  await switchTab('nav-studios');
+  const studiosList = await waitFor(() => !!listEl(), 6000);
+  check('V7 Studios opens in List without a stored mode',
+    studiosList && modeControlText() === 'List' && getSettings().viewModes.studios === undefined,
+    `list=${!!listEl()} control="${modeControlText()}" `
+    + `stored=${JSON.stringify(getSettings().viewModes)}`);
+
   // ── 6. The persisted field is actually persisted ──
   // Read from storage, not from state: settings.js persists a whitelist, and a
   // field missing from it behaves correctly until the next launch.

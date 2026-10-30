@@ -12,8 +12,9 @@ import { useSavedFilters } from '../hooks/useSavedFilters.js';
 import {
   findActiveFilter, resolveObjectFilter, mergeFilterEcho, buildFilterOptions,
 } from '../utils/filterSelection.js';
+import { combineQuickFilters } from '../utils/quickFilters.js';
 
-export function useActiveFilter({ controls, filterMode, dataKey }) {
+export function useActiveFilter({ controls, filterMode, dataKey, quickFilterDefs = [] }) {
   // Bumped after a save so the hook's effect re-runs: useSavedFilters is keyed
   // on mode + source and has no refresh of its own, and `saveFilter` clears the
   // module cache behind it. Folding it into `version` also partitions the cache
@@ -36,7 +37,13 @@ export function useActiveFilter({ controls, filterMode, dataKey }) {
 
   // A hand-built filter beats a saved one; see resolveObjectFilter for why
   // `??` and why no cache invalidation is needed.
-  const resolvedObjectFilter = resolveObjectFilter(controls, activeFilter);
+  const baseObjectFilter = resolveObjectFilter(controls, activeFilter);
+  // The quick chips narrow whatever is already applied. Kept out of
+  // `baseObjectFilter` so the filter builder still opens on the user's filter,
+  // not on a stack that includes a chip.
+  const resolvedObjectFilter = combineQuickFilters(
+    baseObjectFilter, quickFilterDefs, controls.quickFilters,
+  );
   // `usePagedList`'s reset effect keys on this object's *identity*, and the
   // same filter comes back as a fresh object on every refetch, unchanged
   // values would throw the rows away and fetch page 1 again. Keying on the
@@ -59,6 +66,7 @@ export function useActiveFilter({ controls, filterMode, dataKey }) {
     savedFilterEcho,
     setSavedFilterEcho,
     activeFilter,
+    baseObjectFilter,
     activeObjectFilter,
     activeSearchQuery,
     filterOptions,

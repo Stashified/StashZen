@@ -34,6 +34,11 @@ export function hasOperand(c) {
 
 const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
+// Stash stores a multi entry as `{id, label}`; a request-shaped seed (tag and
+// studio activation, Continue Watching) carries bare ids. Wrap those so the row
+// can print them and a Save stays in the stored shape.
+const labelled = (v) => (isPlainObject(v) ? v : { id: v, label: '' });
+
 /**
  * The builder writes Stash's stored envelope but is seeded from the request
  * side, where tag/studio/gallery activation and Continue Watching hand over
@@ -66,8 +71,8 @@ export function seedCriterion(desc, c) {
     case EDITOR.MULTI:
     case EDITOR.HIERARCHICAL: {
       const value = {
-        items: Array.isArray(src.value) ? src.value : [],
-        excluded: Array.isArray(src.excludes) ? src.excludes : [],
+        items: Array.isArray(src.value) ? src.value.map(labelled) : [],
+        excluded: Array.isArray(src.excludes) ? src.excludes.map(labelled) : [],
       };
       if (src.depth != null) value.depth = src.depth;
       return { modifier, value };
@@ -149,6 +154,7 @@ export function isEffective(desc, c) {
   const operand = hasOperand(c);
   const inner = c.value && typeof c.value === 'object' && !Array.isArray(c.value) ? c.value : {};
   const items = Array.isArray(inner.items) ? inner.items : [];
+  const excluded = Array.isArray(inner.excluded) ? inner.excluded : [];
   const isMulti = [EDITOR.MULTI, EDITOR.HIERARCHICAL].includes(desc.editor);
   const isListValuedEnum = desc.editor === EDITOR.ENUM && desc.listValued;
   // BOOLEAN/TRI keep their operand at `criterion.value`; STASH_ID/STASH_IDS
@@ -156,7 +162,14 @@ export function isEffective(desc, c) {
   const isBoolean = desc.editor === EDITOR.BOOLEAN || desc.editor === EDITOR.TRI;
   const isStashId = desc.editor === EDITOR.STASH_ID || desc.editor === EDITOR.STASH_IDS;
 
-  if (isMulti) return items.length > 0;
+  // A nullary modifier ("is empty") constrains on its own; the translator
+  // supplies the operand the input type requires. Every check below is about
+  // an operand, so none of them may drop it. The NUMBER, STASH_ID and
+  // list-enum branches used to, which silently widened the filter.
+  if (!operand) return true;
+  // An exclusion-only multi constrains through `excluded`; counting `items`
+  // alone dropped a saved exclude list on the next Apply or Save.
+  if (isMulti) return items.length > 0 || excluded.length > 0;
   if (isListValuedEnum) return Array.isArray(inner.value) && inner.value.length > 0;
   if (isBoolean) return c.value === 'true' || c.value === 'false' || typeof c.value === 'boolean';
   if (isStashId) {
@@ -164,7 +177,7 @@ export function isEffective(desc, c) {
     if (!inner.endpoint || id === '' || id === undefined || id === null) return false;
     return true;
   }
-  if (operand && (inner.value === '' || inner.value === undefined || inner.value === null)) return false;
+  if (inner.value === '' || inner.value === undefined || inner.value === null) return false;
   // An Int criterion with a decimal is a GraphQL type error, and a text box is
   // free to hold one; keep the row visible but out of the request.
   if (desc.editor === EDITOR.NUMBER) {
@@ -223,6 +236,18 @@ export function storedCriterion(desc, c) {
       };
     case EDITOR.IS_MISSING:
       return inner.value ?? '';
+    case EDITOR.MULTI:
+    case EDITOR.HIERARCHICAL:
+      // Normalise here too: an entry that never went through the picker would
+      // otherwise be written back as a bare id, which is not the stored shape.
+      return {
+        modifier: c.modifier,
+        value: {
+          items: (Array.isArray(inner.items) ? inner.items : []).map(labelled),
+          excluded: (Array.isArray(inner.excluded) ? inner.excluded : []).map(labelled),
+          ...(inner.depth != null ? { depth: inner.depth } : {}),
+        },
+      };
     default:
       return c;
   }

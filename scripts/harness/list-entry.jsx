@@ -254,6 +254,35 @@ async function runGrid() {
   window.__setSearch('');
   await sleep(500);
 
+  // ── The first row comes back where the tab opened ────────
+  // Walking back up the way the D-pad does it: a jump to the top row can land
+  // with the padding intact, but one row at a time leaves the container a few
+  // pixels down when the top row is already on screen, so it stays scrolled
+  // and the focused card's 1.05 scale and 4px lift are clipped at the top.
+  // The top row must return to the position the listing first rendered in,
+  // which only exists at scrollTop 0.
+  const root = scrollRoot();
+  const cardTop = () => {
+    const card = registry.get(`${V.focus}1`)?.el;
+    return card ? card.getBoundingClientRect().top - root.getBoundingClientRect().top : NaN;
+  };
+  root.scrollTop = 0;
+  focusCard('1');
+  await sleep(150);
+  const restTop = cardTop();
+  focusCard('21');
+  await sleep(200);
+  const scrolled = root.scrollTop;
+  focusCard('5');
+  await sleep(200);
+  const oneRowUp = root.scrollTop;
+  focusCard('1');
+  await sleep(300);
+  check(`${t}11 back on the first row the listing sits where it opened`,
+    scrolled > 0 && root.scrollTop === 0 && Math.abs(cardTop() - restTop) < 1,
+    `scrolled=${scrolled} one row up=${oneRowUp} back=${root.scrollTop} `
+      + `card top=${cardTop()} at rest=${restTop}`);
+
   // ── A page that lands after a reset is dropped ──────────
   // Without the requestId guard the old list's page 2 splices into the new
   // list. Only page 2 is delayed: a slow replacement would land last and hide it.

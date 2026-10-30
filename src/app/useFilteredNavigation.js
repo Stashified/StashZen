@@ -62,17 +62,22 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
     changeTab(toTab);
   };
 
-  const handleTagSelect = (tag) => activateFiltered(
-    { tags: { modifier: 'INCLUDES', value: [tag.id] } },
+  // `originFocusId` is for an activation from a scene detail: the origin tab
+  // has no tag or studio card, so Back focuses the scene the detail opened
+  // from instead (see `handleGallerySelect`).
+  // The labelled entry is the stored shape Stash uses; the request translator
+  // unwraps it, and the filter builder can show the name when it reopens.
+  const handleTagSelect = (tag, originFocusId = null) => activateFiltered(
+    { tags: { modifier: 'INCLUDES', value: [{ id: tag.id, label: tag.name }] } },
     tag.name,
-    `tag-${tag.id}`,
+    originFocusId || `tag-${tag.id}`,
     'scenes',
   );
 
-  const handleStudioSelect = (studio) => activateFiltered(
-    { studios: { modifier: 'INCLUDES', value: [studio.id] } },
+  const handleStudioSelect = (studio, originFocusId = null) => activateFiltered(
+    { studios: { modifier: 'INCLUDES', value: [{ id: studio.id, label: studio.name }] } },
     studio.name,
-    `studio-${studio.id}`,
+    originFocusId || `studio-${studio.id}`,
     'scenes',
   );
 
@@ -113,7 +118,7 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
   // names its own card (`video-<id>`, the prefix both listings use). The
   // caller can pass the origin's own id instead, for a tab with no video card.
   const handleGallerySelect = (gallery, sceneId = null, originFocusId = null) => activateFiltered(
-    { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
+    { galleries: { modifier: 'INCLUDES', value: [{ id: gallery.id, label: gallery.title }] } },
     gallery.title,
     originFocusId || (sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`),
     'images',

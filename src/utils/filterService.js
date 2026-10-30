@@ -108,10 +108,6 @@ export async function fetchSavedFilters(mode, source = '') {
   return p;
 }
 
-export function getCachedSavedFilters(mode, source = '') {
-  return cache.get(keyOf(mode, source)) || null;
-}
-
 export function clearSavedFiltersCache() {
   generation++;
   cache.clear();

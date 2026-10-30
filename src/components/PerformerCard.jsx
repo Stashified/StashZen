@@ -13,11 +13,11 @@
  * may claim focus. `nextId` lets the top shelf hand Up to the rail.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './PerformerCard.module.css';
 
-export default function PerformerCard({
+function PerformerCard({
   item, index, onSelect,
   autoFocus = index === 0,
   nextId = null,
@@ -85,3 +85,7 @@ export default function PerformerCard({
     </button>
   );
 }
+
+// Same reasoning as VideoCard: the grids and carousel pass a stable listing, so
+// an append renders only the new cards.
+export default memo(PerformerCard);

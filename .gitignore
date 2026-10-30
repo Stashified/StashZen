@@ -49,3 +49,6 @@ __pycache__/
 # Local roadmap notes from the 2026-10-28 additions scan. Working material,
 # not repo content.
 planning.md
+
+# The pairing helper plan. Working material like planning.md.
+helper.md

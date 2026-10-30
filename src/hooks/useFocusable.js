@@ -22,6 +22,7 @@
 
 import { useRef, useState, useEffect, useCallback, useId } from 'react';
 import { isRestorePending } from '../utils/restorePending.js';
+import { scrollContainerOf } from '../utils/scroll.js';
 
 const registry = new Map();
 let currentFocusId = null;
@@ -32,6 +33,11 @@ let focusingFallback = false;
 // How long Enter must be held for a long-pressable element to count it as a
 // hold rather than a tap. Below this it is a tap; above it the menu opens.
 export const LONG_PRESS_MS = 600;
+
+// Two elements this close vertically are on the same line for the top-row
+// reset. The focused card's 1.05 scale and 4px lift move its own rect up by
+// about 12px, so the tolerance covers that; a row pitch is hundreds of pixels.
+const FIRST_ROW_PX = 24;
 
 // Read by useKeyHandler (candidate search) and VideoCarousel.
 export { registry };
@@ -147,6 +153,23 @@ export function useFocusable({
       // instant.
       if (el.scrollIntoView) {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      }
+
+      // The top row goes back to the listing's opening position. Walking up
+      // one row at a time leaves the container a little scrolled once the top
+      // row is already on screen, since nothing scrolls when it does not have
+      // to, and that residual clips the focused card's scale and lift at the
+      // top. Only the top row is corrected: the rows below have no opening
+      // position to return to.
+      const scroller = scrollContainerOf(el);
+      if (scroller && scroller.scrollTop > 0) {
+        // The first tab stop in the container is in its top row by definition.
+        const first = scroller.querySelector('[tabindex="0"]');
+        if (first && (first === el
+          || Math.abs(first.getBoundingClientRect().top - el.getBoundingClientRect().top)
+            < FIRST_ROW_PX)) {
+          scroller.scrollTop = 0;
+        }
       }
 
       // A card is not the whole shelf. On Home the focusable sits under a row

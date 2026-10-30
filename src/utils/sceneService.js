@@ -94,12 +94,6 @@ const SCENE_ADD_O_MUTATION = `
   }
 `;
 
-const SCENE_DELETE_O_MUTATION = `
-  mutation SceneDeleteO($id: ID!) {
-    sceneDeleteO(id: $id) { count }
-  }
-`;
-
 // The odd one out: `sceneResetO` returns a bare `Int!` while its siblings
 // return `HistoryMutationResult`. Giving it a `{ count }` selection is a
 // *selection-set validation error*, on a TV, a console.warn nobody sees and a
@@ -305,26 +299,12 @@ export async function addSceneO(id) {
 }
 
 /**
- * Un-like. `sceneDeleteO` removes the most recent history entry, undoing one
- * like rather than clearing all, the counter matches the likes that happened.
- *
- * Kept even though the scene page now increments on press and clears on hold:
- * "undo one" is the only correct inverse of an increment, and the pair is why a
- * bare `sceneUpdate({o_counter})` is not the tool for either job.
- */
-export async function deleteSceneO(id) {
-  const data = await runQuery(SCENE_DELETE_O_MUTATION, { id: String(id) });
-  clearScenePages();
-  return data?.sceneDeleteO?.count;
-}
-
-/**
  * Clear the counter outright, history included.
  *
  * Reached by holding OK, not a press: it is destructive in a way the increment
- * is not (`sceneDeleteO` would need one press per like), and a hold is the
- * remote's existing gesture for "the thing behind the thing". Returns 0 unless
- * someone else wrote in between.
+ * is not (undoing one like at a time would need a press per like), and a hold is
+ * the remote's existing gesture for "the thing behind the thing". Returns 0
+ * unless someone else wrote in between.
  */
 export async function resetSceneO(id) {
   const data = await runQuery(SCENE_RESET_O_MUTATION, { id: String(id) });

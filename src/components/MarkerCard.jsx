@@ -12,12 +12,12 @@
  * is built from the listing the marker was found in. See actionMenus.js.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './MarkerCard.module.css';
 import { formatTime } from '../utils/format.js';
 
-export default function MarkerCard({ item, index, list, onSelect, onLongPress }) {
+function MarkerCard({ item, index, list, onSelect, onLongPress }) {
   const [imgError, setImgError] = useState(false);
 
   const { ref, focused } = useFocusable({
@@ -70,3 +70,7 @@ export default function MarkerCard({ item, index, list, onSelect, onLongPress })
     </button>
   );
 }
+
+// Same reasoning as VideoCard: the grids and carousel pass a stable listing, so
+// an append renders only the new cards.
+export default memo(MarkerCard);

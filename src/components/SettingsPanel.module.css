@@ -130,6 +130,12 @@
   color: var(--text-secondary);
 }
 
+/* Five options have to share the 640px panel: 22px padding each would push the
+   last one past the edge. */
+.toggleCompact {
+  padding: 8px 14px;
+}
+
 .toggle.toggleActive {
   background: var(--accent-fill);
   color: #fff;

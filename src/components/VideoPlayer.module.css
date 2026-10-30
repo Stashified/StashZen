@@ -367,3 +367,6 @@
   background: rgba(120,80,20,0.55);
   color: #ffe2b0;
 }
+
+/* Near-end queue hint. Above the rail's band so the controls never cover it,
+   and pointer-events none so it cannot intercept a click meant for the video. */

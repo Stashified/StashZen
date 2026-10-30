@@ -214,6 +214,26 @@ async function run() {
   check('P5 once it is released, the same card previews without a refocus',
     videoVisible(5), `opacity=${opacityOf(videoEl(5))}`);
 
+  // ── P6: Reduce motion keeps previews paused ─────────────────
+  // The switch is broader than P1's: previews stay enabled and the cards must
+  // still not play. Turning it off again must bring the preview back, or the
+  // setting would be a one-way door.
+  await setMode({ preview: 'ok' });
+  setSettings({ reduceMotion: true });
+  await sleep(200);
+  await clearLog();
+  focusCard(6);
+  await sleep(SETTLE_MS);
+  const stillFetches = await previewFetches();
+  check('P6 reduce motion mounts no preview and asks for none',
+    !videoEl(6) && countFetches(stillFetches, 6) === 0,
+    `video=${!!videoEl(6)} fetches=[${stillFetches.join(',')}]`);
+
+  setSettings({ reduceMotion: false });
+  await sleep(SETTLE_MS);
+  check('P6 turning it back off lets the same card preview again',
+    videoVisible(6), `opacity=${opacityOf(videoEl(6))}`);
+
   await fetch('/result', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

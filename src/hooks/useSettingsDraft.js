@@ -25,6 +25,8 @@ const snapshot = (s) => ({
   stashUrl: String(s.stashUrl ?? '').trim(),
   stashKey: String(s.stashKey ?? '').trim(),
   previewsEnabled: !!s.previewsEnabled,
+  reduceMotion: !!s.reduceMotion,
+  seekStep: s.seekStep,
   theme: s.theme,
   playbackEngine: s.playbackEngine,
 });
@@ -34,6 +36,8 @@ export function useSettingsDraft(initial) {
   const [stashUrl, setStashUrl] = useState(initial.stashUrl);
   const [stashKey, setStashKey] = useState(initial.stashKey);
   const [previewsEnabled, setPreviewsEnabled] = useState(initial.previewsEnabled);
+  const [reduceMotion, setReduceMotion] = useState(initial.reduceMotion);
+  const [seekStep, setSeekStep] = useState(initial.seekStep);
   // Appearance is a draft like everything else, see above.
   const [theme, setTheme] = useState(initial.theme);
   // Playback engine is a draft too: choosing Browser and cancelling must not
@@ -69,6 +73,8 @@ export function useSettingsDraft(initial) {
       // unseen.
       ...(useMock ? {} : { stashUrl: url, stashKey: stashKey.trim() }),
       previewsEnabled,
+      reduceMotion,
+      seekStep,
       theme,
       playbackEngine,
     });
@@ -90,13 +96,16 @@ export function useSettingsDraft(initial) {
     setStashUrl(fresh.stashUrl);
     setStashKey(fresh.stashKey);
     setPreviewsEnabled(fresh.previewsEnabled);
+    setReduceMotion(fresh.reduceMotion);
+    setSeekStep(fresh.seekStep);
     setTheme(fresh.theme);
     setPlaybackEngine(fresh.playbackEngine);
     setBaseline(snapshot(fresh));
   };
 
   const current = snapshot({
-    useMock, stashUrl, stashKey, previewsEnabled, theme, playbackEngine,
+    useMock, stashUrl, stashKey, previewsEnabled, reduceMotion, seekStep,
+    theme, playbackEngine,
   });
   const dirty = Object.keys(baseline).some(key => baseline[key] !== current[key]);
 
@@ -105,6 +114,8 @@ export function useSettingsDraft(initial) {
     stashUrl, setStashUrl,
     stashKey, setStashKey,
     previewsEnabled, setPreviewsEnabled,
+    reduceMotion, setReduceMotion,
+    seekStep, setSeekStep,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
     dirty,

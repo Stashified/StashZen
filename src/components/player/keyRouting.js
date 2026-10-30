@@ -38,20 +38,30 @@ export function foreignDialogOpen(ownOverlay) {
  * Returns `{ action, prevent, stop }`. `action` is one of:
  *   yield, media, step-prev, step-next, leave-rail, leave-rail-seek,
  *   hide-controls, close, reveal-rail, skim-back, skim-forward, rail-pass,
- *   none
+ *   enter-upnext, hide-upnext, none
  *
  * `leave-rail` and `leave-rail-seek` both exit, differing in the bar: Back
  * dismisses it (one level up); ↑ leaves the cursor on a bar that stays up so
  * ←/→ can skim.
  *
- * The vertical keys walk a two-stop ladder: on the buttons ↓ steps to the next
- * scene and ↑ goes to the seek bar; on the seek bar ↓ returns to the buttons
- * and ↑ steps to the previous scene. With the bar hidden there is no middle
- * stop, and both step directly.
+ * The vertical keys walk a ladder: on the buttons ↓ steps to the next scene and
+ * ↑ goes to the seek bar; on the seek bar ↓ returns to the buttons and ↑ steps
+ * to the previous scene. With the bar hidden there is no middle stop, and both
+ * step directly.
+ *
+ * The Up next card (the last 30 s of a scene) adds a stop on top: it takes the
+ * cursor when it appears and owns every key while it is visible, because the
+ * controls behind it stay down. `upNextFocused` says whether the cursor is
+ * already on it: if so ←/→ and Enter are the buttons', if not the first press
+ * puts it there (`enter-upnext`). ↓ still steps the scene and Back puts the
+ * card away.
  */
 export function routePlayerKey(
   event,
-  { railHoldsFocus, foreignDialog, singleScene, controlsVisible = false },
+  {
+    railHoldsFocus, foreignDialog, singleScene, controlsVisible = false,
+    upNextVisible = false, upNextFocused = false,
+  },
 ) {
   const key = event.key;
   const code = event.keyCode;
@@ -66,6 +76,33 @@ export function routePlayerKey(
   // reach the app's Back handler behind it. Arrows and media keys repeat.
   if (isBack && event.repeat) return { action: 'none', prevent: true, stop: true };
 
+  // The card is the only stop while it is up, whatever holds the cursor: it is
+  // visible and the controls behind it are not, so a hidden rail must not take
+  // a key. That state is reachable, the autofocus is cancelled by a keydown and
+  // a skim hold crossing the 30 s boundary is a stream of them.
+  if (upNextVisible) {
+    if (isMedia) return { action: 'media', prevent: true, stop: true };
+    // Back puts it away, the same as Hide, rather than raising the controls
+    // behind it. The queue still advances when the scene ends.
+    if (isBack) return { action: 'hide-upnext', prevent: true, stop: true };
+    // ↓ keeps the rail's meaning.
+    if (key === 'ArrowDown' || code === 40) {
+      return { action: singleScene ? 'none' : 'step-next', prevent: true, stop: true };
+    }
+    // ↑ has nowhere to go from the card: raising the seek bar under an offer
+    // that already answers the remote is the mess this card exists to replace.
+    if (key === 'ArrowUp' || code === 38) {
+      return upNextFocused
+        ? { action: 'none', prevent: true, stop: true }
+        : { action: 'enter-upnext', prevent: true, stop: true };
+    }
+    // ←/→ walk the two buttons and Enter activates one, both spatial nav. Off
+    // the card the first press puts the cursor on Play now instead.
+    return upNextFocused
+      ? { action: 'rail-pass', prevent: false, stop: false }
+      : { action: 'enter-upnext', prevent: true, stop: true };
+  }
+
   if (railHoldsFocus) {
     // Instant transport in every state: the media keys are the remote's own
     // play/pause. Space is grouped here, not with Enter, because it natively
@@ -75,7 +112,9 @@ export function routePlayerKey(
     // ↑ leaves the buttons for the seek bar and keeps the bar up, so ←/→ skim
     // a visible timeline. The stop is load-bearing: without it the rail's own
     // focusable handler would walk the cursor.
-    if (key === 'ArrowUp' || code === 38) return { action: 'leave-rail-seek', prevent: true, stop: true };
+    if (key === 'ArrowUp' || code === 38) {
+      return { action: 'leave-rail-seek', prevent: true, stop: true };
+    }
     // ↓ steps to the next scene directly, the buttons are the top stop of the
     // downward ladder. A one-scene queue has nowhere to step, so the press is
     // consumed rather than jumping to play/pause.

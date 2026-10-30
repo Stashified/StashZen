@@ -199,6 +199,34 @@ async function run() {
     `asked=${askedSave} data-theme=${JSON.stringify(htmlTheme())} saved=${stored()?.theme}`);
   panelBack.unmount();
 
+  // A refused Save must not strand the D-pad: the prompt and the button that
+  // had the cursor are both gone, so focus has to come back to where Back was
+  // pressed while the error is on screen.
+  window.__closed = false;
+  const panelRefused = await mountPanel();
+  const urlInput = document.querySelector('input[aria-labelledby="settings-url-label"]');
+  const setInput = (el, v) => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  setInput(urlInput, 'not a url');
+  await sleep(60);
+  const focusBefore = document.activeElement;
+  press('Escape', 27);
+  const askedRefused = await waitFor(() => !!byLabel('Save & close'), 2000);
+  await promptReady();
+  await enter(byLabel('Save & close'));
+  const refused = await waitFor(
+    () => !!document.querySelector('[role="dialog"] [role="alert"]'), 2000);
+  check('T5d a refused Save & close keeps the panel open and says why',
+    askedRefused && refused && window.__closed === false,
+    `asked=${askedRefused} alert=${refused} closed=${!!window.__closed}`);
+  check('T5d ...and puts focus back on the control it left',
+    document.activeElement === focusBefore && document.activeElement !== document.body,
+    `active=${document.activeElement?.tagName}:${document.activeElement?.textContent?.trim().slice(0, 40)}`);
+  panelRefused.unmount();
+
   // Put OLED back so T6 still measures a real transition.
   window.__closed = false;
   const panelReset = await mountPanel();

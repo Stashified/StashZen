@@ -66,6 +66,9 @@ const threeScenes = () => ['one', 'two', 'three'].map((name, i) => ({
   // A distinct URL per scene, so a step is a real source change: the
   // "inherit nothing from the outgoing playhead" rule only runs on a URL change.
   stream: `http://127.0.0.1:${PORT}/tone${i + 1}.wav`,
+  // A picture per scene, so the queue drawer's rows and the near-end card can
+  // be told apart by their artwork rather than by a fallback letter.
+  thumbnail: `http://127.0.0.1:${PORT}/scene/${i + 1}/thumb.png`,
 }));
 const QUEUE3 = { items: threeScenes(), total: 3, page: 1, startIndex: 0, startSeconds: 0 };
 
@@ -281,6 +284,68 @@ function press(el, key = 'Enter', keyCode = 13) {
 const ok = (el) => press(el || document.activeElement, 'Enter', 13);
 
 const focusRailButton = (id) => registry.get(id).el.focus();
+
+/** Release the key: a long press is press, hold, release. */
+function release(key = 'Enter', keyCode = 13) {
+  (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keyup', {
+    key, keyCode, which: keyCode, bubbles: true, cancelable: true,
+  }));
+}
+
+/** OK down and up: a row that also takes a long press activates on release. */
+async function tapEnter() {
+  ok();
+  await sleep(80);
+  release();
+}
+
+/** Hold OK past the 600 ms long-press threshold, then let go. */
+async function holdEnter(ms = 950) {
+  ok();
+  await sleep(ms);
+  release();
+}
+
+const queuePanel = () => document.querySelector('[role="dialog"][aria-label="Up next"]');
+const queueRows = () => (queuePanel() ? [...queuePanel().querySelectorAll('button')] : []);
+const queueCount = () =>
+  queuePanel()?.querySelector('[class*="_count_"]')?.textContent.trim() ?? null;
+/** The near-end card (PlayerUpNextCard), by its stable marker. */
+const queueHint = () => player()?.querySelector('[data-up-next]')?.textContent.trim() ?? null;
+const upNextCard = () => player()?.querySelector('[data-up-next]') ?? null;
+/** The controls overlay, and whether it is the visible layer. */
+const controlsBar = () => player()?.querySelector('[class*="_controls_"]') ?? null;
+const controlsShown = () =>
+  (controlsBar()?.className || '').includes('controlsVisible');
+const upNextButtons = () => (upNextCard()
+  ? [...upNextCard().querySelectorAll('button')].map(b => b.textContent.trim())
+  : []);
+
+/**
+ * Open the drawer and wait for the current row to take focus. That row
+ * autofocuses 50 ms after it mounts; focusing another row before the timer
+ * runs would be undone by it.
+ */
+async function openQueueSettled() {
+  const opened = await waitFor(() => !!queuePanel(), 1500);
+  const focused = await waitFor(() => {
+    const row = queueRows().find(r => r.getAttribute('aria-current') === 'true');
+    return !!row && document.activeElement === row;
+  }, 1500);
+  return opened && focused;
+}
+
+/**
+ * The rail's clock. `currentTime` is only set from `timeupdate`, so this is
+ * the visible proof the playhead the hint reads has moved; the element's own
+ * `currentTime` moves without it.
+ */
+const clockSeconds = () => {
+  const t = player()?.querySelector('[class*="_timeRow_"] [class*="_time_"]')
+    ?.textContent.trim();
+  if (!t) return null;
+  return t.split(':').reduce((s, n) => s * 60 + Number(n), 0);
+};
 
 async function setMode(patch) {
   await fetch('/mode', {
@@ -549,7 +614,15 @@ async function run() {
   // the quiet window, after a tick has had time to arrive.
   await sleep(50);
   const dotAfterPress = dotPct();
-  await sleep(400);              // a `timeupdate` or two, still inside the quiet window
+  // The step glides: with no new press, 170 ms later the bar must have moved
+  // toward the target rather than snapped there at once. Without the glide
+  // both samples sit on the target and this fails.
+  await sleep(170);
+  const dotMidGlide = dotPct();
+  check('R4c the target glides between held presses',
+    dotMidGlide > dotAfterPress,
+    `${dotAfterPress}% at 50 ms, ${dotMidGlide}% at 220 ms`);
+  await sleep(230);              // ~450 ms total, still inside the quiet window
   check('R4c the timeline follows the unsent target, not the frame on screen',
     dotPct() >= dotAfterPress - 0.5, `${dotAfterPress}% then ${dotPct()}%`);
   press(document.body, 'ArrowRight', 39);
@@ -1050,6 +1123,261 @@ async function run() {
     controlsOpacity() === 0 && closedCount === closedBeforeRailBack,
     `opacity=${controlsOpacity()} closed += ${closedCount - closedBeforeRailBack}`);
 
+  // ── Q: the queue drawer ──────────────────────────────────
+  // Still the three-scene queue, now on the last scene. The drawer is a dialog
+  // over the player: its rows are the only stops, Back closes it without
+  // touching the player, and the near-end hint is the non-interactive half.
+  const closedBeforeQueue = closedCount;
+  check('Q1 the rail offers "Up next" on a multi-scene queue',
+    !!byLabel('Up next', rail()) && !!registry.get('player-rail-queue'),
+    `rail ${!!rail()} button ${!!byLabel('Up next', rail())}`);
+
+  press(document.body, 'Enter', 13);
+  await sleep(350);
+  focusRailButton('player-rail-queue');
+  await sleep(80);
+  ok();
+  const queueOpened = await openQueueSettled();
+  check('Q2 OK on it opens the drawer', queueOpened,
+    `open ${!!queuePanel()} focus "${document.activeElement?.getAttribute('aria-label')}"`);
+
+  const openedRows = queueRows();
+  check('Q2b it lists the session, marks the scene on screen and starts there',
+    openedRows.length === 3
+      && queueCount() === '3 of 3'
+      && openedRows[2]?.getAttribute('aria-current') === 'true'
+      && document.activeElement === openedRows[2],
+    `rows=${openedRows.length} count=${queueCount()} `
+      + `current=${openedRows[2]?.getAttribute('aria-current')} `
+      + `focused="${document.activeElement?.getAttribute('aria-label')}"`);
+
+  press(document.activeElement, 'Backspace', 10009);
+  const drawerClosed = await waitFor(() => !queuePanel(), 1500);
+  await sleep(120);
+  check('Q3 Back closes the drawer, not the player, and lands on its button',
+    drawerClosed && closedCount === closedBeforeQueue
+      && document.activeElement === registry.get('player-rail-queue')?.el,
+    `open ${!!queuePanel()} closed += ${closedCount - closedBeforeQueue} `
+      + `focus "${document.activeElement?.getAttribute('aria-label')}"`);
+
+  ok();
+  await openQueueSettled();
+  queueRows()[0]?.focus();
+  await sleep(80);
+  await holdEnter();
+  await sleep(200);
+  const afterRemove = queueRows();
+  check('Q4 holding OK on a row removes it and moves the cursor to the next one',
+    afterRemove.length === 2
+      && queueCount() === '2 of 2'
+      && afterRemove[0]?.getAttribute('aria-label') === 'VERIFY scene two'
+      && document.activeElement === afterRemove[0],
+    `rows=${afterRemove.length} count=${queueCount()} `
+      + `first="${afterRemove[0]?.getAttribute('aria-label')}" `
+      + `focused="${document.activeElement?.getAttribute('aria-label')}"`);
+
+  // The scene on screen has no removal: Next is how you skip it. The row has
+  // no long press, so the gesture is a tap and the drawer closes.
+  queueRows()[1]?.focus();
+  await sleep(80);
+  await holdEnter();
+  await sleep(200);
+  const closedByTap = !queuePanel();
+  if (closedByTap) {
+    ok();
+    await openQueueSettled();
+  }
+  const afterCurrent = queueRows();
+  check('Q5 the scene on screen cannot be removed by the same hold',
+    closedByTap && playingTitle() === 'VERIFY scene three'
+      && afterCurrent.length === 2
+      && afterCurrent[1]?.getAttribute('aria-current') === 'true',
+    `closed=${closedByTap} title="${playingTitle()}" rows=${afterCurrent.length} `
+      + `current=${afterCurrent[1]?.getAttribute('aria-current')}`);
+
+  const rowZero = queueRows()[0];
+  rowZero?.focus();
+  await sleep(80);
+  const focusBeforeJump = document.activeElement?.getAttribute('aria-label');
+  await tapEnter();
+  const jumped = await waitFor(() => playingTitle() === 'VERIFY scene two', 3000);
+  await sleep(200);
+  check('Q6 OK on a row jumps to it, closes the drawer and returns to its button',
+    jumped && !queuePanel() && closedCount === closedBeforeQueue
+      && document.activeElement === registry.get('player-rail-queue')?.el,
+    `title="${playingTitle()}" open ${!!queuePanel()} `
+      + `focus "${document.activeElement?.getAttribute('aria-label')}" `
+      + `| row0="${rowZero?.getAttribute('aria-label')}" `
+      + `beforePress="${focusBeforeJump}"`);
+
+  await waitFor(() => (video()?.duration || 0) > 0, 3000);
+  await setPlaying(false);
+  check('Q7 no hint at the start of a scene, even with one queued next',
+    queueHint() === null && clockSeconds() !== null,
+    `hint=${JSON.stringify(queueHint())} clock=${clockSeconds()}`);
+
+  // The key hint names the step in force, not a hardcoded 15 s. Adaptive's
+  // first rung is what one press gives.
+  const keyHint = player()?.querySelector('[class*="_hint_"]')?.textContent || '';
+  check('Q7a the key hint names the step in force',
+    /−5s/.test(keyHint) && /\+5s/.test(keyHint),
+    `hint ${JSON.stringify(keyHint.trim())}`);
+
+  // The clock state is fed by `timeupdate`, so the seek has to land while the
+  // element is playing; a paused seek moves the element and not the UI.
+  const queuedDuration = video()?.duration || 0;
+  const queuedTarget = Math.max(0, queuedDuration - 12);
+  await setPlaying(true);
+  await seekTo(queuedTarget);
+  const hintShown = await waitFor(() => !!queueHint(), 2500);
+  check('Q7b near the end the hint names the next scene',
+    hintShown && queueHint().includes('Up next')
+      && queueHint().includes('VERIFY scene three')
+      && Math.abs((clockSeconds() ?? -99) - queuedTarget) <= 2,
+    `hint=${JSON.stringify(queueHint())} clock=${clockSeconds()} `
+      + `target=${queuedTarget.toFixed(0)}/${queuedDuration.toFixed(0)}s`);
+  await setPlaying(false);
+
+  // The card carries the next scene's picture, title and countdown, and it
+  // takes the cursor when it appears: the remote answers Play now and Hide
+  // without a press to get in. The controls behind it go down with it, so
+  // there is one offer and one set of keys on screen.
+  const card = upNextCard();
+  const cardImg = card?.querySelector('img');
+  const cardText = card?.textContent || '';
+  const cardTookFocus = await waitFor(
+    () => document.activeElement === registry.get('upnext-play')?.el, 1500);
+  check('Q7d the card shows the next scene\'s picture, title and countdown, and takes the cursor',
+    !!card && (cardImg?.getAttribute('src') || '').includes('/scene/3/thumb.png')
+      && cardText.includes('VERIFY scene three')
+      && /Next in \d+ s/.test(cardText)
+      && upNextButtons().join('/') === 'Play now/Hide'
+      && cardTookFocus,
+    `img=${cardImg?.getAttribute('src')} buttons=${JSON.stringify(upNextButtons())} `
+      + `focus=${cardTookFocus} text=${JSON.stringify(cardText.slice(0, 80))}`);
+  // Ask for the bar the way a viewer would (a mousemove is the activity path),
+  // so the check below is not a bar that happened to have timed out already.
+  player().dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  await sleep(120);
+  check('Q7d2 the controls stay down while the card is up',
+    !!card && !controlsShown(),
+    `card=${!!card} controls=${controlsShown()} className="${controlsBar()?.className}"`);
+
+  // ←/→ walk the two buttons, ↑ has nowhere to go, and Back puts the card away
+  // the same as Hide: the scene carries on and the rail takes the cursor.
+  press(document.activeElement, 'ArrowRight', 39);
+  await sleep(120);
+  const walked = document.activeElement === registry.get('upnext-hide')?.el;
+  press(document.activeElement, 'ArrowLeft', 37);
+  await sleep(120);
+  const walkedBack = document.activeElement === registry.get('upnext-play')?.el;
+  press(document.activeElement, 'ArrowUp', 38);
+  await sleep(120);
+  const topStop = document.activeElement === registry.get('upnext-play')?.el;
+  press(document.activeElement, 'Escape', 27);
+  const dismissed = await waitFor(() => !upNextCard(), 1500);
+  const railRestored = await waitFor(
+    () => document.activeElement === registry.get('player-rail-playpause')?.el, 1500);
+  // The same mechanism must be able to show the bar again, or Q7d2 would pass
+  // on a player whose controls never appear at all.
+  const barBack = await waitFor(() => controlsShown(), 1500);
+  check('Q7e ←/→ walk the card\'s buttons, ↑ stays put and Back puts the card away',
+    walked && walkedBack && topStop && dismissed && railRestored && barBack
+      && playingTitle() === 'VERIFY scene two',
+    `right=${walked} left=${walkedBack} up=${topStop} dismissed=${dismissed} `
+      + `rail=${railRestored} bar=${barBack} title="${playingTitle()}"`);
+
+  press(document.body, 'Enter', 13);
+  await sleep(350);
+  focusRailButton('player-rail-queue');
+  await sleep(80);
+  ok();
+  const drawerForHint = await openQueueSettled();
+  check('Q7c the hint yields to the drawer',
+    drawerForHint && queueHint() === null,
+    `hint=${JSON.stringify(queueHint())} open ${!!queuePanel()} `
+      + `focus "${document.activeElement?.getAttribute('aria-label')}"`);
+
+  // Ensure the drawer is up rather than assume Q7c left it: a row press here
+  // silently no-ops when the panel is closed and the check fails elsewhere.
+  if (!queuePanel()) {
+    focusRailButton('player-rail-queue');
+    await sleep(80);
+    ok();
+    await openQueueSettled();
+  }
+  const lastRow = queueRows().find(r => r.getAttribute('aria-current') !== 'true');
+  lastRow?.focus();
+  await sleep(80);
+  await tapEnter();
+  const reachedLast = await waitFor(() => playingTitle() === 'VERIFY scene three', 3000);
+  await waitFor(() => (video()?.duration || 0) > 0, 3000);
+  await waitFor(() => (video()?.duration || 0) > 0, 3000);
+  const lastDuration = video()?.duration || 0;
+  const lastTarget = Math.max(0, lastDuration - 12);
+  await setPlaying(true);
+  await seekTo(lastTarget);
+  const clockMoved = await waitFor(
+    () => Math.abs((clockSeconds() ?? -99) - lastTarget) <= 2, 2500);
+  await setPlaying(false);
+  check('Q8 the last scene of the queue has no hint',
+    reachedLast && clockMoved && queueHint() === null
+      && playingTitle() === 'VERIFY scene three',
+    `hint=${JSON.stringify(queueHint())} clock=${clockSeconds()} `
+      + `moved=${clockMoved} reached=${reachedLast} title="${playingTitle()}"`);
+
+  // ── Q9: the card's two buttons ───────────────────────────
+  // Hide puts only this scene's card away; the queue still advances when the
+  // scene ends, so the check is that the scene is unchanged and the picture is
+  // still moving. Play now skips the wait. One mount each: a hide belongs to
+  // the scene it was pressed on, so the second mount is a fresh offer.
+  const CARD_QUEUE = {
+    items: threeScenes().slice(1), total: 2, page: 1, startIndex: 0, startSeconds: 0,
+  };
+  const openCardOffer = async (gen) => {
+    window.__mountQueue(CARD_QUEUE, gen);
+    await waitFor(() => (video()?.duration || 0) > 0, 4000);
+    await sleep(300);
+    const d = video()?.duration || 0;
+    await setPlaying(true);
+    await seekTo(Math.max(0, d - 8));
+    const shown = await waitFor(() => !!upNextCard(), 3000);
+    // A fresh mount focuses the card itself; no key is needed to get in.
+    const focused = await waitFor(
+      () => document.activeElement === registry.get('upnext-play')?.el, 1500);
+    return shown && focused;
+  };
+
+  const hideShown = await openCardOffer(11);
+  press(document.activeElement, 'ArrowRight', 39);
+  await sleep(120);
+  const hideFocused = document.activeElement === registry.get('upnext-hide')?.el;
+  const timeBeforeHide = video()?.currentTime ?? 0;
+  ok();
+  const hidden = await waitFor(() => !upNextCard(), 1500);
+  await sleep(400);
+  const stillMoving = (video()?.currentTime ?? 0) > timeBeforeHide;
+  await setPlaying(false);
+  check('Q9 Hide puts the card away and the scene carries on',
+    hideShown && hideFocused && hidden && stillMoving
+      && playingTitle() === 'VERIFY scene two'
+      && document.activeElement === registry.get('player-rail-playpause')?.el,
+    `shown=${hideShown} hideFocus=${hideFocused} hidden=${hidden} `
+      + `moving=${stillMoving} title="${playingTitle()}" `
+      + `focus="${document.activeElement?.getAttribute('aria-label')}"`);
+
+  const playShown = await openCardOffer(12);
+  const playFocused = document.activeElement === registry.get('upnext-play')?.el;
+  ok();
+  const skipped = await waitFor(() => playingTitle() === 'VERIFY scene three', 3000);
+  const railBack = await waitFor(
+    () => document.activeElement === registry.get('player-rail-playpause')?.el, 1500);
+  await sleep(200);
+  check('Q9a Play now moves to the next scene and hands the cursor back to the rail',
+    playShown && playFocused && skipped && railBack && !upNextCard(),
+    `shown=${playShown} playFocus=${playFocused} skipped=${skipped} rail=${railBack} `
+      + `card=${!!upNextCard()} title="${playingTitle()}"`);
+
   // ── W: what the player writes back ───────────────────────
   // Two unrelated contracts. The play count is a request count (`sceneAddPlay`
   // appends a row), visible only in the log: firing on every stall or resume
@@ -1074,6 +1402,9 @@ async function run() {
   check('W0 setup: a fresh session on an unwatched scene is playing',
     !!pv && pv.paused === false && playingTitle() === 'VERIFY — write-back harness',
     `title="${playingTitle()}" paused=${pv?.paused}`);
+  check('Q9 a one-scene queue has no "Up next" button',
+    !byLabel('Up next', rail()),
+    `button ${!!byLabel('Up next', rail())}`);
   await sleep(500);
 
   // Pause, resume, pause, seek, play: each transition is a separate `play`
@@ -1280,8 +1611,10 @@ async function run() {
     `up before=${upBeforeBack} after=${!!resumePrompt()}`);
   // Wait, don't sleep: a seek completes on its own schedule, and one still in
   // flight reports a position between the two, a plausible-looking failure of
-  // the assertion rather than of the app.
-  const resumed = await waitFor(() => (video()?.currentTime || 0) > 20, 2500);
+  // the assertion rather than of the app. The window is generous because the
+  // sweep runs three drivers at once and a local fetch plus a seek can take
+  // seconds on a loaded machine; 2.5 s flaked once.
+  const resumed = await waitFor(() => (video()?.currentTime || 0) > 20, 5000);
   check('RS4 ...by resuming from the saved position and playing',
     resumed && video()?.paused === false,
     `paused=${video()?.paused} currentTime=${video()?.currentTime?.toFixed(2)}`);
@@ -1320,7 +1653,7 @@ async function run() {
   await sleep(900);
   check('RS6 a card with no saved position is not asked about, even when the server has one',
     !resumePrompt(), `prompt=${!!resumePrompt()}`);
-  const applied = await waitFor(() => (video()?.currentTime || 0) > 18, 2500);
+  const applied = await waitFor(() => (video()?.currentTime || 0) > 18, 5000);
   check('RS6 ...and the freshly-fetched position is applied without asking',
     applied && video()?.paused === false,
     `paused=${video()?.paused} currentTime=${video()?.currentTime?.toFixed(2)} — the ` +
