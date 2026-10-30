@@ -51,12 +51,30 @@ export default function App() {
   const {
     savedFilters,
     activeFilter,
+    baseObjectFilter,
     activeObjectFilter,
     activeSearchQuery,
     filterOptions,
     setFiltersEpoch,
     setSavedFilterEcho,
-  } = useActiveFilter({ controls, filterMode, dataKey });
+  } = useActiveFilter({
+    controls,
+    filterMode,
+    dataKey,
+    quickFilterDefs: config?.quickFilters || [],
+  });
+
+  // A chip is a toggle, and the request state it lives in is the same one the
+  // tab and source rules clear on arrival. The sort adoption in updateControls
+  // only runs for `filterId`, so this is a plain state patch.
+  const toggleQuickFilter = (id) => {
+    const active = controls.quickFilters || [];
+    updateControls({
+      quickFilters: active.includes(id)
+        ? active.filter(x => x !== id)
+        : [...active, id],
+    }, savedFilters);
+  };
 
   // Focus restore targets: `mainFocus` is shared by builder, player, settings
   // and exit; the card targets belong to the overlay hooks.
@@ -97,6 +115,7 @@ export default function App() {
     selectedPerformer,
     selectedScene,
     setSelectedScene,
+    sceneOriginId,
     clearedContinueIds,
     imageViewer,
     setImageViewer,
@@ -107,6 +126,7 @@ export default function App() {
     handlePerformerSelect,
     handleShowroomPerformerSelect,
     handleSearchPerformerSelect,
+    handleScenePerformerSelect,
     handlePerformerBack,
     handleImageSelect,
     openImageViewer,
@@ -137,6 +157,29 @@ export default function App() {
     sceneCardFocus,
     menuCardFocus,
   });
+
+  // ── Chips and related rows on a scene detail ─────────────
+  // The detail is not stacked over what a chip opens: it closes as the
+  // destination is set, and Back lands on the card the chain started from
+  // (a related row swaps the scene, not the origin). See the origin ids in
+  // useAppBack and useDetailSelection.
+  const sceneOriginFocusId = selectedScene
+    ? (sceneOriginId || `video-${selectedScene.id}`)
+    : null;
+
+  const sceneTagSelect = (tag) => {
+    setSelectedScene(null);
+    handleTagSelect(tag, sceneOriginFocusId);
+  };
+
+  const sceneStudioSelect = (studio) => {
+    setSelectedScene(null);
+    handleStudioSelect(studio, sceneOriginFocusId);
+  };
+
+  const handleRelatedSceneSelect = (item) => {
+    if (item) setSelectedScene(item);
+  };
 
   useAppBack({
     activeTab,
@@ -296,6 +339,9 @@ export default function App() {
             showSearch={config.showSearch}
             previewMuted={previewMuted}
             onMuteToggle={togglePreviewMuted}
+            quickFilterOptions={config.quickFilters || []}
+            quickFilters={controls.quickFilters || []}
+            onQuickFilterToggle={toggleQuickFilter}
           />
         )}
 
@@ -339,8 +385,9 @@ export default function App() {
           onPlay: handleScenePlay,
           onPlayAt: playSceneAt,
           onActivityChange: handleSceneActivityChange,
-          // A gallery chip leaves for the Galleries tab; the tab change closes
-          // this page (useDetailSelection's effect), so that is all it does.
+          // A gallery chip leaves for the Images tab filtered to this gallery;
+          // the tab change closes this page (useDetailSelection's effect), so
+          // that is all it does.
           // Opened on a performer page, the performer is the card Back can
           // focus: the page closes with the tab and has no video cards.
           onGallerySelect: (gallery, sceneId) => handleGallerySelect(
@@ -348,6 +395,11 @@ export default function App() {
             sceneId,
             selectedPerformer ? `performer-${selectedPerformer.id}` : null,
           ),
+          onTagSelect: sceneTagSelect,
+          onStudioSelect: sceneStudioSelect,
+          onPerformerSelect: (performer) => selectedScene
+            && handleScenePerformerSelect(selectedScene, performer),
+          onRelatedSceneSelect: handleRelatedSceneSelect,
         }}
         actionMenu={{
           menu: actionMenu,
@@ -386,7 +438,8 @@ export default function App() {
           open: builderOpen,
           filterType: config.filterType,
           tab: activeTab,
-          initial: activeObjectFilter,
+          // The user's filter without the chips: see combineQuickFilters.
+          initial: baseObjectFilter,
           initialName: activeFilter?.name || '',
           onApply: applyWorkingFilter,
           onSave: saveBuiltFilter,

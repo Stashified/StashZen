@@ -8,7 +8,7 @@
  * be checked without a browser; the hook only feeds it refs.
  */
 
-import { nextSkimRung } from '../src/components/player/useSkim.js';
+import { nextSkimRung, skimStepFor } from '../src/components/player/useSkim.js';
 import {
   SKIM_STEPS, SKIM_ACCEL_RESET_MS, SKIM_RUNG_HOLD_MS,
 } from '../src/components/player/constants.js';
@@ -33,6 +33,17 @@ const press = ({ rung, since, direction = 1, lastDirection = 1, now }) => nextSk
 });
 
 check('the ladder matches YouTube', SKIM_STEPS, [5, 10, 30, 60]);
+
+// The upper rungs scale with duration; a tap never does.
+const ladderFor = (duration) => [0, 1, 2, 3].map((rung) => skimStepFor(rung, duration));
+
+check('a 30 min scene keeps the base ladder', ladderFor(1800), [5, 10, 30, 60]);
+check('shorter scenes are no coarser', ladderFor(600), [5, 10, 30, 60]);
+check('a one-hour scene doubles the upper rungs', ladderFor(3600), [5, 20, 60, 120]);
+check('a two-hour scene quadruples them', ladderFor(7200), [5, 40, 120, 240]);
+check('the scale is capped on very long files', ladderFor(5 * 3600), [5, 40, 120, 240]);
+check('an unknown duration keeps the base ladder', ladderFor(NaN), [5, 10, 30, 60]);
+check('a zero duration keeps the base ladder', ladderFor(0), [5, 10, 30, 60]);
 
 check('the first press is the first rung', nextSkimRung({
   rung: 0, since: 0, direction: 1, lastDirection: 0, lastAt: 0, now: 10000,

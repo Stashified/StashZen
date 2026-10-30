@@ -6,10 +6,9 @@
  * then the tile is cropped with background-size/position, avoiding
  * transform-scaling subpixel cracks and bleed.
  *
- * CURRENTLY INERT, DELIBERATELY KEPT. Stash returns `paths.sprite`/`paths.vtt`
- * whether or not the files exist; on this server both 404 (measured 12/12
- * scenes), so this renders null after one failed request. It degrades cleanly
- * and revives once Generate → Sprites is run.
+ * Stash returns `paths.sprite`/`paths.vtt` whether or not the files exist, and
+ * coverage is partial. When the sheet 404s the tile stays a placeholder and the
+ * bubble still shows the time; Generate → Sprites in Stash fills it in.
  *
  * `sheetSizeCache` is keyed by the full sprite URL, which encodes host and API
  * key, so it needs no data-source partitioning.

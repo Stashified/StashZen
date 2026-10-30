@@ -57,6 +57,10 @@ export function usePlayQueue(queue) {
   // joins it and reads its result. Answering "no" stalled playback on the page
   // boundary while the next page was already on its way.
   const inFlightRef = useRef(null);
+  // Rows removed from the panel. A later page can contain the same scene, and
+  // the extension's own dedupe only knows what is still held; without this the
+  // removed row reappears the next time the queue grows.
+  const removedIdsRef = useRef(new Set());
 
   const setIndex = useCallback((next) => {
     indexRef.current = next;
@@ -91,8 +95,10 @@ export function usePlayQueue(queue) {
           // Re-read: another render could have appended during the await, and
           // `stateRef` holds its last write.
           const after = stateRef.current;
-          const seen = new Set(after.items.map(it => it.id));
-          const fresh = (data.items || []).filter(it => !seen.has(it.id));
+          const seen = new Set(after.items.map(it => String(it.id)));
+          const fresh = (data.items || []).filter(it => (
+            !seen.has(String(it.id)) && !removedIdsRef.current.has(String(it.id))
+          ));
 
           const next = {
             items: [...after.items, ...fresh],
@@ -156,6 +162,46 @@ export function usePlayQueue(queue) {
     return false;
   }, [extend, setIndex]);
 
+  /**
+   * Jump to a loaded row. The panel only lists rows that are here, so there is
+   * nothing to fetch: a jump beyond the window reads as "no such row" rather
+   * than paging a screen the user cannot see.
+   */
+  const goTo = useCallback((target) => {
+    const at = Number(target);
+    if (!Number.isInteger(at) || at < 0 || at >= stateRef.current.items.length) return false;
+    if (at === indexRef.current) return false;
+    setIndex(at);
+    return true;
+  }, [setIndex]);
+
+  /**
+   * Drop a row ahead of (or behind) the cursor. The row on screen is refused:
+   * removing it would leave the element playing something the queue no longer
+   * names, and "skip this one" already exists as Next.
+   *
+   * `total` drops by one so the queue stays extendable, and the scene is
+   * remembered so a later page cannot bring it back.
+   */
+  const removeAt = useCallback((target) => {
+    const before = stateRef.current;
+    const at = Number(target);
+    if (!Number.isInteger(at) || at < 0 || at >= before.items.length) return false;
+    if (at === indexRef.current) return false;
+    const nextItems = before.items.filter((_, i) => i !== at);
+    removedIdsRef.current.add(String(before.items[at].id));
+    const next = {
+      ...before,
+      items: nextItems,
+      total: before.total > 0 ? Math.max(nextItems.length, before.total - 1) : 0,
+    };
+    stateRef.current = next;
+    setItems(next.items);
+    setTotal(next.total);
+    if (at < indexRef.current) setIndex(indexRef.current - 1);
+    return true;
+  }, [setIndex]);
+
   return {
     items,
     total,
@@ -166,6 +212,8 @@ export function usePlayQueue(queue) {
     exhausted,
     goPrev,
     goNext,
+    goTo,
+    removeAt,
     extend,
   };
 }

@@ -157,7 +157,12 @@ SCENE = {
     "last_played_at": "2024-05-01T10:00:00Z",
     "urls": ["https://example.invalid/a", "https://example.invalid/b"],
     "studio": {"id": "1", "name": "Harness Studio"},
-    "tags": [{"id": str(i), "name": f"tag-{i}"} for i in range(10)],
+    # The first tag is wider than the details column, so the chip has to cap
+    # itself: left to overflow, it makes the column scroll sideways.
+    "tags": [{"id": "10",
+              "name": "a tag name long enough that it cannot fit the details column, "
+                      "which the chip has to cap rather than let overflow"}]
+    + [{"id": str(i), "name": f"tag-{i}"} for i in range(10)],
     "performers": [{"id": "1", "name": "Performer One"}],
     # Two, so the chip row's focus walk has somewhere to go; no listing gallery
     # shares these ids, so the selected gallery is identifiable.
@@ -1260,6 +1265,20 @@ class Handler(SimpleHTTPRequestHandler):
             if mode == "short":
                 rows = [listing_scene(n) for n in range(1, 6)]
                 return self._json({"data": {"findScenes": {"count": 5, "scenes": rows}}})
+            # A scene detail's related rows ("More from <studio>"): the
+            # criterion names an entity, so answer a small set that includes
+            # the open scene 4242. The page must drop it, and four rows to
+            # three cards is what proves it did.
+            #
+            # Per-page size is the discriminator: a performer page's own scene
+            # grid carries the same criterion, and answering that here left
+            # every performer page empty. Only the related fetch asks for five.
+            related = ((entry["scene_filter"] or {}).get("studios")
+                       or (entry["scene_filter"] or {}).get("performers"))
+            if related and related.get("value") and entry["per_page"] == 5:
+                rows = [listing_scene(n) for n in (7, 8, 9, 4242)]
+                return self._json({"data": {"findScenes": {"count": len(rows), "scenes": rows}}})
+
             # A `title` criterion is honoured for the filter-builder driver alone.
             # Other handlers ignore filters, which is fine for "which page
             # arrived" but hides the applied filter P2 must prove in the DOM.

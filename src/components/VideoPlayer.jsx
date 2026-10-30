@@ -16,7 +16,8 @@
  *   OK         open the rail focused on ⏯, then activate the focused button
  *   ↓ / ↑      next/previous scene; from the seek bar ↓ goes to the buttons
  *              first, and ↑ from the buttons goes to the seek bar (←/→ skim)
- *   ← / →      skim −15s / +15s in the scene, and reveal the rail
+ *   ← / →      skim back or forward by the configured seek step, and reveal
+ *              the rail (adaptive 5 s by default, or a fixed 5/10/15/30 s)
  *   Back/Esc   leave the rail if it is up, else close the player
  *   Space, ⏯   instant transport in every state; the remote's play/pause key
  *              (10252) toggles, pause (19) and play (415) do only their name
@@ -44,9 +45,12 @@
 
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo,
+  useSyncExternalStore,
 } from 'react';
 import styles from './VideoPlayer.module.css';
 import PlayerControlsRail from './PlayerControlsRail.jsx';
+import PlayerQueuePanel from './PlayerQueuePanel.jsx';
+import PlayerUpNextCard from './PlayerUpNextCard.jsx';
 import MarkerModal from './MarkerModal.jsx';
 import PlaybackInfoPanel from './PlaybackInfoPanel.jsx';
 import ResumePrompt from './ResumePrompt.jsx';
@@ -56,8 +60,10 @@ import { usePlayQueue } from '../hooks/usePlayQueue.js';
 import { usePlaybackSource } from '../hooks/usePlaybackSource.js';
 import { usePlayerEngine } from './player/usePlayerEngine.js';
 import { timelineDuration } from '../utils/playbackSource.js';
+import { getSettings } from '../utils/settings.js';
 import { sourceKey } from '../utils/enginePolicy.js';
 import { withApiKey } from '../utils/stashUrl.js';
+import { focusByIdWhenReady } from '../utils/focus.js';
 import { createMediaEngine } from './player/engine/mediaEngine.js';
 import { deriveDefaultTag } from './player/markerUtils.js';
 import { usePlaybackProgress } from './player/usePlaybackProgress.js';
@@ -70,14 +76,49 @@ import { usePlayerTransport } from './player/usePlayerTransport.js';
 import { useMarkerOverlay } from './player/useMarkerOverlay.js';
 import { useDetailsOverlay } from './player/useDetailsOverlay.js';
 import { usePlayerKeys } from './player/usePlayerKeys.js';
+import { createPlayerClock } from './player/playerClock.js';
 import { PlayerTopBar } from './player/PlayerTopBar.jsx';
 import { PlayerProgress } from './player/PlayerProgress.jsx';
 import { PlayerTimeRow } from './player/PlayerTimeRow.jsx';
 import { PlayerStatus } from './player/PlayerStatus.jsx';
 
+// How close to the end the Up next card appears. Long enough to read and
+// decide, short enough that it does not sit over the last minutes of a scene.
+const UP_NEXT_SECONDS = 30;
+
+/**
+ * The two rows that print the clock. Subscribing here is what keeps
+ * `timeupdate` from re-rendering the rail and the overlays with it.
+ */
+function PlayerTimeline({
+  clock, duration, markers, getCue, skimPreviewVisible, seekStep, syncState, syncError,
+}) {
+  const currentTime = useSyncExternalStore(clock.subscribeTime, clock.getTime);
+  return (
+    <>
+      <PlayerProgress
+        progressPct={duration > 0 ? (currentTime / duration) * 100 : 0}
+        markers={markers}
+        duration={duration}
+        currentTime={currentTime}
+        cue={getCue(currentTime)}
+        skimPreviewVisible={skimPreviewVisible}
+      />
+      <PlayerTimeRow
+        currentTime={currentTime}
+        duration={duration}
+        seekStep={seekStep}
+        syncState={syncState}
+        syncError={syncError}
+      />
+    </>
+  );
+}
+
 export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneChange }) {
   const {
     items, total, index, current: video, goNext, goPrev, hasPrev, hasNext,
+    goTo, removeAt,
   } = usePlayQueue(queue);
 
   // Report the scene on screen so the screen underneath can restore the cursor
@@ -96,6 +137,11 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // rail. Derived from hasPrev/hasNext rather than items.length so a
   // single-scene page of a larger queue is still a step-and-fetch.
   const singleScene = !hasPrev && !hasNext;
+
+  // Hide on the Up next card only puts the card away; the queue still advances
+  // at the end. The scene id is the whole state, so a hide belongs to one
+  // scene's offer and the next scene's card is fresh.
+  const [upNextHiddenId, setUpNextHiddenId] = useState(null);
 
   const startIndex = queue?.startIndex ?? 0;
   // Only the scene the session opened on can have an explicit start: a
@@ -146,16 +192,28 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const { progress, syncState } = usePlaybackProgress({ video, mediaRef, onActivityChange });
 
   // Shared render state: the media wiring writes the timeline and error, the
-  // transport and overlays read them, so the shell owns them.
-  const [currentTime, setCurrentTime] = useState(startSeconds);
+  // transport and overlays read them, so the shell owns them. The clock is a
+  // subscription rather than state, see playerClock.js.
+  const clockRef = useRef(null);
+  if (!clockRef.current) clockRef.current = createPlayerClock(startSeconds);
+  const clock = clockRef.current;
+  const setCurrentTime = clock.setTime;
+  const nearEnd = useSyncExternalStore(clock.subscribeNearEnd, clock.getNearEnd);
   const [elementDuration, setElementDuration] = useState(0);
   const [error, setError] = useState(null);
+  // The "Up next" drawer over the video. Local to the player because it is a
+  // view of this session's queue, not app navigation.
+  const [queueOpen, setQueueOpen] = useState(false);
 
   // Read once at open, not subscribed: Settings is unreachable from the
   // player, and the setting says "applies on the next open".
   const {
     setting: engineSetting, forcedBrowser, avplay, tvaudiocontrol, ready: engineReady,
   } = usePlayerEngine();
+
+  // Same rule for the seek distance: a change in Settings lands when the next
+  // scene opens, not under a finger mid-scene.
+  const seekStep = useRef(getSettings().seekStep).current;
 
   // What the media is pointed at, the scene's file, or a Stash transcode when
   // the engine cannot decode it, and the other of the two if the first fails.
@@ -239,6 +297,46 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     controlsVisible, showControls, revealRail, leaveRail, leaveRailToSeek,
     hideControls,
   } = useControlsVisibility({ railRef });
+
+  // Opening the drawer raises the rail too, so closing it lands back on a
+  // control rather than an empty screen. The panel is a dialog: the key map
+  // yields while it is up, and its own Back handler closes it.
+  const openQueue = useCallback(() => {
+    showControls();
+    setQueueOpen(true);
+  }, [showControls]);
+
+  const closeQueue = useCallback(() => {
+    setQueueOpen(false);
+    showControls();
+    // The focused row unmounts in this commit; move the cursor on the next
+    // tick, once the panel's DOM is gone.
+    setTimeout(() => railRef.current?.focusQueue(), 0);
+  }, [showControls]);
+
+  const jumpQueue = useCallback((target) => {
+    setQueueOpen(false);
+    goTo(target);
+    showControls();
+    setTimeout(() => railRef.current?.focusQueue(), 0);
+  }, [goTo, showControls]);
+
+  // Hide on the Up next card. The card unmounts under the cursor, so the rail
+  // takes it back, the same landing as closing the queue.
+  const hideUpNext = useCallback(() => {
+    setUpNextHiddenId(currentVideoRef.current?.id ?? null);
+    showControls();
+    railRef.current?.focusPlayPause();
+  }, [showControls]);
+
+  // Play now on the card. The scene changes and the card unmounts in the same
+  // commit, which drops the cursor; the tick lets the new scene's DOM settle
+  // before the rail takes it back.
+  const playUpNext = useCallback(() => {
+    goNext();
+    showControls();
+    setTimeout(() => railRef.current?.focusPlayPause(), 0);
+  }, [goNext, showControls]);
 
   // Where a scene starts: the prompt, the policy, and the seek latches shared
   // with the media wiring below.
@@ -358,6 +456,18 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
    */
   const duration = timelineDuration(elementDuration, video?.durationSeconds || 0);
 
+  // The near-end flag the card and the key map share. It is derived here, not
+  // stored in the clock, because only the player knows the timeline length.
+  useEffect(() => {
+    const evaluate = () => {
+      const left = duration - clock.getTime();
+      clock.setNearEnd(duration > 0 && left > 0 && left <= UP_NEXT_SECONDS);
+      clock.setSecondsLeft(left > 0 ? Math.ceil(left) : 0);
+    };
+    evaluate();
+    return clock.subscribeTime(evaluate);
+  }, [clock, duration]);
+
   const { skim, skimFlash, skimPreviewVisible } = useSkim({
     mediaRef,
     duration,
@@ -365,6 +475,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     setCurrentTime,
     mediaKey,
     skimPendingRef,
+    seekStep,
   });
 
   const {
@@ -390,6 +501,28 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     playFromDetails, playAtFromDetails,
   } = useDetailsOverlay({ mediaRef, progress, showControls, setCurrentTime });
 
+  // The near-end offer. `items[index + 1]` can be absent while the queue is
+  // still extending, in which case there is nothing to show yet.
+  const upNext = hasNext ? (items[index + 1] || null) : null;
+  const upNextOpen = !!upNext
+    && upNextHiddenId !== video?.id
+    && !queueOpen
+    && !detailsOpen
+    && !error
+    && !askingToResume
+    && nearEnd;
+
+  // The card takes the cursor when it appears, once per scene, so the remote
+  // answers Play now and Hide without a press first. Keyed on the scene, not
+  // the open flag: closing the queue or the details overlay remounts the card,
+  // and the focus the user left on the rail must survive that.
+  const cardFocusRef = useRef(null);
+  useEffect(() => {
+    if (!upNextOpen || cardFocusRef.current === video?.id) return;
+    cardFocusRef.current = video?.id;
+    focusByIdWhenReady('upnext-play');
+  }, [upNextOpen, video?.id]);
+
   // Installed last: the key map is pure (keyRouting.js) and only dispatches
   // into the callbacks above.
   usePlayerKeys({
@@ -405,6 +538,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     controlsVisible,
     stepScene,
     singleScene,
+    // While the card is on screen it is the stop above the rail, see
+    // keyRouting's ladder.
+    upNextVisible: upNextOpen,
+    hideUpNext,
   });
 
   const { getCue } = useSpriteVtt(video?.vtt);
@@ -414,7 +551,6 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
 
   if (!video) return null;
 
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
   // What the controls bar says about the source; null while the resolver is
   // still choosing, the spinner is the honest state then.
   const sourceLabel = sourceKind === 'transcode' ? 'Transcoded'
@@ -456,7 +592,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         error={error}
       />
 
-      <div className={`${styles.controls} ${controlsVisible ? styles.controlsVisible : ''}`}>
+      {/* The card replaces the controls while it is up: one offer, one set of
+          keys. `controlsVisible` stays as it was, so dismissing the card puts
+          the bar back without a separate state. */}
+      <div className={`${styles.controls} ${controlsVisible && !upNextOpen ? styles.controlsVisible : ''}`}>
         <PlayerTopBar
           video={video}
           sourceKind={sourceKind}
@@ -472,17 +611,13 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
         </div>
 
         <div className={styles.bottomBar}>
-          <PlayerProgress
-            progressPct={progressPct}
+          <PlayerTimeline
+            clock={clock}
+            duration={duration}
             markers={markers}
-            duration={duration}
-            currentTime={currentTime}
-            cue={getCue(currentTime)}
+            getCue={getCue}
             skimPreviewVisible={skimPreviewVisible}
-          />
-          <PlayerTimeRow
-            currentTime={currentTime}
-            duration={duration}
+            seekStep={seekStep}
             syncState={syncState}
             syncError={progress.syncError()?.message}
           />
@@ -500,6 +635,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             // the `ended` handler above, where callable-at-the-end is the point.
             onPrevScene={hasPrev ? goPrev : null}
             onNextScene={hasNext ? goNext : null}
+            onOpenQueue={openQueue}
+            showQueue={!singleScene}
             onPrevMarker={jumpToMarker(-1)}
             onNextMarker={jumpToMarker(1)}
             onAddMarker={openMarkerModal}
@@ -528,6 +665,28 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
           notice is the only evidence that a write landed. */}
       {markerNotice && (
         <p className={styles.toast} role="status" aria-live="polite">{markerNotice}</p>
+      )}
+
+      {/* Near the end of a scene with a queue behind it. It takes the cursor
+          once, see the effect above; ↑ from the rail re-enters it. */}
+      {upNextOpen && (
+        <PlayerUpNextCard
+          item={upNext}
+          onPlay={playUpNext}
+          onHide={hideUpNext}
+          clock={clock}
+        />
+      )}
+
+      {queueOpen && (
+        <PlayerQueuePanel
+          items={items}
+          index={index}
+          total={total}
+          onJump={jumpQueue}
+          onRemove={removeAt}
+          onClose={closeQueue}
+        />
       )}
 
       {/* Last, so it draws over the controls and rail. `role="dialog"` makes

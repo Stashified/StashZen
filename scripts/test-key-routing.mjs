@@ -147,6 +147,62 @@ check('no rail, bar up, single: ArrowDown raises the rail',
 check('no rail, single: ArrowUp reveals the rail', is(ev('ArrowUp', 38), SINGLE, 'reveal-rail', true, true));
 check('no rail, single: ArrowDown reveals the rail', is(ev('ArrowDown', 40), SINGLE, 'reveal-rail', true, true));
 
+// ── The Up next card: a stop above the rail ────────────────
+// The card shows over the last 30 s and takes the cursor when it appears. ↑
+// from the rail is the way back in, and only while it is up; otherwise that
+// press must keep meaning the seek bar.
+const UP = { ...RAIL, upNextVisible: true };
+const CARD = { ...NO_RAIL, upNextVisible: true, upNextFocused: true };
+// The card is up but the cursor is elsewhere: the autofocus is cancelled by a
+// keydown, and a skim hold has a stream of them.
+const CARD_OFF = { ...NO_RAIL, upNextVisible: true };
+const CARD_OFF_RAIL = { ...RAIL, upNextVisible: true };
+check('rail, card up: ArrowUp enters the card', is(ev('ArrowUp', 38), UP, 'enter-upnext', true, true));
+check('rail, card up: ArrowUp by code alone enters the card',
+  is(ev('', 38), UP, 'enter-upnext', true, true));
+check('rail, card down: ArrowUp is the seek bar as before',
+  is(ev('ArrowUp', 38), RAIL, 'leave-rail-seek', true, true));
+// Inside the card the two buttons are the only targets for ←/→ and Enter. The
+// vertical keys keep the rail's meanings, because the card takes the cursor by
+// itself: a ↓ meant to skip the scene must not become a trip to the seek bar.
+check('card: ArrowLeft is passed to the buttons',
+  is(ev('ArrowLeft', 37), CARD, 'rail-pass', false, false));
+check('card: ArrowRight is passed to the buttons',
+  is(ev('ArrowRight', 39), CARD, 'rail-pass', false, false));
+check('card: Enter activates the focused button',
+  is(ev('Enter', 13), CARD, 'rail-pass', false, false));
+check('card: ArrowDown steps to the next scene',
+  is(ev('ArrowDown', 40), CARD, 'step-next', true, true));
+check('card: ArrowDown by code alone steps to the next scene',
+  is(ev('', 40), CARD, 'step-next', true, true));
+check('card, single: ArrowDown has nowhere to step',
+  is(ev('ArrowDown', 40), { ...CARD, singleScene: true }, 'none', true, true));
+check('card: ArrowUp has nowhere to go', is(ev('ArrowUp', 38), CARD, 'none', true, true));
+check('card: Escape puts the card away', is(ev('Escape', 27), CARD, 'hide-upnext', true, true));
+check('card: Tizen Back puts the card away', is(ev('', 10009), CARD, 'hide-upnext', true, true));
+check('card: Space still toggles playback', is(ev(' ', 32), CARD, 'media', true, true));
+check('card: a held Back is one press', is(repeatEv('', 10009), CARD, 'none', true, true));
+// The card owns the keys even when the cursor never got to it. Without this a
+// press would raise the hidden rail and the cursor would steer a bar that is
+// not on screen.
+check('card up, cursor elsewhere: the first arrow puts it on the card',
+  is(ev('ArrowLeft', 37), CARD_OFF, 'enter-upnext', true, true));
+check('card up, cursor elsewhere: Enter puts it on the card, not on a hidden rail',
+  is(ev('Enter', 13), CARD_OFF, 'enter-upnext', true, true));
+check('card up, cursor elsewhere: ArrowUp puts it on the card',
+  is(ev('ArrowUp', 38), CARD_OFF, 'enter-upnext', true, true));
+check('card up, cursor elsewhere: Back puts the card away',
+  is(ev('Escape', 27), CARD_OFF, 'hide-upnext', true, true));
+check('card up, cursor elsewhere: ArrowDown still steps',
+  is(ev('ArrowDown', 40), CARD_OFF, 'step-next', true, true));
+check('card up on the rail: the first arrow puts the cursor on the card',
+  is(ev('ArrowRight', 39), CARD_OFF_RAIL, 'enter-upnext', true, true));
+check('card up on the rail: Back puts the card away, not the rail',
+  is(ev('Escape', 27), CARD_OFF_RAIL, 'hide-upnext', true, true));
+// A dialog over the player still owns every key, the card included.
+check('card: a foreign dialog wins',
+  is(ev('ArrowDown', 40), { ...CARD, foreignDialog: true }, 'yield', false, false));
+
 // Every key the player sees outside the rail is consumed, even ones it does
 // not act on: the global handler's fallback would otherwise move the cursor.
 check('no rail: an unhandled key is still stopped',

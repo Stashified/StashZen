@@ -113,9 +113,11 @@ function VideoCard({
     nextId,
   });
 
-  // All four must hold: previews enabled, not mock data (null previews,
+  // All five must hold: previews enabled, motion not reduced (autoplay is the
+  // motion this setting mainly exists for), not mock data (null previews,
   // external thumbnails), a URL to try, and no earlier failure.
   const canTry = settings.previewsEnabled
+    && !settings.reduceMotion
     && !settings.useMock
     && !!item.preview
     && !isBad(source, item.id);

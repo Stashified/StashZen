@@ -81,6 +81,24 @@ export function focusFirstControl() {
   if (first) first.focus();
 }
 
+/** Focus the card a filtered listing or an opened detail came from.
+ *
+ * A scene opened from Home has no `video-` card there: the same scene sits on
+ * a showroom shelf under another prefix. Try those too, then the first
+ * control, so a dead id never leaves the cursor on <body>.
+ */
+export function focusOriginCard(tab, focusId) {
+  const ids = [focusId];
+  const scene = /^video-(.+)$/.exec(String(focusId));
+  if (scene && tab === 'home') {
+    ids.push(
+      `showroom-recent-scenes-video-${scene[1]}`,
+      `showroom-continue-video-${scene[1]}`,
+    );
+  }
+  focusByIdWhenReady(ids, { fallback: focusFirstControl });
+}
+
 export function focusByIdWhenReady(id, { fallback } = {}) {
   const ids = (Array.isArray(id) ? id : [id]).filter(Boolean);
   if (!ids.length) return;

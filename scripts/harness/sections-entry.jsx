@@ -570,15 +570,17 @@ async function run() {
   check('S7 focus is back on the tag that was pressed', restored, `focus: ${focusedId()}`);
 
   // ── S7b  a card from a later page comes back too ─────────
-  // The arriving grid fetches page 1 only, so after scrolling the restore has
-  // to ask for the missing pages (utils/focus.js) or it lands on the first card.
+  // The arriving listing fetches page 1 only, so after scrolling the restore
+  // has to ask for the missing pages (utils/focus.js) or it lands on the first
+  // card. Tags opens as a List, so match either mode's label: the claim is
+  // about paging and the restore, not the layout.
   const tagGrid = () => [...document.querySelectorAll('[role="grid"]')]
-    .find(g => g.getAttribute('aria-label') === 'Tag grid');
+    .find(g => /^tags? (grid|list)$/i.test(g.getAttribute('aria-label') || ''));
   const tagScroller = () => tagGrid()?.parentElement;
   const firstPage = liveCards('tag');
   if (tagScroller()) tagScroller().scrollTop = tagScroller().scrollHeight;
   const secondPage = await waitFor(() => liveCards('tag') > firstPage, 6000);
-  check('S7b scrolling the Tags grid loads a second page',
+  check('S7b scrolling the Tags listing loads a second page',
     secondPage, `${firstPage} → ${liveCards('tag')} mounted tag card(s)`);
 
   const pageTwoLive = () => {

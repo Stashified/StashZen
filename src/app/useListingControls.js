@@ -20,14 +20,15 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   const [controls, setControls] = useState(DEFAULT_CONTROLS);
 
   // ── View mode, per section ───────────────────────────────
-  // Absent means 'classic', see readViewModes in settings.js. Keyed by tab so
-  // setting Performers to Carousel leaves Scenes alone.
+  // Absent means the section's `defaultMode`, else 'classic', see readViewModes
+  // in settings.js. Keyed by tab so setting Performers to Carousel leaves
+  // Scenes alone.
   //
   // The whole map is written on every change because `setSettings` spreads a
   // patch over the current state; writing only `{ [activeTab]: v }` would
   // silently reset every other section to classic.
   const viewModes = settings.viewModes;
-  const activeMode = viewModes[activeTab] ?? 'classic';
+  const activeMode = viewModes[activeTab] ?? TAB_CONTROL_CONFIG[activeTab]?.defaultMode ?? 'classic';
   const setActiveMode = (mode) => {
     setSettings({ viewModes: { ...viewModes, [activeTab]: mode } });
   };
@@ -60,13 +61,16 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   if (controlsForSource !== dataKey) {
     setControlsForSource(dataKey);
     setControls(prev => (
-      prev.filterId || prev.workingFilter
+      prev.filterId || prev.workingFilter || prev.quickFilters?.length
         ? {
             ...prev,
             filterId: null,
             workingFilter: null,
             workingFilterFor: null,
             workingFilterLabel: null,
+            // Chip ids are per-type, and a gallery chip's remains meaningless
+            // on Images' schema: start the new source with none.
+            quickFilters: [],
           }
         : prev
     ));
@@ -117,6 +121,10 @@ export function useListingControls({ activeTab, dataKey, settings }) {
         sortForTab: null,
         searchForTab: null,
         search: searchHandoff ? prev.search : '',
+        // Chips are quick narrowings of the listing they were pressed on, and
+        // the ids differ per section. A See-all hand-off stages its own filter
+        // and arrives clear like everything else.
+        quickFilters: [],
       };
       if (flat.length) {
         const validValues = flat.map(o => o.value);

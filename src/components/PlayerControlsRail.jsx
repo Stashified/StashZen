@@ -71,6 +71,13 @@ const PrevSceneIcon = () => (
 const NextSceneIcon = () => (
   <Svg stroke={false}><path d="M15.5 5H18v14h-2.5zM5 5.5 14.5 12 5 18.5z" /></Svg>
 );
+/* A list with a play triangle: the queue, not another transport step. */
+const QueueIcon = () => (
+  <Svg>
+    <path d="M4 6h9M4 12h9M4 18h6" />
+    <path d="M16 13.5 22 17l-6 3.5z" fill="currentColor" stroke="none" />
+  </Svg>
+);
 
 /* A bookmark, not a transport triangle, so the marker buttons cannot be
    mistaken for the scene buttons beside them; the chevron carries direction. */
@@ -156,6 +163,8 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   onSkim,
   onPrevScene,
   onNextScene,
+  onOpenQueue,
+  showQueue = true,
   onPrevMarker,
   onNextMarker,
   onAddMarker,
@@ -171,18 +180,26 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
     zone: ZONE,
     onEnter: onPlayPause,
   });
+  // Its own hook rather than a RailButton so the queue panel can put the
+  // cursor back on it when it closes.
+  const queueBtn = useFocusable({
+    id: 'player-rail-queue',
+    zone: ZONE,
+    onEnter: onOpenQueue,
+  });
 
   const railElRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
     focusPlayPause: playPause.focus,
+    focusQueue: queueBtn.focus,
     /**
      * True while the cursor is anywhere on the rail. The player uses it to
      * refuse to auto-hide the controls; asking the rail beats the player
      * knowing its DOM.
      */
     holdsFocus: () => !!railElRef.current?.contains(document.activeElement),
-  }), [playPause.focus]);
+  }), [playPause.focus, queueBtn.focus]);
 
   return (
     <div ref={railElRef} className={styles.rail} role="toolbar" aria-label="Player controls">
@@ -216,6 +233,24 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
       <RailButton id="player-rail-next" label="Next scene" onEnter={onNextScene}>
         <NextSceneIcon />
       </RailButton>
+
+      {/* One scene means nothing to show: a list of one with no jump. The
+          separator travels with the button so the groups stay one apart. */}
+      {showQueue && (
+        <>
+          <span className={styles.sep} aria-hidden="true" />
+
+          <button
+            ref={queueBtn.ref}
+            type="button"
+            className={[styles.railBtn, queueBtn.focused ? styles.focused : ''].join(' ')}
+            onClick={onOpenQueue}
+            aria-label="Up next"
+          >
+            <QueueIcon />
+          </button>
+        </>
+      )}
 
       <span className={styles.sep} aria-hidden="true" />
 

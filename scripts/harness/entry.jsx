@@ -21,6 +21,15 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+async function waitFor(pred, ms = 4000, step = 25) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (pred()) return true;
+    await sleep(step);
+  }
+  return false;
+}
+
 // The card Enter was pressed on. Its rating is the display string the grid
 // would carry (5), while the server answers 7, which makes T1 real.
 const SCENE = {
@@ -47,6 +56,12 @@ const activityEvents = [];
 // Every gallery handed to App through the chip row: the chip must pass the
 // gallery row, not a scene or timestamp; the tab change is App's business.
 const gallerySelections = [];
+// Entity chips and related cards: the page only reports the press, the tab
+// change is App's business (see the sceneDetail group in AppOverlays).
+const tagSelections = [];
+const studioSelections = [];
+const performerSelections = [];
+const relatedSelections = [];
 
 /**
  * Focusables outside the overlay, in the same spatial-nav registry, so "focus
@@ -84,6 +99,10 @@ function Harness() {
           onPlayAt={(seconds) => { playedAt.push(seconds); }}
           onActivityChange={(id, patch) => activityEvents.push({ id, patch })}
           onGallerySelect={(gallery) => gallerySelections.push(gallery)}
+          onTagSelect={(tag) => tagSelections.push(tag)}
+          onStudioSelect={(studio) => studioSelections.push(studio)}
+          onPerformerSelect={(performer) => performerSelections.push(performer)}
+          onRelatedSceneSelect={(scene) => relatedSelections.push(scene)}
         />
       )}
     </>
@@ -293,6 +312,120 @@ async function run() {
       && closedCount === 0,
     `selected=${JSON.stringify(gallerySelections)} `
     + `playAt=${playedAt.length - playedBeforeGallery} closes=${closedCount}`);
+
+  // ── T17: performer, studio and tag chips are focus stops ─
+  // Each chip is a button registered in the page's own zone, and Enter hands
+  // the row to App rather than closing the page (the tab change does that).
+  const chipIds = [...registry.keys()].filter(id => /^scene-(tag|performer|studio)-/.test(id));
+  check('T17 every performer, studio and tag chip is a focus stop',
+    chipIds.includes('scene-studio-1')
+      && chipIds.includes('scene-performer-1')
+      && chipIds.includes('scene-tag-3'),
+    chipIds.join(','));
+
+  const closesBeforeChips = closedCount;
+  const pressChip = async (id) => {
+    const el = registry.get(id)?.el;
+    if (!el) return;
+    el.focus();
+    press(el);
+    await sleep(80);
+  };
+  await pressChip('scene-studio-1');
+  await pressChip('scene-performer-1');
+  await pressChip('scene-tag-3');
+  check('T17 Enter on a chip hands that entity to App',
+    studioSelections.map(x => x.id).join(',') === '1'
+      && performerSelections.map(x => x.id).join(',') === '1'
+      && tagSelections.map(x => x.id).join(',') === '3',
+    `studio=${JSON.stringify(studioSelections.map(x => x.id))} `
+    + `performer=${JSON.stringify(performerSelections.map(x => x.id))} `
+    + `tag=${JSON.stringify(tagSelections.map(x => x.id))}`);
+  check('T17 a chip does not close the page itself', closedCount === closesBeforeChips);
+
+  // ── T18: "More from" rows ───────────────────────────────
+  // The fixture carries a studio and one performer, so both rows ask for the
+  // listing and the fake server answers four rows including the open 4242.
+  const relatedReady = await waitFor(() => registry.has('related-studio-7'), 4000);
+  const relatedLabels = [...document.querySelectorAll('[aria-label^="More from "]')]
+    .map(el => el.getAttribute('aria-label'));
+  check('T18 a studio row and a performer row are drawn',
+    relatedReady
+      && relatedLabels.join('|') === 'More from Harness Studio|More from Performer One',
+    relatedLabels.join(' | ') || 'no related rows');
+
+  const relatedIds = [...registry.keys()].filter(id => id.startsWith('related-'));
+  check('T18 the open scene is excluded and the row stops at four',
+    relatedIds.filter(id => id.startsWith('related-studio-')).length === 3
+      && !relatedIds.some(id => id.endsWith('-4242')),
+    relatedIds.join(','));
+
+  const sceneRequests = await (await fetch('/requests')).json();
+  const relatedReqs = sceneRequests.filter(r => r.per_page === 5);
+  check('T18 the rows are fetched with the entity criteria',
+    relatedReqs.some(r => JSON.stringify(r.scene_filter?.studios?.value) === '["1"]')
+      && relatedReqs.some(r => JSON.stringify(r.scene_filter?.performers?.value) === '["1"]'),
+    JSON.stringify(relatedReqs.map(r => r.scene_filter)));
+
+  if (relatedIds.includes('related-studio-8')) {
+    const card = registry.get('related-studio-8').el;
+    card.focus();
+    press(card);
+    await sleep(80);
+  }
+  check('T18 Enter on a related card hands that scene to App',
+    relatedSelections.length === 1 && relatedSelections[0].id === '8',
+    JSON.stringify(relatedSelections.map(x => x.id)));
+
+  // ── T19: the details column insets its rows ─────────────
+  // A scroll container clips at its padding box, box-shadow and transforms
+  // included. A chip or button paints its focus ring 5px outside the box and
+  // a focused card scales 1.05 past it, so the first item of every row is cut
+  // while the column insets on the right but not the left. The column must
+  // also not overflow sideways: with overflow-x unset it computes to auto
+  // next to overflow-y: auto, so a tag chip wider than the column can slide
+  // every row left and cut borders.
+  //
+  // Measured as the padding, not the ring: this driver does not load
+  // index.css, so the ring's `var()` computes to `none` here. The 5px is that
+  // file's outer spread.
+  let column = null;
+  for (let n = registry.get('related-studio-8')?.el; n; n = n.parentElement) {
+    if (getComputedStyle(n).overflowY === 'auto') { column = n; break; }
+  }
+  const RING = 5;
+  const outside = [];
+  const sideways = [];
+  let focused = 0;
+  const focusIn = async (el) => {
+    if (!el) return;
+    focused++;
+    el.focus();
+    await sleep(80);
+    const left = el.getBoundingClientRect().left
+      - column.getBoundingClientRect().left - column.clientLeft;
+    if (left < 0) outside.push(`${labelOf(el)}@${Math.round(left)}`);
+    if (column.scrollLeft !== 0) sideways.push(`${labelOf(el)}@${column.scrollLeft}`);
+    column.scrollLeft = 0;
+  };
+  for (const id of [...registry.keys()].filter(x => x.startsWith('related-'))) {
+    await focusIn(registry.get(id)?.el);
+  }
+  for (const id of [...registry.keys()].filter(x => /^scene-(tag|performer|studio)-/.test(x))) {
+    await focusIn(registry.get(id)?.el);
+  }
+  for (const id of [...registry.keys()]
+    .filter(x => /^scene-(play|organized|like|clear-progress|mark-played|back)$/.test(x))) {
+    await focusIn(registry.get(id)?.el);
+  }
+  const padLeft = column ? parseFloat(getComputedStyle(column).paddingLeft) : 0;
+  check('T19 the details column insets its rows so no item meets the clip edge',
+    column !== null && padLeft >= RING && outside.length === 0
+      && sideways.length === 0 && column.scrollWidth <= column.clientWidth,
+    `${focused} focuses | padding-left ${padLeft} `
+    + `| outside the edge: ${outside.join(' ') || 'none'} `
+    + `| sideways: ${sideways.join(' ') || 'none'} `
+    + `| width ${column?.scrollWidth}/${column?.clientWidth}`);
 
   // ── T2: optimistic update ───────────────────────────────
   // sceneUpdate is delayed 1200 ms; the new value before the reply proves the

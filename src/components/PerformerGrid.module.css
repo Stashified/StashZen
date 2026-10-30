@@ -12,6 +12,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 32px 48px 48px;
+  /* Matches the top padding, so an upward scroll leaves the focused card's
+     scale and lift clear of the top edge. See VideoGrid.module.css. */
+  scroll-padding-top: 32px;
   /* Instant, not smooth: see the note in useFocusable.js. */
   scroll-behavior: auto;
 }

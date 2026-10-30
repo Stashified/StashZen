@@ -70,14 +70,51 @@ export function applyTheme(theme) {
   else delete el.dataset.theme;
 }
 
+/**
+ * How far one seek press moves. `adaptive` is the YouTube-style ladder; a
+ * number is a fixed step, for people who would rather press the same distance
+ * every time. The settings toggle renders this list and the storage validator
+ * reads it, so the two cannot drift.
+ *
+ * Declared above `state` like the other validated vocabularies, because
+ * `loadFromStorage` reaches it at module init.
+ */
+export const SEEK_STEP_OPTIONS = [
+  { value: 'adaptive', label: 'Adaptive' },
+  { value: 5, label: '5 s' },
+  { value: 10, label: '10 s' },
+  { value: 15, label: '15 s' },
+  { value: 30, label: '30 s' },
+];
+
+export function readSeekStep(value) {
+  if (value === 'adaptive') return 'adaptive';
+  const n = Number(value);
+  return SEEK_STEP_OPTIONS.some(o => o.value === n) ? n : 'adaptive';
+}
+
+/**
+ * Apply Reduce motion to the document root, same module-init placement and
+ * reasoning as applyTheme: the PIN and first-run screens are outside App and
+ * must already be still. CSS keys off the attribute.
+ */
+export function applyReduceMotion(on) {
+  if (typeof document === 'undefined') return;
+  const el = document.documentElement;
+  if (on) el.dataset.reduceMotion = '';
+  else delete el.dataset.reduceMotion;
+}
+
 // ── In-memory state ──────────────────────────────────────
 let state = loadFromStorage();
 applyTheme(state.theme);
+applyReduceMotion(state.reduceMotion);
 
 /**
  * The stored per-section view modes, with unrecognised values dropped.
  *
- * A sparse map: an absent tab means 'classic'. Keys and values must be strings,
+ * A sparse map: an absent tab means the section's `defaultMode`, else
+ * 'classic'. Keys and values must be strings,
  * since this came back from JSON. Exported because it is the validation
  * boundary, `views-entry.jsx` asserts on it directly, while `boot-entry.jsx`
  * covers the real relaunch path by writing storage before the first import.
@@ -148,13 +185,19 @@ function loadFromStorage() {
     // The appearance theme. Standard on every device that has never chosen:
     // an upgrade must not restyle a working TV unasked.
     theme: readTheme(saved.theme),
+    // Animation and preview autoplay are opt-out: a TV that has never chosen
+    // keeps the motion it shipped with.
+    reduceMotion: !!saved.reduceMotion,
+    // Adaptive is the existing tap-5s-hold-to-climb behaviour.
+    seekStep: readSeekStep(saved.seekStep),
     // Which engine `Auto` means: the browser first, AVPlay as fallback.
     // `browser` is the rollback lever (the old browser-only player). An
     // unrecognised value falls back to `auto`, like every validated setting.
     playbackEngine: readPlaybackEngine(saved.playbackEngine),
     // Which view each section is in, keyed by tab: { scenes: 'coverflow' }.
-    // Absent means 'classic', a sparse map so a new section needs no
-    // migration. Values are validated on the way in, not trusted.
+    // Absent means the section's default (Tags and Studios open as lists),
+    // a sparse map so a new section needs no migration. Values are validated
+    // on the way in, not trusted.
     viewModes,
     // Per-section column counts, keyed by tab: { performers: 6 }. Absent means
     // the section default (see gridColsFor in App.jsx).
@@ -191,6 +234,8 @@ function persistToStorage() {
       previewsEnabled: state.previewsEnabled,
       useMock: state.useMock,
       theme: state.theme,
+      reduceMotion: state.reduceMotion,
+      seekStep: state.seekStep,
       playbackEngine: state.playbackEngine,
       viewModes: state.viewModes,
       gridCols: state.gridCols,
@@ -259,6 +304,7 @@ export function setSettings(patch) {
   // session and vanishes on the next launch.
   if ('stashUrl' in patch || 'stashKey' in patch || 'previewMuted' in patch
       || 'previewsEnabled' in patch || 'useMock' in patch || 'theme' in patch
+      || 'reduceMotion' in patch || 'seekStep' in patch
       || 'playbackEngine' in patch
       || 'viewModes' in patch || 'gridCols' in patch || 'onboarded' in patch
       || 'setupRequested' in patch || 'updateCheckEnabled' in patch
@@ -268,6 +314,7 @@ export function setSettings(patch) {
   // Applied here, not by the panel, so every path that changes the theme also
   // re-themes the document.
   if ('theme' in patch) applyTheme(state.theme);
+  if ('reduceMotion' in patch) applyReduceMotion(state.reduceMotion);
   notify();
 }
 
@@ -342,6 +389,8 @@ export function clearSettings() {
     // The documented reset includes appearance, and the document must be
     // re-themed here because clearSettings does not go through setSettings.
     theme: 'standard',
+    reduceMotion: false,
+    seekStep: 'adaptive',
     // `auto` is the safe default on an unknown device: it degrades to the
     // browser without AVPlay, where `browser` would silently disable AVPlay.
     playbackEngine: 'auto',
@@ -360,6 +409,7 @@ export function clearSettings() {
     hasSavedEndpoint: false,
   };
   applyTheme(state.theme);
+  applyReduceMotion(state.reduceMotion);
   persistToStorage();
   notify();
 }

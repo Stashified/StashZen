@@ -17,7 +17,7 @@
  * come from the descriptors too.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
@@ -39,7 +39,9 @@ function initialsOf(text) {
     .toUpperCase() || '?';
 }
 
-function Row({ item, index, list, onSelect, onLongPress, view }) {
+// Same reasoning as VideoCard: the listing is stable, so an append renders
+// only the new rows.
+const Row = memo(function Row({ item, index, list, onSelect, onLongPress, view }) {
   const [imgError, setImgError] = useState(false);
 
   // The hero model splits the rating out, which is what a row needs: rating
@@ -103,7 +105,7 @@ function Row({ item, index, list, onSelect, onLongPress, view }) {
       {badge && <span className={styles.badge}>{badge}</span>}
     </button>
   );
-}
+});
 
 export default function ItemList({ controls, view, objectFilter, searchQuery, onSelect, onLongPress }) {
   const { sort, order } = controls;

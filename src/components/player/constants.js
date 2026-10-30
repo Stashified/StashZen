@@ -1,4 +1,3 @@
-export const SKIP_SECONDS = 15;
 // YouTube's seek ladder: a tap is 5 s, holding climbs 10, 30, 60. A direction
 // change or a pause starts again at the first rung.
 export const SKIM_STEPS = [5, 10, 30, 60];
@@ -7,6 +6,15 @@ export const SKIM_RUNG_HOLD_MS = 1000;
 // A held remote repeats at ~30 Hz. Throttle those repeats, or the ladder turns
 // into minutes per second; discrete taps are never dropped.
 export const SKIM_REPEAT_MS = 300;
+// One held step glides over one repeat interval, so the timeline and the sprite
+// preview move continuously instead of jumping three times a second. The seek
+// is still deferred to the end of the gesture.
+export const SKIM_GLIDE_MS = SKIM_REPEAT_MS;
+// The upper rungs are a fixed distance, so a two-hour scene takes four times as
+// long to cross as a half-hour one. Scale them by the file length instead; a
+// single tap stays 5 s either way.
+export const SKIM_SCALE_REFERENCE_S = 1800;
+export const SKIM_SCALE_MAX = 4;
 export const SKIM_ACCEL_RESET_MS = 900;
 export const CONTROLS_HIDE_DELAY = 3000;
 export const SKIM_PREVIEW_HIDE_DELAY = 900;

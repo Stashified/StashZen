@@ -9,6 +9,7 @@
 
 import { TAG_VIEW, STUDIO_VIEW, GALLERY_VIEW, IMAGE_VIEW } from '../components/entityViews.jsx';
 import { FILTER_MODE } from '../utils/filterService.js';
+import { QUICK_FILTERS } from '../utils/quickFilters.js';
 
 // The dropdown entry standing for a filter that exists only in memory. It is
 // not a saved-filter id, so `activeFilter` misses and `workingFilter` applies;
@@ -38,6 +39,9 @@ export const DEFAULT_CONTROLS = {
   sortForTab: null,
   searchForTab: null,
   search: '',
+  // The one-press chips in force, by id. Empty on every arrival, see the tab
+  // rule in useListingControls.
+  quickFilters: [],
 };
 
 // The values are the persisted vocabulary in settings.js (`VIEW_MODES`).
@@ -320,7 +324,8 @@ export const TAB_CONTROL_CONFIG = {
     defaultSort: 'created_at',
     filterMode: FILTER_MODE.scenes,
     filterType: 'SceneFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.scenes,
   },
   performers: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
@@ -367,6 +372,8 @@ export const TAB_CONTROL_CONFIG = {
   // onto a date-sorted tab.
   tags: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
+    // A name list browses better as rows than as cards.
+    defaultMode: 'list',
     sortGroups: TAG_SORT_GROUPS,
     showOrder: true,
     showGridSize: true,
@@ -378,6 +385,7 @@ export const TAB_CONTROL_CONFIG = {
   },
   studios: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
+    defaultMode: 'list',
     sortGroups: STUDIO_SORT_GROUPS,
     showOrder: true,
     showGridSize: true,
@@ -395,7 +403,8 @@ export const TAB_CONTROL_CONFIG = {
     defaultSort: 'created_at',
     filterMode: FILTER_MODE.galleries,
     filterType: 'GalleryFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.galleries,
   },
   images: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
@@ -405,6 +414,7 @@ export const TAB_CONTROL_CONFIG = {
     defaultSort: 'created_at',
     filterMode: FILTER_MODE.images,
     filterType: 'ImageFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.images,
   },
 };

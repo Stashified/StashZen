@@ -102,10 +102,13 @@ check('tri is converted the same way', seedCriterion(triDesc, { modifier: 'EQUAL
   { modifier: 'EQUALS', value: 'false' });
 check('multi collects items, excludes and depth', seedCriterion(multiDesc,
   { modifier: 'EXCLUDES', value: [1, 2], excludes: [3], depth: 2 }),
-  { modifier: 'EXCLUDES', value: { items: [1, 2], excluded: [3], depth: 2 } });
+  { modifier: 'EXCLUDES', value: { items: [{ id: 1, label: '' }, { id: 2, label: '' }], excluded: [{ id: 3, label: '' }], depth: 2 } });
 check('multi without excludes starts empty', seedCriterion(hierDesc,
   { modifier: 'INCLUDES', value: [7] }),
-  { modifier: 'INCLUDES', value: { items: [7], excluded: [] } });
+  { modifier: 'INCLUDES', value: { items: [{ id: 7, label: '' }], excluded: [] } });
+check('multi keeps a labelled request entry', seedCriterion(multiDesc,
+  { modifier: 'INCLUDES', value: [{ id: '9', label: 'Blonde' }] }),
+  { modifier: 'INCLUDES', value: { items: [{ id: '9', label: 'Blonde' }], excluded: [] } });
 check('stash id reads endpoint and stash_id', seedCriterion(stashIdDesc,
   { modifier: 'EQUALS', endpoint: '/scenes', stash_id: '42' }),
   { modifier: 'EQUALS', value: { endpoint: '/scenes', stashID: '42' } });
@@ -185,6 +188,26 @@ check('a Float criterion keeps its decimal',
   isEffective(floatDesc, { modifier: 'EQUALS', value: { value: 7.5 } }), true);
 check('an Int range with a decimal bound is not effective',
   isEffective(numberDesc, { modifier: 'BETWEEN', value: { value: 1, value2: 2.5 } }), false);
+// A nullary modifier is the whole criterion: the row deliberately drops its
+// operand, and the translator fills in what the input type requires.
+check('a numeric IS_NULL is effective with no operand',
+  isEffective(numberDesc, { modifier: 'IS_NULL', value: {} }), true);
+check('a numeric NOT_NULL is effective with no operand',
+  isEffective(numberDesc, { modifier: 'NOT_NULL', value: {} }), true);
+check('a numeric EQUALS still needs its value',
+  isEffective(numberDesc, { modifier: 'EQUALS', value: {} }), false);
+check('a stash id IS_NULL needs no endpoint or id',
+  isEffective(stashIdDesc, { modifier: 'IS_NULL', value: {} }), true);
+check('a stash ids NOT_NULL needs no endpoint or ids',
+  isEffective(stashIdsDesc, { modifier: 'NOT_NULL', value: {} }), true);
+check('a list-valued enum IS_NULL is effective with no operand',
+  isEffective(listEnumDesc, { modifier: 'IS_NULL', value: { value: [] } }), true);
+check('an excluded-only multi is effective',
+  isEffective(multiDesc, { modifier: 'EXCLUDES', value: { items: [], excluded: [{ id: '2' }] } }), true);
+check('an excluded-only hierarchical is effective',
+  isEffective(hierDesc, { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '3' }] } }), true);
+check('a multi with neither side is still not effective',
+  isEffective(multiDesc, { modifier: 'INCLUDES', value: { items: [], excluded: [] } }), false);
 
 console.log('effectiveCriteria');
 const byField = new Map([
@@ -217,6 +240,21 @@ const nestedMap = new Map([['weird', noEditorDesc]]);
 check('a field the builder cannot render is kept verbatim',
   effectiveCriteria(['weird'], { weird: { nest: true } }, nestedMap),
   { weird: { nest: true } });
+check('nullary and excluded-only rows survive effectiveCriteria',
+  effectiveCriteria(
+    ['duration', 'tags', 'circumcised'],
+    {
+      duration: { modifier: 'IS_NULL', value: {} },
+      tags: { modifier: 'EXCLUDES', value: { items: [], excluded: [{ id: '2' }] } },
+      circumcised: { modifier: 'IS_NULL', value: { value: [] } },
+    },
+    byField,
+  ),
+  {
+    duration: { modifier: 'IS_NULL', value: {} },
+    tags: { modifier: 'EXCLUDES', value: { items: [], excluded: [{ id: '2' }] } },
+    circumcised: { modifier: 'IS_NULL', value: { value: [] } },
+  });
 
 console.log('storedCriteria');
 const storedMap = new Map([
@@ -246,6 +284,15 @@ check('numbers already match Stash', storedOut.duration,
   { modifier: 'BETWEEN', value: { value: 1, value2: 2 } });
 check('multi already matches Stash', storedOut.tags,
   { modifier: 'INCLUDES', value: { items: [{ id: '1' }], excluded: [] } });
+check('storedCriteria labels a bare multi entry',
+  storedCriteria(['tags'],
+    { tags: { modifier: 'INCLUDES', value: { items: [7], excluded: [] } } }, storedMap),
+  { tags: { modifier: 'INCLUDES', value: { items: [{ id: 7, label: '' }], excluded: [] } } });
+check('storedCriteria keeps an exclusion-only multi',
+  storedCriteria(['tags'],
+    { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }] } } },
+    storedMap),
+  { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }] } } });
 check('is_missing is a bare string', storedOut.is_missing, 'url');
 check('an unknown field is carried as it came', storedOut.gone, { kept: true });
 

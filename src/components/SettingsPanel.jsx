@@ -19,6 +19,7 @@ import { useSettings, setSettings, testStashConnection } from '../utils/settings
 import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
 import { EngineToggle } from './settings/EngineToggle.jsx';
+import { SeekStepToggle } from './settings/SeekStepToggle.jsx';
 import { TextField } from './settings/TextField.jsx';
 import { AppLockSection } from './settings/AppLockSection.jsx';
 import { LibraryStatsSection } from './settings/LibraryStatsSection.jsx';
@@ -56,6 +57,8 @@ export default function SettingsPanel({ onClose }) {
     stashUrl, setStashUrl,
     stashKey, setStashKey,
     previewsEnabled, setPreviewsEnabled,
+    reduceMotion, setReduceMotion,
+    seekStep, setSeekStep,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
     dirty,
@@ -145,7 +148,9 @@ export default function SettingsPanel({ onClose }) {
       return;
     }
     if (dirty) {
-      returnFocusRef.current = document.activeElement;
+      // Never remember <body>: it restores nothing and strands the prompt.
+      const active = document.activeElement;
+      if (active && active !== document.body) returnFocusRef.current = active;
       setLeavePrompt(true);
       return;
     }
@@ -183,17 +188,23 @@ export default function SettingsPanel({ onClose }) {
   useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const handleSave = () => {
-    if (!save()) return;
+    if (!save()) return false;
     setSaved(true);
     clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => onClose?.(), SAVE_CLOSE_DELAY_MS);
+    return true;
   };
 
   // Save goes through the normal path so the footer reports "Saved ✓" and the
   // usual close timer runs; discard is the only route that drops the drafts.
   const saveAndClose = () => {
+    const restore = returnFocusRef.current;
+    returnFocusRef.current = null;
     setLeavePrompt(false);
-    handleSave();
+    // A refused save keeps the panel open, and the button that had the cursor
+    // just unmounted. Put it back where Back was pressed, or the D-pad has no
+    // target while the error is on screen.
+    if (!handleSave()) restore?.focus?.();
   };
   const discardAndClose = () => {
     setLeavePrompt(false);
@@ -339,9 +350,11 @@ export default function SettingsPanel({ onClose }) {
               <div className={styles.sectionText}>
                 <span className={styles.fieldLabel}>Focus previews</span>
                 <p className={styles.sectionStatus}>
-                  {previewsEnabled
-                    ? 'A focused card plays a preview clip where Stash has one.'
-                    : 'Cards show their cover only.'}
+                  {reduceMotion
+                    ? 'Paused while Reduce motion is on.'
+                    : previewsEnabled
+                      ? 'A focused card plays a preview clip where Stash has one.'
+                      : 'Cards show their cover only.'}
                 </p>
               </div>
               <div className={styles.sectionActions}>
@@ -358,6 +371,36 @@ export default function SettingsPanel({ onClose }) {
               Previews are generated in Stash, not here:{' '}
               <strong>Generate → Previews</strong>. Scenes without one keep
               their cover; nothing is left blank.
+            </p>
+          </div>
+
+          {/* One switch for the whole app: fades, slides, spinners and the
+              focused card's preview all stop. The previews toggle above stays
+              as it was; this one overrides it while on. */}
+          <div className={styles.section}>
+            <div className={styles.sectionRow}>
+              <div className={styles.sectionText}>
+                <span className={styles.fieldLabel}>Reduce motion</span>
+                <p className={styles.sectionStatus}>
+                  {reduceMotion
+                    ? 'Transitions and focus previews are off.'
+                    : 'Transitions play and focused cards autoplay previews.'}
+                </p>
+              </div>
+              <div className={styles.sectionActions}>
+                <ActionButton
+                  id="settings-reduce-motion"
+                  label={reduceMotion ? 'On' : 'Off'}
+                  pressed={reduceMotion}
+                  onClick={() => setReduceMotion(v => !v)}
+                />
+              </div>
+            </div>
+
+            <p className={styles.hint}>
+              Stops the page and panel animations and keeps focus previews
+              paused, for a TV or a person that finds the movement unpleasant.
+              Scenes still play normally.
             </p>
           </div>
 
@@ -383,6 +426,15 @@ export default function SettingsPanel({ onClose }) {
                     The change applies the next time a scene is opened.
                   </>
                 )}
+            </p>
+          </div>
+
+          <div className={styles.section}>
+            <SeekStepToggle value={seekStep} onChange={setSeekStep} />
+            <p className={styles.hint}>
+              <strong>Adaptive</strong> starts at 5 seconds and climbs to 10,
+              30 and 60 when you keep pressing. A fixed step moves the same
+              distance on every press. Applies the next time a scene is opened.
             </p>
           </div>
 

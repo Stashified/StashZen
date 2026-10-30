@@ -84,6 +84,9 @@ const enterPin = (pin) => {
   for (const digit of pin) padButton(digit)?.click();
 };
 
+/** The panel's own text, for copy that belongs to the dialog. */
+const dialogText = () => document.querySelector('[role="dialog"]')?.textContent || '';
+
 /** Any live region whose text matches, so an unrelated status line cannot pass. */
 const statusSays = (re) => [...document.querySelectorAll('[role="status"]')]
   .some(el => re.test(el.textContent || ''));
@@ -125,16 +128,58 @@ async function runSettings() {
   // ── A2  Enter on the toggle flips aria-pressed ───────────
   // The one action with a self-contained synchronous observable: `press` is
   // not passed by every caller, but those that pass it expect it on the DOM.
-  const toggle = byLabel('Off') || byLabel('On');
+  // By id, not by label: previews default to On, so the lone "Off" is the
+  // Reduce motion switch below it.
+  const toggle = registry.get('settings-previews')?.el;
   const before = toggle?.getAttribute('aria-pressed');
   await enter(toggle);
-  const after = (byLabel('Off') || byLabel('On'))?.getAttribute('aria-pressed');
+  const after = toggle?.getAttribute('aria-pressed');
   // A flip, not a direction: the default belongs to preview-entry's P0, and
   // asserting "off → on" would fail on a default change for the wrong reason.
   check('A2 pressing the toggle flips aria-pressed',
     before !== after && ['true', 'false'].includes(before)
       && ['true', 'false'].includes(after),
     `before=${before} after=${after}`);
+
+  // ── B: seek step and Reduce motion are drafts ────────────
+  // Both commit with Save like everything else here, so the observables are
+  // the panel now and the store still.
+  const seekOn = (id) =>
+    registry.get(id)?.el?.getAttribute('aria-checked') === 'true';
+  check('B1 the seek step offers five choices, Adaptive selected',
+    seekOn('settings-seek-adaptive')
+      && [5, 10, 15, 30].every(v => !!registry.get(`settings-seek-${v}`)?.el
+        && !seekOn(`settings-seek-${v}`)),
+    `adaptive=${seekOn('settings-seek-adaptive')} `
+      + `ids=${[5, 10, 15, 30].filter(v => registry.get(`settings-seek-${v}`)).join(',')}`);
+
+  await enter(byLabel('15 s'));
+  check('B2 choosing a step moves the radio and not the store',
+    seekOn('settings-seek-15') && !seekOn('settings-seek-adaptive')
+      && getSettings().seekStep === 'adaptive',
+    `15=${seekOn('settings-seek-15')} adaptive=${seekOn('settings-seek-adaptive')} `
+      + `store=${JSON.stringify(getSettings().seekStep)}`);
+
+  const motionBtn = () => {
+    const el = registry.get('settings-reduce-motion')?.el;
+    if (!el) throw new Error('settings-reduce-motion is missing');
+    return el;
+  };
+  const motionBefore = motionBtn().getAttribute('aria-pressed') === 'true';
+  await enter(motionBtn());
+  const motionAfter = motionBtn().getAttribute('aria-pressed') === 'true';
+  check('B3 Reduce motion flips in the panel and pauses the previews line',
+    motionAfter === !motionBefore
+      && new RegExp(motionAfter
+        ? 'Paused while Reduce motion is on'
+        : 'focused cards autoplay previews').test(dialogText())
+      && getSettings().reduceMotion === motionBefore,
+    `before=${motionBefore} after=${motionAfter} `
+      + `store=${getSettings().reduceMotion} `
+      + `label=${JSON.stringify(motionBtn().textContent)}`);
+  check('B3b ...and the document still moves until it is saved',
+    !document.documentElement.hasAttribute('data-reduce-motion'),
+    `attribute=${document.documentElement.hasAttribute('data-reduce-motion')}`);
 
   // ── A3  Enter on Test connection reaches the server ──────
   // The request left and the result rendered. The fake answers `version`,
@@ -168,6 +213,12 @@ async function runSettings() {
   check('A4 Cancel did not commit the draft to the store',
     getSettings().stashUrl === urlBefore,
     getSettings().stashUrl === urlBefore ? 'store unchanged' : `${urlBefore} → ${getSettings().stashUrl}`);
+  check('B4 Discard dropped the seek step and Reduce motion too',
+    getSettings().seekStep === 'adaptive' && getSettings().reduceMotion === false
+      && !document.documentElement.hasAttribute('data-reduce-motion'),
+    `seekStep=${JSON.stringify(getSettings().seekStep)} `
+      + `reduceMotion=${getSettings().reduceMotion} `
+      + `attribute=${document.documentElement.hasAttribute('data-reduce-motion')}`);
 
   // ── A5  The primary button is marked as such ─────────────
   // `primary` is the one prop the shared component must pass through, and it
@@ -302,6 +353,22 @@ async function runSettings() {
     Storage.prototype.removeItem = realRemoveItem;
   }
   clearPin();
+
+  // ── S: Save commits both new settings ────────────────────
+  // Last, because Save starts the panel's close timer. Reduce motion is the
+  // one setting whose effect is on the document rather than in the panel.
+  await enter(byLabel('30 s'));
+  // Whatever B3 left, Save must commit Reduce motion as on.
+  if (motionBtn().getAttribute('aria-pressed') !== 'true') await enter(motionBtn());
+  await enter(byLabel('Save'));
+  await sleep(300);
+  check('S1 Save commits the seek step and applies Reduce motion to the document',
+    getSettings().seekStep === 30
+      && getSettings().reduceMotion === true
+      && document.documentElement.hasAttribute('data-reduce-motion'),
+    `seekStep=${JSON.stringify(getSettings().seekStep)} `
+      + `reduceMotion=${getSettings().reduceMotion} `
+      + `attribute=${document.documentElement.hasAttribute('data-reduce-motion')}`);
 }
 
 // ── ExitPrompt ──────────────────────────────────────────────

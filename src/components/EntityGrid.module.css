@@ -1,6 +1,4 @@
-/* Layout only; the card's shape lives in EntityCard.module.css. The
-   `.gridFrame` and fade overlays in VideoGrid are scene-specific and
-   deliberately not carried over. */
+/* Layout only; the card's shape lives in EntityCard.module.css. */
 
 /* The count line and scroller share one column; `min-height: 0` lets the
    scroller shrink to it instead of overflowing. */
@@ -16,6 +14,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 32px 48px 48px;
+  /* Matches the top padding, so an upward scroll leaves the focused card's
+     scale and lift clear of the top edge. See VideoGrid.module.css. */
+  scroll-padding-top: 32px;
   /* Instant, not smooth: see the note in useFocusable.js. */
   scroll-behavior: auto;
 }

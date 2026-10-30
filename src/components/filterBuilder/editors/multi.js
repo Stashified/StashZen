@@ -25,7 +25,9 @@ export const parts = (field, desc, criterion) => {
     id: `fb-pick-${field}`,
     entity: Boolean(desc.entity),
     text: items.length
-      ? items.map(i => i.label).join(', ')
+      // An entry can arrive without a label (a request-shaped seed); print the
+      // id rather than an empty button.
+      ? items.map(i => i.label || String(i.id)).join(', ')
       : (desc.entity ? 'Choose…' : 'No picker for this field'),
   }];
   if (desc.hierarchical) {

@@ -12,6 +12,10 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 32px 48px 48px;
+  /* Matches the top padding: a row scrolled up into view stops with that much
+     room above it, so the focused card's 1.05 scale and 4px lift are not
+     clipped, and the top row lands at scrollTop 0 as it did on load. */
+  scroll-padding-top: 32px;
   /* Instant, not smooth (useFocusable also passes behavior:'auto'). */
   scroll-behavior: auto;
 }
@@ -87,31 +91,4 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.gridFrame {
-  position: relative;
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-.fadeTop, .fadeBottom {
-  position: absolute;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.fadeTop {
-  top: 0;
-  height: 32px;
-  background: linear-gradient(to bottom, var(--bg-base) 0%, transparent 100%);
-}
-
-.fadeBottom {
-  bottom: 0;
-  height: 60px;
-  background: linear-gradient(to top, var(--bg-base) 0%, transparent 100%);
 }

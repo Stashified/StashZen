@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'react';
 import { registry, getCurrentFocusId } from './useFocusable.js';
 import { isBackCode, isTextInput, focusScopeOf } from '../utils/input.js';
+import { scrollContainerOf } from '../utils/scroll.js';
 
 const CROSS_ZONE_PENALTY = 100000;
 // Larger than the zone penalty: a same-container candidate must beat a
@@ -57,24 +58,6 @@ function getCachedRect(el) {
  */
 function isRendered(el) {
   return el.getClientRects().length > 0;
-}
-
-/**
- * The nearest ancestor the element actually scrolls inside, or null.
- *
- * Geometry treats a scrolled-out row and the fixed footer below it as equally
- * valid, and the nearer footer wins, so Down in a long dialog skips the fold
- * and jumps straight to Save. Actual overflow (scrollHeight > clientHeight) is
- * required so containers with nothing to scroll get no penalty.
- */
-function scrollContainerOf(el) {
-  let n = el?.parentElement;
-  while (n && n !== document.body && n !== document.documentElement) {
-    const oy = getComputedStyle(n).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
-    n = n.parentElement;
-  }
-  return null;
 }
 
 /**
@@ -168,7 +151,7 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   const skipRailRows = direction === 'down' && currentEntry?.railRow !== true;
 
   registry.forEach(({ el, zone, verticalOnly, crossZone, railRow }) => {
-    if (el === currentEl || !isRendered(el)) return;
+    if (el === currentEl) return;
     // A DOM-disabled element is an absorbing wall: `.focus()` is a silent no-op
     // and every press finds it, so focus never moves. The rating stepper's "−"
     // disabled while unrated made the detail action row a dead end.
@@ -182,6 +165,9 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     if (railRow && skipRailRows) return;
     if (isHorizontal && zone !== currentZone && !currentCrossesZones) return;
     if (scope && !scope.contains(el)) return;
+    // Last, because it is a layout query: a deep listing registers every loaded
+    // card, and most of them are ruled out by the cheap tests above.
+    if (!isRendered(el)) return;
 
     const rect = getCachedRect(el);
     const dx = (rect.left + rect.width / 2) - curCx;
@@ -247,11 +233,12 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     const goingRight = direction === 'right';
     let bestKey = Infinity;
     registry.forEach(({ el, zone, verticalOnly }) => {
-      if (el === currentEl || !isRendered(el) || el.disabled) return;
+      if (el === currentEl || el.disabled) return;
       if (verticalOnly) return;
       if (zone !== currentZone && !currentCrossesZones) return;
       if (scope && !scope.contains(el)) return;
       if (!wrapContainer.contains(el)) return;
+      if (!isRendered(el)) return;
       const rect = getCachedRect(el);
       const gap = goingRight ? rect.top - curRect.bottom : curRect.top - rect.bottom;
       // The chosen line must lie wholly beyond the current one. The 2 px

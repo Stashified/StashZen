@@ -9,8 +9,9 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
-import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
+import { focusByIdWhenReady, focusFirstControl, focusOriginCard } from '../utils/focus.js';
 
 export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   const [selectedPerformer, setSelectedPerformer] = useState(null);
@@ -20,6 +21,10 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   // listing skip the grid and jump Home. Null means the Performers grid.
   const [performerOrigin, setPerformerOrigin] = useState(null);
   const [selectedScene, setSelectedScene] = useState(null);
+  // The card that opened the scene page, by focus id. A related row replaces
+  // the scene on it, so Back and a chip's Back must name the card the chain
+  // started from, not a scene the listing never held.
+  const [sceneOriginId, setSceneOriginId] = useState(null);
   // Scenes whose resume point was cleared from the detail overlay while Home
   // was mounted underneath. The showroom cannot refetch in place, so App says
   // which cards to drop; cleared on every tab arrival, when the server is asked.
@@ -79,6 +84,9 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   const rememberSceneCard = sceneCardFocus.remember;
   const handleVideoSelect = useCallback((video) => {
     rememberSceneCard(document.activeElement);
+    // Read before the overlay takes focus. Cards from the Home shelf carry
+    // their own prefix, so the id is captured rather than built.
+    setSceneOriginId(getCurrentFocusId() || `video-${video.id}`);
     setSelectedScene(video);
   }, [rememberSceneCard]);
 
@@ -116,17 +124,32 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     setSelectedPerformer(performer);
   };
 
-  // A performer opened from the Home shelf or the search page. The page only
-  // renders under `activeTab === 'performers'`, and the pressed card unmounts
-  // with the switch, so the origin names the tab and card by id.
-  const openPerformerFrom = (performer, tab) => {
-    setPerformerOrigin({ focusId: `performer-${performer.id}`, tab });
+  // A performer opened from the Home shelf, the search page or a scene detail.
+  // The page only renders under `activeTab === 'performers'`, and the pressed
+  // card unmounts with the switch, so the origin names the tab and card by id.
+  // A scene detail passes its own card: the origin tab has no performer card,
+  // and this is where Back should land.
+  const openPerformerFrom = (performer, tab, focusId = null) => {
+    setPerformerOrigin({ focusId: focusId || `performer-${performer.id}`, tab });
     setSelectedPerformer(performer);
     changeTab('performers');
   };
 
   const handleShowroomPerformerSelect = (performer) => openPerformerFrom(performer, 'home');
   const handleSearchPerformerSelect = (performer) => openPerformerFrom(performer, 'search');
+
+  // From a scene detail: the performer chip closes the detail, since the page
+  // is not stacked over the new destination and Back has to find a real
+  // origin. Opened over Performers the tab does not change, so the current
+  // page takes the new performer and Back goes to the grid.
+  const handleScenePerformerSelect = (scene, performer) => {
+    setSelectedScene(null);
+    if (activeTab === 'performers') {
+      handlePerformerSelect(performer);
+      return;
+    }
+    openPerformerFrom(performer, activeTab, sceneOriginId || `video-${scene?.id}`);
+  };
 
   const handlePerformerBack = () => {
     const performer = selectedPerformer;
@@ -137,7 +160,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
       changeTab(tab || 'home');
       // The origin tab remounts and refetches, so the card does not exist yet;
       // retry as `activateFiltered`'s Back does.
-      focusByIdWhenReady(focusId, { fallback: focusFirstControl });
+      focusOriginCard(tab || 'home', focusId);
       return;
     }
     // The Performers grid remounts in this commit and fetches page 1, so the
@@ -189,6 +212,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     performerOrigin,
     selectedScene,
     setSelectedScene,
+    sceneOriginId,
     clearedContinueIds,
     imageViewer,
     setImageViewer,
@@ -199,6 +223,7 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
     handlePerformerSelect,
     handleShowroomPerformerSelect,
     handleSearchPerformerSelect,
+    handleScenePerformerSelect,
     handlePerformerBack,
     handleImageSelect,
     openImageViewer,
