@@ -11,7 +11,9 @@
  * count sort silently does nothing.
  */
 
+import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
+import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { TAG_NAMES } from './mockLibrary.js';
@@ -148,4 +150,55 @@ const service = createEntityService({
 /** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchTags(opts = {}) {
   return service.fetch(opts);
+}
+
+// The Info overlay's detail: fields the grid query deliberately omits (the
+// description is a paragraph per tag) plus the tag hierarchy.
+const FIND_TAG_INFO_QUERY = `
+  query FindTagInfo($id: ID!) {
+    findTag(id: $id) {
+      id
+      name
+      description
+      aliases
+      favorite
+      scene_count
+      scene_marker_count
+      image_count
+      gallery_count
+      performer_count
+      studio_count
+      parents { id name }
+      children { id name }
+    }
+  }
+`;
+
+function normalizeTagInfo(t) {
+  const refs = (list) => (list || []).map(x => ({ id: x.id, name: x.name }));
+  return {
+    // The name rides along so a rename since the listing wins on the sheet.
+    name: t.name,
+    description: t.description || null,
+    aliases: (t.aliases || []).filter(Boolean),
+    favorite: !!t.favorite,
+    scene_count: t.scene_count || 0,
+    scene_marker_count: t.scene_marker_count || 0,
+    image_count: t.image_count || 0,
+    gallery_count: t.gallery_count || 0,
+    performer_count: t.performer_count || 0,
+    studio_count: t.studio_count || 0,
+    parents: refs(t.parents),
+    children: refs(t.children),
+  };
+}
+
+/** One tag's detail, for the long-press Info overlay. */
+export async function fetchTagInfo(id) {
+  if (getSettings().useMock) {
+    const t = generateMockTags().find(x => String(x.id) === String(id));
+    return t ? normalizeTagInfo(t) : null;
+  }
+  const data = await runQuery(FIND_TAG_INFO_QUERY, { id: String(id) });
+  return data?.findTag ? normalizeTagInfo(data.findTag) : null;
 }

@@ -29,11 +29,14 @@ MODE = {
     "sceneAddO": "ok",
     # findPerformer: "sparse" empties optional fields; "length-only" clears the
     # career bounds but keeps career_length; "slow"/"fail" delay.
-    "performerDetail": "ok", "resume": 0, "oSeed": 0,
+    "performerDetail": "ok", "performerSceneTags": "ok", "resume": 0, "oSeed": 0,
     # performerUpdate: "slow" exposes the optimistic value; "fail" is rollback.
     "performerUpdate": "ok",
     # findImage: "slow" keeps the loading state on screen; "fail" is its error.
     "imageInfo": "ok",
+    # findTag / findStudio for the entity sheet: "fail" is the error line,
+    # "missing" a deleted row, "slow" holds the loading state.
+    "tagInfo": "ok", "studioInfo": "ok",
     # Gallery-filtered findImages: "empty" (the default) serves no rows, so
     # "still filtered" is visible to S6; "populate" serves the gallery's own
     # short set for the slideshow.
@@ -375,6 +378,9 @@ def listing_marker(n):
 # Every findPerformer call — `{id, query}`. The query text shows the fetch
 # stays narrow: profile fields present, card fields absent.
 PERFORMER_FETCHES = []
+# The fallback tag query (tags derived from a performer's scenes). Logged
+# separately from REQUESTS: its answer must not be read as a scene listing.
+PERFORMER_SCENE_TAG_FETCHES = []
 
 # Every performerUpdate mutation — `{input}`: which performer, which field moved.
 PERFORMER_UPDATES = []
@@ -382,6 +388,11 @@ PERFORMER_UPDATES = []
 # Every FindImageInfo query — `{id, query}`. The text proves the client asked
 # for `visual_files`; `files` is invalid on Image, but the fake answers either.
 IMAGE_INFO_FETCHES = []
+
+# Every FindTagInfo / FindStudioInfo query — `{id, query}`. The text proves the
+# sheet asks for the fields the listing omits (description/details, hierarchy).
+TAG_INFO_FETCHES = []
+STUDIO_INFO_FETCHES = []
 
 # Every stopJob mutation — `{job_id, query}` — and the ids stopped. `/clear`
 # resets both, so each phase starts from the full fixture.
@@ -678,6 +689,42 @@ def listing_studio(n):
     }
 
 
+# ── The tag/studio Info sheet ─────────────────────────────
+# Every field the listing does not carry, with VERIFY strings and a description
+# long enough to overflow the sheet at 1080p: the arrow-scroll check needs a
+# real overflow, not a panel that happens to fit.
+TAG_INFO = {
+    "description": "VERIFY tag info description. " * 60,
+    "aliases": ["VERIFY tag info alias one", "VERIFY tag info alias two"],
+    "favorite": True,
+    "scene_count": 12,
+    "scene_marker_count": 3,
+    "image_count": 4,
+    "gallery_count": 5,
+    "performer_count": 6,
+    "studio_count": 7,
+    "parents": [{"id": "p1", "name": "VERIFY parent tag"}],
+    "children": [
+        {"id": "c1", "name": "VERIFY child tag one"},
+        {"id": "c2", "name": "VERIFY child tag two"},
+    ],
+}
+
+STUDIO_INFO = {
+    "details": "VERIFY studio info details. " * 60,
+    "aliases": ["VERIFY studio info alias"],
+    "favorite": True,
+    "rating100": 85,
+    "scene_count": 21,
+    "image_count": 22,
+    "gallery_count": 23,
+    "performer_count": 24,
+    "group_count": 2,
+    "parent_studio": {"id": "p9", "name": "VERIFY parent studio"},
+    "child_studios": [{"id": "c9", "name": "VERIFY child studio"}],
+}
+
+
 def listing_gallery(n):
     """One row of the gallery listing.
 
@@ -845,8 +892,11 @@ class Handler(SimpleHTTPRequestHandler):
                 STREAMS_FETCHES.clear()
                 STREAM_FETCHES.clear()
                 PERFORMER_FETCHES.clear()
+                PERFORMER_SCENE_TAG_FETCHES.clear()
                 PERFORMER_UPDATES.clear()
                 IMAGE_INFO_FETCHES.clear()
+                TAG_INFO_FETCHES.clear()
+                STUDIO_INFO_FETCHES.clear()
                 STOP_FETCHES.clear()
                 STOPPED_JOB_IDS.clear()
                 STATS_FETCHES.clear()
@@ -905,12 +955,21 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/performerfetches"):
             with LOCK:
                 return self._json(list(PERFORMER_FETCHES))
+        if self.path.startswith("/performerscenetagfetches"):
+            with LOCK:
+                return self._json(list(PERFORMER_SCENE_TAG_FETCHES))
         if self.path.startswith("/performerupdates"):
             with LOCK:
                 return self._json(list(PERFORMER_UPDATES))
         if self.path.startswith("/imageinfofetches"):
             with LOCK:
                 return self._json(list(IMAGE_INFO_FETCHES))
+        if self.path.startswith("/taginfofetches"):
+            with LOCK:
+                return self._json(list(TAG_INFO_FETCHES))
+        if self.path.startswith("/studioinfofetches"):
+            with LOCK:
+                return self._json(list(STUDIO_INFO_FETCHES))
         if self.path.startswith("/stopfetches"):
             with LOCK:
                 return self._json(list(STOP_FETCHES))
@@ -1229,6 +1288,37 @@ class Handler(SimpleHTTPRequestHandler):
                  "mime_type": "application/vnd.apple.mpegurl", "label": "HLS"},
             ]}})
 
+        # The performer page's fallback tags. Matched before the scene listing
+        # because it *is* a findScenes query, just a narrow one.
+        #
+        # Counts are crafted so the sort is observable: st1 appears in all three
+        # scenes, st3 and st2 in two each, and "beta" < "zeta" gives the tie-break.
+        if "PerformerSceneTags" in query:
+            # The performer id is a value inside the criterion, not a variable.
+            scene_filter = variables.get("scene_filter") or {}
+            values = (scene_filter.get("performers") or {}).get("value") or []
+            pid = str(values[0]) if values else None
+            with LOCK:
+                PERFORMER_SCENE_TAG_FETCHES.append({
+                    "id": pid,
+                    "per_page": (variables.get("filter") or {}).get("per_page"),
+                    "scene_filter": scene_filter,
+                    "query": query,
+                })
+                mode = MODE.get("performerSceneTags", "ok")
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated scene tag failure"}]})
+            if mode == "empty":
+                return self._json({"data": {"findScenes": {"count": 0, "scenes": []}}})
+            alpha = {"id": "st1", "name": "VERIFY scene tag alpha"}
+            beta = {"id": "st3", "name": "VERIFY scene tag beta"}
+            zeta = {"id": "st2", "name": "VERIFY scene tag zeta"}
+            return self._json({"data": {"findScenes": {"count": 3, "scenes": [
+                {"tags": [alpha, beta]},
+                {"tags": [alpha, beta, zeta]},
+                {"tags": [alpha, zeta]},
+            ]}}})
+
         # `FindScenes` plural. The detail query above is a different operation
         # ("FindScene"), and a lazy match would answer a future single-scene one.
         if "FindScenes" in query:
@@ -1265,6 +1355,11 @@ class Handler(SimpleHTTPRequestHandler):
             if mode == "short":
                 rows = [listing_scene(n) for n in range(1, 6)]
                 return self._json({"data": {"findScenes": {"count": 5, "scenes": rows}}})
+            # Surprise's empty arm: the filter matches nothing, and the notice is
+            # the only way the user learns that. Only the random, one-row fetch
+            # is answered here, so a listing refetch is unaffected.
+            if mode == "random-empty" and entry["sort"] == "random":
+                return self._json({"data": {"findScenes": {"count": 0, "scenes": []}}})
             # A scene detail's related rows ("More from <studio>"): the
             # criterion names an entity, so answer a small set that includes
             # the open scene 4242. The page must drop it, and four rows to
@@ -1378,6 +1473,10 @@ class Handler(SimpleHTTPRequestHandler):
                 )
             elif mode == "length-only":
                 row.update(career_start=None, career_end=None, career_length="12 years")
+            elif mode == "no-tags":
+                # Everything else stays: the page must fall back on an empty
+                # Tags row without losing the profile above it.
+                row.update(tags=[])
             return self._json({"data": {"findPerformer": row}})
 
         # The performer profile's two writes. Logged before the mode is
@@ -1436,6 +1535,40 @@ class Handler(SimpleHTTPRequestHandler):
                 **IMAGE_INFO,
                 "id": iid,
                 "studio": {"id": "1", "name": f"VERIFY image studio {iid}"},
+            }}})
+
+        # The Info sheet's two detail reads, above the section loop: their names
+        # do not contain the plural operations, so ordering only keeps the
+        # handlers together. The name carries the requested id, so a stale
+        # answer under the next card would otherwise look right.
+        if "FindTagInfo" in query:
+            tid = str(variables.get("id"))
+            with LOCK:
+                TAG_INFO_FETCHES.append({"id": tid, "query": query})
+                mode = MODE.get("tagInfo", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated tag info failure"}]})
+            if mode == "missing":
+                return self._json({"data": {"findTag": None}})
+            return self._json({"data": {"findTag": {
+                **TAG_INFO, "id": tid, "name": f"VERIFY tag info {tid}",
+            }}})
+
+        if "FindStudioInfo" in query:
+            sid = str(variables.get("id"))
+            with LOCK:
+                STUDIO_INFO_FETCHES.append({"id": sid, "query": query})
+                mode = MODE.get("studioInfo", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated studio info failure"}]})
+            if mode == "missing":
+                return self._json({"data": {"findStudio": None}})
+            return self._json({"data": {"findStudio": {
+                **STUDIO_INFO, "id": sid, "name": f"VERIFY studio info {sid}",
             }}})
 
         # ── The four browse-only sections ──

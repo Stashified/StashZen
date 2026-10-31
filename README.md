@@ -110,14 +110,20 @@ under **Settings → Connection setup → Run setup again**.
 - **Seven sections**: Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
   search, sort, filters and a view mode remembered per tab. Tags and Studios open as lists.
 - **Filters**: build one on the TV or load a saved one, and save it back to Stash. A **Quick**
-  row adds one-press chips like Unwatched, Rated 4+ and Has markers.
+  row adds one-press chips like Unwatched, Rated 4+ and Has markers; Performers, Tags and
+  Studios carry their own (Favourites, Rated 4+).
+- **Random scene**: on Scenes, plays one random scene through the current filter and search.
 - **Focus previews**: the focused scene card plays its Stash preview, muted. Turn it off in
   Settings, or mute it from the controls bar.
 
 **Details**
 - **Scene detail**: metadata and rating; resume or play from a marker; **Galleries** and
   **More from** rows for the studio and performers.
-- **Performer pages**: profile, counts, and **Rating** / **Favourite** written back to Stash.
+- **Performer pages**: profile, counts that open that performer's Images and Galleries, tag
+  chips that open Scenes, and **Rating** / **Favourite** written back to Stash. When Stash has
+  no tags for the performer, the tags that recur on their scenes stand in under **Scene tags**.
+- **Tag and studio info**: hold OK on a tag or studio for its description, aliases, hierarchy
+  and counts; each count with a listing behind it opens that filtered listing.
 - **Image viewer**: a slideshow, pan and zoom, and an info panel over the full-size image.
 
 **Playback**

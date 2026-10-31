@@ -11,6 +11,7 @@
 
 import SceneDetailPage from '../pages/SceneDetailPage.jsx';
 import ActionMenu from '../components/ActionMenu.jsx';
+import EntityInfoOverlay from '../components/EntityInfoOverlay.jsx';
 import MarkerModal from '../components/MarkerModal.jsx';
 import MarkerDeletePrompt from '../components/MarkerDeletePrompt.jsx';
 import ImageViewer from '../components/ImageViewer.jsx';
@@ -24,6 +25,7 @@ import { buildActionMenu } from '../utils/actionMenus.js';
 export default function AppOverlays({
   sceneDetail,
   actionMenu,
+  info,
   markerEditor,
   markerDelete,
   imageViewer,
@@ -43,6 +45,8 @@ export default function AppOverlays({
       openGallerySlideshow: actionMenu.openGallerySlideshow,
       onEditMarker: actionMenu.onEditMarker,
       onDeleteMarker: actionMenu.onDeleteMarker,
+      onInfo: actionMenu.onInfo,
+      onFilterEntity: actionMenu.onFilterEntity,
     })
     : null;
 
@@ -74,6 +78,16 @@ export default function AppOverlays({
           subtitle={action.subtitle}
           items={action.items}
           onClose={actionMenu.onClose}
+        />
+      )}
+
+      {/* The tag/studio sheet. The menu closes as it opens, so this never
+          stacks on the menu; it sits here only to outlive the listing. */}
+      {info.entity && (
+        <EntityInfoOverlay
+          entity={info.entity}
+          onClose={info.onClose}
+          onFilter={info.onFilter}
         />
       )}
 

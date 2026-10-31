@@ -286,6 +286,10 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
         // identity. `total` becomes what we hold, the server's higher count
         // would promise rows the list has stopped fetching, and `ended` lets
         // the grid unmount the sentinel and draw its end marker.
+        //
+        // The page answered, so a retried page's earlier error is resolved;
+        // left set, the list reports "ended" and a stale failure at once.
+        setError(null);
         blockedRef.current = true;
         totalRef.current = itemsLenRef.current;
         setTotal(itemsLenRef.current);

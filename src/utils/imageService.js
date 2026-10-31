@@ -25,7 +25,7 @@ import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { coverArt, makeRng } from './mockArt.js';
-import { filenameStem } from './format.js';
+import { filenameStem, ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 const MOCK_IMAGE_COUNT = 120;
@@ -98,7 +98,7 @@ export function normalizeImage(im) {
     image_path: withApiKey(im?.paths?.thumbnail) || null,
     full: withApiKey(im?.paths?.image) || null,
     date: im.date || null,
-    rating: im.rating100 != null ? (im.rating100 / 10).toFixed(1) : null,
+    rating: ratingLabel(im.rating100),
     o_counter: im.o_counter || 0,
   };
 }

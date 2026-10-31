@@ -16,42 +16,68 @@
 import { useEffect, useState } from 'react';
 import { WORKING_FILTER_ID } from './tabConfig.js';
 
-export function useFilteredNavigation({ activeTab, dataKey, changeTab, setControls }) {
+export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab, setControls }) {
   // Where an activated tag, studio or gallery sent the user *from*, so Back
-  // can return: `{ tab, focusId, to }`, the section, the card to focus
-  // (returning to the top of a 533-row grid is not returning), and the tab
-  // the filter was applied for.
+  // can return: `{ tab, focusId, to, filter }`, the section, the card to focus
+  // (returning to the top of a 533-row grid is not returning), the tab the
+  // filter was applied for, and the filter state that tab had before.
+  //
+  // A stack, not one slot: a listing opened this way can open another one (a
+  // studio card in a tag-filtered Studios listing, a gallery card on a
+  // performer's galleries spoke), and Back must unwind one level at a time.
+  // The displaced filter travels with its level, so the listing returns
+  // filtered as the user left it.
   //
   // `to` duplicates `controls.workingFilterFor`, but the two are read by
   // separate guards (this tab effect and `onBack`); keeping the pair explicit
   // is cheaper than either guarding around the other's timing.
-  const [filterOrigin, setFilterOrigin] = useState(null);
+  const [filterOrigins, setFilterOrigins] = useState([]);
 
-  // A source change ends any origin: the card it names belongs to the old
-  // library, and the arrival rule below cannot clear it because the tab may
+  // A source change ends every origin: the cards they name belong to the old
+  // library, and the arrival rule below cannot clear them because the tab may
   // not change. Same render-phase reasoning as useListingControls.
   const [originForSource, setOriginForSource] = useState(null);
   if (originForSource !== dataKey) {
     setOriginForSource(dataKey);
-    if (filterOrigin) setFilterOrigin(null);
+    if (filterOrigins.length) setFilterOrigins([]);
   }
 
-  // The origin ends with the tab change that meant to end it: the activation's
+  // The stack ends with the tab change that meant to end it: the activation's
   // own change must not clear what it just set, or Back on a later tab jump
-  // sends the user into a section they left several presses ago.
+  // sends the user into a section they left several presses ago. Only the top
+  // names the current level; the levels below it are the way back.
   //
   // An effect is fine here, this only affects Back, not a fetch, so the
   // child-before-parent ordering does not matter.
   useEffect(() => {
-    setFilterOrigin(prev => (prev && prev.to !== activeTab ? null : prev));
+    setFilterOrigins(prev => {
+      const top = prev[prev.length - 1];
+      return top && top.to !== activeTab ? [] : prev;
+    });
   }, [activeTab]);
+
+  // Snapshot what the origin tab had applied, so Back returns to the listing
+  // as it was left rather than bare. Taken at activation because that is the
+  // last moment the fields still describe the origin.
+  const filterAtOrigin = () => ({
+    workingFilter: controls.workingFilter ?? null,
+    workingFilterFor: controls.workingFilterFor ?? null,
+    workingFilterLabel: controls.workingFilterLabel ?? null,
+    filterId: controls.filterId ?? null,
+  });
 
   // A gallery lands on Images and a tag or studio on Scenes, so the two
   // handlers differ in destination *and* in the tab Back returns to; the
   // origin is recorded per activation rather than assumed to be the previous
   // tab.
-  const activateFiltered = (criterion, label, focusId, toTab) => {
-    setFilterOrigin({ tab: activeTab, focusId, to: toTab });
+  //
+  // `restorePerformer` marks a spoke opened from a performer page: the
+  // performer record must survive the tab change so the page remounts under
+  // it, and Back lands on the control that opened the spoke. See
+  // useDetailSelection's clearing effect.
+  const activateFiltered = (criterion, label, focusId, toTab, restorePerformer = null) => {
+    const origin = { tab: activeTab, focusId, to: toTab, restorePerformer, filter: filterAtOrigin() };
+    setFilterOrigins(prev => [...prev, origin]);
     setControls(prev => ({
       ...prev,
       workingFilter: criterion,
@@ -61,6 +87,11 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
     }));
     changeTab(toTab);
   };
+
+  // A fresh branch (Search's See-all, Home's shelf): start the stack over.
+  // Nothing displaced needs to come back behind it, and keeping an older level
+  // would let Back walk into a section the user left several presses ago.
+  const replaceOrigin = (origin) => setFilterOrigins([{ ...origin, filter: filterAtOrigin() }]);
 
   // `originFocusId` is for an activation from a scene detail: the origin tab
   // has no tag or studio card, so Back focuses the scene the detail opened
@@ -95,7 +126,7 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
   // Continue Watching carries `resume_time > 0`, so Scenes opens under that
   // criterion; its label is the shelf heading, not "Custom filter".
   const openShowroomListing = (row) => {
-    setFilterOrigin({ tab: 'home', focusId: row.seeAllFocusId, to: row.toTab });
+    replaceOrigin({ tab: 'home', focusId: row.seeAllFocusId, to: row.toTab });
     setControls(prev => ({
       ...prev,
       sort: row.sort,
@@ -125,9 +156,10 @@ export function useFilteredNavigation({ activeTab, dataKey, changeTab, setContro
   );
 
   return {
-    filterOrigin,
-    setFilterOrigin,
+    filterOrigins,
+    setFilterOrigins,
     activateFiltered,
+    replaceOrigin,
     openShowroomListing,
     handleTagSelect,
     handleStudioSelect,

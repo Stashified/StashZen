@@ -338,7 +338,8 @@ export const TAB_CONTROL_CONFIG = {
     defaultOrder: 'asc',
     filterMode: FILTER_MODE.performers,
     filterType: 'PerformerFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.performers,
   },
   markers: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
@@ -381,7 +382,8 @@ export const TAB_CONTROL_CONFIG = {
     defaultOrder: 'asc',
     filterMode: FILTER_MODE.tags,
     filterType: 'TagFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.tags,
   },
   studios: {
     modeOptions: CAROUSEL_MODE_OPTIONS,
@@ -393,7 +395,8 @@ export const TAB_CONTROL_CONFIG = {
     defaultOrder: 'asc',
     filterMode: FILTER_MODE.studios,
     filterType: 'StudioFilterType',
-    showSearch: true
+    showSearch: true,
+    quickFilters: QUICK_FILTERS.studios,
   },
   galleries: {
     modeOptions: CAROUSEL_MODE_OPTIONS,

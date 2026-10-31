@@ -11,7 +11,9 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import { useBackKey } from '../hooks/useBackKey.js';
 import { useFlash } from '../hooks/useFlash.js';
 import { isBackKey, focusScopeOf, dialogOpen } from '../utils/input.js';
-import { loadPerformerDetail, updatePerformer } from '../utils/performerService.js';
+import {
+  loadPerformerDetail, loadPerformerSceneTags, updatePerformer,
+} from '../utils/performerService.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
 import {
@@ -67,12 +69,17 @@ const DEFAULT_DETAIL_CONTROLS = {
 };
 
 // Back button: focusable so mouse/click users have a path too.
-function BackButton({ onClick }) {
+// `autoFocusWhenIdle`: the page remounts when Back returns from a hub spoke,
+// and a plain autoFocus would fire 50 ms after mount and steal the cursor from
+// the restore already on its way to the counts/tag control.
+function BackButton({ onClick, nextId }) {
   const { ref, focused } = useFocusable({
     id: 'detail-back',
     zone: 'detail-header',
     onEnter: onClick,
     autoFocus: true,
+    autoFocusWhenIdle: true,
+    nextId,
   });
   return (
     <button
@@ -89,8 +96,31 @@ function BackButton({ onClick }) {
   );
 }
 
+// A control in the hero's meta or tag row. Same zone as the rating and
+// favourite actions so Left/Right walks the rows, and its id is the focus
+// target a hub spoke returns to.
+function MetaButton({ id, className, label, onClick, children }) {
+  const { ref, focused } = useFocusable({
+    id,
+    zone: 'performer-detail',
+    onEnter: onClick,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={[className, focused ? styles.focused : ''].join(' ')}
+      onClick={onClick}
+      aria-label={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function PerformerDetailPage({
-  performer, onBack, onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
+  performer, onBack, onImages, onGalleries, onTagSelect,
+  onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
 }) {
   const [controls, setControls] = useState(DEFAULT_DETAIL_CONTROLS);
   // The card already carries what the hero's first paint needs; the profile
@@ -134,6 +164,28 @@ export default function PerformerDetailPage({
     return () => { cancelled = true; };
   }, [performer]);
 
+  // Most libraries tag their performers not at all (a tag is not needed to
+  // describe one), so an empty Tags row would leave the page with no way into
+  // tag-filtered scenes. When the performer has no tags of their own, the tags
+  // that recur on their scenes stand in, under a heading that says so. The
+  // fallback is one direction only: mixing the two would blur "Stash says this
+  // performer is X" with "this performer appears in scenes tagged X".
+  const [sceneTags, setSceneTags] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    setSceneTags([]);
+    // The id guard is for an in-place swap: the page keeps its instance, so a
+    // render can carry the previous performer's ready profile before the new
+    // one lands, and fetching on that pair queries twice.
+    if (profileStatus !== 'ready' || String(profile?.id) !== String(performer.id)
+      || (profile?.tags || []).length > 0) return undefined;
+    loadPerformerSceneTags(performer.id)
+      .then(list => { if (!cancelled) setSceneTags(list); })
+      // The row is a convenience; the grid below still works without it.
+      .catch(() => { if (!cancelled) setSceneTags([]); });
+    return () => { cancelled = true; };
+  }, [performer.id, profileStatus, profile]);
+
   // Rating and favourite, the two writes this page offers. Seeded from the
   // card so the hero is right on first paint, then replaced by the detail
   // answer. The card's `rating` is a display string; writes use `rating100`.
@@ -173,10 +225,11 @@ export default function PerformerDetailPage({
     // The detail answer is authoritative: the card's rounded display value and
     // the stored value can differ, and a write must start from what Stash has.
     setEdits(prev => ({
-      rating100: profile.rating100 ?? prev.rating100,
+      rating100: profile.rating100 ?? 0,
       favorite: profile.favorite ?? prev.favorite,
     }));
-    if (profile.rating100 != null) ratingConfirmed.current = profile.rating100;
+    // null is Stash's "unrated", and it must replace the card's seed too.
+    ratingConfirmed.current = profile.rating100 ?? 0;
     if (profile.favorite != null) favoriteConfirmed.current = !!profile.favorite;
     ratingAttempt.current += 1;
     favoriteAttempt.current += 1;
@@ -194,11 +247,11 @@ export default function PerformerDetailPage({
     ratingQueue.current = ratingQueue.current.then(async () => {
       try {
         const server = await updatePerformer(performer.id, { rating100: next });
-        if (server.rating100 != null) {
-          ratingConfirmed.current = server.rating100;
-          if (attempt === ratingAttempt.current) {
-            setEdits(e => ({ ...e, rating100: server.rating100 }));
-          }
+        // A clear echoes back 0 or null; either way the confirmed value is 0.
+        const confirmed = Number(server.rating100) > 0 ? server.rating100 : 0;
+        ratingConfirmed.current = confirmed;
+        if (attempt === ratingAttempt.current) {
+          setEdits(e => ({ ...e, rating100: confirmed }));
         }
       } catch (e) {
         // Only the newest press owns the screen: an older failure is already
@@ -256,7 +309,18 @@ export default function PerformerDetailPage({
   const career = profile ? formatCareer(profile) : null;
   const rating = edits.rating100 > 0 ? (edits.rating100 / 10).toFixed(1) : null;
   const { links, omitted: omittedLinks } = webLinks(profile?.urls, MAX_LINK_CHIPS);
-  const tags = profile?.tags || [];
+  const storedTags = profile?.tags || [];
+  const tags = storedTags.length > 0 ? storedTags : sceneTags;
+  const tagsHeading = storedTags.length > 0 ? 'Tags' : 'Scene tags';
+  // Down and Right from Back enter the hero instead of skipping to the grid:
+  // the back button sits in its own zone, so geometry would cross into the
+  // controls bar, and horizontal moves never cross zones. The first hub
+  // control the profile supplies is the target; before any load the edge
+  // falls through to geometry.
+  const firstHeroId = profile?.imageCount > 0 ? 'performer-images'
+    : profile?.galleryCount > 0 ? 'performer-galleries'
+    : tags.length > 0 ? `performer-tag-${tags[0].id}`
+    : 'performer-rating-dec';
   const facts = [
     career && { key: 'career', label: 'Career', value: career },
     profile?.ethnicity && { key: 'ethnicity', label: 'Ethnicity', value: profile.ethnicity },
@@ -277,7 +341,7 @@ export default function PerformerDetailPage({
 
       <header className={styles.hero}>
         <div className={styles.heroLeft}>
-          <BackButton onClick={onBack} />
+          <BackButton onClick={onBack} nextId={{ down: firstHeroId, right: firstHeroId }} />
           {performer.image_path ? (
             <img
               src={performer.image_path}
@@ -308,10 +372,24 @@ export default function PerformerDetailPage({
             </span>
             {profile?.oCounter > 0 && <span>{profile.oCounter} likes</span>}
             {profile?.imageCount > 0 && (
-              <span>{profile.imageCount} {profile.imageCount === 1 ? 'image' : 'images'}</span>
+              <MetaButton
+                id="performer-images"
+                className={styles.metaButton}
+                label={`Browse ${profile.imageCount} images`}
+                onClick={() => onImages?.(performer)}
+              >
+                {profile.imageCount} {profile.imageCount === 1 ? 'image' : 'images'}
+              </MetaButton>
             )}
             {profile?.galleryCount > 0 && (
-              <span>{profile.galleryCount} {profile.galleryCount === 1 ? 'gallery' : 'galleries'}</span>
+              <MetaButton
+                id="performer-galleries"
+                className={styles.metaButton}
+                label={`Browse ${profile.galleryCount} galleries`}
+                onClick={() => onGalleries?.(performer)}
+              >
+                {profile.galleryCount} {profile.galleryCount === 1 ? 'gallery' : 'galleries'}
+              </MetaButton>
             )}
             {rating && <span className={styles.rating}>★ {rating}</span>}
             {gender && <span aria-label={`Gender: ${gender}`}>{gender}</span>}
@@ -336,9 +414,14 @@ export default function PerformerDetailPage({
 
           {facts.length > 0 && (
             <div className={styles.profileRow} role="group" aria-label="Performer profile">
+              {/* The space between the spans is not rendered in the column,
+                  but keeps the text content reading "Career 1999–2011". */}
               {facts.map(fact => (
-                <span key={fact.key} className={styles.profileChip}>
-                  {fact.label} <span className={fact.clamp ? styles.profileChipText : undefined}>{fact.value}</span>
+                <span key={fact.key} className={styles.factChip}>
+                  <span className={styles.factLabel}>{fact.label}</span>{' '}
+                  <span className={fact.clamp ? styles.profileChipText : undefined}>
+                    {fact.value}
+                  </span>
                 </span>
               ))}
             </div>
@@ -363,10 +446,22 @@ export default function PerformerDetailPage({
           )}
 
           {tags.length > 0 && (
-            <div className={styles.tagsRow} role="group" aria-label="Performer tags">
-              <span className={styles.aliasLabel}>Tags</span>
+            <div
+              className={styles.tagsRow}
+              role="group"
+              aria-label={storedTags.length > 0 ? 'Performer tags' : 'Tags from the performer\'s scenes'}
+            >
+              <span className={styles.aliasLabel}>{tagsHeading}</span>
               {tags.slice(0, MAX_TAG_CHIPS).map(tag => (
-                <span key={tag.id} className={styles.aliasChip}>{tag.name}</span>
+                <MetaButton
+                  key={tag.id}
+                  id={`performer-tag-${tag.id}`}
+                  className={`${styles.aliasChip} ${styles.tagChip}`}
+                  label={`Scenes tagged ${tag.name}`}
+                  onClick={() => onTagSelect?.(tag)}
+                >
+                  {tag.name}
+                </MetaButton>
               ))}
               {tags.length > MAX_TAG_CHIPS && (
                 <span className={styles.chipMore}>+{tags.length - MAX_TAG_CHIPS}</span>

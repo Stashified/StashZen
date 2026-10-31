@@ -26,6 +26,18 @@ export function filenameStem(basename) {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+/**
+ * Stash's 0–100 rating as the one-decimal 0–10 string the cards print.
+ *
+ * A stored 0 is "unrated", not a zero-star rating: Stash's own UI sends null
+ * on clear, and an app that sent 0 leaves numbers its filters count as rated.
+ * Returns null for those, so a card hides the badge instead of drawing "0.0".
+ */
+export function ratingLabel(rating100) {
+  const n = Number(rating100);
+  return Number.isFinite(n) && n > 0 ? (n / 10).toFixed(1) : null;
+}
+
 export function formatTime(seconds, { padMinutes = false } = {}) {
   if (!isFinite(seconds) || seconds < 0) return padMinutes ? '00:00' : '0:00';
 

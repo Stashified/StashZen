@@ -13,7 +13,12 @@ import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
 import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
 
 /** Which entity sections have a long-press menu, and what to call it. */
-const ENTITY_MENU_KIND = { images: 'image', galleries: 'gallery' };
+const ENTITY_MENU_KIND = {
+  images: 'image',
+  galleries: 'gallery',
+  tags: 'tag',
+  studios: 'studio',
+};
 
 export function usePlayback({
   activeTab,
@@ -28,7 +33,7 @@ export function usePlayback({
   // Play all / Play from here, which the player's ↑/↓ walks.
   const [playSession, setPlaySession] = useState(null);
   // The long-press menu: `{ kind, item, list, index }` for the card it opened
-  // on. `kind` is 'scene' | 'marker' | 'image' | 'gallery'.
+  // on. `kind` is 'scene' | 'marker' | 'image' | 'gallery' | 'tag' | 'studio'.
   const [actionMenu, setActionMenu] = useState(null);
   // The queue row the player shows *now*: a listing queue can be skipped
   // through, and Back returns to the card of the scene actually on screen. The

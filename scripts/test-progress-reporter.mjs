@@ -35,8 +35,9 @@ const approx = (a, b) => typeof a === 'number' && Math.abs(a - b) < 1e-9;
 
 function deferred() {
   let resolve;
-  const promise = new Promise((r) => { resolve = r; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -164,6 +165,111 @@ function rig({ playOk = true, playError = 'play failed' } = {}) {
   reporter.save('1');
   check('a landed save subtracts only what it sent',
     approx(writes[2]?.playDuration, 1.5), JSON.stringify(writes[2]));
+}
+
+// ── A rejected write must not wedge the sender ─────────────
+{
+  const writes = [];
+  const pending = [];
+  const sync = [];
+  let calls = 0;
+  const reporter = createProgressReporter({
+    save: (input) => {
+      writes.push(input);
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error('socket closed'));
+      const d = deferred();
+      pending.push(d);
+      return d.promise;
+    },
+    addPlay: () => Promise.resolve({ ok: true }),
+    onSync: (state) => sync.push(state),
+  });
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.seek(5);
+  reporter.save('1');
+  await flush();
+
+  check('a rejected save goes through the failure chip',
+    sync.includes('failed') && reporter.syncError()?.message === 'socket closed',
+    JSON.stringify(sync));
+
+  reporter.seek(6);
+  reporter.save('1');
+  check('a rejected save does not wedge later saves', writes.length === 2,
+    `writes ${JSON.stringify(writes)}`);
+  pending[0].resolve({ ok: true });
+  await flush();
+}
+
+{
+  const writes = [];
+  const first = deferred();
+  let calls = 0;
+  const reporter = createProgressReporter({
+    save: (input) => {
+      writes.push(input);
+      calls += 1;
+      return calls === 1 ? first.promise : Promise.resolve({ ok: true });
+    },
+    addPlay: () => Promise.resolve({ ok: true }),
+    onSync: () => {},
+  });
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.seek(5);
+  reporter.save('1');
+  reporter.seek(9);
+  reporter.save('1');   // queued behind the first
+  check('the queued save waits for the first to settle', writes.length === 1,
+    JSON.stringify(writes));
+
+  first.reject(new Error('timed out'));
+  await flush();
+  check('a rejection drains the queued snapshot', writes.length === 2,
+    JSON.stringify(writes));
+  check('the queued snapshot keeps its own position', writes[1]?.resumeTime === 9,
+    JSON.stringify(writes[1]));
+}
+
+{
+  let saves = 0;
+  const sync = [];
+  const reporter = createProgressReporter({
+    save: () => { saves += 1; return Promise.resolve(undefined); },
+    addPlay: () => Promise.resolve({ ok: true }),
+    onSync: (state) => sync.push(state),
+  });
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.seek(5);
+  reporter.save('1');
+  await flush();
+  check('a save resolving to nothing is a failure, not a success',
+    sync.includes('failed'), JSON.stringify(sync));
+
+  reporter.seek(6);
+  reporter.save('1');
+  await flush();
+  check('and it does not wedge the next save', saves === 2, String(saves));
+}
+
+{
+  const sync = [];
+  const reporter = createProgressReporter({
+    save: () => { throw new Error('sync boom'); },
+    addPlay: () => Promise.resolve({ ok: true }),
+    onSync: (state) => sync.push(state),
+  });
+  reporter.setScene('1');
+  reporter.resetScene();
+  reporter.seek(5);
+  reporter.save('1');
+  await flush();
+  check('a synchronous throw from save is reported, not thrown at the caller',
+    sync.includes('failed') && reporter.syncError()?.message === 'sync boom',
+    JSON.stringify(sync));
 }
 
 // ── A late response must not touch the new scene ───────────

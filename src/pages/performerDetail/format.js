@@ -115,9 +115,10 @@ export function formatDeathDate(value) {
 }
 
 /**
- * The grid's `rating` is `(rating100 / 10).toFixed(1)`, so the round-trip is
- * exact. Seeds the hero on first paint; the detail query's `rating100` replaces
- * it as soon as it lands, and every write uses that value.
+ * The grid's `rating` is the display label (`ratingLabel`, null when unrated),
+ * so the round-trip is exact for a rated performer. Seeds the hero on first
+ * paint; the detail query's `rating100` replaces it as soon as it lands, and
+ * every write uses that value.
  */
 export function ratingFromCard(performer) {
   if (!performer?.rating) return 0;
