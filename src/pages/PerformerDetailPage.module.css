@@ -144,6 +144,35 @@
   font-weight: 600;
 }
 
+/* Counts that open a hub spoke. The negative margin cancels the padding so
+   the text stays on the row's baseline. */
+.metaButton {
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.metaButton:hover {
+  color: var(--text-primary);
+}
+
+.tagChip {
+  font: inherit;
+  cursor: pointer;
+}
+
+.metaButton.focused,
+.tagChip.focused {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
 .bio {
   font-size: 15px;
   line-height: 1.55;
@@ -168,6 +197,11 @@
   gap: 8px 10px;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+/* Fact chips are two lines tall; centre-aligning would stagger the pills. */
+.profileRow {
+  align-items: flex-start;
 }
 
 .aliasLabel {
@@ -203,6 +237,32 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Facts read label-over-value, as on Stash's own performer page: run together
+   on one line, "Fake tits Natural" reads as a single phrase. The row still
+   uses pills, so a fact is a card rather than bare text. */
+.factChip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 10px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.3;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.factLabel {
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .profileUrl {

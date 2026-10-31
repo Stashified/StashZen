@@ -33,9 +33,8 @@
  * fallback is therefore reached by `onError`, never an absent field, which is
  * why EntityCard owns it rather than a getter.
  *
- * `longPress` opts a section into the card's long-press menu. Images and
- * Galleries set it (their menu opens the viewer); Tags and Studios leave it
- * off, which keeps their Enter firing on keydown.
+ * `longPress` opts a section into the card's long-press menu. All four set it
+ * now: Images and Galleries open the viewer, Tags and Studios the Info sheet.
  */
 
 import EntityCard from './EntityCard.jsx';
@@ -98,6 +97,7 @@ export const TAG_VIEW = bind({
   ariaLabel: 'Tag carousel',
   aspect: 'portrait',
   slotWidth: 166,
+  longPress: true,
   getImage: (t) => t.image_path,
   getTitle: (t) => t.name,
   getSubtitle: (t) => scenes(t.scene_count),
@@ -126,6 +126,7 @@ export const STUDIO_VIEW = bind({
   gridLabel: 'Studio grid',
   ariaLabel: 'Studio carousel',
   aspect: 'landscape',
+  longPress: true,
   getImage: (s) => s.image_path,
   getTitle: (s) => s.name,
   getSubtitle: (s) => scenes(s.scene_count),

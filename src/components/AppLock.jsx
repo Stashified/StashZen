@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import LockScreen from './LockScreen.jsx';
 import { isLockSet } from '../utils/appLock.js';
+import { absenceMs } from '../utils/lockTiming.js';
 
 // Hide/show flips shorter than this don't lock: the on-screen keyboard, native
 // dialogs and the TV menu all flip visibility briefly, while genuinely leaving
@@ -42,6 +43,7 @@ function setCover(on) {
 export default function AppLock({ children }) {
   const [locked, setLocked] = useState(() => isLockSet());
 
+  // Both clocks, because either can lie about a standby: see absenceMs.
   const hiddenAtRef = useRef(null);
 
   const handleUnlock = useCallback(() => setLocked(false), []);
@@ -51,7 +53,7 @@ export default function AppLock({ children }) {
       // Only the first hide in a run counts, pagehide and visibilitychange
       // can both fire, and re-stamping would shrink the measured absence.
       if (hiddenAtRef.current === null) {
-        hiddenAtRef.current = performance.now();
+        hiddenAtRef.current = { mono: performance.now(), wall: Date.now() };
         // Cover now, not on return: by then the frame that matters may already
         // have been painted.
         if (isLockSet()) setCover(true);
@@ -68,7 +70,7 @@ export default function AppLock({ children }) {
         return;
       }
 
-      if (performance.now() - since < RESUME_GRACE_MS) {
+      if (absenceMs(since) < RESUME_GRACE_MS) {
         setCover(false);
         return;
       }

@@ -96,6 +96,10 @@ const CARD = {
 };
 const cardWith = (patch) => ({ ...CARD, ...patch });
 
+// Hub activations, recorded by argument: a handler that receives the page's
+// own performer, not a lookalike, is what the wiring must prove.
+const hubCalls = { images: [], galleries: [], tags: [] };
+
 function Harness({ card }) {
   // App.jsx owns the global key handler in production; without it nothing is
   // focusable.
@@ -104,6 +108,9 @@ function Harness({ card }) {
     <PerformerDetailPage
       performer={card}
       onBack={() => {}}
+      onImages={(p) => hubCalls.images.push(p.id)}
+      onGalleries={(p) => hubCalls.galleries.push(p.id)}
+      onTagSelect={(t) => hubCalls.tags.push(t.id)}
       onVideoSelect={() => {}}
       previewMuted={false}
       onMuteToggle={() => {}}
@@ -208,6 +215,25 @@ async function run() {
     !factText.includes('Died') && !factText.includes('undefined')
       && !factText.includes('null'),
     `facts read "${factText.trim()}"`);
+  // The complaint this fixes: "Fake tits Natural" in one weight reads as one
+  // phrase. The label must be its own element, above the value and set apart.
+  const factChip = [...(profileGroup()?.children || [])]
+    .find(c => c.children[0]?.textContent === 'Ethnicity');
+  const factLabel = factChip?.children[0];
+  const factValue = factChip?.children[1];
+  const labelStyle = factLabel ? getComputedStyle(factLabel) : null;
+  const valueStyle = factValue ? getComputedStyle(factValue) : null;
+  const labelRect = factLabel?.getBoundingClientRect();
+  const valueRect = factValue?.getBoundingClientRect();
+  check('P1 each fact stacks its label over the value, muted and uppercased',
+    !!factLabel && !!factValue
+      && labelStyle.textTransform === 'uppercase'
+      && labelStyle.color !== valueStyle.color
+      && parseFloat(labelStyle.fontSize) < parseFloat(valueStyle.fontSize)
+      && labelRect.bottom <= valueRect.top + 2,
+    `label="${factLabel?.textContent}" color=${labelStyle?.color}/${valueStyle?.color} `
+    + `size=${labelStyle?.fontSize}/${valueStyle?.fontSize} `
+    + `rects=${Math.round(labelRect?.bottom)}≤${Math.round(valueRect?.top)}`);
 
   const metaText = header()?.querySelector('[class*="metaRow"]')?.textContent || '';
   check('P1 the engagement counts render as words, not raw numbers',
@@ -310,6 +336,9 @@ async function run() {
     lengthFetches.length === 1, `${lengthFetches.length} fetch(es) for 8704`);
 
   // ── P4: empty fields hide, they do not render empty rows ────
+  // The fallback tag row must stay empty too, or an answer here would put a
+  // row in a phase whose whole point is that there is none.
+  await setMode('performerSceneTags', 'empty');
   await setMode('performerDetail', 'sparse');
   mount(cardWith({ id: '8702' }));
   const sparseFetched2 = await waitFor(
@@ -347,6 +376,15 @@ async function run() {
     + `pressed=${favoriteButton()?.getAttribute('aria-pressed')}`);
   check('P4 the null fields were hidden after a real fetch, not because none was made',
     sparseFetch.length === 1, `${sparseFetch.length} fetch(es) for 8702`);
+  // No tags on the profile is what triggers the fallback, even when the
+  // fallback has nothing to say.
+  const sparseAsked = await waitForAsync(async () =>
+    (await getJSON('/performerscenetagfetches')).some(f => f.id === '8702'), 4000);
+  const sparseDerived = (await getJSON('/performerscenetagfetches'))
+    .filter(f => f.id === '8702');
+  check('P4 ...and it is a profile that asks for scene tags, answered empty',
+    sparseAsked && sparseDerived.length === 1 && !tagsGroup(),
+    `${sparseDerived.length} fallback fetch(es) for 8702`);
 
   // ── P5: a failed profile fetch leaves the card on screen ───
   await setMode('performerDetail', 'fail');
@@ -362,28 +400,40 @@ async function run() {
   check('P5 ...and the attempt is on the record',
     failFetches.length === 1, `${failFetches.length} fetch(es) for 8703`);
 
-  // ── P6: the chips are inert; the write controls are the only new stops ──
+  // ── P6: the hub controls are the new stops; the rest stays inert ──
   //
   // The contract is not "Back owns the autofocus": the page's video grid
   // autofocuses its first card and wins that race. What must hold is that the
-  // profile block is inert, no chip registered with the D-pad, none carrying a
-  // tabindex/button role, and the control row adds exactly its three stops.
+  // alias, fact and link chips are inert, the counts and tag chips are real
+  // D-pad stops with the ids Back returns to, and the control row still adds
+  // exactly its three.
   await setMode('performerDetail', 'ok');
+  hubCalls.images.length = 0; hubCalls.galleries.length = 0; hubCalls.tags.length = 0;
   mount(CARD);
   const chipsLoaded = await waitFor(
     () => !!aliasGroup() && !!profileGroup() && !!linksGroup() && !!tagsGroup()
       && !!actionsGroup(), 4000);
   await sleep(200);
-  const inertGroups = [aliasGroup(), profileGroup(), linksGroup(), tagsGroup()].filter(Boolean);
+  const inertGroups = [aliasGroup(), profileGroup(), linksGroup()].filter(Boolean);
   const registeredInert = inertGroups.flatMap(g => idsInside(g));
   const focusableInert = inertGroups.filter(g => g.querySelector('button, a, [tabindex]'));
   const actionIds = idsInside(actionsGroup());
   const expectedActions = ['performer-rating-dec', 'performer-rating-inc', 'performer-favorite'];
-  check('P6 the profile, link and tag chips added no D-pad targets',
+  check('P6 the profile, fact and link chips added no D-pad targets',
     chipsLoaded && registeredInert.length === 0 && focusableInert.length === 0,
     `groups=${inertGroups.length} registered=${registeredInert.join(',') || 0} `
     + `focusable=${focusableInert.length}`);
-  check('P6 the only new focus stops are the rating stepper and favourite',
+  const hubIds = idsInside(header());
+  const expectedHub = [
+    'detail-back', 'performer-images', 'performer-galleries',
+    'performer-tag-t1', 'performer-tag-t2',
+    ...expectedActions,
+  ];
+  check('P6 the hero registers exactly the hub and write controls',
+    chipsLoaded && hubIds.length === expectedHub.length
+      && expectedHub.every(id => hubIds.includes(id)),
+    `hero=[${hubIds.join(',')}]`);
+  check('P6 the write controls are unchanged',
     actionIds.length === expectedActions.length
       && expectedActions.every(id => actionIds.includes(id))
       && ![...registry.keys()].some(id => id.startsWith('scene-rating')),
@@ -394,6 +444,42 @@ async function run() {
       && !inertGroups.some(g => g.contains(active)),
     `active=<${active?.tagName?.toLowerCase()}> `
     + `"${(active?.getAttribute('aria-label') || active?.textContent || '').trim().slice(0, 40)}"`);
+
+  // ── P8: the hub controls open the performer's own spokes ────
+  // The page is mounted without App, so the handlers only record. What the
+  // arguments prove is that each control carries *this* performer or tag, not
+  // a name guess; the tab switch and its Back trip live in hub-entry.
+  const hubPress = async (id) => {
+    registry.get(id)?.el.focus();
+    await sleep(50);
+    press('Enter', 13);
+    await sleep(100);
+  };
+  const imagesLabel = registry.get('performer-images')?.el.getAttribute('aria-label') || '';
+  check('P8 the count controls label their destination',
+    imagesLabel === 'Browse 11 images'
+      && registry.get('performer-galleries')?.el.getAttribute('aria-label') === 'Browse 2 galleries',
+    `images="${imagesLabel}" galleries="${registry.get('performer-galleries')?.el.getAttribute('aria-label')}"`);
+
+  await hubPress('performer-images');
+  await hubPress('performer-galleries');
+  await hubPress('performer-tag-t2');
+  check('P8 pressing a count or tag chip invokes the hub handler once, with its own entity',
+    hubCalls.images.length === 1 && hubCalls.images[0] === '8701'
+      && hubCalls.galleries.length === 1 && hubCalls.galleries[0] === '8701'
+      && hubCalls.tags.length === 1 && hubCalls.tags[0] === 't2',
+    `images=${JSON.stringify(hubCalls.images)} galleries=${JSON.stringify(hubCalls.galleries)} `
+    + `tags=${JSON.stringify(hubCalls.tags)}`);
+  check('P8 ...without unmounting the page or throwing',
+    !!header() && uncaught.length === 0,
+    `header=${!!header()} uncaught=${uncaught.join(' | ') || 'none'}`);
+
+  // Only the sparse profile has asked so far: 8701 and 8704 carry tags, and
+  // 8703's profile never landed.
+  const fallbackFetches = await getJSON('/performerscenetagfetches');
+  check('P8 stored tags never send the fallback query',
+    fallbackFetches.length === 1 && fallbackFetches[0]?.id === '8702',
+    `fetched for ${JSON.stringify(fallbackFetches.map(f => f.id))}`);
 
   // ── P7: rating and favourite are optimistic and roll back ───
   // The stepper works in whole stars; the detail answer is 75, shown as 8. One
@@ -469,6 +555,56 @@ async function run() {
   check('P7i every press reached the server exactly once',
     writeAttempts.length === 5,
     `${writeAttempts.length} attempt(s): ${JSON.stringify(writeAttempts.map(w => w.input))}`);
+
+  // ── P9: tags fall back to the performer's scenes ────────────
+  // Only for a performer with no tags of their own. Both headings come from
+  // the page, so this also proves the fallback does not masquerade as stored
+  // tags. The crafted answer ties two tags at two scenes, so chip order proves
+  // the count-desc/name-asc sort, not the server's order.
+  await setMode('performerSceneTags', 'ok');
+  await setMode('performerDetail', 'no-tags');
+  hubCalls.tags.length = 0;
+  mount(cardWith({ id: '8705' }));
+  const derivedGroup = () => document.querySelector(
+    '[role="group"][aria-label="Tags from the performer\'s scenes"]');
+  const derivedReady = await waitFor(() => !!derivedGroup(), 4000);
+  const derivedText = derivedGroup()?.textContent || '';
+  const derivedChips = [...(derivedGroup()?.querySelectorAll('button') || [])];
+  const derivedIds = derivedChips.map(c => c.textContent.trim());
+  check('P9 no performer tags falls back to tags from their scenes',
+    derivedReady && derivedText.includes('Scene tags')
+      && derivedIds.join('|') === 'VERIFY scene tag alpha|VERIFY scene tag beta|VERIFY scene tag zeta',
+    `group=${derivedReady} heading="${derivedText.slice(0, 12)}" chips=[${derivedIds.join('|')}]`);
+  check('P9 ...under its own heading, never the stored-tags one',
+    derivedReady && !tagsGroup()
+      && (derivedGroup()?.children[0]?.textContent || '') === 'Scene tags',
+    `storedGroup=${!!tagsGroup()} `
+    + `heading="${derivedGroup()?.children[0]?.textContent}"`);
+  const derivedFetch = (await getJSON('/performerscenetagfetches'))
+    .find(f => f.id === '8705');
+  check('P9 the fallback asks for this performer\'s scenes, a page of them',
+    derivedFetch?.per_page === 100
+      && derivedFetch?.scene_filter?.performers?.modifier === 'INCLUDES'
+      && String(derivedFetch?.scene_filter?.performers?.value?.[0]) === '8705',
+    `fetch=${JSON.stringify(derivedFetch?.scene_filter)} per_page=${derivedFetch?.per_page}`);
+
+  const derivedChipIds = idsInside(derivedGroup());
+  await hubPress('performer-tag-st3');
+  check('P9 the derived chips are D-pad stops that open their own tag',
+    ['performer-tag-st1', 'performer-tag-st3', 'performer-tag-st2']
+      .every(id => derivedChipIds.includes(id))
+      && hubCalls.tags.length === 1 && hubCalls.tags[0] === 'st3',
+    `ids=[${derivedChipIds.join(',')}] tags=${JSON.stringify(hubCalls.tags)}`);
+
+  // A failed fallback query is a convenience lost, not an error page.
+  await setMode('performerSceneTags', 'fail');
+  mount(cardWith({ id: '8706' }));
+  await waitForAsync(
+    async () => (await getJSON('/performerscenetagfetches')).some(f => f.id === '8706'), 4000);
+  await sleep(200);
+  check('P9 a failed fallback query leaves the page intact and quiet',
+    !derivedGroup() && !!profileGroup() && uncaught.length === 0,
+    `row=${!!derivedGroup()} facts=${!!profileGroup()} uncaught=${uncaught.join(' | ') || 'none'}`);
 
   await finish();
 }

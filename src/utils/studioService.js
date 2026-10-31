@@ -12,10 +12,13 @@
  * categories, so a studio you can browse is one the scenes belong to.
  */
 
+import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
+import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { STUDIOS } from './mockLibrary.js';
+import { ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
@@ -117,7 +120,7 @@ export function normalizeStudio(s) {
     favorite: !!s.favorite,
     // Scaled to 0–10 the way the performer card does it, so one control means
     // one thing across sections. The server side is 0–100.
-    rating: s.rating100 != null ? (s.rating100 / 10).toFixed(1) : null,
+    rating: ratingLabel(s.rating100),
     scene_count: s.scene_count || 0,
     image_count: s.image_count || 0,
     gallery_count: s.gallery_count || 0,
@@ -152,4 +155,71 @@ const service = createEntityService({
 /** Cached page fetch, see the note on fetchVideos in videoService.js. */
 export async function fetchStudios(opts = {}) {
   return service.fetch(opts);
+}
+
+// The Info overlay's detail: `details` is deliberately omitted from the grid
+// query, and the hierarchy is not on the card at all.
+const FIND_STUDIO_INFO_QUERY = `
+  query FindStudioInfo($id: ID!) {
+    findStudio(id: $id) {
+      id
+      name
+      details
+      aliases
+      favorite
+      rating100
+      scene_count
+      image_count
+      gallery_count
+      performer_count
+      group_count
+      parent_studio { id name }
+      child_studios { id name }
+    }
+  }
+`;
+
+function normalizeStudioInfo(s) {
+  const refs = (list) => (list || []).map(x => ({ id: x.id, name: x.name }));
+  return {
+    // The name rides along so a rename since the listing wins on the sheet.
+    name: s.name,
+    details: s.details || null,
+    aliases: (s.aliases || []).filter(Boolean),
+    favorite: !!s.favorite,
+    rating: ratingLabel(s.rating100),
+    scene_count: s.scene_count || 0,
+    image_count: s.image_count || 0,
+    gallery_count: s.gallery_count || 0,
+    performer_count: s.performer_count || 0,
+    group_count: s.group_count || 0,
+    parentStudio: s.parent_studio
+      ? { id: s.parent_studio.id, name: s.parent_studio.name }
+      : null,
+    childStudios: refs(s.child_studios),
+  };
+}
+
+/** One studio's detail, for the long-press Info overlay. */
+export async function fetchStudioInfo(id) {
+  if (getSettings().useMock) {
+    const s = generateMockStudios().find(x => String(x.id) === String(id));
+    if (!s) return null;
+    return {
+      name: s.name,
+      details: s.details,
+      aliases: s.aliases,
+      favorite: s.favorite,
+      rating: s.rating,
+      scene_count: s.scene_count,
+      image_count: s.image_count,
+      gallery_count: s.gallery_count,
+      performer_count: s.performer_count,
+      group_count: s.group_count,
+      parentStudio: s.parentStudio,
+      childStudios: [],
+    };
+  }
+  const data = await runQuery(FIND_STUDIO_INFO_QUERY, { id: String(id) });
+  return data?.findStudio ? normalizeStudioInfo(data.findStudio) : null;
 }

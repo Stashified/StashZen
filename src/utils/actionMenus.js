@@ -43,6 +43,15 @@ export function buildActionMenu({ kind, item, list, index = 0 } = {}, handlers) 
       items: buildGalleryMenuItems({ item }, handlers),
     };
   }
+  if (kind === 'tag' || kind === 'studio') {
+    return {
+      title: item.name,
+      subtitle: item.scene_count
+        ? `${item.scene_count} scene${item.scene_count === 1 ? '' : 's'}`
+        : null,
+      items: buildEntityMenuItems({ item, kind }, handlers),
+    };
+  }
   return {
     title: item.title,
     subtitle: listingSubtitle(list, index),
@@ -187,6 +196,30 @@ export function buildImageMenuItems({ item, list, index }, { openImageViewer }) 
       label: 'Info',
       onSelect: () => openImageViewer({ items: loaded, index: start, infoOpen: true }),
     },
+  ];
+}
+
+/**
+ * A tag or studio is browsed as metadata. Enter already filters the scene
+ * listing, so the menu adds the read-only Info sheet and repeats that
+ * destination for discoverability. Unknown kinds must not fall through to the
+ * scene menu, which would offer Play on a tag.
+ */
+export function buildEntityMenuItems({ item, kind }, { onInfo, onFilterEntity }) {
+  return [
+    ...(onInfo ? [{
+      id: 'menu-entity-info',
+      label: 'Info',
+      onSelect: () => onInfo(item, kind),
+    }] : []),
+    ...(onFilterEntity ? [{
+      id: 'menu-entity-scenes',
+      label: 'View scenes',
+      hint: item.scene_count
+        ? `${item.scene_count} scene${item.scene_count === 1 ? '' : 's'}`
+        : undefined,
+      onSelect: () => onFilterEntity(item, kind),
+    }] : []),
   ];
 }
 

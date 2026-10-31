@@ -22,7 +22,7 @@
  * reports false and the app opens; a corrupt blob must never brick the app.
  */
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { sha256Hex } from './sha256.js';
 
 const LS_KEY = 'tvapp.lock.v1';
@@ -204,7 +204,7 @@ export function subscribeLock(fn) {
  * settings section so it reflects set/change/remove.
  */
 export function useAppLock() {
-  const [snapshot, setSnapshot] = useState(isLockSet());
-  useEffect(() => subscribeLock(setSnapshot), []);
-  return snapshot;
+  // Not state + effect: a PIN set or cleared between render and subscribe
+  // would be missed until the next change.
+  return useSyncExternalStore(subscribeLock, isLockSet);
 }

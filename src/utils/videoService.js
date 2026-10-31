@@ -18,6 +18,7 @@ import { SCENE_TITLES, STUDIOS } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
+import { ratingLabel } from './format.js';
 
 // The two scene sort values whose mock field has another name: `duration` is
 // the card's formatted string (seconds live in `durationSeconds`), and
@@ -158,7 +159,7 @@ function normalizeScene(scene) {
     duration: formatDuration(duration),
     durationSeconds: duration,
     year,
-    rating: scene.rating100 != null ? (scene.rating100 / 10).toFixed(1) : null,
+    rating: ratingLabel(scene.rating100),
     category: scene.studio?.name || scene.tags?.[0]?.name || 'Untagged',
     // Every one of these except `stream` arrives without the API key;
     // withApiKey is a no-op on `stream`.
@@ -284,6 +285,33 @@ async function loadVideos({
     total: data?.findScenes?.count || 0,
     page,
   };
+}
+
+/**
+ * One random scene, honouring a filter and a search term. For Surprise.
+ *
+ * Deliberately outside the page cache and `stableSort`: `fetchVideos` pins a
+ * listing's `random` to one seed so its pages cannot overlap, and the cache
+ * would then hand back the same scene on every press. One row, one request.
+ */
+export async function fetchRandomVideo({ filter = null, q = '', signal } = {}) {
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    let videos = generateMockVideos(48);
+    const needle = (q || '').trim().toLowerCase();
+    if (needle) {
+      videos = videos.filter(v => String(v.title || '').toLowerCase().includes(needle));
+    }
+    return videos.length ? videos[Math.floor(Math.random() * videos.length)] : null;
+  }
+
+  const variables = {
+    filter: { q, page: 1, per_page: 1, sort: 'random' },
+    scene_filter: translateFilter(filter, 'SceneFilterType'),
+  };
+  const data = await runQuery(FIND_SCENES_QUERY, variables, { signal });
+  const scene = data?.findScenes?.scenes?.[0];
+  return scene ? normalizeScene(scene) : null;
 }
 
 /**

@@ -15,7 +15,7 @@
  */
 
 import {
-  normalizePerformerDetail,
+  normalizePerformer, normalizePerformerDetail,
 } from '../src/utils/performerService.js';
 import { normalizeGallery } from '../src/utils/galleryService.js';
 import { normalizeTag } from '../src/utils/tagService.js';
@@ -24,7 +24,7 @@ import { normalizeSceneDetail } from '../src/utils/sceneService.js';
 import { normalizeImage, normalizeImageDetail } from '../src/utils/imageService.js';
 import { normalizeServerStatus } from '../src/utils/serverService.js';
 import { buildImageInfoRows } from '../src/utils/imageInfo.js';
-import { filenameStem, formatJobStart } from '../src/utils/format.js';
+import { filenameStem, formatJobStart, ratingLabel } from '../src/utils/format.js';
 import {
   ageFromBirthdate, webLinks, formatCareer, formatHeight, formatGender, ratingFromCard,
 } from '../src/pages/performerDetail/format.js';
@@ -254,6 +254,28 @@ check('studio: parent, aliases and details map',
   JSON.stringify({ parent: ST.parentStudio, aliases: ST.aliases, details: ST.details }));
 check('studio: a root studio has no parent',
   ST0.parentStudio === null && ST0.aliases.length === 0 && ST0.details === null);
+
+// ═══════════════════════════════════════════════════════════
+// Ratings: 0 is unrated
+// ═══════════════════════════════════════════════════════════
+// Stash's own UI sends null when a rating is cleared. A stored 0 arrives back
+// as a real number, and every card draws `★ ${rating}` off truthiness, so
+// "0.0" survives the check and prints a zero-star badge.
+check('ratingLabel: a stored 0 is unrated',
+  ratingLabel(0) === null && ratingLabel(null) === null
+    && ratingLabel(undefined) === null,
+  String(ratingLabel(0)));
+check('ratingLabel: a real rating keeps one decimal',
+  ratingLabel(75) === '7.5' && ratingLabel(100) === '10.0',
+  `${ratingLabel(75)}/${ratingLabel(100)}`);
+check('performer card: a stored 0 hides the badge',
+  normalizePerformer({ id: '1', name: 'P', rating100: 0 }).rating === null);
+check('studio card: a stored 0 hides the badge',
+  normalizeStudio({ id: '1', name: 'S', rating100: 0 }).rating === null);
+check('gallery card: a stored 0 hides the badge',
+  normalizeGallery({ id: '1', title: 'G', rating100: 0 }).rating === null);
+check('image card: a stored 0 hides the badge',
+  normalizeImage({ id: '1', title: 'I', rating100: 0 }).rating === null);
 
 // ═══════════════════════════════════════════════════════════
 // Scene detail galleries

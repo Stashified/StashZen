@@ -20,6 +20,11 @@ export function useActiveFilter({ controls, filterMode, dataKey, quickFilterDefs
   // module cache behind it. Folding it into `version` also partitions the cache
   // key, which is harmless, the old partition is already cleared.
   const [filtersEpoch, setFiltersEpoch] = useState(0);
+  // `loading` and `error` are dropped on purpose: `filterId` is cleared on
+  // every tab and source change except for the working marker, whose filter
+  // travels with the arrival, so it cannot normally outlive the list it names.
+  // A filter deleted in Stash while selected is the exception, and widens the
+  // listing.
   const { filters: savedFilters } = useSavedFilters(filterMode, dataKey, filtersEpoch);
 
   // The filter just saved, echoed locally until the refetched list carries it

@@ -17,6 +17,7 @@ import { withApiKey } from './stashUrl.js';
 import { createEntityService } from './entityService.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { GALLERY_TITLES, STUDIOS } from './mockLibrary.js';
+import { ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
@@ -85,7 +86,7 @@ export function normalizeGallery(g) {
     // `paths.cover` is absolute and unkeyed like every other media URL here.
     image_path: withApiKey(g?.paths?.cover) || null,
     date: g.date || null,
-    rating: g.rating100 != null ? (g.rating100 / 10).toFixed(1) : null,
+    rating: ratingLabel(g.rating100),
     image_count: g.image_count || 0,
     studio: g.studio ? { id: g.studio.id, name: g.studio.name } : null,
     photographer: g.photographer || null,

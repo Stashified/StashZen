@@ -35,6 +35,9 @@ export default function TabContent({
   onMarkerSelect,
   onMarkerLongPress,
   onPerformerBack,
+  onPerformerImages,
+  onPerformerGalleries,
+  onPerformerTagSelect,
   previewMuted,
   onMuteToggle,
   onEntitySelect,
@@ -61,6 +64,9 @@ export default function TabContent({
           ? <PerformerDetailPage
               performer={selectedPerformer}
               onBack={onPerformerBack}
+              onImages={onPerformerImages}
+              onGalleries={onPerformerGalleries}
+              onTagSelect={onPerformerTagSelect}
               onVideoSelect={onVideoSelect}
               // The performer's grid is a scene listing like any other, so
               // the action menu and queue are scoped to this listing.

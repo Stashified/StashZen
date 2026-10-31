@@ -59,12 +59,11 @@ export function createProgressReporter({
     saveInFlight = true;
     report('saving');
 
-    write({
-      id: snapshot.id,
-      resumeTime: snapshot.t,
-      playDuration: snapshot.played,
-    }).then((res) => {
+    const settle = (res) => {
       saveInFlight = false;
+      // A save that resolves to nothing is a failure, not a success: without
+      // this the next line throws and the queue never drains.
+      if (!res) res = { ok: false, error: new Error('The save returned no result.') };
 
       // The prune names the scene the snapshot describes, so it must not wait
       // for that scene to still be on screen: a queue advance or close happens
@@ -113,7 +112,17 @@ export function createProgressReporter({
         queuedSaves.delete(next.value[0]);
         sendSnapshot(next.value[1]);
       }
-    });
+    };
+
+    // A rejected write must not wedge the sender: route it through the same
+    // failure path so the chip reports it and queued snapshots still drain.
+    // The async IIFE also turns a synchronous throw by an injected save into
+    // a rejection.
+    (async () => write({
+      id: snapshot.id,
+      resumeTime: snapshot.t,
+      playDuration: snapshot.played,
+    }))().then(settle, (error) => settle({ ok: false, error }));
   }
 
   /**

@@ -205,6 +205,12 @@
   box-shadow: var(--focus-ring);
 }
 
+.surpriseNotice {
+  color: var(--red);
+  font-size: 13px;
+  max-width: 420px;
+}
+
 /* A pill, not a box: the row reads as tags rather than more dropdowns.
    Same zone as the bar above, so Up/Down walks between the two rows. */
 .quickChip {

@@ -5,9 +5,10 @@
  * (title, subtitle, badge, image, aspect) rather than here, so the layout is
  * written once instead of four times.
  *
- * `onLongPress` is only wired when `view.longPress` asks: Images and Galleries
- * have a menu, Tags and Studios have nothing, and leaving those as plain taps
- * keeps their Enter firing on keydown.
+ * `onLongPress` is wired when `view.longPress` asks: all four sections have a
+ * long-press menu now. A long-pressable card takes `useFocusable`'s keyup
+ * path (Enter is prevented on keydown and activation fires on release); a
+ * plain tap keeps the keydown path.
  *
  * `onSelect` takes `(item, index, list)`: the Images viewer steps through the
  * listing and needs the position and the listing. Other sections ignore both;

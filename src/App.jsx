@@ -4,12 +4,15 @@
  * in `app/TabContent.jsx` and `app/AppOverlays.jsx`.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import NavRail from './components/NavRail.jsx';
 import ControlsPanel from './components/ControlsPanel.jsx';
 import { useRestoreFocus } from './hooks/useRestoreFocus.js';
+import { useFlash } from './hooks/useFlash.js';
 import { focusFirstControl } from './utils/focus.js';
 import { publishRowPatch, publishRowRemove } from './utils/rowPatches.js';
+import { queueOf } from './utils/playQueue.js';
+import { fetchRandomVideo } from './utils/videoService.js';
 import styles from './App.module.css';
 import { useSettings, setSettings, dataSourceKey } from './utils/settings.js';
 import { useAutoUpdateCheck } from './hooks/useAutoUpdateCheck.js';
@@ -85,10 +88,15 @@ export default function App() {
   const [exitPromptOpen, setExitPromptOpen] = useState(false);
   const [markerEditor, setMarkerEditor] = useState(null);
   const [markerDelete, setMarkerDelete] = useState(null);
+  // The tag/studio Info sheet: `{ kind, item }` from the long-press menu.
+  const [entityInfo, setEntityInfo] = useState(null);
   // The global search page's query. App owns it because opening a performer
   // leaves the page for the Performers tab, and Back has to return to the same
   // results rather than an empty field.
   const [searchText, setSearchText] = useState('');
+  // Surprise's transient status, and its one-request-at-a-time guard.
+  const [surpriseNotice, flashSurprise] = useFlash();
+  const surpriseBusy = useRef(false);
 
   const {
     builderOpen, setBuilderOpen, closeBuilder, applyWorkingFilter, saveBuiltFilter,
@@ -106,9 +114,9 @@ export default function App() {
 
   // Activating a tag, studio or gallery, and getting back from what it opened.
   const {
-    filterOrigin, setFilterOrigin, openShowroomListing,
+    filterOrigins, setFilterOrigins, activateFiltered, replaceOrigin, openShowroomListing,
     handleTagSelect, handleStudioSelect, handleGallerySelect,
-  } = useFilteredNavigation({ activeTab, dataKey, changeTab, setControls });
+  } = useFilteredNavigation({ activeTab, dataKey, controls, changeTab, setControls });
 
   // What is open in front of a listing: scene detail, performer page or viewer.
   const {
@@ -131,7 +139,7 @@ export default function App() {
     handleImageSelect,
     openImageViewer,
     closeImageViewer,
-  } = useDetailSelection({ activeTab, dataKey, changeTab });
+  } = useDetailSelection({ activeTab, dataKey, changeTab, filterOrigins });
 
   // The player, the long-press menu, and every way into both.
   const {
@@ -187,13 +195,67 @@ export default function App() {
     selectedScene,
     actionMenu,
     imageViewer,
-    filterOrigin,
+    entityInfo,
+    filterOrigins,
     changeTab,
-    setFilterOrigin,
+    setFilterOrigins,
     setControls,
     mainFocus,
     setExitPromptOpen,
   });
+
+  // ── Surprise ─────────────────────────────────────────────
+  // One random scene through the active filter, search and chips. Focus is
+  // remembered at the press, like Play: the fetch may outlive it.
+  //
+  // The answer is only worth opening if the screen that asked is still the
+  // one on show. Refs carry the current state into the late callback: leaving
+  // Scenes, raising the exit prompt or opening another player bumps the token,
+  // and any overlay blocks the open, so a slow random query cannot mount a
+  // playing video under Settings, a detail or a menu, or replace a session
+  // the user started meanwhile.
+  const surpriseToken = useRef(0);
+  const surpriseState = useRef({});
+  surpriseState.current = {
+    activeTab,
+    playing: !!playSession,
+    blocked: exitPromptOpen || !!selectedScene || !!actionMenu || settingsOpen
+      || builderOpen || !!imageViewer || !!entityInfo,
+  };
+  useEffect(() => {
+    if (activeTab !== 'scenes') surpriseToken.current += 1;
+  }, [activeTab]);
+  useEffect(() => {
+    if (exitPromptOpen) surpriseToken.current += 1;
+  }, [exitPromptOpen]);
+  useEffect(() => () => { surpriseToken.current += 1; }, []);
+
+  const surpriseMe = () => {
+    if (surpriseBusy.current) {
+      flashSurprise('Still picking a scene…');
+      return;
+    }
+    surpriseBusy.current = true;
+    const token = ++surpriseToken.current;
+    mainFocus.remember(document.activeElement);
+    flashSurprise('Picking a scene…');
+    fetchRandomVideo({ filter: activeObjectFilter, q: activeSearchQuery })
+      .then(video => {
+        const now = surpriseState.current;
+        if (token !== surpriseToken.current
+          || now.activeTab !== 'scenes' || now.blocked || now.playing) return;
+        if (!video) {
+          flashSurprise('No scene matches the current filter.');
+          return;
+        }
+        openPlayer(queueOf(video, 0));
+      })
+      .catch(e => {
+        if (token !== surpriseToken.current) return;
+        flashSurprise(`Could not pick a scene: ${e.message}`);
+      })
+      .finally(() => { surpriseBusy.current = false; });
+  };
 
   const previewMuted = settings.previewMuted;
   const togglePreviewMuted = () => {
@@ -251,9 +313,44 @@ export default function App() {
   // otherwise clears search as a term typed against another section. The
   // origin takes Back out of the full listing and back to the results.
   const openSearchListing = (tab, query, focusId) => {
-    setFilterOrigin({ tab: 'search', focusId, to: tab });
+    replaceOrigin({ tab: 'search', focusId, to: tab });
     setControls(prev => ({ ...prev, search: query, searchForTab: tab }));
     changeTab(tab);
+  };
+
+  // ── Performer hub ────────────────────────────────────────
+  // The counts and tag chips on a performer page open filtered listings.
+  // `restorePerformer` keeps the detail mounted while the spoke is active and
+  // names the control Back returns to; see useDetailSelection.
+  const performerCriterion = (performer) => ({
+    performers: { modifier: 'INCLUDES', value: [{ id: performer.id, label: performer.name }] },
+  });
+
+  const openPerformerImages = (performer) => activateFiltered(
+    performerCriterion(performer),
+    performer.name,
+    'performer-images',
+    'images',
+    performer,
+  );
+
+  const openPerformerGalleries = (performer) => activateFiltered(
+    performerCriterion(performer),
+    performer.name,
+    'performer-galleries',
+    'galleries',
+    performer,
+  );
+
+  const openPerformerTag = (tag) => {
+    if (!selectedPerformer) return;
+    activateFiltered(
+      { tags: { modifier: 'INCLUDES', value: [{ id: tag.id, label: tag.name }] } },
+      tag.name,
+      `performer-tag-${tag.id}`,
+      'scenes',
+      selectedPerformer,
+    );
   };
 
   // One dispatcher, not four `onSelect` props: one `<EntityPage>` draws all
@@ -294,6 +391,44 @@ export default function App() {
       autoPlay: true,
       restoreEl: menuReturnEl(),
     });
+  };
+
+  // ── The tag/studio sheet ─────────────────────────────────
+  // Read-only and opened from the menu, so the card the menu remembered is the
+  // return target. The menu is dismissed without its restore: the sheet's panel
+  // takes focus on mount and would otherwise be fighting the grid for it.
+  const openEntityInfoFromMenu = (item, kind) => {
+    dismissActionMenu();
+    setEntityInfo({ kind, item });
+  };
+
+  const closeEntityInfo = () => {
+    setEntityInfo(null);
+    menuCardFocus.restore({ fallback: focusFirstControl });
+  };
+
+  // Same destination as Enter on the card; the tab change is what closes the
+  // menu's page context.
+  const filterEntityFromMenu = (item, kind) => {
+    dismissActionMenu();
+    if (kind === 'tag') handleTagSelect(item);
+    else handleStudioSelect(item);
+  };
+
+  // A count in the info sheet opens that listing. One criterion serves every
+  // target: `tags` is a field on all six filter types, and `studios` on the
+  // four a studio offers. The sheet closes without restoring its card focus:
+  // the tab change is the move, and Back returns to the card through the
+  // origin recorded here.
+  const filterFromEntityInfo = (kind, item, target) => {
+    const field = kind === 'tag' ? 'tags' : 'studios';
+    setEntityInfo(null);
+    activateFiltered(
+      { [field]: { modifier: 'INCLUDES', value: [{ id: item.id, label: item.name }] } },
+      item.name,
+      `${kind}-${item.id}`,
+      target,
+    );
   };
 
   return (
@@ -342,6 +477,8 @@ export default function App() {
             quickFilterOptions={config.quickFilters || []}
             quickFilters={controls.quickFilters || []}
             onQuickFilterToggle={toggleQuickFilter}
+            onSurprise={activeTab === 'scenes' ? surpriseMe : null}
+            surpriseNotice={surpriseNotice}
           />
         )}
 
@@ -365,6 +502,9 @@ export default function App() {
           onMarkerSelect={handleMarkerSelect}
           onMarkerLongPress={handleMarkerLongPress}
           onPerformerBack={handlePerformerBack}
+          onPerformerImages={openPerformerImages}
+          onPerformerGalleries={openPerformerGalleries}
+          onPerformerTagSelect={openPerformerTag}
           previewMuted={previewMuted}
           onMuteToggle={togglePreviewMuted}
           onEntitySelect={handleEntitySelect}
@@ -388,12 +528,16 @@ export default function App() {
           // A gallery chip leaves for the Images tab filtered to this gallery;
           // the tab change closes this page (useDetailSelection's effect), so
           // that is all it does.
-          // Opened on a performer page, the performer is the card Back can
-          // focus: the page closes with the tab and has no video cards.
+          // Opened on the Performers tab itself, the performer is the card Back
+          // can focus: the page closes with the tab and has no video cards. On
+          // a hub spoke the origin tab is Scenes, whose cards are `video-`;
+          // naming the performer there would leave Back polling for a card
+          // that tab never has.
           onGallerySelect: (gallery, sceneId) => handleGallerySelect(
             gallery,
             sceneId,
-            selectedPerformer ? `performer-${selectedPerformer.id}` : null,
+            activeTab === 'performers' && selectedPerformer
+              ? `performer-${selectedPerformer.id}` : null,
           ),
           onTagSelect: sceneTagSelect,
           onStudioSelect: sceneStudioSelect,
@@ -410,8 +554,11 @@ export default function App() {
           openGallerySlideshow,
           onEditMarker: editMarkerFromMenu,
           onDeleteMarker: deleteMarkerFromMenu,
+          onInfo: openEntityInfoFromMenu,
+          onFilterEntity: filterEntityFromMenu,
           onClose: closeActionMenu,
         }}
+        info={{ entity: entityInfo, onClose: closeEntityInfo, onFilter: filterFromEntityInfo }}
         markerEditor={{
           marker: markerEditor,
           onClose: closeMarkerOverlay,

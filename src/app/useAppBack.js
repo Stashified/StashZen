@@ -20,9 +20,10 @@ export function useAppBack({
   selectedScene,
   actionMenu,
   imageViewer,
-  filterOrigin,
+  entityInfo,
+  filterOrigins,
   changeTab,
-  setFilterOrigin,
+  setFilterOrigins,
   setControls,
   mainFocus,
   setExitPromptOpen,
@@ -39,22 +40,20 @@ export function useAppBack({
       if (actionMenu) return;
       // Image viewer: same again, it closes itself on the capture phase too.
       if (imageViewer) return;
-      // Back out of a listing a tag, studio or gallery opened returns to the
-      // section it came from, filter dropped and focus back on the pressed
-      // card. Checked against `activeTab` because a stale origin would send
-      // the user to a section they did not come from; the arrival rule clears
-      // it when the filtered tab is left.
-      if (filterOrigin && filterOrigin.to === activeTab) {
-        const { tab, focusId } = filterOrigin;
-        setFilterOrigin(null);
+      // Tag/studio sheet: same, its capture handler closes it.
+      if (entityInfo) return;
+      // Back out of a listing a tag, studio or gallery opened unwinds one
+      // level: the section it came from, the filter that section had before
+      // the activation, and focus back on the pressed card. Checked against
+      // `activeTab` because a stale origin would send the user to a section
+      // they did not come from; the arrival rule clears the stack when the
+      // filtered tab is left.
+      const top = filterOrigins[filterOrigins.length - 1];
+      if (top && top.to === activeTab) {
+        const { tab, focusId, filter } = top;
+        setFilterOrigins(prev => prev.slice(0, -1));
         changeTab(tab);
-        setControls(prev => ({
-          ...prev,
-          workingFilter: null,
-          workingFilterFor: null,
-          workingFilterLabel: null,
-          filterId: null,
-        }));
+        setControls(prev => ({ ...prev, ...filter }));
         // The origin section must re-render before its cards exist to focus,
         // and its listing may still be in flight, hence the retry.
         focusOriginCard(tab, focusId);

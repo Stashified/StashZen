@@ -13,6 +13,7 @@ import { BIOS, COUNTRIES, mockPersonName } from './mockLibrary.js';
 import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
+import { ratingLabel } from './format.js';
 
 // `height` is the sort value; the row carries `height_cm`. Everything else
 // the Performers control offers (`name`, `rating`, `o_counter`, `play_count`,
@@ -205,6 +206,45 @@ export async function loadPerformerDetail(performer) {
   return normalizePerformerDetail(data?.findPerformer);
 }
 
+// The fallback for a library with no performer tags (the common case): the
+// tags of the performer's scenes, counted, so the page still offers a way into
+// tag-filtered scenes. A sample, not the whole filmography: the row shows the
+// tags that recur, and a page is one request.
+const PERFORMER_SCENE_TAGS_QUERY = `
+  query PerformerSceneTags($filter: FindFilterType, $scene_filter: SceneFilterType) {
+    findScenes(filter: $filter, scene_filter: $scene_filter) {
+      scenes {
+        tags { id name }
+      }
+    }
+  }
+`;
+
+/** Distinct tags across a sample of the performer's scenes, most frequent first. */
+export async function loadPerformerSceneTags(performerId, { limit = 12, sample = 100 } = {}) {
+  if (!performerId) return [];
+  if (getSettings().useMock) return [];
+  const data = await runQuery(PERFORMER_SCENE_TAGS_QUERY, {
+    filter: { per_page: sample },
+    scene_filter: {
+      performers: { value: [String(performerId)], modifier: 'INCLUDES' },
+    },
+  });
+  const counts = new Map();
+  for (const scene of data?.findScenes?.scenes || []) {
+    for (const tag of scene?.tags || []) {
+      if (!tag?.id) continue;
+      const key = String(tag.id);
+      const row = counts.get(key) || { id: tag.id, name: tag.name, count: 0 };
+      row.count += 1;
+      counts.set(key, row);
+    }
+  }
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)))
+    .slice(0, limit);
+}
+
 // ═══════════════════════════════════════════════════════════
 // MUTATIONS
 // ═══════════════════════════════════════════════════════════
@@ -221,7 +261,7 @@ const PERFORMER_UPDATE_MUTATION = `
 
 /**
  * Write a rating or favourite flag. `rating100` is Stash's 0–100 rating;
- * 0 clears it, which is what Stash's own UI writes.
+ * 0 clears it, sent as null the way Stash's own UI does.
  *
  * `PerformerUpdateInput.urls` is a single String, not the `urls` list the
  * query returns, so profile links are read-only here.
@@ -233,7 +273,8 @@ export async function updatePerformer(id, patch) {
   }
   const input = { id: String(id) };
   if (patch.rating100 != null) {
-    input.rating100 = Math.max(0, Math.min(100, Math.round(patch.rating100)));
+    const clamped = Math.max(0, Math.min(100, Math.round(patch.rating100)));
+    input.rating100 = clamped > 0 ? clamped : null;
   }
   if (patch.favorite != null) input.favorite = !!patch.favorite;
   const data = await runQuery(PERFORMER_UPDATE_MUTATION, { input });
@@ -252,7 +293,7 @@ export function clearPerformerPages() {
   performerCache.clear();
 }
 
-function normalizePerformer(p) {
+export function normalizePerformer(p) {
   return {
     id: p.id,
     name: p.name,
@@ -260,7 +301,7 @@ function normalizePerformer(p) {
     image_path: withApiKey(p.image_path) || null,
     scene_count: p.scene_count || 0,
     favorite: !!p.favorite,
-    rating: p.rating100 != null ? (p.rating100 / 10).toFixed(1) : null,
+    rating: ratingLabel(p.rating100),
     country: p.country,
     gender: p.gender,
     birthdate: p.birthdate,

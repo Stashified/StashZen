@@ -68,5 +68,17 @@ check('addedThisYear starts at January 1 as a String',
 check('galleries carry no scene-only chip',
   !QUICK_FILTERS.galleries.some(d => d.id === 'unwatched' || d.id === 'markers'));
 
+// Stash spells the performer favourite flag `filter_favorites`, while the tag
+// and studio filter types use `favorite`; getting the pair backwards is a
+// server-side validation error, not a wrong result.
+check('performers use filter_favorites',
+  eq(quickFilterCriterion('filterFavorites'), { filter_favorites: true }));
+check('tags and studios use favorite',
+  eq(quickFilterCriterion('favorite'), { favorite: true }));
+check('tags offer no rating chip',
+  !QUICK_FILTERS.tags.some(d => d.id === 'rated4'));
+check('a quick-filter id absent from its tab is ignored',
+  combineQuickFilters(base, QUICK_FILTERS.tags, ['rated4']) === base);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

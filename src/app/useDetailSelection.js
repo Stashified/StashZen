@@ -13,12 +13,13 @@ import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
 import { focusByIdWhenReady, focusFirstControl, focusOriginCard } from '../utils/focus.js';
 
-export function useDetailSelection({ activeTab, dataKey, changeTab }) {
+export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigins }) {
   const [selectedPerformer, setSelectedPerformer] = useState(null);
   // Where a performer detail opened from Home returns to. Separate from
-  // `filterOrigin`, which means "a filtered listing and its Back destination";
-  // reusing it would make Back from a detail opened inside a See-all Performers
-  // listing skip the grid and jump Home. Null means the Performers grid.
+  // `filterOrigins`, which means "a filtered listing and its Back destination";
+  // reusing them would make Back from a detail opened inside a See-all
+  // Performers listing skip the grid and jump Home. Null means the Performers
+  // grid.
   const [performerOrigin, setPerformerOrigin] = useState(null);
   const [selectedScene, setSelectedScene] = useState(null);
   // The card that opened the scene page, by focus id. A related row replaces
@@ -63,12 +64,24 @@ export function useDetailSelection({ activeTab, dataKey, changeTab }) {
   // Leaving Performers clears any open detail so the user does not pop back
   // into someone they forgot. The origin is cleared with it, or the next
   // performer opened from the grid would send Back to Home.
+  //
+  // The exception is a hub spoke (Images/Galleries/a tag's scenes): its
+  // origin holds the performer so the page can remount when Back returns.
+  // Checked against the whole stack, because the user can open a second
+  // filtered listing from the spoke; the arrival rule only leaves origins
+  // standing while their branch is on screen, so a performer origin in it
+  // still means the page is the way back.
   useEffect(() => {
     if (activeTab !== 'performers') {
-      if (selectedPerformer) setSelectedPerformer(null);
-      if (performerOrigin) setPerformerOrigin(null);
+      const keepForSpoke = filterOrigins.some(
+        o => o.restorePerformer && o.tab === 'performers',
+      );
+      if (!keepForSpoke) {
+        if (selectedPerformer) setSelectedPerformer(null);
+        if (performerOrigin) setPerformerOrigin(null);
+      }
     }
-  }, [activeTab, selectedPerformer, performerOrigin]);
+  }, [activeTab, selectedPerformer, performerOrigin, filterOrigins]);
 
   // Same for a scene detail: switching tabs underneath it would leave an
   // overlay showing a scene from a listing just navigated away from.

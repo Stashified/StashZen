@@ -12,7 +12,7 @@
  * Test→Live flip makes grids refetch).
  */
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { graphqlRequest } from './stashClient.js';
 import { sha256Hex } from './sha256.js';
 import { readPlaybackEngine } from './enginePolicy.js';
@@ -327,9 +327,9 @@ export function subscribeSettings(fn) {
  * React hook, returns the current settings and re-renders on change.
  */
 export function useSettings() {
-  const [snapshot, setSnapshot] = useState(state);
-  useEffect(() => subscribeSettings(setSnapshot), []);
-  return snapshot;
+  // Not state + effect: a setSettings between render and subscribe would be
+  // missed until the next change.
+  return useSyncExternalStore(subscribeSettings, () => state);
 }
 
 /**

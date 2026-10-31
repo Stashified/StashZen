@@ -307,6 +307,9 @@ export default function ControlsPanel({
   showGridSize = true,
   filterOptions = null,    // [{ value, label }] or null to hide
   onBuildFilter = null,    // opens the filter builder; null hides the action
+  // Plays one random scene through the current filter. Only Scenes passes it.
+  onSurprise = null,
+  surpriseNotice = '',
   showSearch = false,
   previewMuted = true,
   onMuteToggle = null,
@@ -404,6 +407,15 @@ export default function ControlsPanel({
               <PanelButton id="ctrl-build-filter" label="Build…" onClick={onBuildFilter} />
             )}
           </>
+        )}
+
+        {onSurprise && (
+          <PanelButton id="ctrl-surprise" label="Random scene" onClick={onSurprise} />
+        )}
+        {/* The status belongs to the picker's tab: it is App state and would
+            otherwise follow the user onto tabs with no button behind it. */}
+        {onSurprise && surpriseNotice && (
+          <span className={styles.surpriseNotice} role="status">{surpriseNotice}</span>
         )}
 
         {showGridSize && showDivider(hasSort || showOrder || filterOptions, true) && (

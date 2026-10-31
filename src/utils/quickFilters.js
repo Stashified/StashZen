@@ -34,6 +34,20 @@ export const QUICK_FILTERS = {
     { id: 'favorites', label: 'Favourite performers' },
     { id: 'addedThisYear', label: 'Added this year' },
   ],
+  // PerformerFilterType spells the favourite flag `filter_favorites`; Tags and
+  // Studios use `favorite`. The ids stay distinct so one criterion function
+  // can serve both. Tags have no rating field, so no rated chip there.
+  performers: [
+    { id: 'filterFavorites', label: 'Favourites' },
+    { id: 'rated4', label: 'Rated 4+' },
+  ],
+  tags: [
+    { id: 'favorite', label: 'Favourites' },
+  ],
+  studios: [
+    { id: 'favorite', label: 'Favourites' },
+    { id: 'rated4', label: 'Rated 4+' },
+  ],
 };
 
 /**
@@ -50,6 +64,10 @@ export function quickFilterCriterion(id, now = Date.now()) {
       return { has_markers: 'true' };
     case 'favorites':
       return { performer_favorite: true };
+    case 'favorite':
+      return { favorite: true };
+    case 'filterFavorites':
+      return { filter_favorites: true };
     case 'addedThisYear': {
       const year = new Date(now).getFullYear();
       const start = Math.floor(new Date(year, 0, 1).getTime() / 1000);

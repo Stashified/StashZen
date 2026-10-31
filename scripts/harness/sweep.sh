@@ -82,6 +82,12 @@ FULL_JOBS=(
   "detail|entry.jsx||0|0"
   "performer|performer-entry.jsx||0|0"
   "performerback|performerback-entry.jsx||0|0"
+  # The performer page as a hub (spoke → filtered tab → Back), the quick-filter
+  # chips per tab, and Surprise. App-level: the wiring is the subject.
+  "hub|hub-entry.jsx||0|0"
+  # The read-only tag/studio sheet: long-press menu, merged detail, scroll,
+  # Back, and the two failure answers. App-level for the same reason.
+  "info|info-entry.jsx||0|0"
   "filter|filter-entry.jsx||0|0"
   "firstrun|firstrun-entry.jsx||0|0"
   "theme|theme-entry.jsx||0|0"
