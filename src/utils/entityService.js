@@ -21,7 +21,7 @@
  */
 
 import { getSettings } from './settings.js';
-import { runQuery } from './stashQuery.js';
+import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
@@ -55,12 +55,17 @@ export function createEntityService({
   mockSortKey = null,
 }) {
   const cache = createListCache();
+  // Pages after the first do not read the total, see withoutCount.
+  const pageQuery = withoutCount(query);
+  const heroPageQuery = heroQuery ? withoutCount(heroQuery) : null;
 
   async function load({ sort, order, filter, q, page, limit, query: selectedQuery, signal }) {
     if (getSettings().useMock) {
       await new Promise(r => setTimeout(r, 400));
 
-      let all = mock();
+      // `mock` is async: the generators import their catalogue module on
+      // first use so a Live launch never parses it.
+      let all = await mock();
       const needle = (q || '').trim().toLowerCase();
       if (needle && searchFields.length) {
         all = all.filter(item => searchFields.some(
@@ -124,7 +129,9 @@ export function createEntityService({
 
       const loader = () => load({
         sort: requestSort, order, filter, q, page, limit,
-        query: useHeroQuery ? heroQuery : query,
+        query: useHeroQuery
+          ? (page > 1 ? heroPageQuery : heroQuery)
+          : (page > 1 ? pageQuery : query),
         signal: opts.signal,
       });
 

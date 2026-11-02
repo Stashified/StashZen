@@ -52,3 +52,7 @@ planning.md
 
 # The pairing helper plan. Working material like planning.md.
 helper.md
+
+# Running list of user-visible changes for the next release's notes. Working
+# material like planning.md, never shipped in the public copy.
+RELEASE_NOTES_DRAFT.md

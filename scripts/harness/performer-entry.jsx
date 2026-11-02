@@ -290,8 +290,11 @@ async function run() {
   const wanted = ['gender', 'alias_list', 'career_start', 'career_end', 'career_length',
     'tattoos', 'measurements', 'urls', 'ethnicity', 'hair_color', 'eye_color',
     'weight', 'piercings', 'fake_tits', 'death_date', 'o_counter', 'image_count',
-    'gallery_count', 'rating100', 'favorite', 'tags'];
-  const avoided = ['details', 'stash_ids', 'scene_count', 'image_path', 'country',
+    'gallery_count', 'rating100', 'favorite', 'tags',
+    // The bio moved here from the 40-card listing: a paragraph per page, never
+    // per card. It is what keeps the card query narrow.
+    'details'];
+  const avoided = ['stash_ids', 'scene_count', 'image_path', 'country',
     'birthdate', 'height_cm'];
   check('P1 the query is the profile selection, enriched and still narrow',
     wanted.every(f => q.includes(f)) && avoided.every(f => !q.includes(f)),

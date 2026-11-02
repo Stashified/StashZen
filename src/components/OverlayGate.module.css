@@ -1,0 +1,38 @@
+/* Invisible but focusable: it holds focus and the keys while the chunk loads.
+   Full-screen rather than zero-size so focus() has a real box to land on. */
+.pending {
+  position: fixed;
+  inset: 0;
+  outline: none;
+  pointer-events: none;
+}
+
+/* Shown for a moment after a chunk fails, before the gate closes. Same panel
+   as PlayerErrorBoundary: the subtree that threw is already gone. */
+.fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #000;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  text-align: center;
+  padding: 40px;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.detail {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-secondary);
+}

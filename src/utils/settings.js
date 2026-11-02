@@ -332,6 +332,34 @@ export function useSettings() {
   return useSyncExternalStore(subscribeSettings, () => state);
 }
 
+// The part of the settings a preview card draws from, in a snapshot that only
+// changes when one of those values does. `useSettings` returns `state` itself,
+// so every one of the 40 subscribers re-renders on any write, including the
+// update check's `lastUpdateCheckAt` while the grid is on screen. Comparing a
+// stable object instead lets `useSyncExternalStore` skip those renders.
+let previewSnapshot = null;
+
+function getPreviewSnapshot() {
+  const key = `${state.previewsEnabled}|${state.previewMuted}|${state.reduceMotion}`
+    + `|${state.useMock}|${dataSourceKey(state)}`;
+  if (previewSnapshot?.key !== key) {
+    previewSnapshot = {
+      key,
+      previewsEnabled: state.previewsEnabled,
+      previewMuted: state.previewMuted,
+      reduceMotion: state.reduceMotion,
+      useMock: state.useMock,
+      source: dataSourceKey(state),
+    };
+  }
+  return previewSnapshot;
+}
+
+/** Per-card preview settings; see `getPreviewSnapshot` for why it is narrow. */
+export function usePreviewSettings() {
+  return useSyncExternalStore(subscribeSettings, getPreviewSnapshot);
+}
+
 /**
  * Test a Stash connection without committing the values to the store.
  * Returns { ok: true, version } on success, { ok: false, reason } on failure.

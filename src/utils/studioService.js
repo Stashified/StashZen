@@ -16,13 +16,14 @@ import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
-import { coverArt, makeRng } from './mockArt.js';
-import { STUDIOS } from './mockLibrary.js';
 import { ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
-function generateMockStudios() {
+// Loaded on demand: see generateMockVideos in videoService.js.
+async function generateMockStudios() {
+  const { STUDIOS } = await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   return STUDIOS.map((name, i) => {
     const rng = makeRng(`studio-${i}`);
     // The two sorts the Related group offers that the row did not carry. From
@@ -203,7 +204,7 @@ function normalizeStudioInfo(s) {
 /** One studio's detail, for the long-press Info overlay. */
 export async function fetchStudioInfo(id) {
   if (getSettings().useMock) {
-    const s = generateMockStudios().find(x => String(x.id) === String(id));
+    const s = (await generateMockStudios()).find(x => String(x.id) === String(id));
     if (!s) return null;
     return {
       name: s.name,

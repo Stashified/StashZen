@@ -5,11 +5,15 @@
  * poster>`, CSS `background-image` and the browser's fetch of the sprite VTT
  * send no headers, so the key travels in the URL.
  *
- * Stash only does that for `paths.stream`, because that endpoint is meant for
- * external players. Every other path comes back bare, `screenshot`,
- * `preview`, `sprite`, `vtt`, a performer's `image_path`, and an
- * unauthenticated request gets a `302 → /login?returnURL=…`; the browser then
- * tries to decode the login page as a JPEG and renders nothing.
+ * Stash 0.31 keys `paths.stream` itself, because that endpoint is meant for
+ * external players; a server with credentials (0.32+) signs it instead. Every
+ * other path comes back bare, `screenshot`, `preview`, `sprite`, `vtt`, a
+ * performer's `image_path`, and an unauthenticated request gets a
+ * `302 → /login?returnURL=…`; the browser then tries to decode the login page
+ * as a JPEG and renders nothing.
+ *
+ * `stream` gets the key even when signed: the key outlives the signature, and
+ * Stash prefers it for HLS segments.
  *
  * That is why Live mode can show no thumbnails while Test mode looks fine:
  * Test-mode covers are inline SVG data URIs (`mockArt.js`), so they never reach
@@ -29,7 +33,7 @@ export function withApiKey(url) {
   const base = hashAt === -1 ? url : url.slice(0, hashAt);
   const fragment = hashAt === -1 ? '' : url.slice(hashAt);
 
-  // Already authenticated, Stash's own `paths.stream` arrives this way.
+  // Already keyed: by Stash, or by an earlier call.
   if (/[?&]apikey=/i.test(base)) return url;
 
   const { stashUrl, stashKey } = getSettings();

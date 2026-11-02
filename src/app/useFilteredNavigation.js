@@ -13,7 +13,7 @@
  * straight through.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { WORKING_FILTER_ID } from './tabConfig.js';
 
 export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab, setControls }) {
@@ -59,12 +59,17 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
   // Snapshot what the origin tab had applied, so Back returns to the listing
   // as it was left rather than bare. Taken at activation because that is the
   // last moment the fields still describe the origin.
-  const filterAtOrigin = () => ({
+  //
+  // The handlers below are useCallback'd because they reach memoised cards
+  // through App's entity dispatcher: a fresh identity per App render would
+  // re-render every card for nothing. `controls` is a state object, so the
+  // callbacks still change when it does, which is when their meaning changes.
+  const filterAtOrigin = useCallback(() => ({
     workingFilter: controls.workingFilter ?? null,
     workingFilterFor: controls.workingFilterFor ?? null,
     workingFilterLabel: controls.workingFilterLabel ?? null,
     filterId: controls.filterId ?? null,
-  });
+  }), [controls]);
 
   // A gallery lands on Images and a tag or studio on Scenes, so the two
   // handlers differ in destination *and* in the tab Back returns to; the
@@ -75,7 +80,7 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
   // performer record must survive the tab change so the page remounts under
   // it, and Back lands on the control that opened the spoke. See
   // useDetailSelection's clearing effect.
-  const activateFiltered = (criterion, label, focusId, toTab, restorePerformer = null) => {
+  const activateFiltered = useCallback((criterion, label, focusId, toTab, restorePerformer = null) => {
     const origin = { tab: activeTab, focusId, to: toTab, restorePerformer, filter: filterAtOrigin() };
     setFilterOrigins(prev => [...prev, origin]);
     setControls(prev => ({
@@ -86,31 +91,34 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
       filterId: WORKING_FILTER_ID,
     }));
     changeTab(toTab);
-  };
+  }, [activeTab, filterAtOrigin, setFilterOrigins, setControls, changeTab]);
 
   // A fresh branch (Search's See-all, Home's shelf): start the stack over.
   // Nothing displaced needs to come back behind it, and keeping an older level
   // would let Back walk into a section the user left several presses ago.
-  const replaceOrigin = (origin) => setFilterOrigins([{ ...origin, filter: filterAtOrigin() }]);
+  const replaceOrigin = useCallback(
+    (origin) => setFilterOrigins([{ ...origin, filter: filterAtOrigin() }]),
+    [filterAtOrigin, setFilterOrigins],
+  );
 
   // `originFocusId` is for an activation from a scene detail: the origin tab
   // has no tag or studio card, so Back focuses the scene the detail opened
   // from instead (see `handleGallerySelect`).
   // The labelled entry is the stored shape Stash uses; the request translator
   // unwraps it, and the filter builder can show the name when it reopens.
-  const handleTagSelect = (tag, originFocusId = null) => activateFiltered(
+  const handleTagSelect = useCallback((tag, originFocusId = null) => activateFiltered(
     { tags: { modifier: 'INCLUDES', value: [{ id: tag.id, label: tag.name }] } },
     tag.name,
     originFocusId || `tag-${tag.id}`,
     'scenes',
-  );
+  ), [activateFiltered]);
 
-  const handleStudioSelect = (studio, originFocusId = null) => activateFiltered(
+  const handleStudioSelect = useCallback((studio, originFocusId = null) => activateFiltered(
     { studios: { modifier: 'INCLUDES', value: [{ id: studio.id, label: studio.name }] } },
     studio.name,
     originFocusId || `studio-${studio.id}`,
     'scenes',
-  );
+  ), [activateFiltered]);
 
   // A showroom shelf's See-all tile: set the request state and the origin,
   // then switch. Three differences from activateFiltered are the point:
@@ -125,7 +133,7 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
   //
   // Continue Watching carries `resume_time > 0`, so Scenes opens under that
   // criterion; its label is the shelf heading, not "Custom filter".
-  const openShowroomListing = (row) => {
+  const openShowroomListing = useCallback((row) => {
     replaceOrigin({ tab: 'home', focusId: row.seeAllFocusId, to: row.toTab });
     setControls(prev => ({
       ...prev,
@@ -141,18 +149,21 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
       filterId: row.filter ? WORKING_FILTER_ID : null,
     }));
     changeTab(row.toTab);
-  };
+  }, [replaceOrigin, setControls, changeTab]);
 
   // The recorded focus id must name something that exists in the origin tab.
   // A gallery opened from Galleries has `gallery-<id>`, but the scene-detail
   // hand-off leaves that tab: on Back there is no `gallery-` card, so a scene
   // names its own card (`video-<id>`, the prefix both listings use). The
   // caller can pass the origin's own id instead, for a tab with no video card.
-  const handleGallerySelect = (gallery, sceneId = null, originFocusId = null) => activateFiltered(
-    { galleries: { modifier: 'INCLUDES', value: [{ id: gallery.id, label: gallery.title }] } },
-    gallery.title,
-    originFocusId || (sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`),
-    'images',
+  const handleGallerySelect = useCallback(
+    (gallery, sceneId = null, originFocusId = null) => activateFiltered(
+      { galleries: { modifier: 'INCLUDES', value: [{ id: gallery.id, label: gallery.title }] } },
+      gallery.title,
+      originFocusId || (sceneId ? `video-${sceneId}` : `gallery-${gallery.id}`),
+      'images',
+    ),
+    [activateFiltered],
   );
 
   return {

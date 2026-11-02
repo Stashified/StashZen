@@ -3,6 +3,13 @@
    the two. */
 
 .card {
+  /* Off-screen cards skip style and paint; see VideoCard.module.css. Width is
+     4 columns at 1920. The height depends on the section's aspect, so it comes
+     from --card-intrinsic-h, set in EntityCard from the descriptor (tags are
+     portrait, the other three landscape). */
+  content-visibility: auto;
+  contain-intrinsic-size: 390px var(--card-intrinsic-h, 221px);
+  contain-intrinsic-size: auto var(--card-intrinsic-h, 221px);
   /* Local paint containment and an inset focus ring, see MarkerCard. */
   contain: content;
   display: block;
@@ -65,13 +72,9 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s var(--ease-tv);
   animation: imgFade 0.14s ease-out;
 }
-
-.card.focused .img {
-  transform: scale(1.05);
-}
+/* No inner focus scale; see VideoCard.module.css. */
 
 .imgFallback {
   width: 100%;

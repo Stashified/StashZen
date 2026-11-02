@@ -1,4 +1,9 @@
 .card {
+  /* Off-screen cards skip style and paint; see VideoCard.module.css. Width is
+     4 columns at 1920, height the 16:9 art plus the two-line caption. */
+  content-visibility: auto;
+  contain-intrinsic-size: 389px 278px;
+  contain-intrinsic-size: auto 278px;
   /* Keep every focus repaint inside the card. A focused card that became
      `position: relative; z-index: 10` invalidated the paint order of the whole
      grid, re-rastering every full-HD cover and making D-pad movement sluggish.
@@ -52,13 +57,9 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s var(--ease-tv);
   animation: imgFade 0.14s ease-out;
 }
-
-.card.focused .img {
-  transform: scale(1.05);
-}
+/* No inner focus scale; see VideoCard.module.css. */
 
 .imgFallback {
   width: 100%;

@@ -201,6 +201,23 @@ async function run() {
       `bar="${barText().slice(0, 80)}"`);
   }
 
+  // ── S1e  the stale seed belongs to the listing that stored it ──
+  // Tags, Studios and Performers share one request key (name/asc) and pass no
+  // entity, so a seed keyed without the listing handed a tab the previous
+  // tab's rows, and Enter opened the wrong id. The answer is held 1.2 s so the
+  // seed is still what is on screen when this reads it.
+  await goto('tags');
+  await waitFor(() => has('tag-1'));
+  await setMode('findStudios', 'slow');
+  await goto('studios');
+  const seededTile = registry.get('studio-1')?.el;
+  check('S1e a tab switch shows its own stale rows, not another section\'s',
+    !!seededTile && document.contains(seededTile)
+      && seededTile.textContent.includes('VERIFY studio'),
+    `studios tile says "${(seededTile?.textContent || '(none)').replace(/\s+/g, ' ').slice(0, 60)}"`);
+  await setMode('findStudios', 'ok');
+  await waitFor(() => has('studio-1'));
+
   // ── S2  the four operations are the four operations ──────
   // One factory builds each service from the operation name, so it can be
   // right for three sections and wrong for the fourth while still returning

@@ -131,11 +131,14 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
     });
   };
 
-  const handlePerformerSelect = (performer) => {
+  // Stable: this reaches the memoised performer cards, which would otherwise
+  // re-render on every App render. Both setters are stable and it reads no
+  // other state.
+  const handlePerformerSelect = useCallback((performer) => {
     // A press in the Performers grid always wins over a stale Home origin.
     setPerformerOrigin(null);
     setSelectedPerformer(performer);
-  };
+  }, []);
 
   // A performer opened from the Home shelf, the search page or a scene detail.
   // The page only renders under `activeTab === 'performers'`, and the pressed
@@ -189,12 +192,15 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
   // `openImageViewer` is the general form for the long-press menu: it takes the
   // descriptor as-is (`items`/`index` or `gallery`/`shuffle`) plus `restoreEl`,
   // the card focus must come back to when the viewer closes.
-  const openImageViewer = (descriptor) => {
-    if (descriptor?.restoreEl) imageCardFocus.remember(descriptor.restoreEl);
+  // Stable: `openImageViewer` and `handleImageSelect` reach memoised cards,
+  // and `remember` is stable, so the whole chain survives an App render.
+  const rememberImageCard = imageCardFocus.remember;
+  const openImageViewer = useCallback((descriptor) => {
+    if (descriptor?.restoreEl) rememberImageCard(descriptor.restoreEl);
     setImageViewer(descriptor);
-  };
+  }, [rememberImageCard]);
 
-  const handleImageSelect = (image, index, items) => {
+  const handleImageSelect = useCallback((image, index, items) => {
     openImageViewer({
       items: items?.length ? items : [image],
       // A Carousel passes the index; a click does not. Landing on image 1 of
@@ -202,15 +208,21 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
       index: typeof index === 'number' ? index : 0,
       restoreEl: document.activeElement,
     });
-  };
+  }, [openImageViewer]);
 
-  const closeImageViewer = () => {
+  // `steppedIndex` is the picture on screen when the viewer closed itself. The
+  // viewer keeps its own index while it is open (stepping must not re-render
+  // App and the grid behind it), so the closing key reports where it landed
+  // instead of App holding that state. Omitted when App closes the viewer
+  // programmatically; then the opening index is the best answer there is.
+  const closeImageViewer = (steppedIndex = null) => {
     const viewer = imageViewer;
     setImageViewer(null);
-    // A listing viewer steps through its cards and App is told the index on
-    // every step: return to the card on screen, not the one it opened on. A
-    // gallery slideshow has no cards, so it keeps the gallery card.
-    const item = viewer && !viewer.gallery ? viewer.items?.[viewer.index] : null;
+    // A listing viewer steps through its cards: return to the card on screen,
+    // not the one it opened on. A gallery slideshow has no cards, so it keeps
+    // the gallery card.
+    const index = typeof steppedIndex === 'number' ? steppedIndex : viewer?.index;
+    const item = viewer && !viewer.gallery ? viewer.items?.[index] : null;
     if (item?.id != null) {
       // Deferred like every other overlay close: the viewer's DOM has to be
       // gone before focus lands, or the browser settles it back to <body>.
@@ -228,7 +240,6 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
     sceneOriginId,
     clearedContinueIds,
     imageViewer,
-    setImageViewer,
     sceneCardFocus,
     handleVideoSelect,
     handleSceneClose,

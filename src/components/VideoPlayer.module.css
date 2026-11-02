@@ -248,11 +248,17 @@
   overflow: visible;
 }
 
+/* Full width, scaled rather than resized: `width` would lay out and repaint the
+   bar on every timeupdate (4 Hz) and every glide frame (~30 fps).
+   `scaleX` is a composited transform. The 3 px radius is squashed horizontally
+   with the bar, invisible on a 6 px track. */
 .progressFill {
+  width: 100%;
   height: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.15s linear;
+  transform-origin: left center;
+  transform: scaleX(0);
 }
 
 /* One per marker. Taller than the track and drawn over the fill, so a marker
@@ -268,8 +274,19 @@
   pointer-events: none;
 }
 
+/* The dot's carrier: full width, moved by a percentage translate so it is the
+   track width the percentage resolves against, and composited rather than the
+   `left` the dot used to be positioned by. */
+.progressHead {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
 .progressDot {
   position: absolute;
+  right: 0;
   top: 50%;
   width: 16px;
   height: 16px;
@@ -278,9 +295,8 @@
   background: var(--accent);
   border: 2px solid #fff;
   border-radius: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(50%, -50%);
   box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-  transition: left 0.15s linear;
 }
 
 .timeRow {

@@ -29,6 +29,14 @@ export default defineConfig(({ mode }) => {
       input: {
         main: 'index.html',
       },
+      output: {
+        // index.html preloads the Inter file by path, which a content hash
+        // would make impossible to name ahead of the build. Everything else
+        // keeps Vite's default naming.
+        assetFileNames: ({ name }) => (/\.woff2?$/.test(name || '')
+          ? 'assets/fonts/[name][extname]'
+          : 'assets/[name]-[hash][extname]'),
+      },
     },
 
     // CSS is minified by Lightning CSS (the Vite 8 default; Vite 4 used

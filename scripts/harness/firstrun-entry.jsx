@@ -283,8 +283,10 @@ async function run() {
     phaseD.length > 0,
     `logged: ${JSON.stringify(phaseD)} — A4 is only meaningful because this is non-empty`);
 
+  // Home's five shelves are one document named Showroom, whose roots are
+  // findScenes/findStudios/...; a listing op name or that document both count.
   check('D2 the live library request is among them',
-    phaseD.some(op => /findScenes/i.test(op)),
+    phaseD.some(op => /findScenes|showroom/i.test(op)),
     `logged: ${JSON.stringify(phaseD)}`);
 
   check('D3 the gate stays open once answered',

@@ -53,6 +53,9 @@ FULL_JOBS=(
   # The usePagedList re-entrancy probe: one tick, two page triggers, and the
   # identity change while a page is in flight. Red control in the entry header.
   "pagedlist|pagedlist-entry.jsx||0|0"
+  # Commits per interaction: the idle tickometer and the "focus move is DOM
+  # only" claim. Needs the profiling react-dom (run_one turns it on by name).
+  "commits|commits-entry.jsx||0|0"
   "boot|boot-entry.jsx||0|0"
   "markerfix|markerfix-entry.jsx||0|0"
   # The focus-move paint contract of all four classic-grid cards. Structural,
@@ -125,8 +128,12 @@ JOBS=("${FULL_JOBS[@]}")
 
 run_one() {  # run_one <port> <name> <entry> [query] [update]
   local port=$1 name=$2 entry=$3 query=${4:-} update=${5:-0}
+  # The commits probe needs the profiling react-dom for <Profiler> to fire;
+  # every other bundle keeps the normal one.
+  local profiling=0
+  [ "$entry" = "commits-entry.jsx" ] && profiling=1
   ENTRY="scripts/harness/$entry" NAME="diff-$LABEL-$name" PORT="$port" QUERY="$query" \
-    HARNESS_UPDATE_CHECK="$update" \
+    HARNESS_UPDATE_CHECK="$update" HARNESS_PROFILING="$profiling" \
     "$HERE/run.sh" >"$OUT/$name.log" 2>&1
   if [ -f "/tmp/diff-$LABEL-$name/result.json" ]; then
     cp "/tmp/diff-$LABEL-$name/result.json" "$OUT/$name.json"

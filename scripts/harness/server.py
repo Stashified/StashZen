@@ -1319,6 +1319,93 @@ class Handler(SimpleHTTPRequestHandler):
                 {"tags": [alpha, zeta]},
             ]}}})
 
+        # The scene detail's "More from" rows, one aliased document with a
+        # root per entity (`fetchRelatedScenes`). The operation name does not
+        # contain "FindScenes", so it needs its own handler; the rows and the
+        # logged entries match what the paged handler serves for per_page 5,
+        # so a check cannot tell how the client asked.
+        if "FindRelatedScenes" in query:
+            payload = {}
+            i = 0
+            with LOCK:
+                while f"sf{i}" in variables:
+                    f = variables.get(f"f{i}") or {}
+                    sf = variables.get(f"sf{i}") or {}
+                    REQUESTS.append({
+                        "page": int(f.get("page") or 1),
+                        "per_page": int(f.get("per_page") or 40),
+                        "sort": f.get("sort"),
+                        "direction": f.get("direction"),
+                        "q": f.get("q") or "",
+                        "scene_filter": sf,
+                    })
+                    alias = "byStudio" if "studios" in sf else "byPerformer"
+                    rows = [listing_scene(n) for n in (7, 8, 9, 4242)]
+                    payload[alias] = {"scenes": rows[:int(f.get("per_page") or 40)]}
+                    i += 1
+            return self._json({"data": payload})
+
+        # Home's five shelves in one aliased document (showroomService). It is
+        # matched before the per-section handlers because those look for the
+        # capitalised operation names; this operation is `Showroom` and every
+        # root below is lowercase. Each root gets the same fixture its own
+        # handler serves, and each is logged as that handler's entry, so a
+        # check can still read one shelf's sort, direction and filter off
+        # /requests.
+        if "Showroom" in query and "recentScenes" in query:
+            def shelf(var, filter_key, filter_value=None):
+                f = variables.get(var) or {}
+                return {
+                    "page": int(f.get("page") or 1),
+                    "per_page": int(f.get("per_page") or 40),
+                    "sort": f.get("sort"),
+                    "direction": f.get("direction"),
+                    "q": f.get("q") or "",
+                    filter_key: filter_value,
+                }
+
+            per_page = int((variables.get("recentScenes") or {}).get("per_page") or 40)
+
+            # One document, one verdict: a failed root fails the whole read, so
+            # the page says so once. The once-per-shelf failure F6 used to
+            # exercise is unreachable now by design (see showroomService).
+            if MODE.get("findStudios") == "fail":
+                return self._json({"errors": [{"message": "VERIFY studios refused"}]})
+
+            def rows_of(listing, start, count):
+                return [listing(n) for n in range(start, min(start + per_page, count))]
+
+            entries = [
+                shelf("recentScenes", "scene_filter"),
+                shelf("continueScenes", "scene_filter", variables.get("continueFilter")),
+                shelf("studios", "studio_filter"),
+                shelf("performers", "performer_filter"),
+                shelf("galleries", "gallery_filter"),
+            ]
+            with LOCK:
+                REQUESTS.extend(entries)
+
+            # The in-progress set, the same 41–45 the standalone handler serves,
+            # so the Continue shelf cannot be mistaken for the newest scenes.
+            continue_rows = [dict(listing_scene(n), resume_time=60) for n in range(41, 46)]
+            payload = {
+                "recentScenes": {"scenes": rows_of(listing_scene, 1, SCENE_COUNT)},
+                "continueScenes": {"scenes": continue_rows},
+                "studios": {"studios": rows_of(listing_studio, 1, STUDIO_COUNT)},
+                "performers": {"performers": rows_of(listing_performer, 1, PERFORMER_COUNT)},
+                "galleries": {"galleries": rows_of(listing_gallery, 1, GALLERY_COUNT)},
+            }
+            # `partial` is the shape a real answer has when one aliased root
+            # throws: errors beside the data for the roots that resolved. Home
+            # must keep the four healthy shelves and report only this one.
+            if MODE.get("findStudios") == "partial":
+                payload["studios"] = None
+                return self._json({
+                    "data": payload,
+                    "errors": [{"message": "VERIFY studios refused"}],
+                })
+            return self._json({"data": payload})
+
         # `FindScenes` plural. The detail query above is a different operation
         # ("FindScene"), and a lazy match would answer a future single-scene one.
         if "FindScenes" in query:
@@ -1588,6 +1675,10 @@ class Handler(SimpleHTTPRequestHandler):
                 continue
             if section == "Tags" and var not in query:
                 continue
+            # `slow` holds the answer while the tab paints, so a check can read
+            # the stale page-1 seed before the fresh one replaces it.
+            if MODE.get(f"find{section}") == "slow":
+                time.sleep(1.2)
             # One shelf's failure for the showroom error row: otherwise the whole
             # listing can only fail together, and a hidden shelf looks intended.
             if section == "Studios" and MODE.get("findStudios") == "fail":

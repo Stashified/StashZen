@@ -21,6 +21,9 @@ export function useAppBack({
   actionMenu,
   imageViewer,
   entityInfo,
+  builderOpen,
+  settingsOpen,
+  playing,
   filterOrigins,
   changeTab,
   setFilterOrigins,
@@ -42,6 +45,11 @@ export function useAppBack({
       if (imageViewer) return;
       // Tag/studio sheet: same, its capture handler closes it.
       if (entityInfo) return;
+      // Builder, Settings and the player close themselves on the capture
+      // phase too. The backstop matters while their chunk is loading, when
+      // only the gate's fallback is up: without it Back raised the exit prompt
+      // over a screen the user had just asked for.
+      if (builderOpen || settingsOpen || playing) return;
       // Back out of a listing a tag, studio or gallery opened unwinds one
       // level: the section it came from, the filter that section had before
       // the activation, and focus back on the pressed card. Checked against

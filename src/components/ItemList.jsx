@@ -150,7 +150,7 @@ export default function ItemList({ controls, view, objectFilter, searchQuery, on
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (loading) return (
+  if (loading && !items.length) return (
     <ListingState
       id={`state-${noun}`}
       styles={styles}

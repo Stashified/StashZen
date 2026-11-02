@@ -213,9 +213,17 @@ const tickCount = () => {
 /** The progress track itself, the "seek bar" ↑ is supposed to reveal. */
 const progressTrack = () => player()?.querySelector('[class*="_progressTrack_"]') || null;
 
-/** The playhead dot, positioned as a percentage of the timeline. */
+/**
+ * The playhead dot, positioned as a percentage of the timeline. The dot sits at
+ * the right edge of a full-width carrier that is moved by a percentage
+ * translate, so the percentage has to be read off the parent and unwound.
+ */
 const progressDot = () => player()?.querySelector('[class*="_progressDot_"]') || null;
-const dotPct = () => parseFloat(progressDot()?.style.left || 'NaN');
+const dotPct = () => {
+  const transform = progressDot()?.parentElement?.style.transform || '';
+  const m = /translateX\((-?[\d.]+)%\)/.exec(transform);
+  return m ? Number(m[1]) + 100 : NaN;
+};
 
 /**
  * The controls container, found by walking up from the rail. `_controls_` does

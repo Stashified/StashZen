@@ -663,8 +663,10 @@ async function run() {
 
   // ── R10  the sliding indicator ──────────────────────────
   // `offsetTop + 7` and `offsetHeight - 14` are measured from the row, not
-  // derived from its index, so unequal row heights work. The 0.28 s transition
-  // is waited out.
+  // derived from its index, so unequal row heights work. Asserted from the
+  // rendered rect, not from `top`: the bar moves by transform, and a check on
+  // the CSS property would pass on a bar that never moved. The 0.28 s
+  // transition is waited out.
   await sleep(450);
   const marker = railEl()?.firstElementChild;
   // The *active* row: R9 left Performers active, and the indicator tracks the
@@ -676,12 +678,14 @@ async function run() {
     return;
   }
   const cs = getComputedStyle(marker);
-  const top = parseFloat(cs.top);
-  const height = parseFloat(cs.height);
+  const markerRect = marker.getBoundingClientRect();
+  const rowRect = activeRow.getBoundingClientRect();
+  const topGap = markerRect.top - rowRect.top;
+  const height = markerRect.height;
   check('R10 the indicator sits on the active row\'s row box',
-    Math.abs(top - (activeRow.offsetTop + 7)) <= 1
+    Math.abs(topGap - 7) <= 1
       && Math.abs(height - (activeRow.offsetHeight - 14)) <= 1,
-    `top ${top} (row ${activeRow.offsetTop} + 7), height ${height} `
+    `gap ${topGap} (want 7), height ${height} `
     + `(row ${activeRow.offsetHeight} - 14), active ${activeRow.textContent.trim()}`);
   check('R10 it is visible once an active row exists',
     parseFloat(cs?.opacity ?? '0') === 1, `opacity ${cs?.opacity}`);

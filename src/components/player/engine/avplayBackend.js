@@ -48,6 +48,12 @@ import { emptyTimeRanges } from './contracts.js';
 const PREPARE_TIMEOUT_MS = 6000;
 const POLL_MS = 250;
 const POLL_PAUSED_MS = 500;
+// A paused scene emits nothing on its own, so once nothing has happened for a
+// few seconds the poll only watches for a system pause/resume: waking the CPU
+// four times a second for that is heat, not responsiveness. Any play, pause or
+// seek resets the window, so the seek after a press keeps the fast rate.
+const POLL_PAUSED_SETTLED_MS = 2000;
+const PAUSED_SETTLE_MS = 4000;
 const DURATION_POLL_MS = 2000;
 const NEAR_END_SECONDS = 1.5;
 const NEAR_END_GRACE_MS = 2000;
@@ -111,6 +117,9 @@ export function createAvplayBackend({
   seekGiveUpMs = SEEK_GIVE_UP_MS,
   postSeekErrorMs = POST_SEEK_ERROR_MS,
   recoveryResetMs = SEEK_RECOVERY_RESET_MS,
+  // The paused poll's backoff threshold, an option so a test can reach the
+  // settled poll without a four-second wait.
+  pausedSettleMs = PAUSED_SETTLE_MS,
   now = () => Date.now(),
 } = {}) {
   // ── Session state ────────────────────────────────────────
@@ -145,6 +154,8 @@ export function createAvplayBackend({
   // PAUSED is the engine rebuffering, not a pause the user asked for.
   let seekAwaitingPlay = false;
   let lastPlayReassert = 0;
+  // Last user action, for the paused poll's backoff. See PAUSED_SETTLE_MS.
+  let lastActionAt = 0;
   // A skim burst's last target, waiting for the quiet before it is issued. The
   // getters report it meanwhile, so the ladder and the timeline keep moving.
   let deferredSeek = null;
@@ -402,7 +413,11 @@ export function createAvplayBackend({
     // a closed player, whose first read would overwrite the fallback's position
     // with 0.
     if (gen !== myGen || closed || suspended || error || completed) return;
-    const delay = wantPlaying ? POLL_MS : POLL_PAUSED_MS;
+    const settled = !wantPlaying && !coalescer.isSeeking()
+      && now() - lastActionAt >= pausedSettleMs;
+    const delay = wantPlaying || coalescer.isSeeking()
+      ? POLL_MS
+      : settled ? POLL_PAUSED_SETTLED_MS : POLL_PAUSED_MS;
     pollTimer = setTimeout(() => tick(myGen), delay);
   }
 
@@ -821,6 +836,7 @@ export function createAvplayBackend({
     seekDegraded = false;
     seekAwaitingPlay = false;
     lastPlayReassert = 0;
+    lastActionAt = now();
     cachedPosition = startAt;
 
     desiredMuted = requestedMuted == null ? null : !!requestedMuted;
@@ -905,6 +921,7 @@ export function createAvplayBackend({
       resumeSession();
       return Promise.resolve();
     }
+    lastActionAt = now();
     wantPlaying = true;
     if (prepared) {
       if (completed) {
@@ -921,8 +938,11 @@ export function createAvplayBackend({
         lastPlayReassert = 0;
         lastTime = 0;
         coalescer.request(0);
-        schedulePoll(gen);
       }
+      // Not only the replay branch: a settled poll is up to 2 s away, and a
+      // long pause would leave the clock and the `playing` event that stale
+      // after any resume.
+      schedulePoll(gen);
       if (!playingLatch) startNativePlay();
     }
     // Before prepare, the request is remembered and applied in onPrepared.
@@ -937,6 +957,7 @@ export function createAvplayBackend({
 
   function pause() {
     if (closed || error) return;
+    lastActionAt = now();
     wantPlaying = false;
     seekAwaitingPlay = false;
     nearEndSince = 0;
@@ -957,6 +978,7 @@ export function createAvplayBackend({
   function requestSeek(seconds) {
     const t = Math.max(0, Number(seconds) || 0);
     if (closed || error) return;
+    lastActionAt = now();
     if (!prepared) {
       startAt = t;
       lastTime = t;
@@ -968,8 +990,10 @@ export function createAvplayBackend({
       // never settles.
       completed = false;
       playingLatch = false;
-      schedulePoll(gen);
     }
+    // A settled poll (2 s) must not hold up the burst: one tick starts the
+    // coalescer and reports the new frame.
+    schedulePoll(gen);
     nearEndSince = 0;
     // A new burst is a new verdict: the last "degraded" was about a target the
     // user has moved away from.

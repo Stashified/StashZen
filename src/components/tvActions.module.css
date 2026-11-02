@@ -15,7 +15,7 @@
   letter-spacing: 0.06em;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s var(--ease-tv);
+  transition: background-color 0.15s var(--ease-tv), border-color 0.15s var(--ease-tv), color 0.15s var(--ease-tv), box-shadow 0.15s var(--ease-tv);
 }
 
 .actionBtn:hover {

@@ -1,12 +1,15 @@
 .card {
   /* A grid of 40 full-HD covers with ~10 on screen pays layout, style and paint
-     for the other 30; `content-visibility: auto` skips them. The `auto` in
-     contain-intrinsic-size matters: after a card renders once its real size is
-     remembered, so the fallback only applies before first paint. That size must
-     be plausible because findBestCandidate (useKeyHandler.js) scores candidates
-     from getBoundingClientRect(), and a skipped subtree reports the placeholder. */
+     for the other 30; `content-visibility: auto` skips them. That size must be
+     plausible: findBestCandidate (useKeyHandler.js) scores candidates from
+     getBoundingClientRect(), and a skipped subtree reports the placeholder.
+     Two declarations: the Tizen 6.5 floor (Chromium 94) cannot parse
+     `auto <length>` (Chrome 111+) and drops it, so it uses the bare length;
+     newer engines remember each card's real size after its first paint.
+     Width is a 4-column grid at 1920, height is the 16:9 art plus the info bar. */
   content-visibility: auto;
-  contain-intrinsic-size: auto 192px;
+  contain-intrinsic-size: 389px 298px;
+  contain-intrinsic-size: auto 298px;
   /* Paint containment for focus invalidation, independent of the above: `auto`
      only contains skipped cards, and the on-screen ones are exactly the ones
      whose invalidation must stay local. See MarkerCard.module.css. */
@@ -29,10 +32,8 @@
     transform    0.14s var(--ease-tv),
     border-color 0.10s ease-out;
   transform-origin: center center;
-  /* Matches the transition above. A slower fade read as "slow to load" after
-     the spinner had already cleared. Do not stagger it: spreading the fade
-     over a grid this size is the opposite of a snappier load. */
-  animation: cardIn 0.14s var(--ease-tv) both;
+  /* No entrance animation: it started 40 opacity animations at once exactly
+     when the full-HD decodes land, and App already fades the page in. */
 }
 
 .card:hover {
@@ -82,13 +83,11 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s var(--ease-tv);
   animation: imgFade 0.14s ease-out;
 }
-
-.card.focused .img {
-  transform: scale(1.05);
-}
+/* No focus scale on the cover itself: the card already scales, and stacking
+   another 1.05 made it 1.1025 and re-sampled the full-HD texture for a zoom
+   the card's own transform already gives. */
 
 /* A layer above the cover, below `.overlay` (z-index 2). Fully transparent
    until the element reports a decoded frame, so the cover shows for every
@@ -107,11 +106,9 @@
   pointer-events: none;
 }
 
-/* Matches `.card.focused .img`: the preview fades in *over* an already scaled
-   cover, so without the transform the frame would visibly shrink as it appears. */
+/* Unscaled like the cover it fades in over, see `.img` above. */
 .previewVisible {
   opacity: 1;
-  transform: scale(1.05);
 }
 
 .imgFallback {
@@ -230,11 +227,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 60%;
-}
-
-@keyframes cardIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 @keyframes imgFade {

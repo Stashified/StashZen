@@ -1,20 +1,21 @@
 import { isBackCode } from '../../utils/input.js';
 
 /**
- * True when a dialog other than the player's own overlay is in the document.
+ * True when a dialog other than the player's own overlay is open.
  *
  * The overlay carries `role="dialog"` itself, so ours must be excluded. The
  * marker modal and the scene detail page are separate elements rendered inside
- * it. Presence is tested rather than focus, so the yield also covers the ~50 ms
+ * it, which is why the search is scoped to the overlay's own subtree rather
+ * than the document: one query over the player's DOM instead of every card in
+ * the grid behind it, on every keydown. `querySelector` only matches
+ * descendants, so the root is excluded for free.
+ *
+ * Presence is tested rather than focus, so the yield also covers the ~50 ms
  * before a new dialog's autoFocus lands, a focus test would let the player eat
  * its first press.
  */
 export function foreignDialogOpen(ownOverlay) {
-  const dialogs = document.querySelectorAll('[role="dialog"]');
-  for (let i = 0; i < dialogs.length; i += 1) {
-    if (dialogs[i] !== ownOverlay) return true;
-  }
-  return false;
+  return !!ownOverlay?.querySelector('[role="dialog"]');
 }
 
 /**

@@ -33,7 +33,7 @@
  * "increment" appends a row and `sceneSaveActivity` does not touch it at all.
  * resume_time and play_duration are both `sceneSaveActivity`; the latter is a
  * delta of seconds watched because the server adds it to a running total. A
- * failed save is shown, not swallowed (see `syncState`): on a TV a silently
+ * failed save is shown, not swallowed (see `syncChip.js`): on a TV a silently
  * rejected write is indistinguishable from success. Rules live in
  * progressReporter.js.
  *
@@ -91,7 +91,7 @@ const UP_NEXT_SECONDS = 30;
  * `timeupdate` from re-rendering the rail and the overlays with it.
  */
 function PlayerTimeline({
-  clock, duration, markers, getCue, skimPreviewVisible, seekStep, syncState, syncError,
+  clock, duration, markers, getCue, skimPreviewVisible, seekStep, syncChip,
 }) {
   const currentTime = useSyncExternalStore(clock.subscribeTime, clock.getTime);
   return (
@@ -101,15 +101,16 @@ function PlayerTimeline({
         markers={markers}
         duration={duration}
         currentTime={currentTime}
-        cue={getCue(currentTime)}
+        // Only while the bubble is up: the cue is looked up on every timeupdate
+        // otherwise, a lookup whose result is thrown away.
+        cue={skimPreviewVisible ? getCue(currentTime) : null}
         skimPreviewVisible={skimPreviewVisible}
       />
       <PlayerTimeRow
         currentTime={currentTime}
         duration={duration}
         seekStep={seekStep}
-        syncState={syncState}
-        syncError={syncError}
+        syncChip={syncChip}
       />
     </>
   );
@@ -189,7 +190,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // Write-back lifecycle, sync chip, unmount latch, pagehide, periodic save.
   // Accounting lives in progressReporter.js; the media handlers below feed it
   // and `useSceneState` names the scene.
-  const { progress, syncState } = usePlaybackProgress({ video, mediaRef, onActivityChange });
+  const { progress, syncChip } = usePlaybackProgress({ video, mediaRef, onActivityChange });
 
   // Shared render state: the media wiring writes the timeline and error, the
   // transport and overlays read them, so the shell owns them. The clock is a
@@ -618,8 +619,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             getCue={getCue}
             skimPreviewVisible={skimPreviewVisible}
             seekStep={seekStep}
-            syncState={syncState}
-            syncError={progress.syncError()?.message}
+            syncChip={syncChip}
           />
           <PlayerControlsRail
             ref={railRef}

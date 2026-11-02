@@ -107,6 +107,9 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
   let pages = 0;
   let settled = false;
   let timer = null;
+  // The element this restore focused while waiting for a listing's fresh
+  // page 1; see `revalidating` below.
+  let focusedEl = null;
 
   // Let a virtualising strip render the target before the poll looks for it.
   const token = ++restoreSeq;
@@ -151,9 +154,21 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
 
   function attempt() {
     if (settled) return;
+    const driver = prefix ? listings.get(prefix) : null;
     for (const fid of ids) {
       const el = registry.get(fid)?.el;
       if (el && document.contains(el)) {
+        // A row painted from a listing's stale page-1 seed is provisional: the
+        // fresh page 1 replaces those rows and can drop it. Focus it now (an
+        // instant restore is the seed's point) but keep watching, so a row that
+        // vanishes hands the restore back to the paging path instead of leaving
+        // the cursor where the card used to be.
+        if (driver?.revalidating?.() && Date.now() <= deadline) {
+          focusedEl = el;
+          el.focus();
+          schedule(RETRY_MS);
+          return;
+        }
         settle();
         el.focus();
         return;
@@ -161,11 +176,12 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
     }
     if (Date.now() > deadline) {
       settle();
-      fallback?.();
+      // The provisional card is a better resting place than the first control,
+      // as long as it is still on screen.
+      if (!(focusedEl && document.contains(focusedEl))) fallback?.();
       return;
     }
 
-    const driver = prefix ? listings.get(prefix) : null;
     if (!driver || driver.pending || pages >= MAX_EXTRA_PAGES || !driver.canLoad?.()) {
       schedule(RETRY_MS);
       return;

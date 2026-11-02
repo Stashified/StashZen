@@ -6,11 +6,9 @@
 
 import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
-import { runQuery } from './stashQuery.js';
+import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
-import { BIOS, COUNTRIES, mockPersonName } from './mockLibrary.js';
-import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
 import { ratingLabel } from './format.js';
@@ -24,7 +22,11 @@ const MOCK_SORT_ALIAS = { height: 'height_cm' };
 // ── Mock generator ────────────────────────────────────────
 // Seeded per id, like the other two generators, and named through
 // `mockPersonName` so sixty performers get sixty different names.
-function generateMockPerformers(count = 60) {
+//
+// Loaded on demand: see generateMockVideos.
+async function generateMockPerformers(count = 60) {
+  const { BIOS, COUNTRIES, mockPersonName } = await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   const now = Date.now();
   return Array.from({ length: count }, (_, i) => {
     const rng = makeRng(`performer-${i}`);
@@ -77,12 +79,14 @@ const FIND_PERFORMERS_QUERY = `
         rating100
         country
         birthdate
-        details
         height_cm
       }
     }
   }
 `;
+
+// Pages after the first do not read the total, see withoutCount.
+const FIND_PERFORMERS_PAGE_QUERY = withoutCount(FIND_PERFORMERS_QUERY);
 
 // One performer, in full, for the detail page. Deliberately *not* folded into
 // the listing query: that runs 40 rows at a time, and nothing on a card draws
@@ -101,6 +105,8 @@ const FIND_PERFORMER_DETAIL_QUERY = `
   query FindPerformerDetail($id: ID!) {
     findPerformer(id: $id) {
       id
+      # The bio is a paragraph: fetched once for the page, never for 40 cards.
+      details
       gender
       alias_list
       career_start
@@ -133,6 +139,7 @@ export function normalizePerformerDetail(p) {
   if (!p) return null;
   return {
     id: p.id,
+    details: p.details || null,
     gender: p.gender || null,
     aliases: (p.alias_list || []).filter(Boolean),
     careerStart: p.career_start || null,
@@ -166,6 +173,8 @@ function mockPerformerDetail(performer) {
   if (!performer) return null;
   return {
     id: performer.id,
+    // Test mode's cards still carry it, see generateMockPerformers.
+    details: performer.details || null,
     gender: performer.gender || null,
     aliases: [],
     careerStart: null,
@@ -191,6 +200,12 @@ function mockPerformerDetail(performer) {
   };
 }
 
+// The detail page unmounts whenever a spoke (the image or gallery hub) opens,
+// so Back remounts it and asked the server for the same profile again. Cached
+// per source and id, and dropped on a write or on the tab-switch sweep that
+// every list cache gets (createListCache registers here).
+const performerDetailCache = createListCache();
+
 /**
  * The profile fields for one performer, given the card it was opened from:
  * Test mode needs the card because mock performers have no server row.
@@ -200,10 +215,11 @@ function mockPerformerDetail(performer) {
 export async function loadPerformerDetail(performer) {
   if (!performer?.id) return null;
   if (getSettings().useMock) return mockPerformerDetail(performer);
-  const data = await runQuery(FIND_PERFORMER_DETAIL_QUERY, {
-    id: String(performer.id),
-  });
-  return normalizePerformerDetail(data?.findPerformer);
+  return performerDetailCache.get(
+    listCacheKey('performer-detail', String(performer.id)),
+    () => runQuery(FIND_PERFORMER_DETAIL_QUERY, { id: String(performer.id) })
+      .then(data => normalizePerformerDetail(data?.findPerformer)),
+  );
 }
 
 // The fallback for a library with no performer tags (the common case): the
@@ -220,29 +236,37 @@ const PERFORMER_SCENE_TAGS_QUERY = `
   }
 `;
 
+// Same lifetime as the profile cache above: the page remounts on the way back
+// from a spoke, and the fallback row would otherwise be a second request.
+const performerSceneTagsCache = createListCache();
+
 /** Distinct tags across a sample of the performer's scenes, most frequent first. */
 export async function loadPerformerSceneTags(performerId, { limit = 12, sample = 100 } = {}) {
   if (!performerId) return [];
   if (getSettings().useMock) return [];
-  const data = await runQuery(PERFORMER_SCENE_TAGS_QUERY, {
-    filter: { per_page: sample },
-    scene_filter: {
-      performers: { value: [String(performerId)], modifier: 'INCLUDES' },
-    },
-  });
-  const counts = new Map();
-  for (const scene of data?.findScenes?.scenes || []) {
-    for (const tag of scene?.tags || []) {
-      if (!tag?.id) continue;
-      const key = String(tag.id);
-      const row = counts.get(key) || { id: tag.id, name: tag.name, count: 0 };
-      row.count += 1;
-      counts.set(key, row);
-    }
-  }
-  return [...counts.values()]
-    .sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)))
-    .slice(0, limit);
+  return performerSceneTagsCache.get(
+    listCacheKey('performer-scene-tags', String(performerId), limit, sample),
+    () => runQuery(PERFORMER_SCENE_TAGS_QUERY, {
+      filter: { per_page: sample },
+      scene_filter: {
+        performers: { value: [String(performerId)], modifier: 'INCLUDES' },
+      },
+    }).then(data => {
+      const counts = new Map();
+      for (const scene of data?.findScenes?.scenes || []) {
+        for (const tag of scene?.tags || []) {
+          if (!tag?.id) continue;
+          const key = String(tag.id);
+          const row = counts.get(key) || { id: tag.id, name: tag.name, count: 0 };
+          row.count += 1;
+          counts.set(key, row);
+        }
+      }
+      return [...counts.values()]
+        .sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)))
+        .slice(0, limit);
+    }),
+  );
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -280,6 +304,8 @@ export async function updatePerformer(id, patch) {
   const data = await runQuery(PERFORMER_UPDATE_MUTATION, { input });
   if (!data?.performerUpdate) throw new Error('the server returned no performer');
   clearPerformerPages();
+  // The page's next mount must not paint the rating this write replaced.
+  performerDetailCache.clear();
   return data.performerUpdate;
 }
 
@@ -305,7 +331,6 @@ export function normalizePerformer(p) {
     country: p.country,
     gender: p.gender,
     birthdate: p.birthdate,
-    details: p.details || null,
     height_cm: p.height_cm || null,
   };
 }
@@ -345,7 +370,7 @@ async function loadPerformers({
 } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
-    let performers = generateMockPerformers(60);
+    let performers = await generateMockPerformers(60);
 
     const needle = (q || '').trim().toLowerCase();
     if (needle) {
@@ -374,7 +399,11 @@ async function loadPerformers({
     performer_filter: translateFilter(filter, 'PerformerFilterType'),
   };
 
-  const data = await runQuery(FIND_PERFORMERS_QUERY, variables, { signal });
+  const data = await runQuery(
+    page > 1 ? FIND_PERFORMERS_PAGE_QUERY : FIND_PERFORMERS_QUERY,
+    variables,
+    { signal },
+  );
   const performers = data?.findPerformers?.performers || [];
 
   return {

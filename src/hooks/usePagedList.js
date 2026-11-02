@@ -44,11 +44,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { registerFocusListing } from '../utils/focus.js';
 import { onRowPatch, onRowRemove } from '../utils/rowPatches.js';
+import { dataSourceKey } from '../utils/settings.js';
 
 // One initial request plus two retries: enough to ride out a TV's flaky Wi-Fi
 // without turning a persistent failure into a request loop.
 const MAX_PAGE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
+
+// The last page 1 each listing showed, kept *outside* listCache on purpose:
+// moving between tabs clears that cache so a server-side change is read again,
+// but the cleared rows are exactly what should stay on screen while the new
+// answer is in flight. The fresh page 1 always replaces them; this is only
+// what the eye sees until it lands. Bounded like the list cache.
+const STALE_MAX = 24;
+const stalePage1 = new Map();
+
+function stalePageKey(focusPrefix, entity, requestKey) {
+  // NUL-separated like listCacheKey: no value can forge a part boundary.
+  //
+  // `focusPrefix` is the listing's identity, and it is load-bearing: the four
+  // browse tabs pass no `entity`, and Performers/Tags/Studios share one
+  // requestKey (name/asc) exactly as Galleries/Images share another. Without
+  // it a tab switch seeded the new tab with the previous tab's rows, and Enter
+  // opened one of them.
+  return [dataSourceKey(), focusPrefix || '', entity || '', requestKey].join('\u0000');
+}
+
+function rememberPage1(key, items, total) {
+  stalePage1.delete(key);
+  stalePage1.set(key, { items, total });
+  while (stalePage1.size > STALE_MAX) {
+    stalePage1.delete(stalePage1.keys().next().value);
+  }
+}
 
 export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity = null }) {
   const [items, setItems] = useState([]);
@@ -71,6 +99,11 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
   // duplicate appends but could not tell "genuinely empty page" from "repeated
   // what we hold", the distinction the no-progress stop needs.
   const seenIdsRef = useRef(new Set());
+
+  // The rows on screen came from the stale page-1 seed and the fresh page 1 is
+  // still in flight. A focus restore that finds its card inside those rows must
+  // not call that a landing; see `revalidating` in the driver registration.
+  const seededRef = useRef(false);
 
   // A page-N failure is retried from here, never from a consumer's trigger:
   // without `retryPendingRef`, `setLoadingMore(false)` re-armed the observer
@@ -178,12 +211,22 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     abortRef.current = typeof AbortController === 'function' ? new AbortController() : null;
     const { signal } = abortRef.current || {};
 
+    // The previous visit's page 1 stays on screen while this one is fetched
+    // (the request still runs: leaving a tab re-reads it). Seeding the refs
+    // too keeps `loadMore`'s arithmetic honest until the answer replaces them.
+    const key = stalePageKey(focusPrefix, entity, requestKey);
+    const seed = stalePage1.get(key);
+    seededRef.current = !!seed;
+    seenIdsRef.current = new Set((seed?.items || []).map(it => it.id));
+    itemsLenRef.current = seed?.items.length || 0;
+    totalRef.current = seed?.total || 0;
+
     setLoading(true);
     setRetrying(false);
     setError(null);
-    setItems([]);
+    setItems(seed?.items || []);
     setPage(1);
-    setTotal(0);
+    setTotal(seed?.total || 0);
     setEnded(false);
     // Both belong to the replaced identity: without the first, an in-flight
     // page skipped `setLoadingMore(false)` and left infinite scroll dead; the
@@ -203,6 +246,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
           itemsLenRef.current = data.items.length;
           totalRef.current = data.total;
           loadingRef.current = false;
+          rememberPage1(key, data.items, data.total);
           setItems(data.items);
           setTotal(data.total);
           setLoading(false);
@@ -245,7 +289,9 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [requestKey]);
+    // `entity` and `focusPrefix` are part of the stale-page key; both are
+    // fixed per component, so including them costs no extra resets.
+  }, [requestKey, entity, focusPrefix]);
 
   // ── Load the next page ────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -363,6 +409,11 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     driverStateRef.current = {
       canLoad: !loading && !loadingMore && !exhausted && !error,
       loadMore,
+      // A restore landing on a seeded row must wait for the fresh page 1: the
+      // seed is what is on screen, not what the server answered. A failed page
+      // 1 clears `loadingRef` when its budget is spent, so the restore settles
+      // on the seed rather than polling to the deadline.
+      revalidating: () => seededRef.current && loadingRef.current,
     };
   });
   useEffect(() => {

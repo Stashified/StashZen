@@ -161,6 +161,13 @@ export async function graphqlRequest(query, variables, { url, key, timeoutMs, si
     }
   });
 
-  if (json.errors) throw new StashError(json.errors[0]?.message || 'GraphQL error', 'graphql');
+  if (json.errors) {
+    const err = new StashError(json.errors[0]?.message || 'GraphQL error', 'graphql');
+    // GraphQL can answer with both `errors` and `data`: one aliased root
+    // failed and the rest resolved. Carrying the partial data lets a batched
+    // caller keep the healthy roots instead of losing the whole document.
+    err.data = json.data || null;
+    throw err;
+  }
   return json.data;
 }

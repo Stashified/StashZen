@@ -41,6 +41,13 @@ const GITHUB_API_MARKER = 'api.github.com';
 // `.env.example`'s sample, so it is in every bundle and a warning for it would
 // fire on every clean build. Match the address *and port* so the exemption
 // cannot hide an unconnected address by accident.
+// Sizes are a tripwire against an accidental dependency, not a target: a few
+// hundred kB on a TV's flash and a cold start matters, and nothing else in CI
+// notices when a bundle grows. Both budgets have ~15% headroom over 0.41.0;
+// raising them is a decision, which is why the message says so.
+const MAX_JS_BYTES = 620 * 1024;
+const MAX_CSS_BYTES = 120 * 1024;
+
 const LAN_PLACEHOLDER = '192.168.1.10:9999';
 const LAN_RE = /\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/;
 
@@ -181,6 +188,26 @@ export function checkBundle({
     lines.push(`! A private-network address is inlined into dist/: ${scan.lanFiles.join(', ')}`);
   }
 
+  // Every chunk, lazy ones included: they all land in the .wgt and all have to
+  // be parsed at some point.
+  const size = { js: 0, css: 0 };
+  for (const rel of walk(distDir)) {
+    if (rel.endsWith('.js')) size.js += statSync(join(distDir, rel)).size;
+    else if (rel.endsWith('.css')) size.css += statSync(join(distDir, rel)).size;
+  }
+  const kib = (n) => `${(n / 1024).toFixed(1)} KiB`;
+  const overJs = size.js > MAX_JS_BYTES;
+  const overCss = size.css > MAX_CSS_BYTES;
+  if (overJs || overCss) {
+    lines.push('x The bundle is over its size ceiling.');
+    if (overJs) lines.push(`  JS ${kib(size.js)} / ${kib(MAX_JS_BYTES)}`);
+    if (overCss) lines.push(`  CSS ${kib(size.css)} / ${kib(MAX_CSS_BYTES)}`);
+    lines.push('  If the growth is intended, raise MAX_JS_BYTES / MAX_CSS_BYTES in scripts/check-bundle.mjs.');
+  } else {
+    lines.push(`ok bundle size: JS ${kib(size.js)} / ${kib(MAX_JS_BYTES)}, `
+      + `CSS ${kib(size.css)} / ${kib(MAX_CSS_BYTES)}.`);
+  }
+
   // Fail closed both ways. An unarmed build must not carry the endpoint, and
   // an armed one must carry the exact URL: an empty or mistyped URL left the
   // public release with a hidden or 404ing check and a green guard.
@@ -202,7 +229,10 @@ export function checkBundle({
     lines.push(`ok update check: the public GitHub API URL is in dist/ (${scan.githubApiFiles.join(', ')}).`);
   }
 
-  return { ok: (!baked || effectiveAllowBaked) && !updateBlocked, lines };
+  return {
+    ok: (!baked || effectiveAllowBaked) && !updateBlocked && !overJs && !overCss,
+    lines,
+  };
 }
 
 function main() {

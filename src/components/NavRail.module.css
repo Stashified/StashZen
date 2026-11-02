@@ -19,14 +19,20 @@
    it. Inset vertically so it marks the row rather than reading as a rule. */
 .slidingIndicator {
   position: absolute;
+  top: 0;
   left: 0;
   width: 3px;
+  height: var(--ind-h, 0px);
   background: var(--accent);
   border-radius: 0 2px 2px 0;
+  /* Composited movement. `top`/`height` would re-lay-out the rail on every tab
+     switch; scaleY is not used for the height because it would stretch the
+     rounded ends. Rows are uniform, so the height is set rather than
+     animated. */
+  transform: translateY(var(--ind-y, 0px));
   transition:
-    top    0.28s var(--ease-tv),
-    height 0.28s var(--ease-tv),
-    opacity 0.2s ease-out;
+    transform 0.28s var(--ease-tv),
+    opacity   0.2s ease-out;
   pointer-events: none;
 }
 

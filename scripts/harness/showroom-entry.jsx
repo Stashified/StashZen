@@ -928,6 +928,27 @@ async function run() {
   // has ended. An earlier H24 here read Home's bottom shelf, but Down always
   // found a same-row neighbour first, so it passed with the guard deleted.
 
+  // ── H25  one failed root keeps the other shelves ────────
+  // A real GraphQL answer can carry errors beside the roots that resolved.
+  // One bad shelf must not turn the batched document into an empty Home.
+  await setMode({ findStudios: 'partial' });
+  // Leave and come back so Home remounts and sends its one document again.
+  focus('nav-scenes');
+  await sleep(120);
+  await tapEnter();
+  await sleep(400);
+  focus('nav-home');
+  await sleep(120);
+  await tapEnter();
+  const partialRow = await waitFor(
+    () => document.body.textContent.includes("Couldn't load Recently Added Studios"), 6000);
+  const partialShelves = ['showroom-recent-scenes-video-1', 'performer-1', 'gallery-1']
+    .every(id => registry.has(id));
+  check('H25 a failed root reports its shelf and keeps the others',
+    partialRow && partialShelves,
+    `error row=${partialRow} healthy shelves=${partialShelves}`);
+  await setMode({ findStudios: 'ok' });
+
   // ── H12  nothing threw ──────────────────────────────────
   check('H12 no uncaught error during the run', errors.length === 0, errorTail());
 }
