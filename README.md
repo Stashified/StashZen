@@ -24,7 +24,7 @@ Driven entirely with the remote, it is a web app packaged as a Tizen widget (`.w
 | | |
 |---|---|
 | **TV** | Samsung, **Tizen 6.5 or newer** (most sets from 2022 on). |
-| **Server** | A **Stash** server reachable on the same network. Tested against Stash **0.31.1**. |
+| **Server** | A **Stash** server reachable on the same network. Tested against Stash **0.32.0**; 0.31.1 remains compatible. |
 | **Package** | The latest `.wgt` from [Releases](https://github.com/Stashified/StashZen/releases). |
 
 *Tested on Tizen 9 (S95H). The package declares 6.5, the first Tizen on Chromium 94, which this
