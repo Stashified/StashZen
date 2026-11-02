@@ -40,12 +40,14 @@ export function usePlayback({
   // row, not its id, a marker queue names its card with `markerId`.
   const lastItemRef = useRef(null);
 
-  const openPlayer = (session) => {
+  // Stable: `handleMarkerSelect` below leans on it, and that reaches the
+  // memoised marker cards. The setters are the only things it reads.
+  const openPlayer = useCallback((session) => {
     lastItemRef.current = session?.items?.[session?.startIndex ?? 0] ?? null;
     setSelectedScene(null);
     setActionMenu(null);
     setPlaySession(session);
-  };
+  }, [setSelectedScene]);
 
   // The player's report on every scene change.
   const handlePlayerSceneChange = (item) => {
@@ -121,12 +123,14 @@ export function usePlayback({
 
   const handleScenePlay = (resumeTime) => playSceneAt(0, resumeTime);
 
-  const handleMarkerSelect = (marker) => {
-    mainFocus.remember(document.activeElement);
+  // Stable: this is passed straight to the memoised marker cards, so a fresh
+  // identity per App render would re-render the whole grid.
+  const handleMarkerSelect = useCallback((marker) => {
+    rememberMain(document.activeElement);
     // A marker is a timestamp inside a scene, so the queue item is built by
     // hand, see queueItemFromMarker for the fields it must forward.
     openPlayer(queueOf(queueItemFromMarker(marker), marker.seconds || 0));
-  };
+  }, [rememberMain, openPlayer]);
 
   // Where a closed player puts the cursor: the card for the scene on screen
   // when Back was pressed, not the one the session started from. A scene queue

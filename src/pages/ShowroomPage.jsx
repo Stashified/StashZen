@@ -5,7 +5,8 @@
  * Five cards plus a See-all tile make a ~258px card and put three shelves fully
  * in view at 1080p, with the fourth peeking; six cards gave 218px and only two
  * and a bit. See all is the deliberate way past a sideways row's unseen edge.
- * Each row is a page-1-only query, so `usePagedList`'s paging rules do not apply.
+ * All five rows arrive in one aliased request (showroomService), each its page
+ * 1 only, so `usePagedList`'s paging rules do not apply.
  *
  * The sort values are a contract with the tab they open: Stash's `SortBy` is
  * shared, so `date` (release) and `created_at` (added) differ. Three hand-offs
@@ -18,19 +19,10 @@
 import { useEffect, useState } from 'react';
 import ShowroomRow from '../components/ShowroomRow.jsx';
 import { STUDIO_VIEW, GALLERY_VIEW } from '../components/entityViews.jsx';
-import { fetchVideos } from '../utils/videoService.js';
-import { fetchStudios } from '../utils/studioService.js';
-import { fetchPerformers } from '../utils/performerService.js';
-import { fetchGalleries } from '../utils/galleryService.js';
+import { fetchShowroom, CONTINUE_FILTER } from '../utils/showroomService.js';
 import { onRowPatch } from '../utils/rowPatches.js';
 import styles from './ShowroomPage.module.css';
 
-// Five cards plus the See-all tile make six equal columns.
-export const ROW_SIZE = 5;
-
-// "In progress" in the one shape both the shelf and its See-all hand-off send.
-// A `resume_time` of 0 means never played or finished and reset, not resumable.
-const CONTINUE_FILTER = { resume_time: { modifier: 'GREATER_THAN', value: 0 } };
 
 /**
  * The showroom's one source of truth. `filter` is GraphQL-shaped like App's
@@ -53,12 +45,6 @@ export const SHOWROOM_ROWS = [
     order: 'desc',
     filter: null,
     toTab: 'scenes',
-    fetchPage: async () => {
-      const d = await fetchVideos({
-        sort: 'created_at', order: 'desc', page: 1, limit: ROW_SIZE,
-      });
-      return { items: d.videos, total: d.total };
-    },
   },
   {
     key: 'continue-watching',
@@ -73,13 +59,6 @@ export const SHOWROOM_ROWS = [
     order: 'desc',
     filter: CONTINUE_FILTER,
     toTab: 'scenes',
-    fetchPage: async () => {
-      const d = await fetchVideos({
-        sort: 'last_played_at', order: 'desc', filter: CONTINUE_FILTER,
-        page: 1, limit: ROW_SIZE,
-      });
-      return { items: d.videos, total: d.total };
-    },
   },
   {
     key: 'recent-studios',
@@ -91,12 +70,6 @@ export const SHOWROOM_ROWS = [
     order: 'desc',
     filter: null,
     toTab: 'studios',
-    fetchPage: async () => {
-      const d = await fetchStudios({
-        sort: 'created_at', order: 'desc', page: 1, limit: ROW_SIZE,
-      });
-      return { items: d.studios, total: d.total };
-    },
   },
   {
     key: 'recent-performers',
@@ -107,12 +80,6 @@ export const SHOWROOM_ROWS = [
     order: 'desc',
     filter: null,
     toTab: 'performers',
-    fetchPage: async () => {
-      const d = await fetchPerformers({
-        sort: 'created_at', order: 'desc', page: 1, limit: ROW_SIZE,
-      });
-      return { items: d.performers, total: d.total };
-    },
   },
   {
     key: 'recent-galleries',
@@ -124,12 +91,6 @@ export const SHOWROOM_ROWS = [
     order: 'desc',
     filter: null,
     toTab: 'galleries',
-    fetchPage: async () => {
-      const d = await fetchGalleries({
-        sort: 'date', order: 'desc', page: 1, limit: ROW_SIZE,
-      });
-      return { items: d.galleries, total: d.total };
-    },
   },
 ];
 
@@ -138,26 +99,29 @@ export default function ShowroomPage({
   onPerformerSelect, onGallerySelect, onSeeAll,
   clearedSceneIds,
 }) {
-  // `null` while the five requests are in flight, then one entry per row.
+  // `null` while the request is in flight, then one entry per row key.
   const [rows, setRows] = useState(null);
 
   // Empty deps deliberately: page 1 of fixed queries. `<main key={dataKey}>`
-  // remounts the page on source change and both services partition their caches
-  // by source; the cancel flag stops a remount writing an old result.
+  // remounts the page on source change; aborting drops a request whose tab has
+  // already been left, instead of holding its socket until the timeout.
   useEffect(() => {
-    let cancelled = false;
-    Promise.all(SHOWROOM_ROWS.map(async (row) => {
-      try {
-        const { items } = await row.fetchPage();
-        // Mock scene fetches ignore `limit`, so the slice is the row contract.
-        return { key: row.key, items: (items || []).slice(0, ROW_SIZE), error: null };
-      } catch (e) {
-        return { key: row.key, items: [], error: e?.message || 'failed' };
-      }
-    })).then((next) => {
-      if (!cancelled) setRows(next);
-    });
-    return () => { cancelled = true; };
+    const controller = new AbortController();
+    fetchShowroom({ signal: controller.signal })
+      .then((next) => {
+        if (!controller.signal.aborted) setRows(next);
+      })
+      .catch((e) => {
+        if (controller.signal.aborted) return;
+        // `fetchShowroom` already returned the healthy shelves when only one
+        // root failed, so reaching here means none answered: every shelf says
+        // so under its heading rather than one silently vanishing.
+        const error = e?.message || 'failed';
+        setRows(Object.fromEntries(
+          SHOWROOM_ROWS.map(row => [row.key, { items: [], error }]),
+        ));
+      });
+    return () => controller.abort();
   }, []);
 
   // A write publishes the fields it changed; patch the shelf card in place,
@@ -166,14 +130,18 @@ export default function ShowroomPage({
     setRows((prev) => {
       if (!prev) return prev;
       let changed = false;
-      const next = prev.map((row) => {
-        if (!row.items.some(it => String(it.id) === id)) return row;
+      const next = {};
+      for (const [key, row] of Object.entries(prev)) {
+        if (!row.items.some(it => String(it.id) === id)) {
+          next[key] = row;
+          continue;
+        }
         changed = true;
-        return {
+        next[key] = {
           ...row,
           items: row.items.map(it => (String(it.id) === id ? { ...it, ...patch } : it)),
         };
-      });
+      }
       return changed ? next : prev;
     });
   }), []);
@@ -189,14 +157,12 @@ export default function ShowroomPage({
     );
   }
 
-  const byKey = new Map(rows.map(r => [r.key, r]));
-
   // `clearedSceneIds` is the page's one live patch: clearing a resume point
   // cannot refetch the shelf underneath (still mounted, requests re-run only on
   // remount), so the cleared card is filtered out here. Only Continue Watching
   // is affected; App empties the set on tab change so the next visit asks again.
   const itemsFor = (row) => {
-    const items = byKey.get(row.key)?.items || [];
+    const items = rows[row.key]?.items || [];
     if (row.key !== 'continue-watching' || !clearedSceneIds?.size) return items;
     return items.filter(item => !clearedSceneIds.has(String(item.id)));
   };
@@ -207,7 +173,7 @@ export default function ShowroomPage({
     return (
       <div className={styles.page}>
         <p className={styles.stateText}>
-          {rows.some(r => r.error) ? 'Could not load Home.' : 'Nothing to show yet.'}
+          {SHOWROOM_ROWS.some(r => rows[r.key]?.error) ? 'Could not load Home.' : 'Nothing to show yet.'}
         </p>
       </div>
     );
@@ -227,7 +193,7 @@ export default function ShowroomPage({
           key={row.key}
           row={row}
           items={itemsByKey.get(row.key)}
-          error={byKey.get(row.key)?.error || null}
+          error={rows[row.key]?.error || null}
           isTop={row.key === firstVisibleKey}
           onVideoSelect={onVideoSelect}
           onVideoLongPress={onVideoLongPress}

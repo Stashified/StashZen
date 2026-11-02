@@ -54,7 +54,7 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (loading) return (
+  if (loading && !performers.length) return (
     <ListingState
       id="state-performers"
       styles={styles}

@@ -13,7 +13,6 @@
 
 import { getSettings } from './settings.js';
 import { runQuery } from './stashQuery.js';
-import { STUDIOS, mockPersonName } from './mockLibrary.js';
 
 /** The last non-empty segment of a path. */
 function lastSegment(path) {
@@ -115,7 +114,10 @@ export function isSearchable(entity) {
 //
 // The builder is reachable in Test mode too; a short list of obvious fakes
 // beats a picker that opens onto an error.
-function mockRows(entity, q) {
+async function mockRows(entity, q) {
+  // Dynamic so the catalogue stays out of the Live startup bundle, see
+  // generateMockVideos in videoService.js.
+  const { STUDIOS, mockPersonName } = await import('./mockLibrary.js');
   const names = {
     tags: Array.from({ length: 30 }, (_, i) => `Tag ${i + 1}`),
     performers: Array.from({ length: 30 }, (_, i) => mockPersonName(i)),
@@ -151,7 +153,7 @@ export async function searchEntities(entity, q = '', limit = 40) {
 
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 120));
-    return mockRows(entity, q);
+    return await mockRows(entity, q);
   }
 
   const query = `

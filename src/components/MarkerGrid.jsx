@@ -64,7 +64,7 @@ export default function MarkerGrid({
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (loading) return (
+  if (loading && !markers.length) return (
     <ListingState
       id="state-markers"
       styles={styles}

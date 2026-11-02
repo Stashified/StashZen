@@ -93,6 +93,12 @@ export function createListCache() {
       return p;
     },
 
+    /** Drop one key. A batched answer that lost a root is not worth serving
+     *  for the session; the caller forgets it so a reopen asks again. */
+    forget(key) {
+      cache.delete(key);
+    },
+
     clear() {
       generation++;
       cache.clear();

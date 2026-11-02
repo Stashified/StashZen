@@ -7,13 +7,16 @@
  * viewer's TV. Needs a build: doiuse reads the emitted CSS, not the source,
  * because Lightning CSS rewrites and prefixes it.
  *
- * Two caveats:
+ * Three caveats:
  *  - doiuse has no `aspect-ratio` data (Chromium 88), so a new use passes; the
  *    floor of 94 covers it, not the tool.
  *  - `@font-face` blocks are blanked before the scan: doiuse's tokenizer stops
  *    at the first one (declarations inside an at-rule have no selector), which
  *    silently skips every rule after it. Blanking preserves byte offsets, so
  *    reported columns still point at the real rule.
+ *  - doiuse has no `contain-intrinsic-size` data either, so the fallback pair is
+ *    asserted here by hand: Chromium 94 drops `auto <length>` whole, and the
+ *    minifier is free to merge the two declarations into it.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -123,12 +126,47 @@ for (const file of scanned) {
 }
 const findings = output;
 
-for (const line of findings) console.error(line);
+/**
+ * Every `contain-intrinsic-size: auto <length>` needs the bare-length form
+ * earlier in the same rule. The floor engine cannot parse `auto <length>` and
+ * drops the declaration, so without the pair the placeholder size is simply
+ * unset there, and the grid reflows as cards scroll in. Lightning CSS may merge
+ * the pair, which is exactly the failure this catches.
+ */
+function intrinsicSizeFallbacks(css, label) {
+  const failures = [];
+  const declaration = /contain-intrinsic-size\s*:\s*([^;}]*)/g;
+  for (let match = declaration.exec(css); match; match = declaration.exec(css)) {
+    const value = match[1].trim();
+    if (!/^auto\b/.test(value)) continue;
+    // The rule this declaration sits in: everything after its opening brace
+    // and before the declaration. Nested blocks are fine, the fallback must
+    // still be in the same declared rule.
+    const ruleStart = css.lastIndexOf('{', match.index);
+    const earlier = css.slice(ruleStart + 1, match.index);
+    if (/contain-intrinsic-size\s*:\s*(?!auto\b)[^;}]*/.test(earlier)) continue;
+    const line = css.slice(0, match.index).split('\n').length;
+    failures.push(`${label}:${line} has "contain-intrinsic-size: ${value}" with no bare-length fallback in the same rule`);
+  }
+  return failures;
+}
 
-if (findings.length === 0) {
+const structural = cssFiles.flatMap(name => intrinsicSizeFallbacks(
+  readFileSync(path.join(assets, name), 'utf8'),
+  path.relative(root, path.join(assets, name)),
+));
+
+for (const line of [...findings, ...structural]) console.error(line);
+
+if (findings.length === 0 && structural.length === 0) {
   console.log(`CSS: no findings at ${COMPAT_LABEL}.`);
   process.exit(0);
 }
 
-console.error(`\nCSS uses features newer than ${COMPAT_LABEL} (${findings.length} finding${findings.length === 1 ? '' : 's'}).`);
+if (findings.length) {
+  console.error(`\nCSS uses features newer than ${COMPAT_LABEL} (${findings.length} finding${findings.length === 1 ? '' : 's'}).`);
+}
+if (structural.length) {
+  console.error(`\nCSS: ${structural.length} fallback-pair finding${structural.length === 1 ? '' : 's'} at ${COMPAT_LABEL}.`);
+}
 process.exit(1);

@@ -344,8 +344,18 @@ function rig(opts = {}, backendOpts = {}) {
   check('a stuck seek reopens the session at the target', reopened,
     `opens=${r.fake.calls.open.length} currentTime=${r.backend.currentTime}`);
   check('...without reporting a failure', r.backend.error == null);
-  check('...and the new session is asked to play',
-    r.fake.calls.play >= 2, `plays=${r.fake.calls.play}`);
+  // The reopened session is told to play from its prepare callback, which can
+  // land a tick after the position is readable. A loaded runner lost that race.
+  const askedToPlay = await (async () => {
+    const end = Date.now() + 1000;
+    while (Date.now() < end) {
+      if (r.fake.calls.play >= 2) return true;
+      await sleep(50);
+    }
+    return false;
+  })();
+  check('...and the new session is asked to play', askedToPlay,
+    `plays=${r.fake.calls.play}`);
   r.backend.close();
 }
 
@@ -641,6 +651,43 @@ function rig(opts = {}, backendOpts = {}) {
   check('a seek backwards from the end settles',
     r.backend.seeking === false && r.backend.currentTime >= 4.9,
     `seeking=${r.backend.seeking} currentTime=${r.backend.currentTime}`);
+  r.backend.close();
+}
+
+// ── A settled pause does not hold up a resume or a seek ──
+// The paused poll backs off to 2 s. play() and requestSeek() must re-arm it,
+// or the clock and the seek's first tick wait that long.
+{
+  // 1.3 s idle reaches the settled 2 s poll and arms it, so the only prompt
+  // tick left is the one the entry point re-arms.
+  const r = rig({}, { pausedSettleMs: 300 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(350);
+  r.backend.pause();
+  await sleep(1300);
+  const seeks = r.fake.calls.seek.length;
+  // `seek` alone would pass with the re-arm deleted: the coalescer issues on
+  // request. What needs the poll is `tick()`, which settles the seek; without
+  // the re-arm the next tick is the settled poll, 2 s away.
+  r.backend.currentTime = 20;
+  await sleep(800);
+  check('a seek after a settled pause is issued and settled at once',
+    r.fake.calls.seek.length > seeks && r.backend.seeking === false,
+    `seeks=${r.fake.calls.seek.length - seeks} seeking=${r.backend.seeking}`);
+  r.backend.close();
+}
+{
+  const r = rig({}, { pausedSettleMs: 300 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(350);
+  r.backend.pause();
+  await sleep(1300);
+  const reads = r.fake.calls.state;
+  r.backend.play();
+  await sleep(600);
+  check('a resume after a settled pause reads the engine at once',
+    r.fake.calls.state > reads,
+    `reads=${r.fake.calls.state - reads}`);
   r.backend.close();
 }
 

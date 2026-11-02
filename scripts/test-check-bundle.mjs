@@ -167,6 +167,27 @@ try {
   }
 
   {
+    // Size ceiling. A 621 KiB chunk trips it; a comment-like file just under
+    // passes, which is the red control that the check measures rather than
+    // rejects everything.
+    const bigJs = join(root, 'big-js');
+    mkdirSync(bigJs, { recursive: true });
+    writeFileSync(join(bigJs, 'app.js'), 'x'.repeat(621 * 1024));
+    const res = checkBundle({ distDir: bigJs });
+    check('a bundle over the JS ceiling fails', res.ok === false,
+      res.lines.join(' | '));
+    check('...and says which side is over',
+      res.lines.some(l => l.includes('JS ') && l.includes('/ 620.0 KiB')));
+
+    const smallJs = join(root, 'small-js');
+    mkdirSync(smallJs, { recursive: true });
+    writeFileSync(join(smallJs, 'app.js'), 'x'.repeat(100 * 1024));
+    const small = checkBundle({ distDir: smallJs });
+    check('a bundle under both ceilings passes', small.ok === true,
+      small.lines.join(' | '));
+  }
+
+  {
     // The documented example is in every bundle (FirstRun's placeholder), so
     // warning on it would make the warning meaningless. The `.20` case above is
     // the red control proving the guard is still on.

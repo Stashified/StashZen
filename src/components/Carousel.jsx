@@ -85,6 +85,11 @@ export default function Carousel({
     if (items.length - focusedIndex <= LOAD_MORE_THRESHOLD) loadMore();
   }, [focusedIndex, items.length, loadMore]);
 
+  // Read inside the listener, not a dependency: focus moves once per keypress,
+  // and a stale closure would only ever re-subscribe.
+  const focusedIndexRef = useRef(focusedIndex);
+  focusedIndexRef.current = focusedIndex;
+
   // Cards register as `${focusPrefix}-${id}` in zone `grid`; the D-pad moves
   // focus itself, so listen for the result rather than driving it.
   const idPrefix = `${focusPrefix}-`;
@@ -94,15 +99,16 @@ export default function Carousel({
       if (!fid || !fid.startsWith(idPrefix)) return;
       const id = fid.slice(idPrefix.length);
       const idx = items.findIndex(v => String(v.id) === String(id));
-      if (idx >= 0 && idx !== focusedIndex) setFocusedIndex(idx);
+      if (idx >= 0 && idx !== focusedIndexRef.current) setFocusedIndex(idx);
     };
     document.addEventListener('focusin', onFocus);
     return () => document.removeEventListener('focusin', onFocus);
-  }, [items, focusedIndex, idPrefix]);
+  }, [items, idPrefix]);
 
-  // Only ±4 slots are mounted, so a restore to a card outside that window has
-  // no element to find. Move the window when the request names one of ours:
-  // on arrival if the rows are here, otherwise as soon as they land.
+  // Only the ±4 slots around the centre mount a card, so a restore to a card
+  // outside that window has no element to find. Move the window when the
+  // request names one of ours: on arrival if the rows are here, otherwise as
+  // soon as they land.
   const pendingRestoreRef = useRef(null);
   useEffect(() => onFocusRestoreRequest((fid) => {
     if (!fid) { pendingRestoreRef.current = null; return; }
@@ -126,7 +132,7 @@ export default function Carousel({
     setFocusedIndex(idx);
   }, [items, idPrefix]);
 
-  if (loading) return (
+  if (loading && !items.length) return (
     <ListingState
       id={`state-${noun}`}
       styles={styles}

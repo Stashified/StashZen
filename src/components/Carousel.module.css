@@ -138,6 +138,7 @@
 }
 
 .slot {
+  position: relative;
   flex: 0 0 var(--slot-w);
   width: var(--slot-w);
   padding: 0 calc(var(--slot-gap) / 2);
@@ -147,14 +148,24 @@
   transform-origin: center center;
 }
 
-/* The focused slot is on top via inline z-index; the focus ring itself comes
-   from the card. */
-.slot[data-offset="0"] {
-  filter: none;
+/* Dimming for the off-centre cards, as a plain black layer rather than
+   `filter: brightness(0.7)`: a filter forces a render surface per slot and
+   re-runs on every frame of the strip's slide, while alpha compositing black at
+   30% gives exactly the same pixels (0.7 × the card). Inset to the card's own
+   box, not the slot's, or it would darken the gap between cards too. */
+.slot::after {
+  content: '';
+  position: absolute;
+  inset: 0 calc(var(--slot-gap) / 2);
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.slot:not([data-offset="0"]) {
-  filter: brightness(0.7);
+/* The focused slot is on top via inline z-index; the focus ring itself comes
+   from the card. */
+.slot:not([data-offset="0"])::after {
+  opacity: 0.3;
 }
 
 /* ── Loading more indicator ─────────────────────────────── */

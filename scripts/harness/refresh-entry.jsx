@@ -154,27 +154,23 @@ async function run() {
   check('F5 no uncaught errors while switching', errors.length === 0,
     errors.slice(-2).join(' | ') || 'none');
 
-  // ── F6  a shelf that fails says so ──────────────────────
-  // The row used to return null for an empty list, so an errored query looked
-  // like a library with no studios. The heading plus one line lets a user tell
-  // "nothing here" from "we could not ask".
+  // ── F6  a Home read that fails says so ──────────────────
+  // The shelves used to be five requests, so one could fail alone and the row
+  // stayed a heading plus one line. They are one aliased document now, so a
+  // failure is the whole read: what must not happen is a silent empty Home,
+  // which reads exactly like an empty library.
   await fetch(`http://127.0.0.1:${PORT}/mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ findStudios: 'fail' }),
   });
   await switchTab('nav-home');            // Home remounts, so the shelves refetch
-  const failedRow = await waitFor(() =>
-    document.body.textContent.includes('Couldn’t load Recently Added Studios')
-    || document.body.textContent.includes("Couldn't load Recently Added Studios"));
-  const rowText = [...document.querySelectorAll('[data-showroom-row]')]
-    .map(r => r.textContent).find(t => t.includes('Recently Added Studios')) || '';
-  check('F6 a failed shelf keeps its heading and says it could not load',
-    failedRow && /Recently Added Studios/.test(rowText),
-    rowText.slice(0, 80) || '(row missing)');
-  check('F6 ...while the other shelves still render',
-    !!registry.get('showroom-recent-scenes-video-1'),
-    `recent-scenes first card=${!!registry.get('showroom-recent-scenes-video-1')}`);
+  const failed = await waitFor(() =>
+    document.body.textContent.includes('Could not load Home.'));
+  check('F6 a failed Home read says so rather than looking empty',
+    failed && !document.querySelector('[data-showroom-row]'),
+    `${document.body.textContent.includes('Could not load Home.') ? 'message shown' : 'no message'}, `
+    + `rows=${document.querySelectorAll('[data-showroom-row]').length}`);
   await fetch(`http://127.0.0.1:${PORT}/mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

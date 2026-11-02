@@ -64,7 +64,7 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (loading) return (
+  if (loading && !videos.length) return (
     <ListingState
       id="state-videos"
       styles={styles}

@@ -218,8 +218,8 @@ export function normalizeSceneDetail(scene) {
     stashIds: (scene.stash_ids || []).map(s => ({ endpoint: s.endpoint, stashId: s.stash_id })),
     fileCount: scene.files?.length || 0,
     // `screenshot` and `stream` are the two paths that resolve on this server;
-    // preview/sprite/vtt are 404 server-wide. Only `stream` comes back keyed,
-    // and withApiKey is a no-op on it.
+    // preview/sprite/vtt are 404 server-wide. `stream` arrives keyed (0.31) or
+    // signed (0.32 with credentials); the appended key outlives a signature.
     screenshot: withApiKey(scene.paths?.screenshot) || null,
     stream: withApiKey(scene.paths?.stream) || null,
     durationSeconds: file?.duration || 0,

@@ -17,6 +17,13 @@ export default defineConfig({
   // relative to itself and dies with ERR_MODULE_NOT_FOUND.
   plugins: [react()],
 
+  // <Profiler> is a no-op in the production build; the profiling build is
+  // what makes onRender fire. Only the driver that counts commits asks for it,
+  // so every other bundle keeps the smaller react-dom.
+  resolve: process.env.HARNESS_PROFILING === '1'
+    ? { alias: [{ find: /^react-dom\/client$/, replacement: 'react-dom/profiling' }] }
+    : undefined,
+
   // A lib build does not substitute NODE_ENV, and react-dom reads it at import
   // time, without this the page dies with "process is not defined". It also
   // halves the bundle (production React).

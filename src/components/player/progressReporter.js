@@ -45,8 +45,10 @@ export function createProgressReporter({
   let mounted = true;
   let completed = false;
 
-  const report = (state) => {
-    if (mounted) onSync(state);
+  // The error rides along with the state so the chip can draw its tooltip
+  // without reading reporter internals.
+  const report = (state, error = null) => {
+    if (mounted) onSync(state, error);
   };
 
   /**
@@ -75,7 +77,7 @@ export function createProgressReporter({
       if (mounted) {
         if (res.ok) {
           syncError = null;
-          onSync('saved');
+          report('saved');
           // Only while this is still the scene the values describe: a late
           // success would stamp the old position over the new scene's
           // `lastSaved` and drain watch time it has begun accruing.
@@ -89,7 +91,7 @@ export function createProgressReporter({
           // Deliberately not clearing played or lastSaved: the watch time stays
           // owed and the position is retried with the next attempt.
           syncError = res.error;
-          onSync('failed');
+          report('failed', syncError);
         }
       }
 
@@ -215,7 +217,7 @@ export function createProgressReporter({
         // Reported through the same chip as a failed save: both mean "this app
         // is not reaching Stash", and the user needs one place to look.
         syncError = res.error;
-        onSync('failed');
+        report('failed', syncError);
       });
     },
 
@@ -225,7 +227,7 @@ export function createProgressReporter({
     reportError(error) {
       if (!mounted) return;
       syncError = error;
-      onSync('failed');
+      report('failed', syncError);
     },
 
     /** The message the chip renders; null when the last write landed. */

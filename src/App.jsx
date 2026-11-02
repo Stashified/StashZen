@@ -4,7 +4,7 @@
  * in `app/TabContent.jsx` and `app/AppOverlays.jsx`.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import NavRail from './components/NavRail.jsx';
 import ControlsPanel from './components/ControlsPanel.jsx';
 import { useRestoreFocus } from './hooks/useRestoreFocus.js';
@@ -126,7 +126,6 @@ export default function App() {
     sceneOriginId,
     clearedContinueIds,
     imageViewer,
-    setImageViewer,
     sceneCardFocus,
     handleVideoSelect,
     handleSceneClose,
@@ -196,6 +195,9 @@ export default function App() {
     actionMenu,
     imageViewer,
     entityInfo,
+    builderOpen,
+    settingsOpen,
+    playing: !!playSession,
     filterOrigins,
     changeTab,
     setFilterOrigins,
@@ -355,7 +357,11 @@ export default function App() {
 
   // One dispatcher, not four `onSelect` props: one `<EntityPage>` draws all
   // four sections and cannot know which, so the tab decides here.
-  const handleEntitySelect = (item, index, items) => {
+  //
+  // Stable between renders: it is the `onSelect` of every memoised entity
+  // card, and a fresh identity on an unrelated App render would re-render the
+  // whole grid. Every branch it calls is stable for the same reason.
+  const handleEntitySelect = useCallback((item, index, items) => {
     switch (activeTab) {
       case 'tags':      return handleTagSelect(item);
       case 'studios':   return handleStudioSelect(item);
@@ -363,7 +369,7 @@ export default function App() {
       case 'images':    return handleImageSelect(item, index, items);
       default:          return undefined;
     }
-  };
+  }, [activeTab, handleTagSelect, handleStudioSelect, handleGallerySelect, handleImageSelect]);
 
   // ── The long-press menu's viewer entries ─────────────────
   // The menu is cleared *without* its restore: the viewer takes focus on mount
@@ -572,7 +578,6 @@ export default function App() {
         }}
         imageViewer={{
           viewer: imageViewer,
-          onIndexChange: (i) => setImageViewer(v => (v ? { ...v, index: i } : v)),
           onClose: closeImageViewer,
         }}
         player={{

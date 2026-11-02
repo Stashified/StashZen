@@ -35,6 +35,9 @@ check('an existing query gets an & separator',
   withApiKey('http://nas:9999/x?a=1') === 'http://nas:9999/x?a=1&apikey=KEY');
 check('an already-authenticated URL is untouched',
   withApiKey('http://nas:9999/stream?apikey=OTHER') === 'http://nas:9999/stream?apikey=OTHER');
+check('a signed stream URL also gets the key',
+  withApiKey('http://nas:9999/scene/1/stream.m3u8?cid=abc&expires=123&signature=def')
+    === 'http://nas:9999/scene/1/stream.m3u8?cid=abc&expires=123&signature=def&apikey=KEY');
 check('a fragment keeps the key before it',
   withApiKey('http://nas:9999/x#frag') === 'http://nas:9999/x?apikey=KEY#frag',
   withApiKey('http://nas:9999/x#frag'));

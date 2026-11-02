@@ -65,7 +65,7 @@ export default function EntityGrid({
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (loading) return (
+  if (loading && !items.length) return (
     <ListingState
       id={`state-${noun}`}
       styles={styles}

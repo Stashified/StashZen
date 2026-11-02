@@ -126,8 +126,9 @@ export function timelineDuration(elementDuration, sceneDuration) {
  * ORIGINAL before the downscales: this is a fallback for an unplayable *codec*,
  * not a bandwidth saver, and a 512x384 scene gains nothing from shrinking.
  *
- * The URLs already carry `?apikey=…`, unlike `paths.screenshot`, so nothing
- * here goes through `withApiKey`.
+ * `fetchSceneStreams` keys these URLs before returning them, so nothing here
+ * goes through `withApiKey`. The key also reaches the HLS segments, which Stash
+ * prefers over the expiring signature it may attach.
  */
 const TRANSCODE_FORMATS = [
   ['application/vnd.apple.mpegurl', '.m3u8'],

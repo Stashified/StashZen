@@ -9,18 +9,31 @@
  * Each prop group is `{ open/record, ...handlers }`; nothing is decided here.
  */
 
-import SceneDetailPage from '../pages/SceneDetailPage.jsx';
+import { lazy, Suspense } from 'react';
 import ActionMenu from '../components/ActionMenu.jsx';
 import EntityInfoOverlay from '../components/EntityInfoOverlay.jsx';
 import MarkerModal from '../components/MarkerModal.jsx';
 import MarkerDeletePrompt from '../components/MarkerDeletePrompt.jsx';
-import ImageViewer from '../components/ImageViewer.jsx';
-import VideoPlayer from '../components/VideoPlayer.jsx';
 import PlayerErrorBoundary from '../components/PlayerErrorBoundary.jsx';
-import FilterBuilder from '../components/FilterBuilder.jsx';
-import SettingsPanel from '../components/SettingsPanel.jsx';
+import OverlayGate from '../components/OverlayGate.jsx';
 import ExitPrompt from '../components/ExitPrompt.jsx';
 import { buildActionMenu } from '../utils/actionMenus.js';
+
+// The five heaviest overlays are their own chunks. None of them can be open on
+// the first screen, and together they are the bulk of what a Live launch would
+// otherwise parse and execute before the grid appears. The small overlays
+// above stay eager: a chunk round trip would cost more than their parse.
+//
+// Each sits in its own boundary, so opening one hides nothing that is already
+// on screen (a single boundary would blank the detail page under a player that
+// is still loading), and the underlying page stays visible until the chunk
+// lands. OverlayGate adds the scoped error boundary and the pending fallback
+// that owns the keys; see its comment.
+const SceneDetailPage = lazy(() => import('../pages/SceneDetailPage.jsx'));
+const ImageViewer = lazy(() => import('../components/ImageViewer.jsx'));
+const VideoPlayer = lazy(() => import('../components/VideoPlayer.jsx'));
+const FilterBuilder = lazy(() => import('../components/FilterBuilder.jsx'));
+const SettingsPanel = lazy(() => import('../components/SettingsPanel.jsx'));
 
 export default function AppOverlays({
   sceneDetail,
@@ -55,19 +68,21 @@ export default function AppOverlays({
       {/* Keyed on the scene id so opening a different scene remounts the page
           instead of carrying over its optimistic detail state. */}
       {sceneDetail.scene && (
-        <SceneDetailPage
-          key={sceneDetail.scene.id}
-          scene={sceneDetail.scene}
-          onClose={sceneDetail.onClose}
-          onPlay={sceneDetail.onPlay}
-          onPlayAt={sceneDetail.onPlayAt}
-          onActivityChange={sceneDetail.onActivityChange}
-          onGallerySelect={sceneDetail.onGallerySelect}
-          onTagSelect={sceneDetail.onTagSelect}
-          onStudioSelect={sceneDetail.onStudioSelect}
-          onPerformerSelect={sceneDetail.onPerformerSelect}
-          onRelatedSceneSelect={sceneDetail.onRelatedSceneSelect}
-        />
+        <OverlayGate onClose={sceneDetail.onClose}>
+          <SceneDetailPage
+            key={sceneDetail.scene.id}
+            scene={sceneDetail.scene}
+            onClose={sceneDetail.onClose}
+            onPlay={sceneDetail.onPlay}
+            onPlayAt={sceneDetail.onPlayAt}
+            onActivityChange={sceneDetail.onActivityChange}
+            onGallerySelect={sceneDetail.onGallerySelect}
+            onTagSelect={sceneDetail.onTagSelect}
+            onStudioSelect={sceneDetail.onStudioSelect}
+            onPerformerSelect={sceneDetail.onPerformerSelect}
+            onRelatedSceneSelect={sceneDetail.onRelatedSceneSelect}
+          />
+        </OverlayGate>
       )}
 
       {/* The menu, then the player, and the player on top, since Play
@@ -122,28 +137,33 @@ export default function AppOverlays({
           plays, so the order is a statement about intent, not a case that
           arises. */}
       {imageViewer.viewer && (
-        <ImageViewer
-          items={imageViewer.viewer.items}
-          index={imageViewer.viewer.index}
-          gallery={imageViewer.viewer.gallery}
-          shuffle={imageViewer.viewer.shuffle}
-          autoPlay={imageViewer.viewer.autoPlay}
-          initialInfoOpen={imageViewer.viewer.infoOpen}
-          onIndexChange={imageViewer.onIndexChange}
-          onClose={imageViewer.onClose}
-        />
+        <OverlayGate onClose={imageViewer.onClose}>
+          <ImageViewer
+            items={imageViewer.viewer.items}
+            index={imageViewer.viewer.index}
+            gallery={imageViewer.viewer.gallery}
+            shuffle={imageViewer.viewer.shuffle}
+            autoPlay={imageViewer.viewer.autoPlay}
+            initialInfoOpen={imageViewer.viewer.infoOpen}
+            onClose={imageViewer.onClose}
+          />
+        </OverlayGate>
       )}
 
       {player.session && (
         // Scoped boundary: a render error here closes the player and returns
         // to the screen underneath instead of taking the whole app down.
         <PlayerErrorBoundary onClose={player.onClose}>
-          <VideoPlayer
-            queue={player.session}
-            onClose={player.onClose}
-            onActivityChange={player.onActivityChange}
-            onSceneChange={player.onSceneChange}
-          />
+          {/* Inside the boundary: a chunk that fails to load closes the
+              player instead of leaving an empty screen over the grid. */}
+          <Suspense fallback={null}>
+            <VideoPlayer
+              queue={player.session}
+              onClose={player.onClose}
+              onActivityChange={player.onActivityChange}
+              onSceneChange={player.onSceneChange}
+            />
+          </Suspense>
         </PlayerErrorBoundary>
       )}
 
@@ -151,20 +171,26 @@ export default function AppOverlays({
           top. It cannot open over a playing video: the action that opens it
           lives in the controls bar, which the player covers. */}
       {builder.open && (
-        <FilterBuilder
-          filterType={builder.filterType}
-          title={`Filter ${builder.tab}`}
-          // Seeded from whatever is applied now, so "edit the current filter"
-          // and "start from nothing" are the same gesture.
-          initial={builder.initial}
-          initialName={builder.initialName}
-          onApply={builder.onApply}
-          onSave={builder.onSave}
-          onClose={builder.onClose}
-        />
+        <OverlayGate onClose={builder.onClose}>
+          <FilterBuilder
+            filterType={builder.filterType}
+            title={`Filter ${builder.tab}`}
+            // Seeded from whatever is applied now, so "edit the current filter"
+            // and "start from nothing" are the same gesture.
+            initial={builder.initial}
+            initialName={builder.initialName}
+            onApply={builder.onApply}
+            onSave={builder.onSave}
+            onClose={builder.onClose}
+          />
+        </OverlayGate>
       )}
 
-      {settings.open && <SettingsPanel onClose={settings.onClose} />}
+      {settings.open && (
+        <OverlayGate onClose={settings.onClose}>
+          <SettingsPanel onClose={settings.onClose} />
+        </OverlayGate>
+      )}
 
       {exitPrompt.open && <ExitPrompt onCancel={exitPrompt.onCancel} />}
     </>

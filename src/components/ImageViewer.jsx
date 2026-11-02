@@ -33,8 +33,9 @@
  * From an image card it steps through the listing snapshot it was handed and
  * stops at either end rather than paging in more. From a gallery's menu there
  * is no listing to snapshot, so it fetches the gallery itself: first page,
- * open, then page the rest in behind the curtain, capped at GALLERY_MAX_PAGES.
- * The footer's "of N loaded" stays honest about what is in hand.
+ * open, then a runway of pages ahead of the playhead, capped at
+ * GALLERY_MAX_PAGES. The footer's "of N loaded" stays honest about what is in
+ * hand.
  *
  * "Shuffle" asks the server for a seeded random order rather than shuffling
  * per page: per-page shuffling always began inside the newest 40 pictures, and
@@ -78,6 +79,10 @@ const GALLERY_PAGE_SIZE = 40;
 // 4,000 images. A cap so one pathological gallery cannot hold the loop open;
 // Back out to View images, which lists every one, is the escape hatch.
 const GALLERY_MAX_PAGES = 100;
+// Pages kept ahead of the picture on screen. The slideshow consumes one page
+// every four minutes, a manual browse as fast as the user can press; two pages
+// of slack is enough for the next page to land unseen.
+const GALLERY_RUNWAY_PAGES = 3;
 
 export default function ImageViewer({
   items = [],
@@ -87,7 +92,6 @@ export default function ImageViewer({
   autoPlay = false,
   initialInfoOpen = false,
   onClose,
-  onIndexChange,
 }) {
   // Which picture has arrived, not a bare flag: a preloaded next image can fire
   // its load event before React runs the effect that used to clear the flag,
@@ -113,6 +117,10 @@ export default function ImageViewer({
   const [infoMessage, setInfoMessage] = useState('');
   const currentIdRef = useRef(null);
 
+  // The picture on screen. Local, not App's: stepping must not re-render App
+  // and the whole grid sitting behind this overlay, and the viewer reports the
+  // index it landed on when it closes. `index` is only the starting point.
+  const [localIndex, setLocalIndex] = useState(index);
   // Gallery mode only: null while the first page is in flight. `galleryIndex`
   // is local because there is no App-held listing to index into.
   const [galleryItems, setGalleryItems] = useState(null);
@@ -123,6 +131,9 @@ export default function ImageViewer({
   // slideshow uses it to tell "this is the last picture" apart from "the last
   // picture I have so far", see the slide timer below.
   const [galleryDone, setGalleryDone] = useState(false);
+  // The gallery fetch's cursor (sort, seen ids, next page); a ref because the
+  // pump is async and must see the page it asked for, not a later render's.
+  const pumpRef = useRef(null);
   const preloadRef = useRef(null);
 
   const { ref } = useFocusable({
@@ -171,7 +182,7 @@ export default function ImageViewer({
     () => (gallery ? (galleryItems || []) : items),
     [gallery, galleryItems, items],
   );
-  const currentIndex = gallery ? galleryIndex : index;
+  const currentIndex = gallery ? galleryIndex : localIndex;
   const item = sourceItems[currentIndex] || null;
   const itemId = item?.id ?? null;
   const canPrev = currentIndex > 0;
@@ -179,16 +190,12 @@ export default function ImageViewer({
   const loaded = itemId !== null && loadedId === itemId;
   const imgError = itemId !== null && errorId === itemId;
 
-  // App builds `onIndexChange` inline. A ref keeps `goTo` stable, it is in the
-  // slide timer's dependencies, where an unstable identity would restart the
-  // six-second countdown on any unrelated re-render and tear down the key
-  // listener with it.
-  const onIndexChangeRef = useRef(onIndexChange);
-  useEffect(() => { onIndexChangeRef.current = onIndexChange; });
-
+  // Stable: it is in the slide timer's dependencies, where a fresh identity
+  // would restart the six-second countdown on any unrelated re-render and tear
+  // down the key listener with it.
   const goTo = useCallback((next) => {
     if (gallery) setGalleryIndex(next);
-    else onIndexChangeRef.current?.(next);
+    else setLocalIndex(next);
   }, [gallery]);
 
   // Reset on picture change, or the second image inherits the first's zoom and
@@ -244,11 +251,14 @@ export default function ImageViewer({
   }, [infoOpen, item]);
 
   // ── Gallery mode: fetch the gallery's pictures ─────────────
-  // First page opens the viewer; the rest append in the background so a large
-  // gallery does not delay the first picture.
+  // Page 1 opens the viewer; later pages are fetched on demand, a runway of
+  // GALLERY_RUNWAY_PAGES ahead of the picture on screen. Loading the whole
+  // gallery would be up to GALLERY_MAX_PAGES requests racing a viewer that may
+  // never leave the first picture; at one page per forty slides the runway is
+  // many minutes of slideshow, and a manual step asks for the next page the
+  // same way.
   useEffect(() => {
     if (!gallery?.id) return undefined;
-    let cancelled = false;
     setGalleryItems(null);
     setGalleryIndex(0);
     setGalleryStatus('loading');
@@ -259,53 +269,73 @@ export default function ImageViewer({
     // hashes this identity, and `Math.random()` is what varies between opens.
     // Unseeded, the server re-shuffles per request, so page 2 would overlap
     // page 1 and the slideshow could see a "last" picture that is not one.
-    const sort = shuffle
-      ? stableSort('random', 'gallery', gallery.id, Math.random())
-      : 'created_at';
+    pumpRef.current = {
+      sort: shuffle ? stableSort('random', 'gallery', gallery.id, Math.random()) : 'created_at',
+      seen: new Set(),
+      // The next page to ask for, 1-based.
+      next: 1,
+      loading: false,
+      done: false,
+    };
 
-    (async () => {
-      const seen = new Set();
-      let all = [];
-      try {
-        for (let page = 1; page <= GALLERY_MAX_PAGES; page++) {
-          const d = await fetchImages({
-            filter: { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
-            // Newest first, matching the Images tab. A seeded random sort
-            // ignores the direction, as the server does.
-            sort,
-            order: 'desc',
-            page,
-            limit: GALLERY_PAGE_SIZE,
-            // Must not evict the 50-entry list cache the rest of the app is
-            // browsing from.
-            cache: false,
-          });
-          if (cancelled) return;
-          const rows = (d.images || []).filter(x => x?.id && !seen.has(String(x.id)));
-          rows.forEach(x => seen.add(String(x.id)));
-          all = [...all, ...rows];
-          setGalleryItems(all);
-          setGalleryStatus('ready');
-          // A short page means the server has nothing more; `all.length >=
-          // total` covers the same ground when the server's total is exact.
-          if ((d.images || []).length < GALLERY_PAGE_SIZE) break;
-          if (Number(d.total) && all.length >= Number(d.total)) break;
-        }
-        if (!cancelled) setGalleryDone(true);
-      } catch (e) {
-        if (cancelled) return;
-        // A later page failing must not blank a slideshow already showing:
-        // keep what arrived and stop extending. Either way the loop is over
-        // and the slideshow may stop at the end again.
-        setGalleryDone(true);
-        if (all.length) return;
+    return () => { pumpRef.current = null; };
+  }, [gallery?.id, shuffle]);
+
+  // One page at a time, in order, so appends stay sorted. A stale pump (the
+  // gallery changed under the request) is dropped by the identity check.
+  const loadGalleryPage = useCallback(async () => {
+    const s = pumpRef.current;
+    if (!s || s.loading || s.done || !gallery?.id) return;
+    s.loading = true;
+    const page = s.next;
+    try {
+      const d = await fetchImages({
+        filter: { galleries: { modifier: 'INCLUDES', value: [gallery.id] } },
+        // Newest first, matching the Images tab. A seeded random sort ignores
+        // the direction, as the server does.
+        sort: s.sort,
+        order: 'desc',
+        page,
+        limit: GALLERY_PAGE_SIZE,
+        // Must not evict the 50-entry list cache the rest of the app is
+        // browsing from.
+        cache: false,
+      });
+      if (pumpRef.current !== s) return;
+      const rows = (d.images || []).filter(x => x?.id && !s.seen.has(String(x.id)));
+      rows.forEach(x => s.seen.add(String(x.id)));
+      s.next = page + 1;
+      if (rows.length) setGalleryItems(prev => [...(prev || []), ...rows]);
+      setGalleryStatus('ready');
+      // A short page means the server has nothing more; `seen >= total` covers
+      // the same ground when the server's total is exact.
+      if ((d.images || []).length < GALLERY_PAGE_SIZE) s.done = true;
+      if (Number(d.total) && s.seen.size >= Number(d.total)) s.done = true;
+      if (s.next > GALLERY_MAX_PAGES) s.done = true;
+      if (s.done) setGalleryDone(true);
+    } catch (e) {
+      if (pumpRef.current !== s) return;
+      // A later page failing must not blank a slideshow already showing: keep
+      // what arrived and stop extending. Either way the loop is over and the
+      // slideshow may stop at the end again.
+      s.done = true;
+      setGalleryDone(true);
+      if (!s.seen.size) {
         setGalleryStatus('error');
         setGalleryMessage(e.message || 'Unknown error');
       }
-    })();
+    } finally {
+      s.loading = false;
+    }
+  }, [gallery?.id]);
 
-    return () => { cancelled = true; };
-  }, [gallery?.id, shuffle]);
+  // Top the runway up, and re-run when a page lands (the item count changes)
+  // so the pump chains until the runway is full.
+  useEffect(() => {
+    if (!gallery?.id || !pumpRef.current) return;
+    const pagesNeeded = Math.floor(galleryIndex / GALLERY_PAGE_SIZE) + GALLERY_RUNWAY_PAGES;
+    if (pumpRef.current.next <= pagesNeeded) loadGalleryPage();
+  }, [gallery?.id, galleryIndex, galleryItems?.length, loadGalleryPage]);
 
   // ── The slideshow ─────────────────────────────────────────
   // Runs with the info panel open too, so the panel is a readout of the picture
@@ -388,7 +418,9 @@ export default function ImageViewer({
         else if (zoom > 1) {
           setZoom(1);
           setPan({ x: 0, y: 0 });
-        } else onClose?.();
+        // The index travels with the close: Back restores focus to the card on
+        // screen, not the one the viewer opened on.
+        } else onClose?.(currentIndex);
         return;
       }
       // While zoomed the arrows pan, and they must not also move focus off the

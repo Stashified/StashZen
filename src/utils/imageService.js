@@ -24,13 +24,14 @@ import { runQuery } from './stashQuery.js';
 import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
 import { createListCache, listCacheKey } from './listCache.js';
-import { coverArt, makeRng } from './mockArt.js';
 import { filenameStem, ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 const MOCK_IMAGE_COUNT = 120;
 
-function generateMockImages() {
+// Loaded on demand: see generateMockVideos in videoService.js.
+async function generateMockImages() {
+  const { coverArt, makeRng } = await import('./mockArt.js');
   return Array.from({ length: MOCK_IMAGE_COUNT }, (_, i) => {
     const rng = makeRng(`image-${i}`);
     const art = coverArt(`image-${i}`);

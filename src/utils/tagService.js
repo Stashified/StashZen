@@ -15,15 +15,16 @@ import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
-import { coverArt, makeRng } from './mockArt.js';
-import { TAG_NAMES } from './mockLibrary.js';
 
 // A fixed base rather than `Date.now()`, so mock order is identical on every
 // launch. (The older generators use the wall clock, so their Test-mode order
 // shifts between runs.)
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
-function generateMockTags() {
+// Loaded on demand: see generateMockVideos in videoService.js.
+async function generateMockTags() {
+  const { TAG_NAMES } = await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   return TAG_NAMES.map((name, i) => {
     const rng = makeRng(`tag-${i}`);
     // Separate stream: the values below are pinned by the harness.
@@ -196,7 +197,7 @@ function normalizeTagInfo(t) {
 /** One tag's detail, for the long-press Info overlay. */
 export async function fetchTagInfo(id) {
   if (getSettings().useMock) {
-    const t = generateMockTags().find(x => String(x.id) === String(id));
+    const t = (await generateMockTags()).find(x => String(x.id) === String(id));
     return t ? normalizeTagInfo(t) : null;
   }
   const data = await runQuery(FIND_TAG_INFO_QUERY, { id: String(id) });

@@ -12,11 +12,14 @@ import { useEffect, useRef, useState } from 'react';
 import { saveSceneActivity, addScenePlay } from '../../utils/videoService.js';
 import { RESUME_SAVE_INTERVAL_MS } from './constants.js';
 import { createProgressReporter } from './progressReporter.js';
+import { createSyncChip } from './syncChip.js';
 
 export function usePlaybackProgress({ video, mediaRef, onActivityChange }) {
   // `idle | saving | saved | failed`, surfaced as the time row's chip. `failed`
-  // is the only way the user can learn nothing is reaching the server.
-  const [syncState, setSyncState] = useState('idle');
+  // is the only way the user can learn nothing is reaching the server. Kept in
+  // a store rather than state: only the chip draws it, and state re-rendered
+  // the whole player on every save.
+  const [syncChip] = useState(createSyncChip);
 
   // The player reports completion so the shelf can prune the card in place. A
   // ref because App's handler is new each render, and depending on it would
@@ -31,7 +34,7 @@ export function usePlaybackProgress({ video, mediaRef, onActivityChange }) {
   const [progress] = useState(() => createProgressReporter({
     save: saveSceneActivity,
     addPlay: addScenePlay,
-    onSync: setSyncState,
+    onSync: syncChip.set,
     onCompleted: (id) => activityChangeRef.current?.(id, { resumeTime: 0 }),
   }));
 
@@ -43,13 +46,7 @@ export function usePlaybackProgress({ video, mediaRef, onActivityChange }) {
     return () => progress.dispose();
   }, [progress]);
 
-  // Clear the "Saved" chip shortly after it appears: a status that never goes
-  // away reads as a label.
-  useEffect(() => {
-    if (syncState !== 'saved') return;
-    const t = setTimeout(() => setSyncState('idle'), 2000);
-    return () => clearTimeout(t);
-  }, [syncState]);
+  useEffect(() => () => syncChip.dispose(), [syncChip]);
 
   /**
    * Teardown saves for the exits React cannot see.
@@ -109,5 +106,5 @@ export function usePlaybackProgress({ video, mediaRef, onActivityChange }) {
     };
   }, [video?.id, mediaRef, progress]);
 
-  return { progress, syncState };
+  return { progress, syncChip };
 }

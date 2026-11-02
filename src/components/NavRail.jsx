@@ -198,7 +198,7 @@ function RailItem({
 
 export default function NavRail({ activeTab, onTabChange, onOpenSettings, hasUpdate }) {
   const itemRefs = useRef({});
-  const [indicatorStyle, setIndicatorStyle] = useState({ top: 0, height: 0, opacity: 0 });
+  const [indicatorStyle, setIndicatorStyle] = useState({ opacity: 0 });
 
   const registerItemRef = (id, el) => {
     if (el) itemRefs.current[id] = el;
@@ -212,13 +212,15 @@ export default function NavRail({ activeTab, onTabChange, onOpenSettings, hasUpd
       setIndicatorStyle((s) => ({ ...s, opacity: 0 }));
       return;
     }
-    // Inset so the bar sits inside the row's rounded corner. `opacity: 1`
-    // starts the fade-in: the initial state is 0 so it does not slide in from
-    // the top on mount, and CSS transitions top/height/opacity together. Keep
-    // top, height and opacity in one setState, splitting them loses the fade.
+    // Inset so the bar sits inside the row's rounded corner. The bar is moved
+    // by `transform`, not `top`: a tab switch then repaints a composited layer
+    // instead of laying out the rail. Its height is set rather than
+    // transitioned (the rows are uniform), so the border radius is not
+    // stretched. `opacity: 1` starts the fade-in; the initial state is 0 so it
+    // does not slide in from the top on mount.
     setIndicatorStyle({
-      top: el.offsetTop + 7,
-      height: el.offsetHeight - 14,
+      '--ind-y': `${el.offsetTop + 7}px`,
+      '--ind-h': `${el.offsetHeight - 14}px`,
       opacity: 1,
     });
   }, [activeTab]);

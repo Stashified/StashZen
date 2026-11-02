@@ -19,6 +19,11 @@ import { memo, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './EntityCard.module.css';
 
+// The skipped-card placeholder height, one per aspect (see EntityCard.module.css).
+// Module constants, not render literals: the cards are memoised.
+const PORTRAIT_SIZE = { '--card-intrinsic-h': '519px' };
+const LANDSCAPE_SIZE = { '--card-intrinsic-h': '221px' };
+
 /** One or two initials for when there is no picture: a failed load, since
  *  `image_path` is non-empty for every tag and studio, see tagService. */
 function initialsOf(text) {
@@ -70,6 +75,7 @@ function EntityCard({
     <button
       ref={ref}
       className={`${styles.card} ${fill ? styles.fill : ''} ${focused ? styles.focused : ''}`}
+      style={landscape ? LANDSCAPE_SIZE : PORTRAIT_SIZE}
       onClick={select}
       aria-label={view.label?.(item) || title}
     >

@@ -15,13 +15,14 @@
 
 import { withApiKey } from './stashUrl.js';
 import { createEntityService } from './entityService.js';
-import { coverArt, makeRng } from './mockArt.js';
-import { GALLERY_TITLES, STUDIOS } from './mockLibrary.js';
 import { ratingLabel } from './format.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
-function generateMockGalleries() {
+// Loaded on demand: see generateMockVideos in videoService.js.
+async function generateMockGalleries() {
+  const { GALLERY_TITLES, STUDIOS } = await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   return GALLERY_TITLES.map((title, i) => {
     const rng = makeRng(`gallery-${i}`);
     // The enrichment fields draw from their own stream so none of the pinned

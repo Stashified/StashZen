@@ -492,8 +492,10 @@ export default function PerformerDetailPage({
             </div>
           )}
 
-          {performer.details && (
-            <p className={styles.bio}>{performer.details}</p>
+          {/* From the profile query: a bio paragraph is too much to ship with
+              every card. Test mode's cards still carry one. */}
+          {(profile?.details ?? performer.details) && (
+            <p className={styles.bio}>{profile?.details ?? performer.details}</p>
           )}
 
           {notice && (

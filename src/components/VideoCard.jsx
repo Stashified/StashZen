@@ -23,7 +23,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
-import { useSettings, dataSourceKey } from '../utils/settings.js';
+import { usePreviewSettings } from '../utils/settings.js';
 import styles from './VideoCard.module.css';
 
 // How long focus must rest on this card before the preview is mounted. Long
@@ -42,14 +42,28 @@ const PREVIEW_WATCHDOG_MS = 1200;
  */
 const badPreviews = new Map(); // dataSourceKey → Set(sceneId)
 
+// Bounded because nothing ever removes an id: a long session would otherwise
+// hold every preview that 404'd since launch. Sets iterate in insertion order,
+// so the oldest entry is the one dropped, and a formerly-bad card is simply
+// retried. The source cap covers the settings screen's URL field.
+const BAD_PREVIEWS_MAX = 400;
+const BAD_SOURCES_MAX = 8;
+
 function isBad(source, id) {
   return !!badPreviews.get(source)?.has(id);
 }
 
 function markBad(source, id) {
   let set = badPreviews.get(source);
-  if (!set) { set = new Set(); badPreviews.set(source, set); }
+  if (!set) {
+    set = new Set();
+    badPreviews.set(source, set);
+    while (badPreviews.size > BAD_SOURCES_MAX) {
+      badPreviews.delete(badPreviews.keys().next().value);
+    }
+  }
   set.add(id);
+  while (set.size > BAD_PREVIEWS_MAX) set.delete(set.values().next().value);
 }
 
 /**
@@ -99,8 +113,10 @@ function VideoCard({
   fill = false,
 }) {
   const [imgError, setImgError] = useState(false);
-  const settings = useSettings();
-  const source = dataSourceKey(settings);
+  // Only the preview settings, not the whole store: a card is memoised, but a
+  // subscription to every setting re-rendered all forty of them on any write.
+  const settings = usePreviewSettings();
+  const source = settings.source;
 
   const { ref, focused } = useFocusable({
     id: `${focusIdPrefix}-${item.id}`,

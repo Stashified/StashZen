@@ -113,7 +113,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   }, [moveToRestore]);
 
 
-  if (loading) return (
+  if (loading && !videos.length) return (
     <ListingState
       id="state-videos"
       styles={styles}
@@ -191,9 +191,10 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
                   onSelect={onVideoSelect}
                   onLongPress={onVideoLongPress}
                 />
-                {/* Only the central few get a reflection; far cards are too
-                    small on screen to benefit. */}
-                {abs <= 2 && video.thumbnail && (
+                {/* Only the centred card gets a reflection: it is the one whose
+                    underside is actually in view, and each reflection is a
+                    full-cover image with a mask of its own. */}
+                {abs === 0 && video.thumbnail && (
                   <div
                     className={styles.reflection}
                     style={{ backgroundImage: `url("${video.thumbnail}")` }}

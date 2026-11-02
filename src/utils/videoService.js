@@ -10,12 +10,10 @@
 
 import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
-import { runQuery } from './stashQuery.js';
+import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { publishRowPatch } from './rowPatches.js';
 import { translateFilter } from './filterTranslate.js';
-import { SCENE_TITLES, STUDIOS } from './mockLibrary.js';
-import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
 import { ratingLabel } from './format.js';
@@ -38,7 +36,12 @@ const MOCK_SORT_ALIAS = {
 // Everything below is invented but stable: a PRNG seeded on the scene's id, so
 // a scene keeps its duration, rating and cover while the app is in Test mode.
 // That is what makes a layout change comparable before and after.
-function generateMockVideos(count = 48) {
+//
+// Loaded on demand: Test mode is the only caller, and the catalogue plus the
+// art generator are ~26 KB of code a Live TV would otherwise parse at startup.
+async function generateMockVideos(count = 48) {
+  const { SCENE_TITLES, STUDIOS } = await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   const now = Date.now();
   return Array.from({ length: count }, (_, i) => {
     const rng = makeRng(`scene-${i}`);
@@ -86,48 +89,55 @@ function generateMockVideos(count = 48) {
 // ═══════════════════════════════════════════════════════════
 // GRAPHQL
 // ═══════════════════════════════════════════════════════════
+// What a card draws, and what the player needs from the row. Shared with the
+// related-rows query below so a field added for one cannot go missing in the
+// other.
+const SCENE_ROW_FIELDS = `
+  fragment SceneRowFields on Scene {
+    id
+    title
+    date
+    rating100
+    play_count
+    files {
+      duration
+      width
+      height
+      video_codec
+      audio_codec
+      format
+    }
+    resume_time
+    paths {
+      screenshot
+      stream
+      sprite
+      vtt
+      preview
+    }
+    studio {
+      id
+      name
+    }
+    tags {
+      id
+      name
+    }
+  }
+`;
+
 const FIND_SCENES_QUERY = `
   query FindScenes($filter: FindFilterType, $scene_filter: SceneFilterType) {
     findScenes(filter: $filter, scene_filter: $scene_filter) {
       count
-      scenes {
-        id
-        title
-        date
-        rating100
-        play_count
-        files {
-          duration
-          width
-          height
-          video_codec
-          audio_codec
-          format
-        }
-        resume_time
-        paths {
-          screenshot
-          stream
-          sprite
-          vtt
-          preview
-        }
-        studio {
-          id
-          name
-        }
-        tags {
-          id
-          name
-        }
-        performers {
-          id
-          name
-        }
-      }
+      scenes { ...SceneRowFields }
     }
   }
+  ${SCENE_ROW_FIELDS}
 `;
+
+// Pages after the first do not read the total, see withoutCount.
+const FIND_SCENES_PAGE_QUERY = withoutCount(FIND_SCENES_QUERY);
 
 function formatDuration(seconds) {
   if (!seconds) return '–';
@@ -148,7 +158,7 @@ function yearOf(date) {
   return m ? Number(m[1]) : null;
 }
 
-function normalizeScene(scene) {
+export function normalizeScene(scene) {
   const file = scene.files?.[0];
   const duration = file?.duration || 0;
   const year = yearOf(scene.date);
@@ -161,8 +171,9 @@ function normalizeScene(scene) {
     year,
     rating: ratingLabel(scene.rating100),
     category: scene.studio?.name || scene.tags?.[0]?.name || 'Untagged',
-    // Every one of these except `stream` arrives without the API key;
-    // withApiKey is a no-op on `stream`.
+    // `screenshot`/`sprite`/`vtt`/`preview` arrive unkeyed. `stream` arrives
+    // keyed (0.31) or signed (0.32 with credentials); the appended key covers
+    // both, and outlives a signature.
     //
     // `preview` is non-empty for *every* scene, even with no preview file, so
     // a card must not trust it alone: VideoCard treats the <video> element as
@@ -174,7 +185,6 @@ function normalizeScene(scene) {
     preview: withApiKey(scene.paths?.preview) || null,
     play_count: scene.play_count || 0,
     studio: scene.studio?.name,
-    performers: scene.performers?.map(p => p.name) || [],
     tags: scene.tags?.map(t => t.name) || [],
     width: file?.width,
     height: file?.height,
@@ -199,6 +209,7 @@ const sceneCache = createListCache();
  */
 export function clearScenePages() {
   sceneCache.clear();
+  relatedCache.clear();
 }
 
 /**
@@ -246,7 +257,7 @@ async function loadVideos({
   // ── Mock branch ──────────────────────────────────────────
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
-    let videos = generateMockVideos(48);
+    let videos = await generateMockVideos(48);
 
     if (mode !== 'all') {
       videos = videos.filter(v => v.category.toLowerCase() === mode.toLowerCase());
@@ -277,7 +288,11 @@ async function loadVideos({
     scene_filter: translateFilter(filter, 'SceneFilterType'),
   };
 
-  const data = await runQuery(FIND_SCENES_QUERY, variables, { signal });
+  const data = await runQuery(
+    page > 1 ? FIND_SCENES_PAGE_QUERY : FIND_SCENES_QUERY,
+    variables,
+    { signal },
+  );
   const scenes = data?.findScenes?.scenes || [];
 
   return {
@@ -285,6 +300,82 @@ async function loadVideos({
     total: data?.findScenes?.count || 0,
     page,
   };
+}
+
+// The detail page's two "More from" rows, in one request: both are findScenes
+// listings fired at the same instant. The document is built per open because a
+// scene may carry only one of the two entities, and asking an absent one for
+// rows would be a whole listing read for nothing.
+const relatedCache = createListCache();
+
+/**
+ * @returns {Promise<{byStudio?: Array, byPerformer?: Array}>} the requested
+ *   rows, normalised; a key is absent when its filter was not passed.
+ */
+export async function fetchRelatedScenes({
+  studioFilter = null, performerFilter = null, limit = 5, signal,
+} = {}) {
+  const wanted = [];
+  if (studioFilter) wanted.push(['byStudio', studioFilter]);
+  if (performerFilter) wanted.push(['byPerformer', performerFilter]);
+  if (!wanted.length) return {};
+
+  const key = listCacheKey('related', limit, wanted);
+  // Set by the loader when one root of the document failed.
+  let partial = false;
+  // Requested above the mock branch: Test mode's generators are deterministic,
+  // so its rows deserve the same reopen-is-free behaviour.
+  const out = await relatedCache.get(key, async () => {
+    if (getSettings().useMock) {
+      const entries = await Promise.all(wanted.map(async ([alias, filter]) => {
+        const { videos } = await fetchVideos({
+          filter, limit, sort: 'created_at', order: 'desc', signal,
+        });
+        return [alias, videos];
+      }));
+      return Object.fromEntries(entries);
+    }
+
+    const decls = wanted
+      .map((_, i) => `$f${i}: FindFilterType, $sf${i}: SceneFilterType`)
+      .join(', ');
+    const roots = wanted
+      .map(([alias], i) =>
+        `${alias}: findScenes(filter: $f${i}, scene_filter: $sf${i}) { scenes { ...SceneRowFields } }`)
+      .join('\n');
+    const variables = {};
+    wanted.forEach(([, filter], i) => {
+      variables[`f${i}`] = {
+        page: 1, per_page: limit, sort: 'created_at', direction: 'DESC',
+      };
+      variables[`sf${i}`] = translateFilter(filter, 'SceneFilterType');
+    });
+
+    // GraphQL can fail one aliased root and answer the other; the error
+    // carries that partial data (see graphqlRequest), so a studio's bad filter
+    // does not empty the performer row too.
+    let data;
+    try {
+      data = await runQuery(
+        `query FindRelatedScenes(${decls}) { ${roots} }
+        ${SCENE_ROW_FIELDS}`,
+        variables,
+        { signal },
+      );
+    } catch (e) {
+      const answered = e?.data;
+      if (!answered || !wanted.some(([alias]) => answered[alias] != null)) throw e;
+      data = answered;
+      partial = true;
+    }
+    return Object.fromEntries(wanted.map(([alias]) =>
+      [alias, (data?.[alias]?.scenes || []).map(normalizeScene)]));
+  });
+
+  // A lost root is not an answer worth serving for the whole session; a reopen
+  // is how the row gets another chance.
+  if (partial) relatedCache.forget(key);
+  return out;
 }
 
 /**
@@ -297,7 +388,7 @@ async function loadVideos({
 export async function fetchRandomVideo({ filter = null, q = '', signal } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 250));
-    let videos = generateMockVideos(48);
+    let videos = await generateMockVideos(48);
     const needle = (q || '').trim().toLowerCase();
     if (needle) {
       videos = videos.filter(v => String(v.title || '').toLowerCase().includes(needle));
@@ -309,7 +400,8 @@ export async function fetchRandomVideo({ filter = null, q = '', signal } = {}) {
     filter: { q, page: 1, per_page: 1, sort: 'random' },
     scene_filter: translateFilter(filter, 'SceneFilterType'),
   };
-  const data = await runQuery(FIND_SCENES_QUERY, variables, { signal });
+  // One row, no total read: the count would be a second full scan.
+  const data = await runQuery(FIND_SCENES_PAGE_QUERY, variables, { signal });
   const scene = data?.findScenes?.scenes?.[0];
   return scene ? normalizeScene(scene) : null;
 }
@@ -373,13 +465,20 @@ const SCENE_STREAMS_QUERY = `
  *
  * Returns `[]` rather than throwing: an empty list is a fact the caller acts
  * on, not an error.
+ *
+ * Endpoints are keyed here, not by the caller: Stash 0.32 signs them when
+ * credentials are configured, and it forwards `apikey` to HLS segments in
+ * preference to the expiring signature.
  */
 export async function fetchSceneStreams(id) {
   if (getSettings().useMock) return [];
   if (!id) return [];
   try {
     const data = await runQuery(SCENE_STREAMS_QUERY, { id: String(id) });
-    return data?.sceneStreams || [];
+    return (data?.sceneStreams || []).map((e) => ({
+      ...e,
+      url: withApiKey(e.url),
+    }));
   } catch (e) {
     console.warn('[fetchSceneStreams] failed:', e.message);
     return [];
@@ -443,9 +542,10 @@ export async function saveSceneActivity({ id, resumeTime, playDuration = 0 }) {
       resume_time: resumeTime,
       playDuration,
     });
-    // Cached pages now hold a stale resume_time, which the card draws as its
-    // resume bar. Drop them; the player saves rarely and Map.clear is O(1).
-    clearScenePages();
+    // Mounted lists are patched in place, which is what the card's resume bar
+    // reads; unmounted pages are dropped on the next tab switch
+    // (clearAllListCaches). Clearing every scene page here refetched the whole
+    // listing on the next visit for a value the patch already carries.
     publishRowPatch('scene', id, { resume_time: resumeTime ?? 0 });
     return { ok: true };
   } catch (e) {

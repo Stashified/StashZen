@@ -1,4 +1,10 @@
 .card {
+  /* Off-screen cards skip style and paint; see VideoCard.module.css for why
+     the bare length comes first and why a skipped card must report a
+     plausible size. Width is 6 columns at 1920; height is the 3:4 art. */
+  content-visibility: auto;
+  contain-intrinsic-size: 254px 338px;
+  contain-intrinsic-size: auto 338px;
   /* Local paint containment and an inset focus ring, see the note in
      MarkerCard.module.css. */
   contain: content;
@@ -55,13 +61,9 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s var(--ease-tv);
   animation: imgFade 0.14s ease-out;
 }
-
-.card.focused .img {
-  transform: scale(1.05);
-}
+/* No inner focus scale; see VideoCard.module.css. */
 
 .imgFallback {
   width: 100%;

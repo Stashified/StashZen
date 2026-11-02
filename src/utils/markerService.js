@@ -12,18 +12,21 @@
 
 import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
-import { runQuery } from './stashQuery.js';
+import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
-import { MARKER_PREFIXES, MARKER_SUFFIXES, MARKER_TAGS, mockSceneRef } from './mockLibrary.js';
-import { coverArt, makeRng } from './mockArt.js';
 import { mockComparator } from './mockSort.js';
 import { baseSort, stableSort } from './randomSort.js';
 
 // ── Mock generator ────────────────────────────────────────
 // Seeded on the marker's id, like the scene generator in videoService.js, so
 // a marker keeps its timestamp and its picture across reloads.
-function generateMockMarkers(count = 60) {
+//
+// Loaded on demand: see generateMockVideos.
+async function generateMockMarkers(count = 60) {
+  const { MARKER_PREFIXES, MARKER_SUFFIXES, MARKER_TAGS, mockSceneRef } =
+    await import('./mockLibrary.js');
+  const { coverArt, makeRng } = await import('./mockArt.js');
   return Array.from({ length: count }, (_, i) => {
     const rng = makeRng(`marker-${i}`);
     // Sort-control fields use their own stream so the timestamps above stay
@@ -67,14 +70,15 @@ const FIND_MARKERS_QUERY = `
           title
           paths { stream screenshot sprite vtt }
           files { video_codec audio_codec format duration }
-          performers { name }
         }
         primary_tag { id name }
-        tags { name }
       }
     }
   }
 `;
+
+// Pages after the first do not read the total, see withoutCount.
+const FIND_MARKERS_PAGE_QUERY = withoutCount(FIND_MARKERS_QUERY);
 
 function normalizeMarker(m) {
   return {
@@ -91,7 +95,6 @@ function normalizeMarker(m) {
     screenshot: withApiKey(m.scene?.paths?.screenshot || m.screenshot) || null,
     primaryTag: m.primary_tag?.name || null,
     primaryTagId: m.primary_tag?.id || null,
-    tags: m.tags?.map(t => t.name) || [],
     scene: {
       id: m.scene?.id,
       title: m.scene?.title || `Scene ${m.scene?.id}`,
@@ -110,7 +113,6 @@ function normalizeMarker(m) {
       // timeline falls back to the element's (0 for an MP4 transcode) and the
       // resume end threshold is disabled.
       durationSeconds: m.scene?.files?.[0]?.duration || 0,
-      performers: m.scene?.performers?.map(p => p.name) || [],
     },
   };
 }
@@ -159,7 +161,7 @@ async function loadMarkers({
 } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
-    let markers = generateMockMarkers(60);
+    let markers = await generateMockMarkers(60);
 
     // `sort` may be `random_<n>`; the comparator knows only `random`.
     markers.sort(mockComparator(baseSort(sort), order));
@@ -181,7 +183,11 @@ async function loadMarkers({
     scene_marker_filter: translateFilter(filter, 'SceneMarkerFilterType'),
   };
 
-  const data = await runQuery(FIND_MARKERS_QUERY, variables, { signal });
+  const data = await runQuery(
+    page > 1 ? FIND_MARKERS_PAGE_QUERY : FIND_MARKERS_QUERY,
+    variables,
+    { signal },
+  );
   const markers = data?.findSceneMarkers?.scene_markers || [];
 
   return {
@@ -228,6 +234,7 @@ export const MARKER_TAG_LIMIT = 60;
 export async function fetchTagOptions(limit = MARKER_TAG_LIMIT) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 200));
+    const { MARKER_TAGS } = await import('./mockLibrary.js');
     return {
       tags: MARKER_TAGS.slice(0, limit).map((name, i) => ({
         id: `tag-${i}`,
@@ -295,6 +302,7 @@ export async function fetchRecentMarkerTags(limit = MARKER_RECENT_TAG_LIMIT) {
     await new Promise(r => setTimeout(r, 150));
     // Same ids as fetchTagOptions' mock so the two rows agree in mock mode:
     // which is also where the real duplicate-chip case gets exercised.
+    const { MARKER_TAGS } = await import('./mockLibrary.js');
     return MARKER_TAGS.slice(0, 4).map((name, i) => ({ id: `tag-${i}`, name }));
   }
 
