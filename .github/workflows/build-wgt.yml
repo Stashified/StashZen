@@ -16,6 +16,16 @@ on:
           - real
           - test
         default: real
+      # Tizen identifies an installed app by its package id, not its signature.
+      # `test` suffixes both ids, so the artifact can be installed beside the
+      # main app instead of replacing it; `signing=test` is the usual pair.
+      variant:
+        description: 'App identity (test installs alongside the main app)'
+        type: choice
+        options:
+          - main
+          - test
+        default: main
   push:
     tags:
       - 'v*'
@@ -53,10 +63,15 @@ env:
 jobs:
   build:
     name: Build and sign
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: that label is migrating to Ubuntu 26, and the
+    # Tizen Studio web-cli installer is the fragile step here. Move this on
+    # purpose, not in the middle of a release.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
       version: ${{ steps.version.outputs.version }}
+      # `main` or `test`; a tag push has no inputs and is always main.
+      variant: ${{ steps.version.outputs.variant }}
       # The mode actually used to sign. `release` refuses a test-signed build.
       signing: ${{ steps.signing.outputs.mode }}
 
@@ -70,9 +85,9 @@ jobs:
       # Pinned by commit SHA, not tag: a moved or compromised tag cannot change
       # what runs here. There is no Dependabot config, so bump the SHA and the
       # version comment together by hand.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: '22'
           cache: npm
@@ -80,7 +95,7 @@ jobs:
       # The `tizen` CLI shells out to Java for packaging and signing. The 5.1
       # toolchain predates the JDK the runner image ships by default, so pin an
       # era-appropriate one.
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '11'
@@ -89,7 +104,7 @@ jobs:
       # installed tree. The key carries the pinned digest: a new SDK URL or
       # checksum gets a fresh tree instead of silently reusing the old one.
       - name: Cache Tizen Studio CLI
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: tizen-studio-5.1-web-cli-${{ env.TIZEN_SHA256 }}
           path: |
@@ -143,6 +158,8 @@ jobs:
       - name: Build web app
         id: version
         env:
+          # Empty on a tag push (no inputs); main is the release identity.
+          APP_VARIANT: "${{ inputs.variant || 'main' }}"
           # Both locks for the public-only update check. `github.repository` is
           # evaluated per step, so this file is identical in both repos: true in
           # the public copy, false in the private one. A private build gets an
@@ -170,7 +187,21 @@ jobs:
           # The release job names the artifact from these outputs, so they are
           # computed here rather than in the consumer.
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building version $VERSION"
+
+          # The suffix travels with the artifact name and the .wgt filename, so
+          # two dispatches for one version cannot be confused after download.
+          case "$APP_VARIANT" in
+            main) VARIANT_SUFFIX="" ;;
+            test) VARIANT_SUFFIX="-test" ;;
+            *)
+              echo "::error::Unknown variant '$APP_VARIANT' (expected main or test)"
+              exit 1
+              ;;
+          esac
+          echo "VARIANT=$APP_VARIANT" >> "$GITHUB_ENV"
+          echo "VARIANT_SUFFIX=$VARIANT_SUFFIX" >> "$GITHUB_ENV"
+          echo "variant=$APP_VARIANT" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION ($APP_VARIANT identity)"
 
           # Stamp before the build so vite's __APP_VERSION__ picks it up, then
           # verify: a reformatted package.json would leave the old version and
@@ -191,7 +222,8 @@ jobs:
           cp tizen/icon.png dist/
           cp tizen/icon-black.png dist/
           # Multiline-aware, and it fails if the attribute cannot be found;
-          # the old sed left the old version silently.
+          # the old sed left the old version silently. APP_VARIANT from the
+          # step env also swaps the package id for the side-by-side variant.
           node scripts/stamp-manifest.mjs dist/config.xml
 
       # `npm run build` already ran this as its postbuild step. It runs again so
@@ -344,7 +376,7 @@ jobs:
             exit 1
           fi
 
-          OUT="StashZen-${VERSION}.wgt"
+          OUT="StashZen-${VERSION}${VARIANT_SUFFIX}.wgt"
           mv "$WGT" "$OUT"
           echo "WGT=$OUT" >> "$GITHUB_ENV"
           ls -lh "$OUT"
@@ -357,9 +389,9 @@ jobs:
           grep -q 'config.xml' <<<"$LISTING" || { echo "::error::.wgt has no config.xml"; exit 1; }
           grep -q 'index.html' <<<"$LISTING" || { echo "::error::.wgt has no index.html"; exit 1; }
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: StashZen-${{ env.VERSION }}-wgt
+          name: StashZen-${{ env.VERSION }}${{ env.VARIANT_SUFFIX }}-wgt
           path: ${{ env.WGT }}
           if-no-files-found: error
 
@@ -372,16 +404,21 @@ jobs:
     needs: build
     # Belt and braces: the signing step refuses test mode on a tag, and this
     # keeps a future edit to that step from publishing the result.
-    if: github.ref_type == 'tag' && needs.build.outputs.signing != 'test'
-    runs-on: ubuntu-latest
+    if: >-
+      github.ref_type == 'tag'
+      && needs.build.outputs.signing != 'test'
+      && needs.build.outputs.variant != 'test'
+    # Same image as the build job: an artifact produced there is downloaded and
+    # unzipped here, so the two must not drift onto different Ubuntu releases.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
 
     steps:
       # Pinned by SHA like every other action here. This is the download half
-      # of the v4 artifact API; upload-artifact above is v4.6.2.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      # of the artifact pair; upload-artifact above is v7.0.2.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: StashZen-${{ needs.build.outputs.version }}-wgt
 

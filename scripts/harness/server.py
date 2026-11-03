@@ -7,6 +7,7 @@ other fetches behind it.
 """
 import base64
 import json
+import os
 import re
 import sys
 import threading
@@ -15,6 +16,11 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 OUT_DIR = sys.argv[1]
 PORT = int(sys.argv[2])
+
+# The version every answer reports. 0.31.1 is the app's floor, so the default
+# hides the 0.32-gated UI; a job sets this to exercise the newer paths. The
+# suffix keeps a stray "newer than any release" comparison impossible.
+HARNESS_SERVER_VERSION = os.environ.get("HARNESS_SERVER_VERSION", "0.31.1-harness")
 
 # Behaviour flipped by POST /mode.
 #   save / sceneAddPlay  "fail"  → the write returns a GraphQL error
@@ -36,7 +42,7 @@ MODE = {
     "imageInfo": "ok",
     # findTag / findStudio for the entity sheet: "fail" is the error line,
     # "missing" a deleted row, "slow" holds the loading state.
-    "tagInfo": "ok", "studioInfo": "ok",
+    "tagInfo": "ok", "studioInfo": "ok", "groupInfo": "ok", "galleryInfo": "ok",
     # Gallery-filtered findImages: "empty" (the default) serves no rows, so
     # "still filtered" is visible to S6; "populate" serves the gallery's own
     # short set for the slideshow.
@@ -174,6 +180,12 @@ SCENE = {
         {"id": "7002", "title": "VERIFY gallery two"},
     ],
     "stash_ids": [{"endpoint": "https://stashdb.org/graphql", "stash_id": "abc"}],
+    # Groups chip row: the same-tab Back path (Scenes → scene detail → group-
+    # filtered Scenes → Back) must land on the scene card it started from.
+    "groups": [
+        {"scene_index": 0, "group": {"id": "2", "name": "VERIFY group 2"}},
+        {"scene_index": 1, "group": {"id": "3", "name": "VERIFY group 3"}},
+    ],
     "files": [{
         "duration": 3725.5, "width": 1920, "height": 1080,
         "video_codec": "h264", "audio_codec": "aac",
@@ -200,12 +212,12 @@ TONE_RE = re.compile(r"/tone\d*\.wav(\?[^#]*)?")
 PREVIEW_RE = re.compile(r"/scene/(\d+)/preview(\?[^#]*)?")
 # /scene/{id}/thumb.png — the parent scene's screenshot.
 THUMB_RE = re.compile(r"/scene/(\d+)/thumb\.png(\?[^#]*)?")
-# Section artwork: tag/studio/gallery/image PNGs, plus performer portraits,
-# which the search results draw with the performer card. One route because
-# they differ only in tint (see do_GET); anchored on the section name so it
-# cannot swallow the scene thumbnail.
+# Section artwork: tag/studio/group/gallery/image PNGs, plus performer
+# portraits, which the search results draw with the performer card. One route
+# because they differ only in tint (see do_GET); anchored on the section name
+# so it cannot swallow the scene thumbnail.
 ENTITY_IMG_RE = re.compile(
-    r"/(tag|studio|gallery|image|performer)/(\d+)/(?:image|cover|thumb|full)\.png(\?[^#]*)?")
+    r"/(tag|studio|group|gallery|image|performer)/(\d+)/(?:image|cover|thumb|full)\.png(\?[^#]*)?")
 # /scene/{id}/stream.mp4 — one of the transcoded endpoints sceneStreams
 # advertises. See do_GET.
 STREAM_MP4_RE = re.compile(r"/scene/\d+/stream\.mp4(\?[^#]*)?")
@@ -393,6 +405,8 @@ IMAGE_INFO_FETCHES = []
 # sheet asks for the fields the listing omits (description/details, hierarchy).
 TAG_INFO_FETCHES = []
 STUDIO_INFO_FETCHES = []
+GROUP_INFO_FETCHES = []
+GALLERY_INFO_FETCHES = []
 
 # Every stopJob mutation — `{job_id, query}` — and the ids stopped. `/clear`
 # resets both, so each phase starts from the full fixture.
@@ -530,7 +544,7 @@ LIBRARY_STATS = {
 # NEEDS_MIGRATION with a schema gap and a finished job the panel must filter
 # out. `migrated` is the "changed after Refresh" answer: healthy, no jobs.
 SERVER_STATUS = {
-    "version": {"version": "0.31.1-harness"},
+    "version": {"version": HARNESS_SERVER_VERSION},
     "systemStatus": {"status": "NEEDS_MIGRATION", "appSchema": 31, "databaseSchema": 30},
     "jobQueue": [
         # Four subtasks but three shown, so the fourth's absence is asserted.
@@ -621,6 +635,7 @@ def listing_performer(n):
 #   Image    both `paths.thumbnail` (card) and `paths.image` (viewer).
 TAG_COUNT = 100
 STUDIO_COUNT = 100
+GROUP_COUNT = 100
 GALLERY_COUNT = 100
 IMAGE_COUNT = 100
 
@@ -655,6 +670,47 @@ def listing_tag(n):
             else f"VERIFY tag description {n}" if n % 2 == 0 else None
         ),
         "aliases": [f"VERIFY alias {n}a", f"VERIFY alias {n}b"] if n % 3 == 0 else [],
+    }
+
+
+def listing_group(n):
+    """One row of the groups listing. Landscape art, no favourite flag.
+
+    Stash answers a group with no artwork using one shared placeholder marked
+    `default=true`: a 200, so it is neither an absent field nor an `onError`.
+    Every third row gets it and carries a scene screenshot for the fallback;
+    every sixth has no picture at all, for the monogram. All three paths the
+    card can take are then reachable from the listing.
+    """
+    placeholder = n % 6 == 3
+    if n % 6 == 0:
+        front = None
+    elif placeholder:
+        front = f"/group/{n}/image.png?default=true"
+    else:
+        front = f"/group/{n}/image.png"
+    return {
+        "id": str(n),
+        "name": f"VERIFY group {n}",
+        "front_image_path": front,
+        # The card falls back to the first real screenshot of a group whose
+        # cover is the placeholder.
+        "scenes": (
+            [{"id": str(900 + n), "paths": {"screenshot": f"/scene/{900 + n}/thumb.png"}}]
+            if placeholder else []
+        ),
+        "date": f"2024-{n % 12 + 1:02d}-{n % 28 + 1:02d}",
+        # Seconds, like Stash. The card does not print it; the hero may.
+        "duration": n * 60,
+        "rating100": (n * 9) % 101,
+        "o_counter": n % 7,
+        "scene_count": n % 9,
+        "performer_count": n % 5,
+        "studio": {"id": str(n), "name": f"VERIFY group studio {n}"} if n % 3 else None,
+        "tags": [{"id": str(n), "name": f"VERIFY group tag {n}"}],
+        "synopsis": f"VERIFY group synopsis {n}" if n % 2 == 0 else None,
+        "director": f"VERIFY director {n}" if n % 4 == 0 else None,
+        "aliases": None,
     }
 
 
@@ -720,8 +776,59 @@ STUDIO_INFO = {
     "gallery_count": 23,
     "performer_count": 24,
     "group_count": 2,
+    # 0.32 only, and only when the query selects them: a client that forgets
+    # the `(depth: -1)` form gets `o_counter` alone, as on the real server.
+    "o_counter": 4242,
+    "scene_marker_count": 57,
     "parent_studio": {"id": "p9", "name": "VERIFY parent studio"},
     "child_studios": [{"id": "c9", "name": "VERIFY child studio"}],
+}
+
+# The group sheet's detail answer. The relation lists arrive in Stash's
+# `{ group { id name } }` shape, because reading `name` off the link itself
+# would be undefined.
+GROUP_INFO = {
+    "aliases": "VERIFY group alias one, VERIFY group alias two",
+    "synopsis": "VERIFY group info synopsis. " * 40,
+    "director": "VERIFY group director",
+    "date": "2023-07-04",
+    "duration": 5400,
+    "rating100": 80,
+    "o_counter": 4242,
+    "scene_count": 31,
+    "performer_count": 32,
+    "studio": {"id": "s31", "name": "VERIFY group info studio"},
+    "tags": [{"id": "gt1", "name": "VERIFY group info tag one"}],
+    "containing_groups": [
+        {"group": {"id": "cg1", "name": "VERIFY containing group"}},
+    ],
+    "sub_groups": [
+        {"group": {"id": "sg1", "name": "VERIFY subgroup one"}},
+        {"group": {"id": "sg2", "name": "VERIFY subgroup two"}},
+    ],
+}
+
+GALLERY_INFO = {
+    "code": "VERIFY-GALLERY-CODE",
+    "details": "VERIFY gallery info details. " * 40,
+    "date": "2022-11-09",
+    "photographer": "VERIFY gallery photographer",
+    "rating100": 70,
+    "organized": True,
+    "image_count": 33,
+    "studio": {"id": "s32", "name": "VERIFY gallery info studio"},
+    "tags": [
+        {"id": "glt1", "name": "VERIFY gallery info tag one"},
+        {"id": "glt2", "name": "VERIFY gallery info tag two"},
+    ],
+    # No scene_count/performer_count on Gallery: the sheet counts these lists.
+    "performers": [
+        {"id": "glp1", "name": "VERIFY gallery performer one"},
+        {"id": "glp2", "name": "VERIFY gallery performer two"},
+        {"id": "glp3", "name": "VERIFY gallery performer three"},
+    ],
+    "scenes": [{"id": "gls1"}, {"id": "gls2"}, {"id": "gls3"}, {"id": "gls4"}],
+    "folder": {"basename": "VERIFY gallery folder"},
 }
 
 
@@ -897,6 +1004,8 @@ class Handler(SimpleHTTPRequestHandler):
                 IMAGE_INFO_FETCHES.clear()
                 TAG_INFO_FETCHES.clear()
                 STUDIO_INFO_FETCHES.clear()
+                GROUP_INFO_FETCHES.clear()
+                GALLERY_INFO_FETCHES.clear()
                 STOP_FETCHES.clear()
                 STOPPED_JOB_IDS.clear()
                 STATS_FETCHES.clear()
@@ -928,6 +1037,10 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/hanghits"):
             with LOCK:
                 return self._json(list(HANG_HITS))
+        # The version this run reports, so a driver can assert both sides of a
+        # capability gate without also parsing ServerStatus.
+        if self.path.startswith("/version"):
+            return self._json({"version": HARNESS_SERVER_VERSION})
         if self.path.startswith("/requests"):
             with LOCK:
                 return self._json(list(REQUESTS))
@@ -970,6 +1083,12 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/studioinfofetches"):
             with LOCK:
                 return self._json(list(STUDIO_INFO_FETCHES))
+        if self.path.startswith("/groupinfofetches"):
+            with LOCK:
+                return self._json(list(GROUP_INFO_FETCHES))
+        if self.path.startswith("/galleryinfofetches"):
+            with LOCK:
+                return self._json(list(GALLERY_INFO_FETCHES))
         if self.path.startswith("/stopfetches"):
             with LOCK:
                 return self._json(list(STOP_FETCHES))
@@ -1069,11 +1188,11 @@ class Handler(SimpleHTTPRequestHandler):
         m = ENTITY_IMG_RE.fullmatch(self.path)
         if m:
             # Tinted by section *and* id, so the same row number in two sections
-            # differs; two of these four sections share an id space.
+            # differs even where sections share an id space.
             kind = m.group(1)
             n = int(m.group(2))
             tint = {"tag": 0x00, "performer": 0x20, "studio": 0x40,
-                    "gallery": 0x80, "image": 0xC0}[kind]
+                    "group": 0xE0, "gallery": 0x80, "image": 0xC0}[kind]
             # `full.png` is a different colour from the row's thumbnail, making
             # "the viewer opened the full image" checkable.
             # The keyed URL ends in `?apikey=...`, so test the path alone.
@@ -1204,7 +1323,7 @@ class Handler(SimpleHTTPRequestHandler):
             # answer must not undo the Skip.
             if MODE.get("connection") == "slow":
                 time.sleep(1.5)
-            return self._json({"data": {"version": {"version": "0.31.1-harness"}}})
+            return self._json({"data": {"version": {"version": HARNESS_SERVER_VERSION}}})
 
         # The filter builder's folder picker. Real paths, because the label is
         # the path's tail and the "last three segments" rule must be visible.
@@ -1605,7 +1724,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"data": {"findPerformers": {
                 "count": PERFORMER_COUNT, "performers": rows}}})
 
-        # The image viewer's info panel, above the four-section loop: `FindImages`
+        # The image viewer's info panel, above the section loop: `FindImages`
         # is one letter away, so ordering is cheaper than relearning that.
         if "FindImageInfo" in query:
             iid = str(variables.get("id"))
@@ -1654,11 +1773,49 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"errors": [{"message": "simulated studio info failure"}]})
             if mode == "missing":
                 return self._json({"data": {"findStudio": None}})
+            # GraphQL answers only the selections it was asked for. The two
+            # 0.32 counts are selected conditionally by the app, so returning
+            # them regardless would let a client that never asked pass.
+            answer = {
+                k: v for k, v in STUDIO_INFO.items()
+                if k not in ("o_counter", "scene_marker_count") or k in query
+            }
             return self._json({"data": {"findStudio": {
-                **STUDIO_INFO, "id": sid, "name": f"VERIFY studio info {sid}",
+                **answer, "id": sid, "name": f"VERIFY studio info {sid}",
             }}})
 
-        # ── The four browse-only sections ──
+        if "FindGroupInfo" in query:
+            gid = str(variables.get("id"))
+            with LOCK:
+                GROUP_INFO_FETCHES.append({"id": gid, "query": query})
+                mode = MODE.get("groupInfo", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated group info failure"}]})
+            if mode == "missing":
+                return self._json({"data": {"findGroup": None}})
+            return self._json({"data": {"findGroup": {
+                **GROUP_INFO, "id": gid, "name": f"VERIFY group info {gid}",
+            }}})
+
+        if "FindGalleryInfo" in query:
+            gid = str(variables.get("id"))
+            with LOCK:
+                GALLERY_INFO_FETCHES.append({"id": gid, "query": query})
+                mode = MODE.get("galleryInfo", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated gallery info failure"}]})
+            if mode == "missing":
+                return self._json({"data": {"findGallery": None}})
+            return self._json({"data": {"findGallery": {
+                **GALLERY_INFO, "id": gid,
+                "title": f"VERIFY gallery info {gid}",
+            }}})
+
+        # ── The browse-only sections ──
         # One handler each: log in the shared entry shape, slice the same 100-row
         # fixture. The claim is that each sends the right operation with the right
         # filter variable (`tag_filter`, `image_filter`, …), which REQUESTS records.
@@ -1668,6 +1825,7 @@ class Handler(SimpleHTTPRequestHandler):
         for section, var, key, count, listing in (
             ("Tags",      "tag_filter",     "tags",      TAG_COUNT,     listing_tag),
             ("Studios",   "studio_filter",  "studios",   STUDIO_COUNT,  listing_studio),
+            ("Groups",    "group_filter",   "groups",    GROUP_COUNT,   listing_group),
             ("Galleries", "gallery_filter", "galleries", GALLERY_COUNT, listing_gallery),
             ("Images",    "image_filter",   "images",    IMAGE_COUNT,   listing_image),
         ):
@@ -1723,11 +1881,22 @@ class Handler(SimpleHTTPRequestHandler):
                     "images": rows[start:start + entry["per_page"]],
                 }}})
 
+            # `q` is real on the fields the Search tab queries, so a section
+            # that drops the query shows up as "every row", not as "the same
+            # rows". The other sections ignore it like they always have.
+            needle = (entry["q"] or "").lower()
+            field = {"Tags": "name", "Studios": "name", "Groups": "name",
+                     "Galleries": "title", "Images": "title"}[section]
+            all_rows = [
+                listing(i + 1) for i in range(count)
+            ] if (needle and section in ("Groups", "Galleries", "Images")) else None
+            if all_rows is not None:
+                all_rows = [r for r in all_rows if needle in (r.get(field) or "").lower()]
+                count = len(all_rows)
             start = (entry["page"] - 1) * entry["per_page"]
-            rows = [
-                listing(i + 1)
-                for i in range(start, min(start + entry["per_page"], count))
-            ]
+            rows = (all_rows if all_rows is not None
+                    else [listing(i + 1) for i in range(count)])
+            rows = rows[start:start + entry["per_page"]]
             return self._json({"data": {f"find{section}": {"count": count, key: rows}}})
 
         # `FindScene` singular — the player's per-open resume refresh. After the

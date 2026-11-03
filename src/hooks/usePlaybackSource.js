@@ -280,10 +280,16 @@ export function usePlaybackSource(video, mediaRef, {
     if (!sceneId || !ready) return;
 
     // One response serves every transcode candidate of this scene, whichever
-    // engine asks first.
+    // engine asks first. A failed lookup is left uncached, so the other
+    // engine's candidate asks again; caching `[]` there turned one dropped
+    // request into "transcoding is off" for the whole plan.
     let streams = null;
     const transcodeUrls = async () => {
-      if (!streams) streams = await fetchSceneStreams(sceneId);
+      if (streams === null) {
+        const answer = await fetchSceneStreams(sceneId);
+        if (answer === null) return [];
+        streams = answer;
+      }
       return pickTranscodeUrls(streams);
     };
 

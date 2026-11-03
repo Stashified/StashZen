@@ -110,9 +110,9 @@ async function goto(tab) {
 // The native setter, because React's controlled-input tracker swallows a plain
 // `input.value =`. Then wait out the field's debounce and the fetches.
 async function typeQuery(text) {
-  const input = document.querySelector(
-    'input[placeholder="Search scenes, performers, tags, studios"]',
-  );
+  // The field's aria-label is stable across copy changes; the placeholder's
+  // section list is not, and it just grew.
+  const input = document.querySelector('input[aria-label="Search your library"]');
   if (!input) return false;
   const setter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype, 'value',
@@ -148,11 +148,13 @@ async function run() {
   // ── Q2  one query fills every section ───────────────────
   const typed = await typeQuery(QUERY);
   const filled = await waitFor(() => live('video-1') && live('performer-1')
-    && live('tag-1') && live('studio-1'));
-  check('Q2 one query fills all four sections',
+    && live('tag-1') && live('studio-1')
+    && live('group-1') && live('gallery-1') && live('image-1'));
+  check('Q2 one query fills all seven sections',
     typed && filled,
     `typed=${typed}; scenes=${live('video-1')} performers=${live('performer-1')} `
-      + `tags=${live('tag-1')} studios=${live('studio-1')}; errors: ${errorTail()}`);
+      + `tags=${live('tag-1')} studios=${live('studio-1')} groups=${live('group-1')} `
+      + `galleries=${live('gallery-1')} images=${live('image-1')}; errors: ${errorTail()}`);
 
   // ── Q2b  the field hands Down to the first result ──────
   // Geometry would choose column 2: the field is 900 px wide and its centre
@@ -184,6 +186,16 @@ async function run() {
       && /\/studio\/1\/image\.png/.test(srcOf('studio-1')),
     `tag=${srcOf('tag-1') || '(none)'}; studio=${srcOf('studio-1') || '(none)'}`);
 
+  // The three newer sections draw the same entity card, but each service feeds
+  // it from a different field (`front_image_path`, `paths.cover`,
+  // `paths.thumbnail`), so a wrong card shows a monogram rather than art.
+  check('Q5c group, gallery and image results use their own art',
+    /\/group\/1\/image\.png/.test(srcOf('group-1'))
+      && /\/gallery\/1\/cover\.png/.test(srcOf('gallery-1'))
+      && /\/image\/1\/thumb\.png/.test(srcOf('image-1')),
+    `group=${srcOf('group-1') || '(none)'}; gallery=${srcOf('gallery-1') || '(none)'} `
+      + `image=${srcOf('image-1') || '(none)'}`);
+
   // ── Q5b  a section hands Down to the next one ──────────
   // The focus ring lifts the card, which made same-row neighbours look lower
   // than the Tags section; Down hopped sideways instead of leaving the row.
@@ -194,7 +206,8 @@ async function run() {
     focusedId() === 'tag-1', focusedId());
 
   // The fixture's 100 rows exceed the six shown in every section.
-  const seeAllIds = ['scenes', 'performers', 'tags', 'studios'];
+  const seeAllIds = ['scenes', 'performers', 'tags', 'studios',
+    'groups', 'galleries', 'images'];
   const seeAll = seeAllIds.filter(k => live(`search-seeall-${k}`));
   check('Q6 every section with more matches offers See all',
     seeAll.length === seeAllIds.length, `offered: ${seeAll.join(', ') || '(none)'}`);

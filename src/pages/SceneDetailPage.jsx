@@ -34,13 +34,15 @@ const MAX_GALLERIES = 4;
 
 export default function SceneDetailPage({
   scene, onClose, onPlay, onPlayAt, onActivityChange, onGallerySelect,
-  onTagSelect, onStudioSelect, onPerformerSelect, onRelatedSceneSelect,
+  onTagSelect, onStudioSelect, onGroupSelect, onPerformerSelect,
+  onRelatedSceneSelect, showProductionDate = false,
 }) {
   // Transient status line, cleared on unmount, see useFlash. Called first so
   // its unmount effect is registered before the others.
   const [notice, flash] = useFlash(NOTICE_MS);
 
-  const { detail, setDetail, status, loadError, canEdit } = useSceneDetailData(scene);
+  const { detail, setDetail, status, loadError, canEdit } =
+    useSceneDetailData(scene, showProductionDate);
   // No handler means no rows: a page mounted without App cannot make them do
   // anything, and two extra requests on every open would be for nothing.
   const relatedRows = useRelatedScenes(detail, !!onRelatedSceneSelect);
@@ -60,6 +62,7 @@ export default function SceneDetailPage({
   // repeated here.
   const metaBits = [
     fmtDate(detail.date),
+    detail.productionDate && `Production ${fmtDate(detail.productionDate)}`,
     fmtDuration(detail.durationSeconds),
     fmtResolution(detail.width, detail.height),
     fmtBytes(detail.sizeBytes),
@@ -151,6 +154,13 @@ export default function SceneDetailPage({
               kind="performer"
               onSelect={onPerformerSelect}
             />
+          )}
+
+          {detail.groups?.length > 0 && (
+            <div className={styles.markers} role="group" aria-label="Groups">
+              <span className={styles.markersLabel}>Groups</span>
+              <Chips items={detail.groups} kind="group" onSelect={onGroupSelect} />
+            </div>
           )}
 
           {detail.tags?.length > 0 && (

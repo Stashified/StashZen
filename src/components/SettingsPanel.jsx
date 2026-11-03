@@ -16,6 +16,7 @@ import styles from './SettingsPanel.module.css';
 import { ActionButton } from './tvActions.jsx';
 import UnsavedPrompt from './UnsavedPrompt.jsx';
 import { useSettings, setSettings, testStashConnection } from '../utils/settings.js';
+import { normalizeEndpointUrl } from '../utils/endpointUrl.js';
 import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
 import { EngineToggle } from './settings/EngineToggle.jsx';
@@ -213,11 +214,20 @@ export default function SettingsPanel({ onClose }) {
 
 
   const handleTest = async () => {
+    // Also supersedes an in-flight test, so its answer cannot land on top.
     const attempt = ++testAttemptRef.current;
+    // Same normalization Save uses: a bare host:port must not fail Test as if
+    // the network were down when the panel would accept it on Save.
+    const endpoint = normalizeEndpointUrl(stashUrl);
+    if (!endpoint.ok) {
+      setTesting(false);
+      setTestResult({ ok: false, message: endpoint.error });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     const result = await testStashConnection({
-      url: stashUrl.trim(),
+      url: endpoint.url,
       key: stashKey.trim(),
     });
     if (!aliveRef.current || attempt !== testAttemptRef.current) return;

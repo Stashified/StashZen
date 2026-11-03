@@ -336,6 +336,22 @@ async function run() {
     await sleep(200);
     const includesEntry = registry.get('fb-mod-title-opt-INCLUDES');
     check('F4c3 the dropdown offers "includes"', !!includesEntry);
+    // The menu is a sheet now, not a list clipped under its trigger: all
+    // modifiers are offered at once and the D-pad lands on the current one.
+    const offeredMods = Array.from(registry.keys())
+      .filter(k => k.startsWith('fb-mod-title-opt-'));
+    check('F4c4 every modifier is offered at once', offeredMods.length >= 6,
+      `options=${offeredMods.join(', ') || 'none'}`);
+    // Options carry no DOM id; their registry id is the only name they have.
+    const activeOption = Array.from(registry.entries())
+      .find(([, e]) => e.el === document.activeElement)?.[0] || '';
+    check('F4c5 the menu opens with focus on the current value',
+      activeOption.startsWith('fb-mod-title-opt-'),
+      `active=${activeOption || document.activeElement?.tagName}`);
+    const listbox = document.querySelector('[role="listbox"]');
+    check('F4c6 the menu fits its options without scrolling',
+      !!listbox && listbox.scrollHeight <= listbox.clientHeight + 1,
+      listbox ? `scroll ${listbox.scrollHeight} vs ${listbox.clientHeight}` : 'no listbox');
     if (includesEntry) {
       includesEntry.el.focus();
       await tapEnter();
@@ -626,6 +642,30 @@ async function run() {
     }
   }
 
+  // ── F11e  Clear filter removes what is applied ──────────
+  // Cancel and Back only close: the reported trap was a filter that stayed
+  // applied however the user left the builder. The footer's Clear is the way
+  // out, so it must drop the filter and bring the full listing back.
+  const buildClearing = btnByText(document, 'Build…');
+  buildClearing?.click();
+  await sleep(300);
+  const bClear = dialogNamed(/^Filter scenes/);
+  const clearBtn = bClear && btnByText(bClear, 'Clear filter');
+  check('F11e the builder offers Clear filter', !!clearBtn && !clearBtn.disabled,
+    clearBtn ? `disabled=${clearBtn.disabled}` : 'no Clear button');
+  if (clearBtn) {
+    clearBtn.click();
+    await sleep(400);
+    const filterAfter = (document.getElementById('ctrl-filter')?.textContent || '').trim();
+    const listingBack = await waitFor(() => {
+      const el = registry.get('video-1')?.el;
+      return !!el && document.contains(el);
+    }, 3000);
+    check('F11f Clear filter drops the filter and the full listing returns',
+      !/Custom filter/.test(filterAfter) && listingBack,
+      `dropdown "${filterAfter}", video-1 back=${listingBack}`);
+  }
+
   // ── F12  a tag activation seeds the builder ─────────────
   // A tag puts the GraphQL shape (`{value:[id]}`) into `workingFilter`; seeded
   // straight from it, the row read "Choose…" and Apply was disabled. Convert it.
@@ -728,6 +768,115 @@ async function run() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ savedFilters: 'ok' }),
   });
+
+  // ── G  the 0.32-gated fields ────────────────────────────
+  // Both fields exist only on a server that reports 0.32, and sending either
+  // to 0.31 turns the whole request into a 422. The same driver runs on both
+  // versions; the probe decides which side each assertion is on.
+  const version = (await getJson('/version')).version;
+  const vnum = String(version).replace(/^v/i, '').split('.').map(Number);
+  const is032 = vnum[0] > 0 || (vnum[0] === 0 && vnum[1] >= 32);
+  // The 0.32 lane passes expect=032; without this, a broken version hand-off
+  // would run it as 0.31 and every gated assertion would quietly skip.
+  const expect032 = new URLSearchParams(location.search).get('expect') === '032';
+  check('G0 the 0.32 lane runs against a 0.32 server',
+    !expect032 || is032, `expect=${expect032} version=${version}`);
+
+  // Scene: the production date criterion.
+  const buildPd = btnByText(document, 'Build…');
+  buildPd?.click();
+  await sleep(300);
+  const bPd = dialogNamed(/^Filter scenes/);
+  btnByText(bPd, '+ Add criterion')?.click();
+  await sleep(250);
+  const hasPd = !!registry.get('fp-production_date');
+  check('G1 production date is offered exactly when the server reports 0.32',
+    hasPd === is032, `version=${version} offered=${hasPd}`);
+  if (hasPd) {
+    registry.get('fp-production_date').el.focus();
+    await tapEnter();
+    await sleep(250);
+    const bPd2 = dialogNamed(/^Filter scenes/);
+    check('G1b adding it produces a Production date row',
+      rowLabels(bPd2 || document).some(l => /production date/i.test(l)),
+      `rows: ${rowLabels(bPd2 || document).join(', ') || 'none'}`);
+  }
+  await press('Escape');
+  await sleep(200);
+  await press('Escape');
+  await sleep(250);
+
+  // Tags: the count fields take a depth only on 0.32. The value still has to
+  // reach the wire as a number, depth or not.
+  registry.get('nav-tags')?.el.focus();
+  await sleep(120);
+  await tapEnter();
+  await sleep(600);
+  const hasTagList = await waitFor(() => registry.has('tag-3'), 4000);
+  check('G2 could reach the Tags listing', hasTagList,
+    `tag-3=${registry.has('tag-3')} rail=${document.querySelector('nav [aria-current="page"]')?.textContent?.trim() || '(none)'}`);
+  if (hasTagList) {
+    btnByText(document, 'Build…')?.click();
+    await sleep(300);
+    const bT = dialogNamed(/^Filter tags/);
+    check('G2b the Tags tab has its own builder', !!bT,
+      `dialogs: ${dialogs().map(d => d.getAttribute('aria-label')).join(' | ') || 'none'}`);
+    if (bT) {
+      btnByText(bT, '+ Add criterion')?.click();
+      await sleep(250);
+      const fpCount = registry.get('fp-scene_count');
+      check('G2c the picker offers the tag scene count', !!fpCount,
+        `fp- entries: ${Array.from(registry.keys()).filter(k => k.startsWith('fp-')).join(', ')}`);
+      if (fpCount) {
+        fpCount.el.focus();
+        await tapEnter();
+        await sleep(250);
+        const bT2 = dialogNamed(/^Filter tags/);
+        const depth = registry.get('fb-depth-scene_count');
+        check('G2d a tag count carries a Depth control only on 0.32',
+          !!depth === is032, `version=${version} depth=${!!depth}`);
+        if (is032 && depth) {
+          depth.el.focus();
+          await tapEnter();
+          await sleep(200);
+          const includeChildren = registry.get('fb-depth-scene_count-opt-1');
+          check('G2e the Depth menu offers "Include children"', !!includeChildren);
+          if (includeChildren) {
+            includeChildren.el.focus();
+            await tapEnter();
+            await sleep(200);
+          }
+        }
+        const countInput = bT2?.querySelector('[class*="valueInput"]');
+        check('G2f the count row has a number editor', !!countInput);
+        if (countInput) {
+          await clearLog();
+          setter.call(countInput, '5');
+          countInput.dispatchEvent(new Event('input', { bubbles: true }));
+          await sleep(150);
+          const applyT = btnByText(bT2, 'Apply');
+          check('G2g Apply is enabled once the count carries a value',
+            !!applyT && !applyT.disabled,
+            applyT ? `disabled=${applyT.disabled}` : 'no Apply button');
+          if (applyT && !applyT.disabled) {
+            applyT.click();
+            await sleep(500);
+            const reqs = await getJson('/requests');
+            const tagReqs = reqs.filter(r => r.tag_filter !== undefined);
+            const sentT = tagReqs.length
+              ? tagReqs[tagReqs.length - 1].tag_filter : null;
+            const sc = sentT?.scene_count;
+            check('G2h the tag count reaches the wire as a number',
+              sc && sc.value === 5 && sc.modifier === 'EQUALS',
+              `tag_filter: ${JSON.stringify(sentT)}`);
+            check('G2i …with a depth only on 0.32',
+              (sc?.depth === 1) === is032,
+              `version=${version} depth=${JSON.stringify(sc?.depth)}`);
+          }
+        }
+      }
+    }
+  }
 
   check('no uncaught errors', errors.length === 0, errors.slice(-3).join(' | ') || 'none');
 }

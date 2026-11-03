@@ -1,5 +1,6 @@
 /**
- * SearchPage, one query across scenes, performers, tags and studios.
+ * SearchPage, one query across every tab Stash can name in one text field:
+ * scenes, performers, tags, studios, groups, galleries and images.
  *
  * Each section asks Stash for the same six rows the grid would draw, using the
  * existing card components so a result is recognisable as the card in its own
@@ -19,24 +20,31 @@ import { useEditableField } from '../hooks/useEditableField.js';
 import { isRestorePending } from '../utils/restorePending.js';
 import VideoCard from '../components/VideoCard.jsx';
 import PerformerCard from '../components/PerformerCard.jsx';
-import { TAG_VIEW, STUDIO_VIEW } from '../components/entityViews.jsx';
+import {
+  TAG_VIEW, STUDIO_VIEW, GROUP_VIEW, GALLERY_VIEW, IMAGE_VIEW,
+} from '../components/entityViews.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { fetchPerformers } from '../utils/performerService.js';
 import { fetchTags } from '../utils/tagService.js';
 import { fetchStudios } from '../utils/studioService.js';
+import { fetchGroups } from '../utils/groupService.js';
+import { fetchGalleries } from '../utils/galleryService.js';
+import { fetchImages } from '../utils/imageService.js';
 import styles from './SearchPage.module.css';
 
 const LIMIT = 6;
 const DEBOUNCE_MS = 300;
 
 // `sort: null` on scenes keeps Stash's relevance order for a text query;
-// naming a sort would bury the best matches behind the newest. The three name
-// sections sort by name, which is the only order a person can predict.
+// naming a sort would bury the best matches behind the newest. The name/title
+// sections sort by their own name field, which is the only order a person can
+// predict. `one` is spelled out because "galleries" does not lose its "s".
 const SECTIONS = [
   {
     key: 'scenes',
     heading: 'Scenes',
     noun: 'scenes',
+    one: 'scene',
     tab: 'scenes',
     focusPrefix: 'video',
     Card: VideoCard,
@@ -48,6 +56,7 @@ const SECTIONS = [
     key: 'performers',
     heading: 'Performers',
     noun: 'performers',
+    one: 'performer',
     tab: 'performers',
     focusPrefix: 'performer',
     // The performer card, not the scene card: it reads `image_path`, draws the
@@ -61,6 +70,7 @@ const SECTIONS = [
     key: 'tags',
     heading: 'Tags',
     noun: 'tags',
+    one: 'tag',
     tab: 'tags',
     focusPrefix: 'tag',
     Card: TAG_VIEW.Card,
@@ -72,12 +82,51 @@ const SECTIONS = [
     key: 'studios',
     heading: 'Studios',
     noun: 'studios',
+    one: 'studio',
     tab: 'studios',
     focusPrefix: 'studio',
     Card: STUDIO_VIEW.Card,
     load: (q, signal) => fetchStudios({
       q, sort: 'name', order: 'asc', page: 1, limit: LIMIT, signal,
     }).then(d => ({ items: d.studios, total: d.total })),
+  },
+  {
+    key: 'groups',
+    heading: 'Groups',
+    noun: 'groups',
+    one: 'group',
+    tab: 'groups',
+    focusPrefix: 'group',
+    Card: GROUP_VIEW.Card,
+    load: (q, signal) => fetchGroups({
+      q, sort: 'name', order: 'asc', page: 1, limit: LIMIT, signal,
+    }).then(d => ({ items: d.groups, total: d.total })),
+  },
+  {
+    key: 'galleries',
+    heading: 'Galleries',
+    noun: 'galleries',
+    one: 'gallery',
+    tab: 'galleries',
+    focusPrefix: 'gallery',
+    Card: GALLERY_VIEW.Card,
+    load: (q, signal) => fetchGalleries({
+      q, sort: 'title', order: 'asc', page: 1, limit: LIMIT, signal,
+    }).then(d => ({ items: d.galleries, total: d.total })),
+  },
+  {
+    key: 'images',
+    heading: 'Images',
+    noun: 'images',
+    one: 'image',
+    tab: 'images',
+    focusPrefix: 'image',
+    // The grid card, not the viewer: selecting one opens the viewer with the
+    // six results beside it, so stepping through them works from here too.
+    Card: IMAGE_VIEW.Card,
+    load: (q, signal) => fetchImages({
+      q, sort: 'title', order: 'asc', page: 1, limit: LIMIT, signal,
+    }).then(d => ({ items: d.images, total: d.total })),
   },
 ];
 
@@ -92,6 +141,9 @@ export default function SearchPage({
   onPerformerSelect,
   onTagSelect,
   onStudioSelect,
+  onGroupSelect,
+  onGallerySelect,
+  onImageSelect,
   onSeeAll,
 }) {
   const [results, setResults] = useState(null);
@@ -129,6 +181,9 @@ export default function SearchPage({
     performers: (item) => onPerformerSelect?.(item),
     tags: (item) => onTagSelect?.(item),
     studios: (item) => onStudioSelect?.(item),
+    groups: (item) => onGroupSelect?.(item),
+    galleries: (item) => onGallerySelect?.(item),
+    images: (item, index, items) => onImageSelect?.(item, index, items),
   };
 
   const byKey = new Map((results || []).map(row => [row.key, row]));
@@ -148,7 +203,7 @@ export default function SearchPage({
 
       {!trimmed && (
         <p className={styles.intro}>
-          Search scenes, performers, tags and studios.
+          Search scenes, performers, tags, studios, groups, galleries and images.
         </p>
       )}
 
@@ -243,7 +298,7 @@ function SearchField({ value, onChange, downTo }) {
           type="text"
           value={draft}
           onChange={handleChange}
-          placeholder="Search scenes, performers, tags, studios"
+          placeholder="Search scenes, performers, tags, studios, groups…"
           aria-label="Search your library"
           tabIndex={-1}
           spellCheck={false}
@@ -260,15 +315,16 @@ function SearchField({ value, onChange, downTo }) {
 }
 
 function SearchSection({ section, row, query, onSelect, onSeeAll }) {
-  const { key, heading, noun, Card } = section;
+  const { key, heading, noun, one, Card } = section;
   const canSeeAll = row.total > row.items.length;
+  const list = { items: row.items, total: row.total };
 
   return (
     <section className={styles.section} aria-labelledby={`search-${key}-heading`}>
       <div className={styles.rowHead}>
         <h2 id={`search-${key}-heading`} className={styles.heading}>{heading}</h2>
         <span className={styles.count}>
-          {row.total.toLocaleString()} {row.total === 1 ? noun.replace(/s$/, '') : noun}
+          {row.total.toLocaleString()} {row.total === 1 ? one : noun}
         </span>
         {canSeeAll && (
           <SeeAllButton
@@ -290,6 +346,9 @@ function SearchSection({ section, row, query, onSelect, onSeeAll }) {
               key={item.id}
               item={item}
               index={index}
+              // The image viewer steps through this section's results; every
+              // card ignores the prop it does not need.
+              list={list}
               onSelect={onSelect}
               autoFocus={false}
             />

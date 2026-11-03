@@ -199,6 +199,22 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   if (!clockRef.current) clockRef.current = createPlayerClock(startSeconds);
   const clock = clockRef.current;
   const setCurrentTime = clock.setTime;
+
+  // A queue advance is a new timeline. Until its first tick the clock still
+  // holds the outgoing scene's time, which would print over the incoming
+  // scene's duration, for seconds when a transcode is fetched on demand. The
+  // first scene keeps its marker/resume start; a layout effect so the bar is
+  // right in the commit that swaps the scene.
+  const clockSceneRef = useRef(null);
+  useLayoutEffect(() => {
+    const id = video?.id ?? null;
+    if (id == null) return;
+    if (clockSceneRef.current === null) clockSceneRef.current = id;
+    else if (clockSceneRef.current !== id) {
+      clockSceneRef.current = id;
+      clock.setTime(0);
+    }
+  }, [video?.id, clock]);
   const nearEnd = useSyncExternalStore(clock.subscribeNearEnd, clock.getNearEnd);
   const [elementDuration, setElementDuration] = useState(0);
   const [error, setError] = useState(null);

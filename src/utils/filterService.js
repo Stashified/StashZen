@@ -22,15 +22,15 @@ import { runQuery } from './stashQuery.js';
 
 // SavedFilter modes, must match Stash's FilterMode enum exactly. Stash 0.31.1
 // declares SCENES, PERFORMERS, STUDIOS, GALLERIES, SCENE_MARKERS, MOVIES,
-// GROUPS, TAGS, IMAGES; this app omits the two with no section (a mode it
-// cannot browse has no filters to offer). A wrong string shows an empty list,
-// not an error.
+// GROUPS, TAGS, IMAGES; this app omits MOVIES (no section). A wrong string
+// shows an empty list, not an error.
 export const FILTER_MODE = {
   scenes:     'SCENES',
   markers:    'SCENE_MARKERS',
   performers: 'PERFORMERS',
   tags:       'TAGS',
   studios:    'STUDIOS',
+  groups:     'GROUPS',
   galleries:  'GALLERIES',
   images:     'IMAGES',
 };
@@ -144,10 +144,10 @@ const DESTROY_FILTER_MUTATION = `
  * editing a user-made filter works and does not fork it into a duplicate.
  *
  * `objectFilter` is written in Stash's *stored* envelope, the shape Stash's own
- * UI persists. Text criteria happen to match the GraphQL shape, but
- * multi-selects nest `items`/`excluded`; writing the request shape for those
- * produces a filter Stash's web UI cannot open. `translateFilter` converts on
- * the way out.
+ * UI persists. Text criteria happen to match the GraphQL shape, but a plain
+ * multi is a labeled-id array and a hierarchical one nests `items`/`excluded`;
+ * writing the request shape for either produces a filter Stash's web UI cannot
+ * open. `translateFilter` converts on the way out.
  *
  * The whole list cache is cleared rather than one key: a save can create,
  * rename or reorder, and `saveFilter` returns no position. One extra fetch on

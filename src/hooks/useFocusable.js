@@ -79,6 +79,10 @@ export function useFocusable({
   // next page has not arrived. Down skips rail rows from the content; Up may
   // still enter them, because returning from the top row is intended.
   railRow = false,
+  // Opt-in: one row of a one-column list. Right from the rail enters at the
+  // top row; the nearest-row scoring lands beside the tab's height instead,
+  // which skips the rows above it. See useKeyHandler.
+  listRow = false,
   // Opt-in: connected across zones while still refusing to be entered sideways
   // from outside its own, that refusal is why it has a zone. The controls bar
   // keeps a zone so the grid cannot step in sideways, then must be lifted out
@@ -276,7 +280,7 @@ export function useFocusable({
     // dependency, and a fresh object each render would re-register the element
     // every time. See the refresh effect above.
     registry.set(id, {
-      el, zone: effectiveZone, verticalOnly, crossZone, railRow, nextId: nextIdRef.current,
+      el, zone: effectiveZone, verticalOnly, crossZone, railRow, listRow, nextId: nextIdRef.current,
     });
 
 
@@ -343,7 +347,7 @@ export function useFocusable({
       if (currentFocusId === id && !el.isConnected) currentFocusId = null;
     };
   }, [id, effectiveZone, disabled, autoFocus, autoFocusWhenIdle, autoFocusFallback,
-    verticalOnly, crossZone, railRow]);
+    verticalOnly, crossZone, railRow, listRow]);
 
   const focus = useCallback(() => {
     ref.current?.focus();

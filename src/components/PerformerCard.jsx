@@ -49,7 +49,7 @@ function PerformerCard({
       ref={ref}
       className={`${styles.card} ${fill ? styles.fill : ''} ${focused ? styles.focused : ''}`}
       onClick={() => onSelect?.(item)}
-      aria-label={`${item.name}, ${item.scene_count} scenes`}
+      aria-label={`${item.name}, ${item.scene_count} ${item.scene_count === 1 ? 'scene' : 'scenes'}`}
     >
       <div className={styles.cover}>
         {!imgError && item.image_path ? (
@@ -76,7 +76,7 @@ function PerformerCard({
         <div className={styles.coverInfo}>
           <p className={styles.name}>{item.name}</p>
           <div className={styles.meta}>
-            <span className={styles.sceneCount}>{item.scene_count} scenes</span>
+            <span className={styles.sceneCount}>{item.scene_count} {item.scene_count === 1 ? 'scene' : 'scenes'}</span>
             {item.rating && (
               <span className={styles.rating}>★ {item.rating}</span>
             )}

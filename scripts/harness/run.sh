@@ -13,6 +13,7 @@
 #   NAME   scratch dir     (default detailverify → /tmp/$NAME/{dist,result.json})
 #   PORT   listen port     (default 8791 — a second concurrent run needs its own)
 #   QUERY  appended to the URL, for a driver that switches view (e.g. '?view=grid')
+#   HARNESS_SERVER_VERSION  version the fake server reports (default 0.31.1-harness)
 #   WINDOW firefox window size (default 1920,1080 — the TV's viewport)
 #   SCREENSHOT  path to capture instead of collecting results. See shoot.sh.
 set -u

@@ -10,7 +10,8 @@
  * 1:1; only the *envelopes* differ. Four translations cover the real data:
  *
  *   {modifier, value:{value:N}}                → {value:N, modifier}          Int / Float / timestamp / date
- *   {modifier, value:{items:[{id,label}],      → {value:["id"], modifier,     tags, performers
+ *   {modifier, value:[{id,label}]}             → {value:["id"], modifier}      plain multi
+ *   {modifier, value:{items:[{id,label}],      → {value:["id"], modifier,     hierarchical multi
  *                    excluded:[], depth}}         excludes:["id"], depth}
  *   {modifier, value:{distance, value}}        → {value, modifier, distance}  phash_distance
  *   {modifier, value:{endpoint, stashID}}      → {endpoint, stash_id, modifier}
@@ -29,10 +30,11 @@
  * `String` and must not be coerced. It also decides whether a multi-select
  * takes `depth` (`HierarchicalMultiCriterionInput` only).
  *
- * UNKNOWN INPUT PASSES THROUGH. Dropping an unrecognised field or shape would
- * silently discard a filter condition, the exact bug this file fixes. A
- * criterion from a newer Stash therefore degrades to today's behaviour rather
- * than quietly widening the filter.
+ * UNKNOWN INPUT PASSES THROUGH, KNOWN-GATED INPUT DOES NOT. Dropping an
+ * unrecognised field or shape would silently discard a filter condition, the
+ * exact bug this file fixes. A field this app knows is newer than the server
+ * (production_date on 0.31) is the exception: forwarding it fails the whole
+ * query, so it is dropped rather than sent to a server that cannot parse it.
  *
  * IDEMPOTENT. In-code filters (`PerformerDetailPage` passes
  * `{performers: {value:[id], modifier:'INCLUDES'}}`) survive unchanged, so the
@@ -43,14 +45,10 @@
  * `listCache` keys and cache identity is unchanged.
  */
 
-import {
-  FILTER_TYPES,
-  FILTER_TYPE_NAMES,
-  CRITERION_FIELDS,
-  CRITERIA_WITHOUT_MODIFIER,
-  LIST_VALUED_CRITERIA,
-  ENUMS,
-} from './stashFilterSchema.js';
+import { ENUMS } from './stashFilterSchema.js';
+import { fieldCapability, schemaFor } from './filterSchema.js';
+import { supportsCapability } from './capabilities.js';
+import { getServerVersion } from './serverInfo.js';
 import { requestEnumValue } from './enumStrings.js';
 
 const DEV = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
@@ -90,8 +88,12 @@ const NULLARY_VALUE = {
   StringCriterionInput: '',
   DateCriterionInput: '',
   TimestampCriterionInput: '',
+  // `value` is required (String!) even when the modifier ignores it.
+  PhashDistanceCriterionInput: '',
   IntCriterionInput: 0,
   FloatCriterionInput: 0,
+  // The count is required even when the modifier ignores it.
+  HierarchicalCountInput: 0,
   ResolutionCriterionInput: ENUMS.ResolutionEnum?.[0],
   GenderCriterionInput: ENUMS.GenderEnum?.[0],
   CircumcisionCriterionInput: ENUMS.CircumcisedEnum?.[0]
@@ -115,7 +117,7 @@ function toIds(arr) {
 }
 
 /** Coerce a scalar for `typeName`'s `value` field. */
-function coerceScalar(typeName, v) {
+function coerceScalar(typeName, v, schema) {
   // Stash's UI saves display strings ("1080p"); GraphQL wants member names.
   // requestEnumValue is a no-op for non-enum types.
   const map = (x) => requestEnumValue(
@@ -125,7 +127,7 @@ function coerceScalar(typeName, v) {
   // Orientation and circumcision declare `value` as a list, so a bare enum is
   // wrapped. A value already in list form goes through `toIds`, which also
   // unwraps `{id,label}` entries.
-  if (LIST_VALUED_CRITERIA.has(typeName)) {
+  if (schema.LIST_VALUED_CRITERIA.has(typeName)) {
     if (Array.isArray(v)) return toIds(v).map(map);
     return [map(v)];
   }
@@ -194,7 +196,7 @@ function coerceString(v) {
  * Translate one criterion envelope. `undefined` means it constrains nothing
  * (see the empty-value note below).
  */
-function translateCriterion(c, typeName) {
+function translateCriterion(c, typeName, schema) {
   if (!isPlainObject(c)) return c;
   if (typeName === 'GenderCriterionInput') return translateGender(c);
 
@@ -213,7 +215,7 @@ function translateCriterion(c, typeName) {
     }
     // phash_distance: {distance, value} → hoisted, same names.
     else if (v.distance != null && v.value !== undefined) {
-      out.value = coerceScalar(typeName, v.value);
+      out.value = coerceScalar(typeName, v.value, schema);
       out.distance = v.distance;
     }
     // Stash ID: {endpoint, stashID} → `stash_id` (and the plural variant).
@@ -222,13 +224,15 @@ function translateCriterion(c, typeName) {
       if (v.stashIDs !== undefined) out.stash_ids = v.stashIDs;
       else if (v.stashID !== undefined) out.stash_id = v.stashID;
     }
-    // The common wrapper: {value} / {value, value2}.
+    // The common wrapper: {value} / {value, value2}. Hierarchical counts nest
+    // `depth` here as well; hoist it so the prune step keeps it.
     else if (v.value !== undefined) {
-      out.value = coerceScalar(typeName, v.value);
+      out.value = coerceScalar(typeName, v.value, schema);
       // A blank second bound is not a bound, `value2:""` is a type error.
       if (v.value2 !== undefined && v.value2 !== '' && v.value2 !== null) {
-        out.value2 = coerceScalar(typeName, v.value2);
+        out.value2 = coerceScalar(typeName, v.value2, schema);
       }
+      if (v.depth !== undefined && v.depth !== null) out.depth = v.depth;
     }
     // Already flat (DuplicationCriterionInput is stored in GraphQL shape) or a
     // shape from a newer Stash we don't model, forward it.
@@ -236,11 +240,16 @@ function translateCriterion(c, typeName) {
       Object.assign(out, v);
     }
   } else if (v !== undefined) {
-    out.value = coerceScalar(typeName, v);
+    out.value = coerceScalar(typeName, v, schema);
+    // Already flat: GraphQL keeps the upper bound beside `value`, where the
+    // shape analysis above never looks. Without this a second pass drops it.
+    if (c.value2 !== undefined && c.value2 !== null && c.value2 !== '') {
+      out.value2 = coerceScalar(typeName, c.value2, schema);
+    }
   }
 
   // `null` is the builder's "no modifiers here" marker, not an enum value.
-  if (modifier != null && !CRITERIA_WITHOUT_MODIFIER.has(typeName)) {
+  if (modifier != null && !schema.CRITERIA_WITHOUT_MODIFIER.has(typeName)) {
     out.modifier = modifier;
   }
 
@@ -249,7 +258,7 @@ function translateCriterion(c, typeName) {
   // `value`, so an already-translated criterion has them outside, where the
   // shape analysis above never looks; without this a second pass silently
   // drops them. The `out[k] === undefined` guard avoids overriding fresh values.
-  const declared = CRITERION_FIELDS[typeName];
+  const declared = schema.CRITERION_FIELDS[typeName];
   if (declared) {
     for (const key of declared) {
       if (key !== 'value' && key !== 'value2' && key !== 'modifier'
@@ -267,7 +276,11 @@ function translateCriterion(c, typeName) {
       for (const key of Object.keys(extra)) {
         if (out[key] === undefined) out[key] = extra[key];
       }
-    } else if (out.value === undefined && NULLARY_VALUE[typeName] !== undefined) {
+    } else if ((out.value === undefined || out.value === '')
+      && NULLARY_VALUE[typeName] !== undefined) {
+      // The stored UI shape for a nullary criterion often carries `''`, which
+      // is not a valid Int or enum member; the modifier ignores it, so replace
+      // it with the smallest well-typed operand.
       out.value = NULLARY_VALUE[typeName];
     }
   }
@@ -300,18 +313,20 @@ function translateCriterion(c, typeName) {
 // ── filter objects ────────────────────────────────────────
 
 /** Translate one field. `undefined` means the field should be omitted. */
-function translateField(value, fieldType) {
+function translateField(value, fieldType, schema, version) {
   if (value == null) return undefined;
 
   // A nested filter (AND / OR / NOT, or `*_filter`). Recent Stash accepts a
   // list of sub-filters here as well as a single object.
-  if (FILTER_TYPE_NAMES.has(fieldType)) {
+  if (schema.FILTER_TYPE_NAMES.has(fieldType)) {
     if (Array.isArray(value)) {
-      const list = value.map(v => (isPlainObject(v) ? translateObject(v, fieldType) : v)).filter(Boolean);
+      const list = value
+        .map(v => (isPlainObject(v) ? translateObject(v, fieldType, schema, version) : v))
+        .filter(Boolean);
       return list.length ? list : undefined;
     }
     if (!isPlainObject(value)) return value;
-    const nested = translateObject(value, fieldType);
+    const nested = translateObject(value, fieldType, schema, version);
     return Object.keys(nested).length ? nested : undefined;
   }
 
@@ -322,14 +337,22 @@ function translateField(value, fieldType) {
   // that guessing a rewrite would be worse than forwarding it.
   if (fieldType.startsWith('[')) return value;
 
-  return translateCriterion(value, fieldType);
+  return translateCriterion(value, fieldType, schema);
 }
 
-function translateObject(obj, typeName) {
-  const fieldMap = FILTER_TYPES[typeName];
+function translateObject(obj, typeName, schema, version) {
+  const fieldMap = schema.FILTER_TYPES[typeName];
   const out = {};
 
   for (const key of Object.keys(obj)) {
+    const capability = fieldCapability(typeName, key);
+    if (capability && !supportsCapability(version, capability)) {
+      // Known delta field on a server that predates it: forwarding it is a 422
+      // for the whole listing, so the condition is dropped.
+      warnOnce(`${typeName}.${key} needs ${capability}; dropped for this server`);
+      continue;
+    }
+
     const fieldType = fieldMap?.[key];
 
     if (!fieldType) {
@@ -339,7 +362,7 @@ function translateObject(obj, typeName) {
       continue;
     }
 
-    const translated = translateField(obj[key], fieldType);
+    const translated = translateField(obj[key], fieldType, schema, version);
     if (translated !== undefined) out[key] = translated;
   }
 
@@ -354,12 +377,13 @@ function translateObject(obj, typeName) {
  * Always a plain object, so callers can drop `filter || {}`. An unrecognised
  * filter type is returned untouched rather than mangled.
  */
-export function translateFilter(raw, filterTypeName) {
+export function translateFilter(raw, filterTypeName, version = getServerVersion()) {
   if (raw == null) return {};
   if (!isPlainObject(raw)) return {};
-  if (!FILTER_TYPES[filterTypeName]) {
+  const schema = schemaFor(version);
+  if (!schema.FILTER_TYPES[filterTypeName]) {
     warnOnce(`unknown filter type "${filterTypeName}"; passed through untranslated`);
     return raw;
   }
-  return translateObject(raw, filterTypeName);
+  return translateObject(raw, filterTypeName, schema, version);
 }

@@ -24,6 +24,7 @@ export const EDITORS = {
   [EDITOR.TEXT]: text,
   [EDITOR.PHASH]: text,
   [EDITOR.NUMBER]: number,
+  [EDITOR.HIERARCHICAL_COUNT]: number,
   [EDITOR.DATE]: number,
   [EDITOR.TIMESTAMP]: number,
   [EDITOR.ENUM]: enumEditor,

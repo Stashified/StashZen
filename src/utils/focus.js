@@ -87,7 +87,7 @@ export function focusFirstControl() {
  * a showroom shelf under another prefix. Try those too, then the first
  * control, so a dead id never leaves the cursor on <body>.
  */
-export function focusOriginCard(tab, focusId) {
+export function focusOriginCard(tab, focusId, { defer = false } = {}) {
   const ids = [focusId];
   const scene = /^video-(.+)$/.exec(String(focusId));
   if (scene && tab === 'home') {
@@ -96,10 +96,10 @@ export function focusOriginCard(tab, focusId) {
       `showroom-continue-video-${scene[1]}`,
     );
   }
-  focusByIdWhenReady(ids, { fallback: focusFirstControl });
+  focusByIdWhenReady(ids, { fallback: focusFirstControl, defer });
 }
 
-export function focusByIdWhenReady(id, { fallback } = {}) {
+export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
   const ids = (Array.isArray(id) ? id : [id]).filter(Boolean);
   if (!ids.length) return;
   const prefix = prefixOf(ids[0]);
@@ -209,5 +209,10 @@ export function focusByIdWhenReady(id, { fallback } = {}) {
       });
   }
 
-  attempt();
+  // A caller about to commit a new request identity (same-tab Back) starts
+  // after that commit. An attempt now would find the outgoing listing's card
+  // and settle on an element the reset replaces, leaving the cursor on the
+  // first card. `beginRestore` is already up, so first-card autofocus waits.
+  if (defer) schedule(RETRY_MS);
+  else attempt();
 }

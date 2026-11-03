@@ -150,7 +150,14 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   // chain is declared, and Up into it from the top card row is intended.
   const skipRailRows = direction === 'down' && currentEntry?.railRow !== true;
 
-  registry.forEach(({ el, zone, verticalOnly, crossZone, railRow }) => {
+  // Right out of the rail lands on the row nearest the tab's height, so a tab
+  // low in the rail skipped the first list rows. Enter a one-column list at its
+  // top instead; a grid keeps its facing-row entry.
+  const enterListAtTop = direction === 'right' && currentEntry?.railRow === true;
+  let listTopEl = null;
+  let listTop = Infinity;
+
+  registry.forEach(({ el, zone, verticalOnly, crossZone, railRow, listRow }) => {
     if (el === currentEl) return;
     // A DOM-disabled element is an absorbing wall: `.focus()` is a silent no-op
     // and every press finds it, so focus never moves. The rating stepper's "−"
@@ -210,7 +217,13 @@ function findBestCandidate(direction, currentEl, currentEntry) {
         level = dy <= LEVEL_TOLERANCE;
         primary = dy; secondary = dx < 0 ? -dx : dx; break;
       case 'left':  if (dx >= -4) return; primary = -dx; secondary = dy < 0 ? -dy : dy; break;
-      case 'right': if (dx <=  4) return; primary =  dx; secondary = dy < 0 ? -dy : dy; break;
+      case 'right':
+        if (dx <=  4) return;
+        if (enterListAtTop && listRow && rect.top < listTop) {
+          listTop = rect.top;
+          listTopEl = el;
+        }
+        primary =  dx; secondary = dy < 0 ? -dy : dy; break;
       default: return;
     }
 
@@ -225,6 +238,8 @@ function findBestCandidate(direction, currentEl, currentEntry) {
       if (score < levelScore) { levelScore = score; levelEl = el; }
     } else if (score < bestScore) { bestScore = score; bestEl = el; }
   });
+
+  if (listTopEl) return listTopEl;
 
   // End of a wrapped line: continue at the start of the next, chosen by line
   // edge then position within it, reading order the scoring above cannot

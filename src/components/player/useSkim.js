@@ -234,9 +234,17 @@ export function useSkim({
     cancelGlide, glideTo,
   ]);
 
-  // A pending gesture target belongs to the source it was computed for.
+  // A pending gesture target belongs to the source it was computed for. The
+  // ladder belongs to it too: a hold that crosses a scene boundary must start
+  // at rung 0 on the new scene, not climb from the old one's.
   useEffect(() => {
     pendingSeekRef.current = null;
+    rungRef.current = 0;
+    rungSinceRef.current = 0;
+    lastDirectionRef.current = 0;
+    lastAtRef.current = 0;
+    lastSeekAtRef.current = 0;
+    lastGapRef.current = 0;
     if (skimPendingRef) skimPendingRef.current = false;
     clearTimeout(seekTimerRef.current);
     seekTimerRef.current = null;

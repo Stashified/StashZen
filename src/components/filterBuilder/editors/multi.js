@@ -1,4 +1,5 @@
 import { innerOf } from './common.js';
+import { DEPTH_OPTIONS } from './depth.js';
 
 /**
  * MULTI and HIERARCHICAL: the entity picker button, plus a depth choice for
@@ -37,11 +38,7 @@ export const parts = (field, desc, criterion) => {
       apply: 'depth',
       label: 'Depth',
       value: String(inner.depth ?? 0),
-      options: [
-        { value: '0', label: 'This only' },
-        { value: '1', label: 'Include children' },
-        { value: '2', label: 'Two levels' },
-      ],
+      options: DEPTH_OPTIONS,
     });
   }
   return out;

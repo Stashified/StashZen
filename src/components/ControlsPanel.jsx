@@ -294,6 +294,9 @@ function NumberStepper({ id, value, min, max, onChange }) {
 export default function ControlsPanel({
   controls,
   onChange,
+  // The section the bar belongs to. A change means the panel survived a tab
+  // switch, so the search field must drop the previous tab's pending term.
+  activeTab = null,
   modeOptions = null,
   // View mode is per section and lives in the settings store, not `controls`,
   // so it arrives as its own pair. Both fall back to `controls.mode` /
@@ -335,6 +338,7 @@ export default function ControlsPanel({
             <SearchInput
               value={controls.search || ''}
               onChange={v => onChange({ search: v })}
+              resetKey={activeTab}
             />
             {(modeOptions || sortGroups || sortOptions.length > 0 || showOrder || filterOptions || showGridSize) && (
               <div className={styles.divider} />

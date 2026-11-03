@@ -84,6 +84,9 @@ check('hierarchical keeps depth and renames excluded → excludes',
 check('plain multi drops depth (MultiCriterionInput has no such field)',
   t({ performers: { modifier: 'INCLUDES_ALL', value: { items: [{ id: '7', label: 'x' }], depth: 5 } } }),
   { performers: { value: ['7'], modifier: 'INCLUDES_ALL' } });
+check('plain multi in Stash\'s stored shape unwraps its labels',
+  t({ performers: { modifier: 'INCLUDES', value: [{ id: '7', label: 'x' }] } }),
+  { performers: { value: ['7'], modifier: 'INCLUDES' } });
 check('excluded entries become excludes and are unwrapped',
   t({ tags: { modifier: 'EXCLUDES', value: { items: [{ id: '1' }], excluded: [{ id: '2' }] } } }),
   { tags: { value: ['1'], excludes: ['2'], modifier: 'EXCLUDES' } });
@@ -126,6 +129,12 @@ console.log('\n── special-value criteria');
 check('phash_distance hoists distance',
   t({ phash_distance: { modifier: 'NOT_NULL', value: { distance: 4, value: 'abc' } } }),
   { phash_distance: { value: 'abc', distance: 4, modifier: 'NOT_NULL' } });
+check('phash_distance nullary sends the required empty value',
+  t({ phash_distance: { modifier: 'NOT_NULL', value: {} } }),
+  { phash_distance: { value: '', modifier: 'NOT_NULL' } });
+check('phash_distance IS_NULL sends the required empty value',
+  t({ phash_distance: { modifier: 'IS_NULL', value: {} } }),
+  { phash_distance: { value: '', modifier: 'IS_NULL' } });
 check('stash_id_endpoint renames stashID → stash_id',
   t({ stash_id_endpoint: { modifier: 'IS_NULL', value: { endpoint: '', stashID: 'xyz' } } }),
   { stash_id_endpoint: { endpoint: '', stash_id: 'xyz', modifier: 'IS_NULL' } });
@@ -202,6 +211,76 @@ const once = t(TRICKY);
 const twice = t(once);
 check('translate(translate(x)) === translate(x)', twice, once);
 check('and a third pass too', t(twice), once);
+
+console.log('\n── version gating (0.32)');
+const t32 = (raw, type = 'SceneFilterType') => translateFilter(raw, type, '0.32.0');
+const count = { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } };
+
+check('production_date translates on 0.32',
+  t32({ production_date: { modifier: 'GREATER_THAN', value: { value: '2020-01-01' } } }),
+  { production_date: { value: '2020-01-01', modifier: 'GREATER_THAN' } });
+check('production_date is dropped on 0.31, where the field does not exist',
+  t({ production_date: { modifier: 'GREATER_THAN', value: { value: '2020-01-01' } } }),
+  {});
+check('dropping a gated field keeps the rest of the filter',
+  t({
+    production_date: { modifier: 'GREATER_THAN', value: { value: '2020-01-01' } },
+    title: { modifier: 'INCLUDES', value: { value: 'Night' } },
+  }),
+  { title: { value: 'Night', modifier: 'INCLUDES' } });
+check('a 0.32 tag count hoists nested depth',
+  translateFilter({ scene_count: count }, 'TagFilterType', '0.32.0'),
+  { scene_count: { value: 5, depth: -1, modifier: 'GREATER_THAN' } });
+check('a 0.31 tag count keeps its old IntCriterionInput shape, depth pruned',
+  translateFilter({ scene_count: count }, 'TagFilterType', '0.31.1'),
+  { scene_count: { value: 5, modifier: 'GREATER_THAN' } });
+check('a flat hierarchical count keeps its depth on 0.32',
+  translateFilter(
+    { scene_count: { modifier: 'EQUALS', value: 5, depth: 0 } },
+    'TagFilterType', '0.32.0',
+  ),
+  { scene_count: { value: 5, depth: 0, modifier: 'EQUALS' } });
+const countOnce = translateFilter({ scene_count: count }, 'TagFilterType', '0.32.0');
+check('hierarchical count round trip',
+  translateFilter(countOnce, 'TagFilterType', '0.32.0'), countOnce);
+const flatRange = {
+  scene_count: { modifier: 'BETWEEN', value: 5, value2: 9, depth: 0 },
+};
+check('a flat hierarchical range keeps both bounds across passes',
+  translateFilter(flatRange, 'TagFilterType', '0.32.0'),
+  { scene_count: { value: 5, value2: 9, depth: 0, modifier: 'BETWEEN' } });
+check('a flat range round trip',
+  translateFilter(translateFilter(flatRange, 'TagFilterType', '0.32.0'),
+    'TagFilterType', '0.32.0'),
+  { scene_count: { value: 5, value2: 9, depth: 0, modifier: 'BETWEEN' } });
+
+// The gallery Info sheet's Performers count uses this nested shape, because
+// PerformerFilterType has no direct `galleries` criterion.
+check('performers are reachable through a nested gallery id',
+  translateFilter(
+    { galleries_filter: { id: { modifier: 'EQUALS', value: 2946 } } },
+    'PerformerFilterType',
+  ),
+  { galleries_filter: { id: { value: 2946, modifier: 'EQUALS' } } });
+
+// A nullary modifier ignores its operand, but the input type still demands a
+// non-null one. `''` against `value: Int!` is a coercion error (the whole
+// listing fails), so an empty stored operand must become a typed placeholder.
+check('a nullary 0.32 tag count replaces the stored empty operand',
+  translateFilter(
+    { scene_count: { modifier: 'IS_NULL', value: { value: '' } } },
+    'TagFilterType', '0.32.0',
+  ),
+  { scene_count: { value: 0, modifier: 'IS_NULL' } });
+check('a nullary 0.31 tag count gets the Int operand too',
+  translateFilter(
+    { scene_count: { modifier: 'IS_NULL', value: { value: '' } } },
+    'TagFilterType', '0.31.1',
+  ),
+  { scene_count: { value: 0, modifier: 'IS_NULL' } });
+check('a nullary enum replaces the stored empty string with a real member',
+  t({ resolution: { modifier: 'IS_NULL', value: '' } }),
+  { resolution: { value: ENUMS.ResolutionEnum[0], modifier: 'IS_NULL' } });
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

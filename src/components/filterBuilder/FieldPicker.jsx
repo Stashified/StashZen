@@ -5,9 +5,12 @@ import { isHardBackKey } from '../../utils/input.js';
 import { criteriaFor } from '../../utils/filterCriteria.js';
 import styles from '../FilterBuilder.module.css';
 
-export function FieldPicker({ filterType, used, onAdd, onClose }) {
+export function FieldPicker({ filterType, serverVersion = null, used, onAdd, onClose }) {
   const [scope, setScope] = useState('common');
-  const all = useMemo(() => criteriaFor(filterType), [filterType]);
+  const all = useMemo(
+    () => criteriaFor(filterType, serverVersion),
+    [filterType, serverVersion],
+  );
 
   const shown = all.filter((c) => {
     if (scope === 'off') return !c.editor;

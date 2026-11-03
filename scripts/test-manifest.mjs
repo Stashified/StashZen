@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { COMPAT_LABEL } from './compat-floor.mjs';
+import { stampVariant } from './stamp-manifest.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -76,6 +77,43 @@ check('the application id is namespaced by the package id',
 const widgetId = attr(widget, 'id');
 check('the widget id is not upstream\'s placeholder',
   !!widgetId && !/yourdomain/.test(widgetId), `widget id=${widgetId}`);
+
+// ── Side-by-side test variant ──────────────────────────────────────────────
+// Tizen identifies an app by its package id, so the variant must change both
+// ids; signing alone does not keep two copies installed at once.
+const throws = (fn) => {
+  try { fn(); return false; } catch { return true; }
+};
+
+const variantXml = stampVariant(xml, 'test');
+const variantWidget = /<widget\b[^>]*>/.exec(variantXml)?.[0] || '';
+const variantApplication = /<tizen:application\b[^>]*>/.exec(variantXml)?.[0] || '';
+const variantPackage = attr(variantApplication, 'package');
+const variantApplicationId = attr(variantApplication, 'id');
+
+check('the main variant leaves the manifest unchanged', stampVariant(xml, 'main') === xml);
+check('the test variant changes the package id',
+  !!variantPackage && variantPackage !== packageId,
+  `test=${variantPackage} main=${packageId}`);
+check('the test package id is exactly 10 characters',
+  typeof variantPackage === 'string' && variantPackage.length === 10,
+  `package=${variantPackage} (${variantPackage ? variantPackage.length : 0} chars)`);
+check('the test application id is namespaced by its package id',
+  !!variantApplicationId && variantApplicationId.split('.')[0] === variantPackage,
+  `application id=${variantApplicationId} package=${variantPackage}`);
+check('the test variant has a distinct widget id',
+  attr(variantWidget, 'id') !== widgetId,
+  `test=${attr(variantWidget, 'id')} main=${widgetId}`);
+check('the test variant is named for the launcher',
+  /<name>StashZen Test<\/name>/.test(variantXml));
+check('the test variant keeps the manifest version',
+  attr(variantWidget, 'version') === pkg.version,
+  `test=${attr(variantWidget, 'version')} package.json=${pkg.version}`);
+check('stamping the test variant twice is a no-op',
+  stampVariant(variantXml, 'test') === variantXml);
+check('an unknown variant fails loudly', throws(() => stampVariant(xml, 'other')));
+check('a manifest without the main identity cannot be test-stamped',
+  throws(() => stampVariant(xml.replace('id="stashzentv.StashZen"', 'id="other.App"'), 'test')));
 
 console.log(`\n${passed}/${passed + failed} checks passed`);
 process.exit(failed === 0 ? 0 : 1);

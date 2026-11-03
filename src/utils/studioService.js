@@ -3,7 +3,7 @@
  *
  * The loader is `entityService.js`; what is specific to studios is here.
  *
- * Studio is the richest of the four: `rating100`, `organized`, `o_counter`, and
+ * Studio is the richest entity: `rating100`, `organized`, `o_counter`, and
  * the only `parent_studio`. It also has the fewest valid sorts, the resolver
  * rejects `performers_count` and `groups_count` though comparable values work
  * on Tags, which is why these menus were probed rather than copied.
@@ -13,10 +13,12 @@
  */
 
 import { getSettings } from './settings.js';
-import { withApiKey } from './stashUrl.js';
+import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
 import { ratingLabel } from './format.js';
+import { getServerVersion } from './serverInfo.js';
+import { supportsCapability } from './capabilities.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
@@ -39,6 +41,8 @@ async function generateMockStudios() {
       favorite: rng() > 0.8,
       rating: rng() > 0.45 ? (rng() * 3 + 6.5).toFixed(1) : null,
       scene_count: 1 + Math.floor(rng() * 90),
+      scene_marker_count: Math.floor(rng() * 120),
+      o_counter: Math.floor(rng() * 300),
       image_count: Math.floor(rng() * 400),
       gallery_count: Math.floor(rng() * 50),
       performer_count: Math.floor(rng() * 25),
@@ -117,7 +121,11 @@ export function normalizeStudio(s) {
   return {
     id: s.id,
     name: s.name,
-    image_path: withApiKey(s.image_path) || null,
+    // A studio without a picture gets Stash's `default=true` placeholder;
+    // treating it as absent reaches the card's monogram instead.
+    image_path: !s.image_path || isDefaultAsset(s.image_path)
+      ? null
+      : withApiKey(s.image_path) || null,
     favorite: !!s.favorite,
     // Scaled to 0–10 the way the performer card does it, so one control means
     // one thing across sections. The server side is 0–100.
@@ -150,6 +158,9 @@ const service = createEntityService({
     scenes_count: 'scene_count',
     images_count: 'image_count',
     galleries_count: 'gallery_count',
+    // The resolver's sort spelling is plural, the row's field singular; without
+    // this alias the 0.32 Marker Count sort ties on every row in Test mode.
+    scene_markers_count: 'scene_marker_count',
   },
 });
 
@@ -160,6 +171,10 @@ export async function fetchStudios(opts = {}) {
 
 // The Info overlay's detail: `details` is deliberately omitted from the grid
 // query, and the hierarchy is not on the card at all.
+//
+// 0.32 added `depth` to o_counter and a recursive scene_marker_count. Asking
+// for both forms on one server is a field conflict, so the query is built for
+// the version in hand; an unknown version gets the 0.31 form.
 const FIND_STUDIO_INFO_QUERY = `
   query FindStudioInfo($id: ID!) {
     findStudio(id: $id) {
@@ -170,6 +185,7 @@ const FIND_STUDIO_INFO_QUERY = `
       favorite
       rating100
       scene_count
+      __COUNTS__
       image_count
       gallery_count
       performer_count
@@ -179,6 +195,14 @@ const FIND_STUDIO_INFO_QUERY = `
     }
   }
 `;
+
+function findStudioInfoQuery() {
+  const recursive = supportsCapability(getServerVersion(), 'studioRecursiveCounts');
+  const counts = recursive
+    ? 'o_counter(depth: -1)\n      scene_marker_count(depth: -1)'
+    : 'o_counter';
+  return FIND_STUDIO_INFO_QUERY.replace('__COUNTS__', counts);
+}
 
 function normalizeStudioInfo(s) {
   const refs = (list) => (list || []).map(x => ({ id: x.id, name: x.name }));
@@ -190,6 +214,9 @@ function normalizeStudioInfo(s) {
     favorite: !!s.favorite,
     rating: ratingLabel(s.rating100),
     scene_count: s.scene_count || 0,
+    // Absent on a 0.31 server, where the query does not ask for it.
+    scene_marker_count: s.scene_marker_count || 0,
+    o_counter: s.o_counter || 0,
     image_count: s.image_count || 0,
     gallery_count: s.gallery_count || 0,
     performer_count: s.performer_count || 0,
@@ -213,6 +240,8 @@ export async function fetchStudioInfo(id) {
       favorite: s.favorite,
       rating: s.rating,
       scene_count: s.scene_count,
+      scene_marker_count: s.scene_marker_count,
+      o_counter: s.o_counter,
       image_count: s.image_count,
       gallery_count: s.gallery_count,
       performer_count: s.performer_count,
@@ -221,6 +250,6 @@ export async function fetchStudioInfo(id) {
       childStudios: [],
     };
   }
-  const data = await runQuery(FIND_STUDIO_INFO_QUERY, { id: String(id) });
+  const data = await runQuery(findStudioInfoQuery(), { id: String(id) });
   return data?.findStudio ? normalizeStudioInfo(data.findStudio) : null;
 }

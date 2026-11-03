@@ -1,12 +1,13 @@
 /**
- * EntityCard, one card for Tags, Studios, Galleries and Images.
+ * EntityCard, one card for Tags, Studios, Groups, Galleries and Images.
  *
  * The sections differ, but the difference lives in the `view` descriptor
  * (title, subtitle, badge, image, aspect) rather than here, so the layout is
- * written once instead of four times.
+ * written once instead of once per section.
  *
- * `onLongPress` is wired when `view.longPress` asks: all four sections have a
- * long-press menu now. A long-pressable card takes `useFocusable`'s keyup
+ * `onLongPress` is wired when `view.longPress` asks: Tags, Studios, Groups,
+ * Galleries and Images all have a long-press menu. A long-pressable card takes
+ * `useFocusable`'s keyup
  * path (Enter is prevented on keydown and activation fires on release); a
  * plain tap keeps the keydown path.
  *

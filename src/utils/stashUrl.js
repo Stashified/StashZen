@@ -25,6 +25,16 @@
 
 import { getSettings } from './settings.js';
 
+/**
+ * Stash answers an entity with no artwork using one shared placeholder and
+ * marks it `default=true`. The URL is a normal 200, so `onError` never sees
+ * it; treat the flag as "no picture" or every card in a section shows the same
+ * icon.
+ */
+export function isDefaultAsset(url) {
+  return typeof url === 'string' && /[?&]default=true(?:&|#|$)/.test(url);
+}
+
 export function withApiKey(url) {
   if (!url || typeof url !== 'string') return url;
 

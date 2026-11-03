@@ -48,6 +48,19 @@ export function useFilterBuilder({
     closeBuilder();
   };
 
+  // Clear, not Cancel: remove what is applied. A selected saved filter goes
+  // too, or "clear the filter" would only drop the hand-built layer.
+  const clearWorkingFilter = () => {
+    setControls(prev => ({
+      ...prev,
+      workingFilter: null,
+      workingFilterFor: null,
+      workingFilterLabel: null,
+      filterId: null,
+    }));
+    closeBuilder();
+  };
+
   const saveBuiltFilter = async ({ name, objectFilter }) => {
     // Seeded from the active saved filter, so Save edits it in place rather
     // than forking a same-named copy.
@@ -108,6 +121,7 @@ export function useFilterBuilder({
     setBuilderOpen,
     closeBuilder,
     applyWorkingFilter,
+    clearWorkingFilter,
     saveBuiltFilter,
   };
 }

@@ -375,8 +375,16 @@ export async function testStashConnection({ url, key }) {
   try {
     data = await graphqlRequest('{ version { version } }', {}, { url, key });
   } catch (e) {
-    if (e?.code === 'http' && (e.status === 401 || e.status === 403)) {
+    if (e?.code === 'http' && e.status === 401) {
       return { ok: false, reason: 'Authentication failed. Check the API key.' };
+    }
+    // Stash 0.32 rejects requests from public IPs with 403 unless the address
+    // is whitelisted, so this is not the same failure as a bad key (401).
+    if (e?.code === 'http' && e.status === 403) {
+      return {
+        ok: false,
+        reason: 'Server refused the request (HTTP 403). Stash 0.32+ blocks public-IP access unless configured; if the address is a LAN address, check the API key.',
+      };
     }
     // Any other non-2xx. `{ version { version } }` takes no arguments, so the
     // status is the whole story, there is no rejected-input detail.

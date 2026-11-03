@@ -1,9 +1,9 @@
 /**
- * entityViews.jsx: what each of the four browse-only sections shows.
+ * entityViews.jsx: what each browse-only section shows.
  *
- * `EntityGrid` and `Carousel` each draw any of the four; these descriptors are
- * the part that cannot generalize. Kept together so the differences sit side
- * by side.
+ * `EntityGrid` and `Carousel` each draw any of them; these descriptors are the
+ * part that cannot generalize. Kept together so the differences sit side by
+ * side.
  *
  * ## What a descriptor provides
  *
@@ -25,22 +25,24 @@
  *                                  blurb, so description/details live in the
  *                                  heavier query the Carousel asks for.
  *
- * Two things true of all four:
+ * Two things true of the entity sections:
  *
- * `image_path` is non-empty for every tag and studio in this library, which
- * does **not** mean a picture is there, Stash serves a generated-asset URL
- * whether or not Generate has run, so a 200 proves nothing. The monogram
- * fallback is therefore reached by `onError`, never an absent field, which is
- * why EntityCard owns it rather than a getter.
+ * `image_path` can be non-empty when no picture is there: Stash answers a
+ * default marked `default=true`, so the services null it out (groupService
+ * additionally falls back to a scene screenshot) and the card's monogram is
+ * reached by an absent field. EntityCard still owns an `onError` fallback for
+ * a URL that 404s or 302s.
  *
- * `longPress` opts a section into the card's long-press menu. All four set it
- * now: Images and Galleries open the viewer, Tags and Studios the Info sheet.
+ * `longPress` opts a section into the card's long-press menu: Images open the
+ * viewer, Galleries the viewer and the Info sheet, Tags, Studios and Groups the
+ * Info sheet.
  */
 
 import EntityCard from './EntityCard.jsx';
 
 import { fetchTags } from '../utils/tagService.js';
 import { fetchStudios } from '../utils/studioService.js';
+import { fetchGroups } from '../utils/groupService.js';
 import { fetchGalleries } from '../utils/galleryService.js';
 import { fetchImages } from '../utils/imageService.js';
 
@@ -85,7 +87,7 @@ function bind(view) {
   };
 }
 
-// Portrait. Tag has no `rating100`, so no badge, the clearest of the four
+// Portrait. Tag has no `rating100`, so no badge, the clearest of the
 // differences and why this is a descriptor rather than a colour of one card.
 export const TAG_VIEW = bind({
   key: 'tags',
@@ -116,7 +118,7 @@ export const TAG_VIEW = bind({
   }),
 });
 
-// Landscape; the only one of the four that can be a favourite *and* rated.
+// Landscape; the only section that can be a favourite *and* rated.
 export const STUDIO_VIEW = bind({
   key: 'studios',
   service: fetchStudios,
@@ -143,6 +145,40 @@ export const STUDIO_VIEW = bind({
       s.rating && { text: `★ ${s.rating}`, kind: 'rating' },
     ].filter(Boolean),
     blurb: s.details || null,
+  }),
+});
+
+// A group has no favourite flag and no portrait art, and selecting one opens
+// Scenes filtered to it, like a tag or studio.
+export const GROUP_VIEW = bind({
+  key: 'groups',
+  service: fetchGroups,
+  itemsKey: 'groups',
+  focusPrefix: 'group',
+  noun: 'groups',
+  gridLabel: 'Group grid',
+  ariaLabel: 'Group carousel',
+  aspect: 'landscape',
+  longPress: true,
+  getImage: (g) => g.image_path,
+  getTitle: (g) => g.name,
+  getSubtitle: (g) => {
+    const count = scenes(g.scene_count);
+    return g.studio?.name ? `${count} · ${g.studio.name}` : count;
+  },
+  getBadge: (g) => (g.rating ? `★ ${g.rating}` : null),
+  label: (g) => `${g.name}, ${scenes(g.scene_count)}`,
+  hero: (g) => ({
+    title: g.name,
+    meta: [
+      g.scene_count && { text: scenes(g.scene_count) },
+      g.performer_count && { text: `${g.performer_count} performers` },
+      g.date && { text: year(g.date) },
+      g.studio?.name && { text: g.studio.name },
+      g.director && { text: `Dir. ${g.director}` },
+      g.rating && { text: `★ ${g.rating}`, kind: 'rating' },
+    ].filter(Boolean),
+    blurb: g.synopsis || null,
   }),
 });
 

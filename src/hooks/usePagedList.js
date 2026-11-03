@@ -62,8 +62,8 @@ const stalePage1 = new Map();
 function stalePageKey(focusPrefix, entity, requestKey) {
   // NUL-separated like listCacheKey: no value can forge a part boundary.
   //
-  // `focusPrefix` is the listing's identity, and it is load-bearing: the four
-  // browse tabs pass no `entity`, and Performers/Tags/Studios share one
+  // `focusPrefix` is the listing's identity, and it is load-bearing: the
+  // browse tabs pass no `entity`, and Performers/Tags/Studios/Groups share one
   // requestKey (name/asc) exactly as Galleries/Images share another. Without
   // it a tab switch seeded the new tab with the previous tab's rows, and Enter
   // opened one of them.
@@ -185,6 +185,11 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     };
   }, [entity]);
 
+  // Mirrors the rows on screen for the reset effect, which keys on
+  // `requestKey` alone. Declared here so it updates before that effect runs.
+  const itemsStateRef = useRef(items);
+  useEffect(() => { itemsStateRef.current = items; }, [items]);
+
   // Latest `loadMore` for the retry timer, which fires between renders holding
   // a stale closure.
   const loadMoreRef = useRef(null);
@@ -193,6 +198,13 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
   useEffect(() => {
     const reqId = ++requestIdRef.current;
     let cancelled = false;
+
+    // The outgoing identity's rows and count, read before the refs below are
+    // zeroed. They stay on screen while the new page 1 is fetched: a search
+    // commit changes the identity on every debounce pause, and blanking the
+    // grid each time read as the app reloading per keystroke.
+    const shown = itemsStateRef.current;
+    const shownTotal = totalRef.current;
 
     // The timer belongs to the replaced identity; left armed it fired against
     // the new list and blocked an identity that had never failed.
@@ -211,22 +223,26 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     abortRef.current = typeof AbortController === 'function' ? new AbortController() : null;
     const { signal } = abortRef.current || {};
 
-    // The previous visit's page 1 stays on screen while this one is fetched
-    // (the request still runs: leaving a tab re-reads it). Seeding the refs
-    // too keeps `loadMore`'s arithmetic honest until the answer replaces them.
+    // The previous visit's page 1 wins over the rows on screen: it was read
+    // for this exact request. Either way the fresh page 1 replaces them, so
+    // these are only what the eye sees until it lands, and neither is
+    // remembered under `key`. Seeding the refs keeps `loadMore`'s arithmetic
+    // honest meanwhile.
     const key = stalePageKey(focusPrefix, entity, requestKey);
     const seed = stalePage1.get(key);
-    seededRef.current = !!seed;
-    seenIdsRef.current = new Set((seed?.items || []).map(it => it.id));
-    itemsLenRef.current = seed?.items.length || 0;
-    totalRef.current = seed?.total || 0;
+    const carried = seed?.items || shown;
+    const carriedTotal = seed?.total ?? shownTotal;
+    seededRef.current = carried.length > 0;
+    seenIdsRef.current = new Set(carried.map(it => it.id));
+    itemsLenRef.current = carried.length;
+    totalRef.current = carriedTotal;
 
     setLoading(true);
     setRetrying(false);
     setError(null);
-    setItems(seed?.items || []);
+    setItems(carried);
     setPage(1);
-    setTotal(seed?.total || 0);
+    setTotal(carriedTotal);
     setEnded(false);
     // Both belong to the replaced identity: without the first, an in-flight
     // page skipped `setLoadingMore(false)` and left infinite scroll dead; the

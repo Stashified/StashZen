@@ -30,7 +30,8 @@ const ITEMS = [
   { id: 'performers', label: 'Performers', Icon: IconPerformers, next: 'markers' },
   { id: 'markers',    label: 'Markers',    Icon: IconMarkers,    next: 'tags' },
   { id: 'tags',       label: 'Tags',       Icon: IconTags,       next: 'studios' },
-  { id: 'studios',    label: 'Studios',    Icon: IconStudios,    next: 'galleries' },
+  { id: 'studios',    label: 'Studios',    Icon: IconStudios,    next: 'groups' },
+  { id: 'groups',     label: 'Groups',     Icon: IconGroups,     next: 'galleries' },
   { id: 'galleries',  label: 'Galleries',  Icon: IconGalleries,  next: 'images' },
   { id: 'images',     label: 'Images',     Icon: IconImages,     next: 'search' },
   // Last, below the library: search is a utility, not another browse section.
@@ -104,6 +105,15 @@ function IconStudios() {
       <path d="M3.2 17V7.4l1.5-3.5 9.9 1.7-.6 1.7" />
       <rect x="3.2" y="7.6" width="13.6" height="9.4" rx="1.3" />
       <path d="M3.2 11.4h13.6" />
+    </Svg>
+  );
+}
+
+function IconGroups() {
+  return (
+    <Svg>
+      <rect x="3" y="7.4" width="14" height="9.2" rx="1.3" />
+      <path d="M5.2 4.8h9.6M7 2.4h6" />
     </Svg>
   );
 }

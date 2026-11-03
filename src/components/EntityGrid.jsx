@@ -1,5 +1,5 @@
 /**
- * EntityGrid, infinite-scroll grid for the four browse-only sections.
+ * EntityGrid, infinite-scroll grid for the browse-only sections.
  *
  * As in the other grids, `usePagedList` owns the state machine while this
  * supplies the request and the trigger. service, itemsKey, card, noun and

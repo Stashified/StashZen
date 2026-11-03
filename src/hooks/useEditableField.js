@@ -67,7 +67,12 @@ export function useEditableField({
     crossZone,
     autoFocus,
     nextId,
-    onEnter: () => {
+    onEnter: (e) => {
+      // Trap 3: a nested focusable (the search field's clear button) handles
+      // Enter first and preventDefaults it, but its event bubbles to this
+      // listener too. Without this the activation also opened the field, which
+      // raised the keyboard over the listing just cleared.
+      if (e?.defaultPrevented) return;
       // Trap 2: only Enter on the wrapper itself activates; one bubbled from
       // the input belongs to the input's handler, which finishes editing.
       if (document.activeElement !== ref.current) return;
@@ -116,7 +121,14 @@ export function useEditableField({
     },
   };
 
+  // A control that clears the field unmounts itself; focus must come back to
+  // the wrapper or the D-pad has nowhere to move from <body>.
+  const focusWrapper = useCallback(() => { ref.current?.focus(); }, [ref]);
+
   // `focused` is false while editing (the wrapper has blurred), so styling
   // keys off this.
-  return { setWrapperRef, inputRef, selected: focused || editing, editing, finishEdit, inputHandlers };
+  return {
+    setWrapperRef, inputRef, selected: focused || editing, editing, finishEdit,
+    focusWrapper, inputHandlers,
+  };
 }

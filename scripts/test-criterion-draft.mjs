@@ -88,6 +88,9 @@ check('is_missing reads its scalar', seedCriterion(isMissingDesc, 'url'),
 check('is_missing keeps an envelope from an older build',
   seedCriterion(isMissingDesc, { modifier: 'EQUALS', value: { value: 'tags' } }),
   { modifier: 'EQUALS', value: { value: 'tags' } });
+check('is_missing reads the stored modifier envelope',
+  seedCriterion(isMissingDesc, { modifier: 'EQUALS', value: 'tags' }),
+  { modifier: null, value: { value: 'tags' } });
 const stored = { modifier: 'MATCHES_REGEX', value: { value: 'x' } };
 check('a stored envelope passes through unchanged', seedCriterion(textDesc, stored), stored);
 check('a stored boolean envelope is left alone', seedCriterion(boolDesc, { modifier: 'EQUALS', value: 'false' }),
@@ -282,19 +285,62 @@ check('a list-valued enum is a list of display strings', storedOut.circumcised,
   { modifier: 'INCLUDES', value: ['Cut'] });
 check('numbers already match Stash', storedOut.duration,
   { modifier: 'BETWEEN', value: { value: 1, value2: 2 } });
-check('multi already matches Stash', storedOut.tags,
-  { modifier: 'INCLUDES', value: { items: [{ id: '1' }], excluded: [] } });
+check('a plain multi is a labeled-id array', storedOut.tags,
+  { modifier: 'INCLUDES', value: [{ id: '1' }] });
 check('storedCriteria labels a bare multi entry',
   storedCriteria(['tags'],
     { tags: { modifier: 'INCLUDES', value: { items: [7], excluded: [] } } }, storedMap),
-  { tags: { modifier: 'INCLUDES', value: { items: [{ id: 7, label: '' }], excluded: [] } } });
-check('storedCriteria keeps an exclusion-only multi',
+  { tags: { modifier: 'INCLUDES', value: [{ id: 7, label: '' }] } });
+check('storedCriteria keeps a hierarchical multi nested',
   storedCriteria(['tags'],
-    { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }] } } },
-    storedMap),
-  { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }] } } });
-check('is_missing is a bare string', storedOut.is_missing, 'url');
+    { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }], depth: -1 } } },
+    new Map([['tags', hierDesc]])),
+  { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }], depth: -1 } } });
+check('is_missing keeps its stored modifier envelope',
+  storedOut.is_missing, { modifier: 'EQUALS', value: 'url' });
 check('an unknown field is carried as it came', storedOut.gone, { kept: true });
+
+console.log('\n── hierarchical counts (0.32)');
+const hierCountDesc = {
+  field: 'scene_count',
+  type: 'HierarchicalCountInput',
+  editor: EDITOR.HIERARCHICAL_COUNT,
+  modifierOptions: ['GREATER_THAN', 'BETWEEN'],
+  supportsRange: true,
+};
+const hierCountMap = new Map([['scene_count', hierCountDesc]]);
+
+check('a hierarchical count starts empty with its modifier',
+  blankCriterion(hierCountDesc), { modifier: 'GREATER_THAN', value: {} });
+check('a flat request seed keeps its depth',
+  seedCriterion(hierCountDesc, { modifier: 'GREATER_THAN', value: 5, depth: -1 }),
+  { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } });
+check('a nested stored seed is kept as it came',
+  seedCriterion(hierCountDesc, { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } }),
+  { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } });
+check('an integer count is effective',
+  isEffective(hierCountDesc, { modifier: 'GREATER_THAN', value: { value: 5 } }), true);
+check('a decimal count is not effective, HierarchicalCountInput value is Int',
+  isEffective(hierCountDesc, { modifier: 'GREATER_THAN', value: { value: 1.5 } }), false);
+check('an empty count is not effective',
+  isEffective(hierCountDesc, { modifier: 'GREATER_THAN', value: {} }), false);
+check('a count BETWEEN needs both bounds',
+  isEffective(hierCountDesc, { modifier: 'BETWEEN', value: { value: 1 } }), false);
+check('a nullary count needs no operand',
+  isEffective(hierCountDesc, { modifier: 'IS_NULL', value: {} }), true);
+check('a flat nullary seed drops its meaningless operand',
+  seedCriterion(hierCountDesc, { modifier: 'IS_NULL', value: 0 }),
+  { modifier: 'IS_NULL', value: {} });
+check('saving a nullary count writes no empty operand',
+  storedCriteria(['scene_count'],
+    { scene_count: { modifier: 'IS_NULL', value: { value: '' } } },
+    hierCountMap),
+  { scene_count: { modifier: 'IS_NULL', value: {} } });
+check('storedCriteria keeps value and depth nested',
+  storedCriteria(['scene_count'],
+    { scene_count: { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } } },
+    hierCountMap),
+  { scene_count: { modifier: 'GREATER_THAN', value: { value: 5, depth: -1 } } });
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

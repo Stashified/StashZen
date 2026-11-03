@@ -73,6 +73,9 @@ check('a null editor has no module', editorFor(null) === null);
 console.log('chain vs rendered controls');
 checkCase('TEXT', byField('title'), valueCrit, ['fb-val-title']);
 checkCase('PHASH', byField('phash_distance'), valueCrit, ['fb-val-phash_distance']);
+check('PHASH offers the nullary modifiers Stash saves',
+  ['IS_NULL', 'NOT_NULL'].every(m => byField('phash_distance').modifierOptions.includes(m)),
+  `options: ${byField('phash_distance').modifierOptions.join(', ')}`);
 checkCase('NUMBER', byField('duration'), valueCrit, ['fb-val-duration']);
 checkCase('NUMBER BETWEEN', byField('duration'), betweenCrit,
   ['fb-val-duration', 'fb-val2-duration']);
@@ -85,10 +88,37 @@ checkCase('ENUM', byField('resolution'), valueCrit, ['fb-val-resolution']);
 checkCase('BOOLEAN', byField('organized'), boolCrit, ['fb-val-organized']);
 checkCase('MULTI', byField('performers'), valueCrit, ['fb-pick-performers']);
 checkCase('HIERARCHICAL', byField('tags'), valueCrit, ['fb-pick-tags', 'fb-depth-tags']);
+
+const depthPart = editorParts('tags', byField('tags'), {
+  modifier: 'INCLUDES',
+  value: { items: [{ id: '1', label: 'x' }], excluded: [], depth: -1 },
+}).find(p => p.apply === 'depth');
+check('a stored depth -1 prints as one of the depth options',
+  Boolean(depthPart) && depthPart.options.some(o => o.value === depthPart.value),
+  `value ${depthPart?.value} not in [${depthPart?.options.map(o => o.value).join(', ')}]`);
 checkCase('STASH_ID', byField('stash_id_endpoint'), valueCrit,
   ['fb-ep-stash_id_endpoint', 'fb-sid-stash_id_endpoint']);
 checkCase('STASH_IDS', byField('stash_ids_endpoint'), valueCrit,
   ['fb-ep-stash_ids_endpoint', 'fb-sid-stash_ids_endpoint']);
+
+console.log('0.32 gated fields');
+const scene32 = criteriaFor('SceneFilterType', '0.32.0');
+const productionDate = scene32.find(d => d.field === 'production_date');
+check('production_date is a Common date criterion on 0.32',
+  productionDate?.editor === EDITOR.DATE && productionDate.common === true,
+  `editor ${productionDate?.editor}, common ${productionDate?.common}`);
+check('production_date is absent on 0.31',
+  !criteriaFor('SceneFilterType', '0.31.1').some(d => d.field === 'production_date'));
+
+const tagCount32 = criteriaFor('TagFilterType', '0.32.0').find(d => d.field === 'scene_count');
+check('a 0.32 tag count uses the hierarchical-count editor',
+  tagCount32?.editor === EDITOR.HIERARCHICAL_COUNT, `editor ${tagCount32?.editor}`);
+check('a 0.31 tag count stays a plain number',
+  criteriaFor('TagFilterType', '0.31.1').find(d => d.field === 'scene_count')?.editor === EDITOR.NUMBER);
+checkCase('HIERARCHICAL_COUNT', tagCount32, valueCrit,
+  ['fb-val-scene_count', 'fb-depth-scene_count']);
+checkCase('HIERARCHICAL_COUNT BETWEEN', tagCount32, betweenCrit,
+  ['fb-val-scene_count', 'fb-val2-scene_count', 'fb-depth-scene_count']);
 
 console.log('no operand');
 checkCase('TEXT with a nullary modifier renders nothing', byField('title'), openCrit, []);

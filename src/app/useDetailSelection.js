@@ -12,8 +12,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
 import { focusByIdWhenReady, focusFirstControl, focusOriginCard } from '../utils/focus.js';
+import { TAB_CONTROL_CONFIG } from './tabConfig.js';
+import { restoreControls, snapshotControls } from './controlRestore.js';
 
-export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigins }) {
+export function useDetailSelection({
+  activeTab, dataKey, changeTab, filterOrigins, controls, setControls,
+}) {
   const [selectedPerformer, setSelectedPerformer] = useState(null);
   // Where a performer detail opened from Home returns to. Separate from
   // `filterOrigins`, which means "a filtered listing and its Back destination";
@@ -59,6 +63,8 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
     if (selectedScene) setSelectedScene(null);
     if (selectedPerformer) setSelectedPerformer(null);
     if (performerOrigin) setPerformerOrigin(null);
+    // The id names a card in the old library; a later chip would poll for it.
+    if (sceneOriginId) setSceneOriginId(null);
   }
 
   // Leaving Performers clears any open detail so the user does not pop back
@@ -146,7 +152,17 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
   // A scene detail passes its own card: the origin tab has no performer card,
   // and this is where Back should land.
   const openPerformerFrom = (performer, tab, focusId = null) => {
-    setPerformerOrigin({ focusId: focusId || `performer-${performer.id}`, tab });
+    const originTab = tab || 'home';
+    const config = TAB_CONTROL_CONFIG[originTab];
+    setPerformerOrigin({
+      focusId: focusId || `performer-${performer.id}`,
+      tab: originTab,
+      // The tab change clears the origin's search, chips, sort and filter, and
+      // Back must undo that: keep the snapshot only for tabs that have a bar.
+      controls: config && config.showControls !== false
+        ? snapshotControls(controls)
+        : null,
+    });
     setSelectedPerformer(performer);
     changeTab('performers');
   };
@@ -171,12 +187,14 @@ export function useDetailSelection({ activeTab, dataKey, changeTab, filterOrigin
     const performer = selectedPerformer;
     setSelectedPerformer(null);
     if (performerOrigin) {
-      const { focusId, tab } = performerOrigin;
+      const { focusId, tab, controls: snapshot } = performerOrigin;
+      const dest = tab || 'home';
       setPerformerOrigin(null);
-      changeTab(tab || 'home');
+      changeTab(dest);
+      if (snapshot) restoreControls(setControls, snapshot, dest);
       // The origin tab remounts and refetches, so the card does not exist yet;
       // retry as `activateFiltered`'s Back does.
-      focusOriginCard(tab || 'home', focusId);
+      focusOriginCard(dest, focusId);
       return;
     }
     // The Performers grid remounts in this commit and fetches page 1, so the

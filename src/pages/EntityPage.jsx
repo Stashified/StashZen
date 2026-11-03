@@ -1,9 +1,9 @@
 /**
  * EntityPage, the grid, or the carousel/list when this section's mode is one.
  *
- * One page for all four browse-only sections, parameterised by the descriptor:
- * four near-identical files is what the descriptor exists to avoid. `mode` is a
- * prop rather than `controls.mode`; see ScenesPage's header for why.
+ * One page for every browse-only section, parameterised by the descriptor: a
+ * near-identical file per section is what the descriptor exists to avoid.
+ * `mode` is a prop rather than `controls.mode`; see ScenesPage's header for why.
  */
 
 import EntityGrid from '../components/EntityGrid.jsx';

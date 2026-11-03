@@ -17,9 +17,12 @@
  *       Right/Left walk the count pills.
  *   I5  the menu's View scenes row still applies the tag filter.
  *   I6  a tag's counts open the listings behind them, with Back to the card.
- *   I7  a studio's counts do the same; its group count is not a stop.
+ *   I7  a studio's counts do the same; O and marker counts are plain numbers.
  *   I8  a count opened from inside a filtered listing keeps it: each Back
  *       unwinds one level and restores the filter the level had.
+ *   I9  a group's sheet: synopsis, aliases, containing/sub-groups and tags.
+ *   I10 a gallery's sheet: details, performers, tags, and counts derived from
+ *       the fetched lists (Gallery exposes neither performer nor scene count).
  *
  * The panel and the counts are the only focusable surfaces in the dialog.
  * Arrow scroll is the trap: the global key handler would otherwise move the
@@ -348,17 +351,32 @@ async function run() {
   await waitFor(() => !!sheetEl(), 4000);
   const studioCountIds = [...registry.keys()]
     .filter(id => id.startsWith('entity-count-'));
-  // Groups are the one count with no tab behind it: it renders as a plain
-  // span, so it is neither a stop nor an Enter target.
-  const groupCount = [...document.querySelectorAll('[aria-label="Counts"] > *')]
-    .find(el => el.textContent.trim() === '2 groups');
-  check('I7 a studio offers its four filterable counts, groups stay a number',
-    studioCountIds.length === 4
-      && ['scenes', 'images', 'galleries', 'performers']
+  // GroupFilterType has a `studios` criterion, so the group count is a stop
+  // too. O and marker counts stay plain numbers: no filter field takes them,
+  // and a pill that opened a listing it cannot filter would be a lie.
+  //
+  // The marker count only exists on 0.32, where the detail query asks for it.
+  // On 0.31 the fake server deliberately omits it, so the assertion must be
+  // two-sided or a deleted `scene_marker_count` row would still pass.
+  const { version: serverVersion } = await getJSON('/version');
+  const expectsMarkers = Number(String(serverVersion).split('.')[1]) >= 32;
+  // The 0.32 lane passes expect=032; a broken hand-off would otherwise run it
+  // as 0.31 and skip every marker assertion while still reporting green.
+  const expect032 = new URLSearchParams(location.search).get('expect') === '032';
+  check('I0 the 0.32 info lane runs against a 0.32 server',
+    !expect032 || expectsMarkers, `expect=${expect032} version=${serverVersion}`);
+  const countSpans = [...document.querySelectorAll('[aria-label="Counts"] > *')];
+  const oPill = countSpans.find(el => el.textContent.trim() === '4242 O');
+  const markerPill = countSpans.find(el => el.textContent.trim() === '57 markers');
+  check('I7 a studio offers five filterable counts; O and markers stay numbers',
+    studioCountIds.length === 5
+      && ['scenes', 'images', 'galleries', 'performers', 'groups']
         .every(t => studioCountIds.includes(`entity-count-${t}`))
-      && !studioCountIds.includes('entity-count-groups')
-      && groupCount?.tagName === 'SPAN',
-    `ids=[${studioCountIds.join(',')}] groups=${groupCount?.tagName}`);
+      && !studioCountIds.includes('entity-count-o')
+      && oPill?.tagName === 'SPAN'
+      && (expectsMarkers ? markerPill?.tagName === 'SPAN' : markerPill === undefined),
+    `ids=[${studioCountIds.join(',')}] version=${serverVersion} `
+      + `oPill=${oPill?.tagName} markerPill=${markerPill?.tagName}`);
 
   focus('entity-count-performers');
   await sleep(80);
@@ -374,6 +392,129 @@ async function run() {
     () => railActive().toLowerCase() === 'studios' && getCurrentFocusId() === 'studio-4', 8000);
   check('I7 ...and Back returns to the studio card', backToStudio,
     `rail=${railActive()} focus=${getCurrentFocusId()}`);
+
+  // ── I9: a group's Info sheet ────────────────────────────
+  await gotoTab('groups');
+  await waitFor(() => live('group-1'));
+  await clearLogs();
+  const groupOpen = await chooseMenuRow('group-1', 'menu-entity-info');
+  const groupSheet = await waitFor(() => !!sheetEl(), 4000);
+  const groupFetched = await waitForAsync(async () => (await getJSON('/groupinfofetches'))
+    .some(f => f.id === '1'), 4000);
+  // The fetch log is written before the answer is, so the log alone can win
+  // the race. Wait for the merged title, which only the detail can provide.
+  const groupRendered = await waitFor(
+    () => sheetTitle() === 'VERIFY group info 1', 4000);
+  const groupText = sheetEl()?.textContent || '';
+  check('I9 a group card\'s menu opens its Info sheet',
+    groupOpen.opened && groupOpen.row && groupSheet && groupFetched && groupRendered,
+    `menu=${groupOpen.opened} row=${groupOpen.row} sheet=${groupSheet} `
+      + `fetch=${groupFetched} rendered=${groupRendered} errors: ${errorTail()}`);
+  check('I9 the group answer is merged over the card',
+    sheetTitle() === 'VERIFY group info 1'
+      && groupText.includes('★ 8.0')
+      && groupText.includes('31 scenes') && groupText.includes('32 performers')
+      && groupText.includes('4242 O')
+      && groupText.includes('2023-07-04') && groupText.includes('1:30:00')
+      && groupText.includes('Dir. VERIFY group director'),
+    `title="${sheetTitle()}" rating=${groupText.includes('★ 8.0')} `
+    + `scenes=${groupText.includes('31 scenes')} performers=${groupText.includes('32 performers')} `
+    + `o=${groupText.includes('4242 O')} date=${groupText.includes('2023-07-04')} `
+    + `time=${groupText.includes('1:30:00')} director=${groupText.includes('Dir. VERIFY group director')}`);
+  check('I9 synopsis, aliases, tags and both group directions are listed',
+    groupText.includes('VERIFY group info synopsis.')
+      && groupText.includes('VERIFY group alias one')
+      && groupText.includes('Part of') && groupText.includes('VERIFY containing group')
+      && groupText.includes('Includes') && groupText.includes('VERIFY subgroup one')
+      && groupText.includes('Tags') && groupText.includes('VERIFY group info tag one'),
+    `synopsis=${groupText.includes('VERIFY group info synopsis.')} `
+    + `aliases=${groupText.includes('VERIFY group alias one')} `
+    + `partOf=${groupText.includes('VERIFY containing group')} `
+    + `includes=${groupText.includes('VERIFY subgroup one')}`);
+  const groupQuery = (await getJSON('/groupinfofetches')).find(f => f.id === '1')?.query || '';
+  check('I9 the group query reads the relation links as group { name }',
+    ['containing_groups', 'sub_groups', 'group {', 'synopsis', 'duration', 'performer_count']
+      .every(f => groupQuery.includes(f)),
+    `missing=${['containing_groups', 'sub_groups', 'group {', 'synopsis', 'duration',
+      'performer_count'].filter(f => !groupQuery.includes(f))}`);
+  await waitFor(() => [...registry.keys()]
+    .filter(id => id.startsWith('entity-count-')).length === 2, 2000);
+  const groupCountIds = [...registry.keys()].filter(id => id.startsWith('entity-count-'));
+  check('I9 a group\'s scene and performer counts are stops, O stays a number',
+    groupCountIds.length === 2
+      && groupCountIds.includes('entity-count-scenes')
+      && groupCountIds.includes('entity-count-performers'),
+    `ids=[${groupCountIds.join(',')}]`);
+  await pressBack();
+  const backToGroup = await waitFor(() => getCurrentFocusId() === 'group-1', 3000);
+  check('I9 Back returns to the group card', backToGroup, `focus=${getCurrentFocusId()}`);
+
+  // ── I10: a gallery's Info sheet ─────────────────────────
+  await gotoTab('galleries');
+  await waitFor(() => live('gallery-1'));
+  await clearLogs();
+  const galleryOpen = await chooseMenuRow('gallery-1', 'menu-gallery-info');
+  const gallerySheet = await waitFor(() => !!sheetEl(), 4000);
+  const galleryFetched = await waitForAsync(async () => (await getJSON('/galleryinfofetches'))
+    .some(f => f.id === '1'), 4000);
+  // Same race as I9: wait for the detail title before reading the sheet.
+  const galleryRendered = await waitFor(
+    () => sheetTitle() === 'VERIFY gallery info 1', 4000);
+  const galleryText = sheetEl()?.textContent || '';
+  check('I10 a gallery card\'s menu offers Info and opens the sheet',
+    galleryOpen.opened && galleryOpen.row && gallerySheet && galleryFetched
+      && galleryRendered,
+    `menu=${galleryOpen.opened} row=${galleryOpen.row} sheet=${gallerySheet} `
+      + `fetch=${galleryFetched} rendered=${galleryRendered} errors: ${errorTail()}`);
+  check('I10 the gallery answer is merged, counts derived from its lists',
+    sheetTitle() === 'VERIFY gallery info 1'
+      && galleryText.includes('★ 7.0')
+      && galleryText.includes('33 images')
+      && galleryText.includes('4 scenes')
+      && galleryText.includes('3 performers')
+      && galleryText.includes('VERIFY gallery photographer')
+      && galleryText.includes('VERIFY gallery info studio')
+      && galleryText.includes('VERIFY gallery folder'),
+    `title="${sheetTitle()}" rating=${galleryText.includes('★ 7.0')} `
+    + `images=${galleryText.includes('33 images')} scenes=${galleryText.includes('4 scenes')} `
+    + `performers=${galleryText.includes('3 performers')} photo=${galleryText.includes('VERIFY gallery photographer')}`);
+  check('I10 details, performers and tags are listed',
+    galleryText.includes('VERIFY gallery info details.')
+      && galleryText.includes('VERIFY gallery performer one')
+      && galleryText.includes('VERIFY gallery info tag one'),
+    `details=${galleryText.includes('VERIFY gallery info details.')} `
+    + `performers=${galleryText.includes('VERIFY gallery performer one')} `
+    + `tags=${galleryText.includes('VERIFY gallery info tag one')}`);
+  const galleryQuery = (await getJSON('/galleryinfofetches')).find(f => f.id === '1')?.query || '';
+  check('I10 the gallery query asks for the lists its counts are derived from',
+    ['performers', 'scenes', 'image_count', 'tags', 'folder']
+      .every(f => galleryQuery.includes(f)),
+    `missing=${['performers', 'scenes', 'image_count', 'tags', 'folder']
+      .filter(f => !galleryQuery.includes(f))}`);
+  await waitFor(() => [...registry.keys()]
+    .filter(id => id.startsWith('entity-count-')).length === 3, 2000);
+  const galleryCountIds = [...registry.keys()].filter(id => id.startsWith('entity-count-'));
+  check('I10 images, scenes and performers are all stops',
+    galleryCountIds.length === 3
+      && galleryCountIds.includes('entity-count-images')
+      && galleryCountIds.includes('entity-count-scenes')
+      && galleryCountIds.includes('entity-count-performers'),
+    `ids=[${galleryCountIds.join(',')}]`);
+  focus('entity-count-performers');
+  await sleep(80);
+  await tapEnter();
+  const onGalleryPerformers = await waitFor(
+    () => railActive().toLowerCase() === 'performers', 5000);
+  // PerformerFilterType has no `galleries` criterion, so this must arrive as
+  // the nested gallery filter with an Int id.
+  const galleryPerformersFiltered = await waitForAsync(async () => (await getJSON('/requests'))
+    .some(r => r.performer_filter?.galleries_filter?.id?.value === 1), 4000);
+  check('I10 the performer count opens Performers through the nested gallery filter',
+    onGalleryPerformers && galleryPerformersFiltered && !sheetEl(),
+    `rail=${railActive()} filtered=${galleryPerformersFiltered} sheet=${!!sheetEl()}`);
+  await pressBack();
+  const backToGallery = await waitFor(() => getCurrentFocusId() === 'gallery-1', 3000);
+  check('I10 Back returns to the gallery card', backToGallery, `focus=${getCurrentFocusId()}`);
 
   // ── I8: a count inside a filtered listing keeps that listing ──
   // Tags → tag 1's studios → studio 5's performers → Back must restore the

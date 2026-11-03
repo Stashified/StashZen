@@ -1,7 +1,7 @@
 /**
- * entityService.js: one loader for the four browse-only sections.
+ * entityService.js: one loader for the browse-only sections.
  *
- * Tags, Studios, Galleries and Images differ in exactly four things: the
+ * Tags, Studios, Groups, Galleries and Images differ in exactly four things: the
  * GraphQL root, the `*_filter` argument name, the result field, and row
  * normalisation. The list cache, `translateFilter`, FindFilterType variables
  * and Test-mode sort/paginate are identical, which is what this factory exists
@@ -15,7 +15,7 @@
  *
  * THE ONE DIVERGENCE: the mock branch here honours `q`; the older services'
  * does not. A search box that does nothing in Test mode is worth fixing by
- * migrating those two later, not by making four new sections worse. `filter`
+ * migrating those two later, not by making the new sections worse. `filter`
  * is ignored in Test mode everywhere, a stored filter is a server query and
  * there is no server.
  */
@@ -32,7 +32,8 @@ import { baseSort, stableSort } from './randomSort.js';
  *
  * `kind` and `itemsKey` are usually equal (`tags`/`tags`) but separate: `kind`
  * namespaces the cache key, `itemsKey` is the field the GraphQL result nests
- * the list under. `filterArg` must be passed, `tag_filter` for `findTags` but
+ * the list under. Five sections share this loader (Tags, Studios, Groups,
+ * Galleries, Images). `filterArg` must be passed, `tag_filter` for `findTags` but
  * `image_filter` for `findImages`; there is no reliable rule.
  *
  * `searchFields` are what Test-mode `q` matches. `heroQuery` is an optional
