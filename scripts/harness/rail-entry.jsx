@@ -127,14 +127,14 @@ async function run() {
   await sleep(300);
 
   // ── R1  the rail is there, with the right rows ──────────
-  // Ten rows, Search last below the library sections. Written out because the
-  // order is what the `next` chain depends on; a count passes on any
+  // Eleven rows, Search last below the library sections. Written out because
+  // the order is what the `next` chain depends on; a count passes on any
   // permutation.
   const labels = railRows().map(b => b.textContent.trim());
-  check('R1 the rail renders its ten rows',
+  check('R1 the rail renders its eleven rows',
     JSON.stringify(labels) === JSON.stringify([
       'Home', 'Scenes', 'Performers', 'Markers', 'Tags', 'Studios',
-      'Galleries', 'Images', 'Search', 'Settings',
+      'Groups', 'Galleries', 'Images', 'Search', 'Settings',
     ]),
     labels.join(' · ') || '(no rail)');
 
@@ -271,8 +271,8 @@ async function run() {
     // Listed rather than derived from `labels`: a stale list is how R8 once
     // reported `nav-tags ↓undefined` after rows were added.
     'nav-home', 'nav-scenes', 'nav-performers', 'nav-markers',
-    'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images', 'nav-search',
-    'nav-settings',
+    'nav-tags', 'nav-studios', 'nav-groups', 'nav-galleries', 'nav-images',
+    'nav-search', 'nav-settings',
     ...barIds,                             // every control, so the bar's own
                                            // Left/Right walk is in the graph
 
@@ -404,14 +404,15 @@ async function run() {
   // presses": the weaker form was green wherever geometry happened to agree and
   // failed the bug at the TV's 1080 height.
   const railChain = ['nav-home', 'nav-scenes', 'nav-performers',
-    'nav-markers', 'nav-tags', 'nav-studios', 'nav-galleries', 'nav-images',
-    'nav-search'];
+    'nav-markers', 'nav-tags', 'nav-studios', 'nav-groups', 'nav-galleries',
+    'nav-images', 'nav-search'];
   const nextRow = {
     'nav-home': 'nav-scenes',
     'nav-scenes': 'nav-performers',
     'nav-performers': 'nav-markers',
     'nav-markers': 'nav-tags', 'nav-tags': 'nav-studios',
-    'nav-studios': 'nav-galleries', 'nav-galleries': 'nav-images',
+    'nav-studios': 'nav-groups', 'nav-groups': 'nav-galleries',
+    'nav-galleries': 'nav-images',
     'nav-images': 'nav-search', 'nav-search': 'nav-settings',
   };
   const broken = railChain.filter(id => edges[id]?.ArrowDown !== nextRow[id]);

@@ -44,6 +44,10 @@ export function Choice({ id, label, value, options, onChange, disabled, renderLa
 
   const shown = renderLabel ? renderLabel(value) : (options.find(o => o.value === value)?.label ?? value ?? '–');
 
+  // Open on the current value, so a list that no longer fits in view still
+  // starts where the user is looking.
+  const selectedIndex = options.findIndex(o => o.value === value);
+
   return (
     <div className={styles.choice} ref={wrapperRef} data-focus-trap={open ? '' : undefined}>
       {label && <span className={styles.choiceLabel}>{label}</span>}
@@ -60,29 +64,45 @@ export function Choice({ id, label, value, options, onChange, disabled, renderLa
         <span className={styles.choiceCaret} aria-hidden="true">▾</span>
       </button>
 
+      {/* A sheet over the dialog, not a list under the trigger: the dialog's
+          scroll area clipped the old menu to two rows of the eight a modifier
+          offers. Rendered here rather than portalled so `data-focus-trap` above
+          still encloses the options. */}
       {open && (
-        <div className={styles.choiceMenu} role="listbox">
-          {options.map((opt) => (
-            <ChoiceOption
-              key={opt.value}
-              parentId={id}
-              opt={opt}
-              selected={opt.value === value}
-              onSelect={() => { onChange(opt.value); setOpen(false); }}
-            />
-          ))}
+        <div className={styles.choiceSheet} onClick={() => setOpen(false)}>
+          <div
+            className={styles.choiceMenu}
+            role="listbox"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {options.map((opt, i) => (
+              <ChoiceOption
+                key={opt.value}
+                parentId={id}
+                opt={opt}
+                selected={opt.value === value}
+                autoFocus={i === (selectedIndex >= 0 ? selectedIndex : 0)}
+                onSelect={() => { onChange(opt.value); setOpen(false); }}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function ChoiceOption({ parentId, opt, selected, onSelect }) {
+function ChoiceOption({ parentId, opt, selected, autoFocus, onSelect }) {
   const { ref, focused } = useFocusable({
     id: `${parentId}-opt-${opt.value}`,
     zone: `fbdrop-${parentId}`,
     onEnter: onSelect,
   });
+  // The menu opens as its own surface; without this the D-pad still points at
+  // the trigger and the first press is a no-op the user reads as a dead list.
+  useEffect(() => {
+    if (autoFocus) ref.current?.focus();
+  }, [autoFocus, ref]);
   return (
     <button
       ref={ref}

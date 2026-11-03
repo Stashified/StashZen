@@ -28,14 +28,23 @@ import { useBuilderBack } from './filterBuilder/useBuilderBack.js';
 
 export default function FilterBuilder({
   filterType,
+  serverVersion = null,
   title = 'Filter',
   initial = null,
   initialName = '',
   onApply,
   onSave,
+  onClear,
   onClose,
 }) {
-  const descs = useMemo(() => criteriaFor(filterType), [filterType]);
+  // Cancel only discards edits; Clear is the gesture that removes the filter
+  // already applied. It stays available when every row was removed here, as
+  // long as the builder opened on a filter.
+  const hasInitial = !!initial && Object.keys(initial).length > 0;
+  const descs = useMemo(
+    () => criteriaFor(filterType, serverVersion),
+    [filterType, serverVersion],
+  );
   const byField = useMemo(() => new Map(descs.map(d => [d.field, d])), [descs]);
 
   // Ordered, so a row does not jump when its value changes. Seeded through
@@ -154,6 +163,12 @@ export default function FilterBuilder({
     zone: 'filter-builder',
     onEnter: () => setNaming(true),
   });
+  const { ref: clearRef, focused: clearFocused } = useFocusable({
+    id: 'fb-clear',
+    zone: 'filter-builder',
+    onEnter: () => onClear?.(),
+    disabled: count === 0 && !hasInitial,
+  });
   const { ref: cancelRef, focused: cancelFocused } = useFocusable({
     id: 'fb-cancel',
     zone: 'filter-builder',
@@ -215,6 +230,15 @@ export default function FilterBuilder({
 
           <button
             type="button"
+            ref={clearRef}
+            className={`${styles.btn} ${clearFocused ? styles.focused : ''}`}
+            onClick={() => onClear?.()}
+            disabled={count === 0 && !hasInitial}
+          >
+            Clear filter
+          </button>
+          <button
+            type="button"
             ref={cancelRef}
             className={`${styles.btn} ${cancelFocused ? styles.focused : ''}`}
             onClick={() => onClose?.()}
@@ -245,6 +269,7 @@ export default function FilterBuilder({
       {adding && (
         <FieldPicker
           filterType={filterType}
+          serverVersion={serverVersion}
           used={order}
           onAdd={addField}
           onClose={() => { setAdding(false); restoreFocus('fb-add'); }}

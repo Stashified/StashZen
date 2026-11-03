@@ -7,7 +7,7 @@
  * Shape: array of { group: string, options: [{ value, label }] }
  */
 
-import { TAG_VIEW, STUDIO_VIEW, GALLERY_VIEW, IMAGE_VIEW } from '../components/entityViews.jsx';
+import { TAG_VIEW, STUDIO_VIEW, GROUP_VIEW, GALLERY_VIEW, IMAGE_VIEW } from '../components/entityViews.jsx';
 import { FILTER_MODE } from '../utils/filterService.js';
 import { QUICK_FILTERS } from '../utils/quickFilters.js';
 
@@ -38,6 +38,9 @@ export const DEFAULT_CONTROLS = {
   // under StrictMode's double invocation.
   sortForTab: null,
   searchForTab: null,
+  // Back re-entering a tab stages its whole control snapshot under this one,
+  // so the arrival defaults do not reset the listing the user is returning to.
+  restoreForTab: null,
   search: '',
   // The one-press chips in force, by id. Empty on every arrival, see the tab
   // rule in useListingControls.
@@ -68,6 +71,7 @@ const SCENE_SORT_GROUPS = [
     options: [
       { value: 'created_at',     label: 'Date Added' },
       { value: 'date',           label: 'Release Date' },
+      { value: 'production_date', label: 'Production Date', capability: 'productionDate' },
       { value: 'updated_at',     label: 'Date Updated' },
       { value: 'title',          label: 'Title' },
       { value: 'random',         label: 'Random' },
@@ -155,7 +159,7 @@ const MARKER_SORT_GROUPS = [
   },
 ];
 
-// ── The four browse-only sections ────────────────────────
+// ── The browse-only sections ─────────────────────────────
 //
 // Every value was probed against its own resolver, not copied: Stash's `SortBy`
 // is one enum shared by every entity, so membership proves nothing. Tags take
@@ -215,10 +219,41 @@ const STUDIO_SORT_GROUPS = [
     ],
   },
   {
+    group: 'Engagement',
+    options: [
+      { value: 'o_counter', label: 'Likes', capability: 'studioEngagementSorts' },
+    ],
+  },
+  {
     group: 'Related',
     options: [
-      { value: 'tag_count',   label: 'Tag Count' },
-      { value: 'child_count', label: 'Sub-studios' },
+      { value: 'tag_count',            label: 'Tag Count' },
+      { value: 'child_count',          label: 'Sub-studios' },
+      { value: 'performer_count',      label: 'Performer Count', capability: 'studioEngagementSorts' },
+      { value: 'scene_markers_count',  label: 'Marker Count', capability: 'studioEngagementSorts' },
+    ],
+  },
+];
+
+// Groups: the resolver rejects `scene_count` and `performer_count` as sorts,
+// although both are fields on a group. These seven were probed individually.
+const GROUP_SORT_GROUPS = [
+  {
+    group: 'General',
+    options: [
+      { value: 'name',       label: 'Name' },
+      { value: 'date',       label: 'Date' },
+      { value: 'created_at', label: 'Date Added' },
+      { value: 'updated_at', label: 'Date Updated' },
+      { value: 'duration',   label: 'Duration' },
+      { value: 'rating',     label: 'Rating' },
+      { value: 'random',     label: 'Random' },
+    ],
+  },
+  {
+    group: 'Engagement',
+    options: [
+      { value: 'o_counter', label: 'Likes' },
     ],
   },
 ];
@@ -247,6 +282,12 @@ const GALLERY_SORT_GROUPS = [
     options: [
       { value: 'performer_count', label: 'Performer Count' },
       { value: 'tag_count',       label: 'Tag Count' },
+    ],
+  },
+  {
+    group: 'Cast',
+    options: [
+      { value: 'performer_age', label: 'Performer Age', capability: 'performerAgeSort' },
     ],
   },
 ];
@@ -283,14 +324,21 @@ const IMAGE_SORT_GROUPS = [
       { value: 'tag_count',       label: 'Tag Count' },
     ],
   },
+  {
+    group: 'Cast',
+    options: [
+      { value: 'performer_age', label: 'Performer Age', capability: 'performerAgeSort' },
+    ],
+  },
 ];
 
-// Tab → descriptor for the four sections that share `EntityPage`. Separate from
+// Tab → descriptor for the sections that share `EntityPage`. Separate from
 // TAB_CONTROL_CONFIG because a section can have a control bar without being one
 // of these; ImageViewer routes `activeTab` through this map, not a chain of `if`s.
 export const ENTITY_VIEWS = {
   tags: TAG_VIEW,
   studios: STUDIO_VIEW,
+  groups: GROUP_VIEW,
   galleries: GALLERY_VIEW,
   images: IMAGE_VIEW,
 };
@@ -354,7 +402,7 @@ export const TAB_CONTROL_CONFIG = {
     filterType: 'SceneMarkerFilterType',
     showSearch: true
   },
-  // The four browse-only sections. `showGridSize` is true because their listing
+  // The browse-only sections. `showGridSize` is true because their listing
   // is a grid of small cards; the carousel ignores `cols` and the call site
   // hides the control for it.
   //
@@ -397,6 +445,17 @@ export const TAB_CONTROL_CONFIG = {
     filterType: 'StudioFilterType',
     showSearch: true,
     quickFilters: QUICK_FILTERS.studios,
+  },
+  groups: {
+    modeOptions: CAROUSEL_MODE_OPTIONS,
+    sortGroups: GROUP_SORT_GROUPS,
+    showOrder: true,
+    showGridSize: true,
+    defaultSort: 'name',
+    defaultOrder: 'asc',
+    filterMode: FILTER_MODE.groups,
+    filterType: 'GroupFilterType',
+    showSearch: true,
   },
   galleries: {
     modeOptions: CAROUSEL_MODE_OPTIONS,

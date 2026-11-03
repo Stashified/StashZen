@@ -399,7 +399,7 @@ async function runGalleries() {
   check('G1 holding OK on a gallery opens its menu',
     menuOpen()
       && JSON.stringify(menuLabels())
-        === JSON.stringify(['View images', 'Slideshow', 'Shuffle slideshow']),
+        === JSON.stringify(['View images', 'Slideshow', 'Shuffle slideshow', 'Info']),
     `rows ${JSON.stringify(menuLabels())}`);
   check('G1 the subtitle is the gallery\'s picture count',
     menuSubtitle() === '8 images', `subtitle "${menuSubtitle()}"`);

@@ -76,6 +76,9 @@ async function generateMockVideos(count = 48) {
       bitrate,
       framerate: [24, 25, 30][Math.floor(rng() * 3)],
       performer_age: 21 + Math.floor(rng() * 25),
+      // The 0.32 sort needs a value on every row; from `i` so the RNG stream
+      // above keeps every pinned fixture value where it was.
+      production_date: `${1962 + ((i * 7) % 60)}-01-01`,
       category: STUDIOS[i % STUDIOS.length],
       thumbnail: coverArt(`scene-${i}`),
       stream: null,
@@ -463,8 +466,9 @@ const SCENE_STREAMS_QUERY = `
  * h264/mp4 where the direct stream is better, no server CPU, no transcode
  * startup, and full-range seeking.
  *
- * Returns `[]` rather than throwing: an empty list is a fact the caller acts
- * on, not an error.
+ * Returns `[]` when Stash answered "no transcodes"; that is a fact. A failed
+ * request returns `null`, because "could not ask" must not be cached as the
+ * same fact or a transient timeout would disable transcoding for the plan.
  *
  * Endpoints are keyed here, not by the caller: Stash 0.32 signs them when
  * credentials are configured, and it forwards `apikey` to HLS segments in
@@ -481,7 +485,7 @@ export async function fetchSceneStreams(id) {
     }));
   } catch (e) {
     console.warn('[fetchSceneStreams] failed:', e.message);
-    return [];
+    return null;
   }
 }
 

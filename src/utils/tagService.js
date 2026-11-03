@@ -12,7 +12,7 @@
  */
 
 import { getSettings } from './settings.js';
-import { withApiKey } from './stashUrl.js';
+import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
 
@@ -109,12 +109,13 @@ export function normalizeTag(t) {
   return {
     id: t.id,
     name: t.name,
-    // Arrives absolute and unkeyed and 302s to the login page without the key
-    //, see stashUrl.js. `image_path` is non-empty for every tag here, which
-    // does NOT mean a picture exists: Stash serves a generated-asset URL
-    // whether or not Generate ran, so the card's fallback is reached through
-    // onError, never an absent field.
-    image_path: withApiKey(t.image_path) || null,
+    // Arrives absolute and unkeyed and 302s to the login page without the key,
+    // see stashUrl.js. `image_path` is non-empty even when no picture exists:
+    // Stash serves a default marked `default=true`, which must be treated as
+    // absent or every such tag shows the same icon.
+    image_path: !t.image_path || isDefaultAsset(t.image_path)
+      ? null
+      : withApiKey(t.image_path) || null,
     favorite: !!t.favorite,
     scene_count: t.scene_count || 0,
     scene_marker_count: t.scene_marker_count || 0,

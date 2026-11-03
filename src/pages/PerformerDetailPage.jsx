@@ -123,6 +123,15 @@ export default function PerformerDetailPage({
   onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
 }) {
   const [controls, setControls] = useState(DEFAULT_DETAIL_CONTROLS);
+  // The page keeps its instance on an in-place swap (a scene's cast chip opens
+  // the next performer), so the previous performer's search and sort would
+  // narrow this one's grid. Reset in the render phase, before the grid's first
+  // fetch with the new filter, not in an effect after it.
+  const [controlsFor, setControlsFor] = useState(String(performer.id));
+  if (controlsFor !== String(performer.id)) {
+    setControlsFor(String(performer.id));
+    setControls(DEFAULT_DETAIL_CONTROLS);
+  }
   // The card already carries what the hero's first paint needs; the profile
   // query layers on top, and the card stays on screen until it lands or fails.
   const [profile, setProfile] = useState(null);

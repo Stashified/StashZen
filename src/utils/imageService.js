@@ -19,7 +19,7 @@
  * the tile's; `coverArt` is SVG and scales rather than blurring.
  */
 
-import { withApiKey } from './stashUrl.js';
+import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
@@ -49,6 +49,8 @@ async function generateMockImages() {
       rating: rng() > 0.6 ? (rng() * 4 + 6).toFixed(1) : null,
       o_counter: Math.floor(rng() * 30),
       performer_count: Math.floor(rng() * 6),
+      // The 0.32 Cast sort needs a value; derived from `i`, not a new RNG draw.
+      performer_age: 21 + ((i * 7) % 25),
       tag_count: Math.floor(rng() * 15),
       file_count: 1,
       filesize: 800000 + Math.floor(rng() * 9000000),
@@ -96,7 +98,11 @@ export function normalizeImage(im) {
   return {
     id: im.id,
     title: im.title || filenameStem(basename),
-    image_path: withApiKey(im?.paths?.thumbnail) || null,
+    // A thumbnail that has not been generated answers with Stash's
+    // `default=true` placeholder; show the card's monogram instead.
+    image_path: !im?.paths?.thumbnail || isDefaultAsset(im.paths.thumbnail)
+      ? null
+      : withApiKey(im.paths.thumbnail) || null,
     full: withApiKey(im?.paths?.image) || null,
     date: im.date || null,
     rating: ratingLabel(im.rating100),

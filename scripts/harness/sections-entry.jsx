@@ -1,12 +1,12 @@
 /**
- * Headless driver for the four browse-only sections (Tags, Studios, Galleries,
- * Images) and the image viewer.
+ * Headless driver for the five browse-only sections (Tags, Studios, Groups,
+ * Galleries, Images) and the image viewer.
  *
  * Mounts the whole `App`, like rail-entry: nearly every claim is a property of
  * two components together, the grid and its service, the card and its tab,
- * the activation and the tab it switches to. The four sections are instances
- * of one component, so shape and paging are covered by list-entry; this file
- * asserts where they differ.
+ * the activation and the tab it switches to. The sections are instances of one
+ * component, so shape and paging are covered by list-entry; this file asserts
+ * where they differ.
  *
  *   S1     each section renders under its prefix with its own rows and count;
  *          text, not count, because tile ids come from the prefix and a count
@@ -171,6 +171,7 @@ async function run() {
   const SECTIONS = [
     { tab: 'tags',      prefix: 'tag',     noun: 'tags',      title: 'VERIFY tag 1' },
     { tab: 'studios',   prefix: 'studio',  noun: 'studios',   title: 'VERIFY studio 1' },
+    { tab: 'groups',    prefix: 'group',   noun: 'groups',    title: 'VERIFY group 1' },
     { tab: 'galleries', prefix: 'gallery', noun: 'galleries', title: 'VERIFY gallery 1' },
     { tab: 'images',    prefix: 'image',   noun: 'images',    title: 'VERIFY image 1' },
   ];
@@ -188,7 +189,7 @@ async function run() {
       ok && n > 0 && railActive().toLowerCase() === s.tab,
       `cards=${n} rail=${railActive()} errors: ${errorTail()}`);
     // ── The content assertion, and why the count above is not enough ──
-    // All four sections render the same `EntityPage`, so React reconciles it
+    // All the sections render the same `EntityPage`, so React reconciles it
     // and `usePagedList` keeps the previous items. Counts stay green because
     // tile ids come from the prefix; text is the smallest visible failure.
     check(`S1 ${s.tab}: the tiles carry this section's rows`,
@@ -202,10 +203,10 @@ async function run() {
   }
 
   // ── S1e  the stale seed belongs to the listing that stored it ──
-  // Tags, Studios and Performers share one request key (name/asc) and pass no
-  // entity, so a seed keyed without the listing handed a tab the previous
-  // tab's rows, and Enter opened the wrong id. The answer is held 1.2 s so the
-  // seed is still what is on screen when this reads it.
+  // Tags, Studios, Groups and Performers share one request key (name/asc) and
+  // pass no entity, so a seed keyed without the listing handed a tab the
+  // previous tab's rows, and Enter opened the wrong id. The answer is held
+  // 1.2 s so the seed is still what is on screen when this reads it.
   await goto('tags');
   await waitFor(() => has('tag-1'));
   await setMode('findStudios', 'slow');
@@ -218,12 +219,12 @@ async function run() {
   await setMode('findStudios', 'ok');
   await waitFor(() => has('studio-1'));
 
-  // ── S2  the four operations are the four operations ──────
+  // ── S2  each section sends its own operation ─────────────
   // One factory builds each service from the operation name, so it can be
-  // right for three sections and wrong for the fourth while still returning
+  // right for some sections and wrong for another while still returning
   // rows. Read S1's visits: `listCache` makes a re-visit send no request.
   const calls = await getJSON('/graphqlcalls');
-  for (const op of ['FindTags', 'FindStudios', 'FindGalleries', 'FindImages']) {
+  for (const op of ['FindTags', 'FindStudios', 'FindGroups', 'FindGalleries', 'FindImages']) {
     check(`S2 ${op} was sent`, calls.includes(op), `saw: ${[...new Set(calls)].join(', ')}`);
   }
 
@@ -234,24 +235,30 @@ async function run() {
   const reqs = await getJSON('/requests');
   const keys = reqs.flatMap(r => Object.keys(r).filter(k => k.endsWith('_filter')));
   check('S3 each listing carried its own filter argument',
-    ['tag_filter', 'studio_filter', 'gallery_filter', 'image_filter']
+    ['tag_filter', 'studio_filter', 'group_filter', 'gallery_filter', 'image_filter']
       .every(k => keys.includes(k)),
     `${reqs.length} listings logged; saw ${[...new Set(keys)].join(', ') || '(none)'}`);
 
   // ── S4  the sort menus offer only values the server accepts ──
   // These lists record what each resolver accepts, not a derivation: `SortBy`
-  // is one shared enum, and the four disagree, Tags take `scenes_count` and
+  // is one shared enum, and the sections disagree, Tags take `scenes_count` and
   // `performers_count` (plural), Studios `tag_count`/`child_count` (singular)
   // and reject `performers_count`, Images take `performer_count`. Each was
   // sent to its own resolver first. The fake slices whatever sort it is handed,
   // so the check is that every offered value was probed and the tempting
   // `performers_count`-on-Studios guess is absent.
+  //
+  // The fake reports 0.31.1, so the options gated on 0.32 (production date and
+  // the newer studio/cast sorts) must stay hidden here: offering one would
+  // land in `unknown`.
   const PROBED = {
     tags: ['name', 'created_at', 'updated_at', 'random',
       'scenes_count', 'scene_markers_count', 'images_count', 'galleries_count',
       'performers_count', 'studios_count'],
     studios: ['name', 'created_at', 'updated_at', 'rating', 'random',
       'scenes_count', 'images_count', 'galleries_count', 'tag_count', 'child_count'],
+    groups: ['name', 'date', 'created_at', 'updated_at', 'duration', 'rating',
+      'random', 'o_counter'],
     galleries: ['title', 'created_at', 'updated_at', 'date', 'rating', 'random',
       'images_count', 'file_count', 'performer_count', 'tag_count'],
     images: ['title', 'created_at', 'updated_at', 'date', 'rating', 'random',
@@ -259,6 +266,7 @@ async function run() {
   };
   const REJECTED = {
     studios: ['performers_count', 'groups_count', 'movies_count'],
+    groups: ['scene_count', 'performer_count'],
     images: ['performers_count', 'files_count', 'galleries_count',
       'studios_count', 'tags_count', 'movies_count'],
     tags: ['files_count', 'file_count', 'resolution', 'filesize'],

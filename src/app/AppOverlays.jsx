@@ -39,6 +39,7 @@ export default function AppOverlays({
   sceneDetail,
   actionMenu,
   info,
+  serverVersion,
   markerEditor,
   markerDelete,
   imageViewer,
@@ -79,8 +80,10 @@ export default function AppOverlays({
             onGallerySelect={sceneDetail.onGallerySelect}
             onTagSelect={sceneDetail.onTagSelect}
             onStudioSelect={sceneDetail.onStudioSelect}
+            onGroupSelect={sceneDetail.onGroupSelect}
             onPerformerSelect={sceneDetail.onPerformerSelect}
             onRelatedSceneSelect={sceneDetail.onRelatedSceneSelect}
+            showProductionDate={sceneDetail.showProductionDate}
           />
         </OverlayGate>
       )}
@@ -96,13 +99,14 @@ export default function AppOverlays({
         />
       )}
 
-      {/* The tag/studio sheet. The menu closes as it opens, so this never
+      {/* The entity Info sheet. The menu closes as it opens, so this never
           stacks on the menu; it sits here only to outlive the listing. */}
       {info.entity && (
         <EntityInfoOverlay
           entity={info.entity}
           onClose={info.onClose}
           onFilter={info.onFilter}
+          serverVersion={serverVersion}
         />
       )}
 
@@ -174,6 +178,7 @@ export default function AppOverlays({
         <OverlayGate onClose={builder.onClose}>
           <FilterBuilder
             filterType={builder.filterType}
+            serverVersion={builder.serverVersion}
             title={`Filter ${builder.tab}`}
             // Seeded from whatever is applied now, so "edit the current filter"
             // and "start from nothing" are the same gesture.
@@ -181,6 +186,7 @@ export default function AppOverlays({
             initialName={builder.initialName}
             onApply={builder.onApply}
             onSave={builder.onSave}
+            onClear={builder.onClear}
             onClose={builder.onClose}
           />
         </OverlayGate>

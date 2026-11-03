@@ -1,11 +1,11 @@
 /**
- * useFilteredNavigation: activating a tag, studio or gallery, and getting
- * back from what it opened.
+ * useFilteredNavigation: activating a tag, studio, group or gallery, and
+ * getting back from what it opened.
  *
  * Activation routes through the filter machinery rather than new page types:
- * a tag or studio is a criterion on the scene filter and a gallery one on the
- * image filter, and those listings already page and draw cards. So "browse
- * the scenes behind this tag" is one tab change and one filter.
+ * a tag, studio or group is a criterion on the scene filter and a gallery one
+ * on the image filter, and those listings already page and draw cards. So
+ * "browse the scenes behind this tag" is one tab change and one filter.
  *
  * The criterion is built in GraphQL shape, not Stash's stored shape: code
  * assembling a *request* should not write the saved-filter format.
@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { WORKING_FILTER_ID } from './tabConfig.js';
+import { snapshotControls } from './controlRestore.js';
 
 export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab, setControls }) {
   // Where an activated tag, studio or gallery sent the user *from*, so Back
@@ -57,19 +58,15 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
   }, [activeTab]);
 
   // Snapshot what the origin tab had applied, so Back returns to the listing
-  // as it was left rather than bare. Taken at activation because that is the
-  // last moment the fields still describe the origin.
+  // as it was left rather than bare: the filter, its search, quick chips and
+  // sort all reset on the tab change the activation causes. Taken at activation
+  // because that is the last moment the fields still describe the origin.
   //
   // The handlers below are useCallback'd because they reach memoised cards
   // through App's entity dispatcher: a fresh identity per App render would
   // re-render every card for nothing. `controls` is a state object, so the
   // callbacks still change when it does, which is when their meaning changes.
-  const filterAtOrigin = useCallback(() => ({
-    workingFilter: controls.workingFilter ?? null,
-    workingFilterFor: controls.workingFilterFor ?? null,
-    workingFilterLabel: controls.workingFilterLabel ?? null,
-    filterId: controls.filterId ?? null,
-  }), [controls]);
+  const filterAtOrigin = useCallback(() => snapshotControls(controls), [controls]);
 
   // A gallery lands on Images and a tag or studio on Scenes, so the two
   // handlers differ in destination *and* in the tab Back returns to; the
@@ -117,6 +114,15 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
     { studios: { modifier: 'INCLUDES', value: [{ id: studio.id, label: studio.name }] } },
     studio.name,
     originFocusId || `studio-${studio.id}`,
+    'scenes',
+  ), [activateFiltered]);
+
+  // Groups use the same HierarchicalMultiCriterionInput as tags and studios,
+  // and a group's scenes are the listing behind it.
+  const handleGroupSelect = useCallback((group, originFocusId = null) => activateFiltered(
+    { groups: { modifier: 'INCLUDES', value: [{ id: group.id, label: group.name }] } },
+    group.name,
+    originFocusId || `group-${group.id}`,
     'scenes',
   ), [activateFiltered]);
 
@@ -174,6 +180,7 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
     openShowroomListing,
     handleTagSelect,
     handleStudioSelect,
+    handleGroupSelect,
     handleGallerySelect,
   };
 }

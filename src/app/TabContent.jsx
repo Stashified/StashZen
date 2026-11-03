@@ -47,6 +47,9 @@ export default function TabContent({
   onSearchPerformerSelect,
   onSearchTagSelect,
   onSearchStudioSelect,
+  onSearchGroupSelect,
+  onSearchGallerySelect,
+  onSearchImageSelect,
   onSearchSeeAll,
 }) {
   return (
@@ -57,7 +60,7 @@ export default function TabContent({
         cleared by `changeTab` before this remount. */
     <main key={`${dataKey}\u0000${tabEpoch}`} className={styles.main} role="main">
       {activeTab === 'home'       && <ShowroomPage   onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} onStudioSelect={onStudioSelect} onPerformerSelect={onShowroomPerformerSelect} onGallerySelect={onGallerySelect} onSeeAll={onSeeAll} clearedSceneIds={clearedSceneIds} />}
-      {activeTab === 'search'     && <SearchPage     query={searchText} onQueryChange={onSearchQueryChange} onSceneSelect={onVideoSelect} onPerformerSelect={onSearchPerformerSelect} onTagSelect={onSearchTagSelect} onStudioSelect={onSearchStudioSelect} onSeeAll={onSearchSeeAll} />}
+      {activeTab === 'search'     && <SearchPage     query={searchText} onQueryChange={onSearchQueryChange} onSceneSelect={onVideoSelect} onPerformerSelect={onSearchPerformerSelect} onTagSelect={onSearchTagSelect} onStudioSelect={onSearchStudioSelect} onGroupSelect={onSearchGroupSelect} onGallerySelect={onSearchGallerySelect} onImageSelect={onSearchImageSelect} onSeeAll={onSearchSeeAll} />}
       {activeTab === 'scenes'     && <ScenesPage     mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} />}
       {activeTab === 'performers' && (
         selectedPerformer
@@ -77,12 +80,12 @@ export default function TabContent({
           : <PerformersPage mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onPerformerSelect={onPerformerSelect} />
       )}
       {activeTab === 'markers'    && <MarkersPage    mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onMarkerSelect={onMarkerSelect} onMarkerLongPress={onMarkerLongPress} />}
-      {/* The four browse-only sections share one page, so this is a lookup
-          rather than four more lines.
+      {/* The browse-only sections share one page, so this is a lookup rather
+          than one more block per section.
 
           **`key={activeTab}` is load-bearing.** The three tabs above move
           between different component types: ScenesPage, PerformersPage,
-          MarkersPage, so React unmounts one and mounts the next. These four
+          MarkersPage, so React unmounts one and mounts the next. These
           are one type in one position, so without a key React *reconciles*
           EntityPage across a tab switch: `EntityGrid` stays mounted,
           `usePagedList` keeps its `items`, and its reset effect does not

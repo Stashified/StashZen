@@ -102,3 +102,10 @@
 .clearBtn:hover {
   color: var(--text-primary);
 }
+
+/* Its own focusable stop inside the wrapper: the ring must be visible on the
+   round button, not just on the wrapper around it. */
+.clearBtn.clearFocused {
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--accent);
+}

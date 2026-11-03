@@ -20,13 +20,12 @@
  */
 
 import {
-  FILTER_TYPES,
-  CRITERION_FIELDS,
-  CRITERIA_WITHOUT_MODIFIER,
-  LIST_VALUED_CRITERIA,
   ENUMS,
   FILTER_TYPE_NAMES,
 } from './stashFilterSchema.js';
+import { schemaFor } from './filterSchema.js';
+import { getServerVersion } from './serverInfo.js';
+import { supportsCapability } from './capabilities.js';
 import { enumLabel } from './enumStrings.js';
 
 const BASE = (t) => String(t).replace(/[[\]!]/g, '');
@@ -45,6 +44,7 @@ export const EDITOR = {
   TRI: 'tri',
   MULTI: 'multi',
   HIERARCHICAL: 'hierarchical',
+  HIERARCHICAL_COUNT: 'hierarchicalcount',
   PHASH: 'phash',
   STASH_ID: 'stashid',
   STASH_IDS: 'stashids',
@@ -74,6 +74,7 @@ const EDITOR_BY_TYPE = {
   CircumcisionCriterionInput: EDITOR.ENUM,
   MultiCriterionInput: EDITOR.MULTI,
   HierarchicalMultiCriterionInput: EDITOR.HIERARCHICAL,
+  HierarchicalCountInput: EDITOR.HIERARCHICAL_COUNT,
   PhashDistanceCriterionInput: EDITOR.PHASH,
   StashIDCriterionInput: EDITOR.STASH_ID,
   StashIDsCriterionInput: EDITOR.STASH_IDS,
@@ -177,11 +178,26 @@ const MODIFIERS = {
   [EDITOR.MULTI]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL'],
   // Hierarchical handlers accept neither NOT_EQUALS nor EQUALS.
   [EDITOR.HIERARCHICAL]: ['INCLUDES', 'EXCLUDES', 'INCLUDES_ALL'],
+  // Count criteria are numbers; the depth is a separate field, not a modifier.
+  // No nullary modifiers: a count is computed per row and can never be null,
+  // so "is empty" would only produce a condition that cannot match.
+  [EDITOR.HIERARCHICAL_COUNT]: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN', 'BETWEEN', 'NOT_BETWEEN'],
   [EDITOR.BOOLEAN]: ['EQUALS'],
   [EDITOR.TRI]: ['EQUALS'],
-  [EDITOR.PHASH]: ['EQUALS', 'NOT_EQUALS'],
+  // Stash's own saved filters carry the nullary form ("has a hash", "has
+  // none"); omitting it showed the raw enum and forced a value modifier.
+  [EDITOR.PHASH]: ['EQUALS', 'NOT_EQUALS', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.STASH_ID]: ['EQUALS', 'NOT_EQUALS', 'IS_NULL', 'NOT_NULL'],
   [EDITOR.STASH_IDS]: ['EQUALS', 'NOT_EQUALS', 'IS_NULL', 'NOT_NULL'],
+};
+
+/**
+ * One criterion overrides its editor's modifier set: resolution is enum-valued
+ * but its members are ordered, and the server compares that order. Stash's own
+ * UI offers exactly these four; the enum set's nullary pair does nothing there.
+ */
+const MODIFIERS_BY_TYPE = {
+  ResolutionCriterionInput: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'LESS_THAN'],
 };
 
 /** Modifiers that need no operand. */
@@ -198,15 +214,15 @@ export const RANGE = new Set(['BETWEEN', 'NOT_BETWEEN']);
  * bare `String` scalar, and those share no declared fields. Do not add the
  * enclosing filter type as a parameter; it has no effect.
  */
-export function modifiersFor(field, fieldType) {
+export function modifiersFor(field, fieldType, criterionFields = schemaFor(getServerVersion()).CRITERION_FIELDS) {
   const editor = editorFor(field, fieldType);
   if (!editor) return [];
 
   const base = BASE(fieldType);
-  if (CRITERIA_WITHOUT_MODIFIER.has(base)) return [];
+  if (schemaFor(getServerVersion()).CRITERIA_WITHOUT_MODIFIER.has(base)) return [];
 
-  const declared = CRITERION_FIELDS[base] || [];
-  const all = MODIFIERS[editor] || [];
+  const declared = criterionFields[base] || [];
+  const all = MODIFIERS_BY_TYPE[base] || MODIFIERS[editor] || [];
 
   return all.filter((m) => {
     if (RANGE.has(m) && !declared.includes('value2')) return false;
@@ -351,7 +367,8 @@ export function entitySource(field, filterTypeName) {
 export const COMMON = {
   SceneFilterType: [
     'title', 'path', 'tags', 'performers', 'studios', 'rating100',
-    'organized', 'has_markers', 'date', 'o_counter', 'duration', 'resolution',
+    'organized', 'has_markers', 'date', 'o_counter',
+    'duration', 'resolution',
   ],
   SceneMarkerFilterType: [
     'tags', 'performers', 'scenes', 'scene_tags', 'duration',
@@ -377,7 +394,21 @@ export const COMMON = {
     'name', 'parents', 'tags', 'favorite', 'rating100', 'scene_count',
     'image_count', 'gallery_count', 'child_count',
   ],
+  GroupFilterType: [
+    'name', 'studios', 'tags', 'performers', 'rating100', 'date',
+    'o_counter', 'scene_count',
+  ],
 };
+
+/** A gated field is Common only on a server that has it. */
+function commonFor(filterTypeName, version) {
+  const fields = COMMON[filterTypeName] || [];
+  if (filterTypeName === 'SceneFilterType'
+    && supportsCapability(version, 'productionDate')) {
+    return [...fields, 'production_date'];
+  }
+  return fields;
+}
 
 // ── The descriptor the builder renders ────────────────────
 
@@ -389,11 +420,13 @@ export const COMMON = {
  * `reason` is set exactly when `editor` is null; the builder renders those in
  * a disabled group. Nothing is dropped.
  */
-export function criteriaFor(filterTypeName) {
+export function criteriaFor(filterTypeName, version = getServerVersion()) {
+  const schema = schemaFor(version);
+  const { FILTER_TYPES, CRITERION_FIELDS, LIST_VALUED_CRITERIA } = schema;
   const fields = FILTER_TYPES[filterTypeName];
   if (!fields) return [];
 
-  const common = COMMON[filterTypeName] || [];
+  const common = commonFor(filterTypeName, version);
 
   return Object.keys(fields).sort().map((field) => {
     const type = fields[field];
@@ -411,7 +444,7 @@ export function criteriaFor(filterTypeName) {
       label: labelFor(field),
       common: common.includes(field),
       reason: editor ? null : unreachableReason(field, type),
-      modifierOptions: editor ? modifiersFor(field, type) : [],
+      modifierOptions: editor ? modifiersFor(field, type, CRITERION_FIELDS) : [],
       enumOptions,
       // Stash's web UI persists display strings; show the same and convert at
       // the save boundary (see enumStrings.js).
@@ -426,6 +459,7 @@ export function criteriaFor(filterTypeName) {
         ? entitySource(field, filterTypeName)
         : null,
       hierarchical: editor === EDITOR.HIERARCHICAL,
+      hierarchicalCount: editor === EDITOR.HIERARCHICAL_COUNT,
       // `value2` is declared by Int/Float/Date/Timestamp, where a range is
       // meaningful. Read off the schema, not from a list.
       supportsRange: (CRITERION_FIELDS[base] || []).includes('value2'),
@@ -443,8 +477,8 @@ export function criteriaFor(filterTypeName) {
  * Every field lands in exactly one list, the assertion, so a new Stash field
  * with an unfamiliar type fails it rather than disappearing.
  */
-export function coverage(filterTypeName) {
-  const all = criteriaFor(filterTypeName);
+export function coverage(filterTypeName, version = getServerVersion()) {
+  const all = criteriaFor(filterTypeName, version);
   return {
     reachable: all.filter((c) => c.editor),
     unreachable: all.filter((c) => !c.editor),

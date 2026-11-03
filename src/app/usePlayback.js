@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
 import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
+import { getCurrentFocusId } from '../hooks/useFocusable.js';
 
 /** Which entity sections have a long-press menu, and what to call it. */
 const ENTITY_MENU_KIND = {
@@ -18,12 +19,14 @@ const ENTITY_MENU_KIND = {
   galleries: 'gallery',
   tags: 'tag',
   studios: 'studio',
+  groups: 'group',
 };
 
 export function usePlayback({
   activeTab,
   selectedScene,
   setSelectedScene,
+  setSceneOriginId,
   mainFocus,
   sceneCardFocus,
   menuCardFocus,
@@ -39,6 +42,10 @@ export function usePlayback({
   // through, and Back returns to the card of the scene actually on screen. The
   // row, not its id, a marker queue names its card with `markerId`.
   const lastItemRef = useRef(null);
+  // The card the scene or marker menu was opened on. Its Details entry opens
+  // the page without a card press, so this is the only record of where a chip
+  // opened from that page should return.
+  const menuSceneOriginRef = useRef(null);
 
   // Stable: `handleMarkerSelect` below leans on it, and that reaches the
   // memoised marker cards. The setters are the only things it reads.
@@ -68,6 +75,7 @@ export function usePlayback({
     // The menu's Play actions open the player without `playSceneAt`, the only
     // other recorder of a restore target; without this the player's Back lands
     // on a stale control or <body>. The menu's own close uses this element.
+    menuSceneOriginRef.current = getCurrentFocusId();
     rememberMain(document.activeElement);
     openMenu({ kind: 'scene', item: video, list, index });
   }, [rememberMain, openMenu]);
@@ -75,6 +83,7 @@ export function usePlayback({
   // A marker's menu plays the parent scene from the marker's timestamp; the
   // focus restore is the same as a scene card's.
   const handleMarkerLongPress = useCallback((marker, list, index) => {
+    menuSceneOriginRef.current = getCurrentFocusId();
     rememberMain(document.activeElement);
     openMenu({ kind: 'marker', item: marker, list, index });
   }, [rememberMain, openMenu]);
@@ -90,6 +99,7 @@ export function usePlayback({
 
   const closeActionMenu = () => {
     setActionMenu(null);
+    menuSceneOriginRef.current = null;
     // Same deferred restore as every other overlay close: the menu's DOM has
     // to be gone before focus can land on the card again.
     menuCardFocus.restore();
@@ -98,12 +108,18 @@ export function usePlayback({
   // Clearing without restoring is what the viewer entries need: the viewer
   // takes focus itself, and restoring to the card first would fight its own
   // restore (and briefly drop the D-pad onto the grid behind the viewer).
-  const dismissActionMenu = () => setActionMenu(null);
+  const dismissActionMenu = () => {
+    setActionMenu(null);
+    menuSceneOriginRef.current = null;
+  };
 
   const handleMenuDetails = (video) => {
     // The card takes focus back when the detail page closes, so hand it over
-    // now, the menu is about to be gone.
+    // now, the menu is about to be gone. A chip opened from the page needs the
+    // same id as its Back target.
     sceneCardFocus.remember(menuCardFocus.targetRef.current);
+    setSceneOriginId(menuSceneOriginRef.current || null);
+    menuSceneOriginRef.current = null;
     setActionMenu(null);
     setSelectedScene(video);
   };

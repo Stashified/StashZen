@@ -16,6 +16,9 @@ import { fetchRandomVideo } from './utils/videoService.js';
 import styles from './App.module.css';
 import { useSettings, setSettings, dataSourceKey } from './utils/settings.js';
 import { useAutoUpdateCheck } from './hooks/useAutoUpdateCheck.js';
+import { useServerVersion } from './hooks/useServerVersion.js';
+import { supportsCapability } from './utils/capabilities.js';
+import { visibleSortGroups } from './utils/sortGroups.js';
 import { TAB_CONTROL_CONFIG } from './app/tabConfig.js';
 import { useTabNavigation } from './app/useTabNavigation.js';
 import { useListingControls } from './app/useListingControls.js';
@@ -28,11 +31,30 @@ import { useAppBack } from './app/useAppBack.js';
 import TabContent from './app/TabContent.jsx';
 import AppOverlays from './app/AppOverlays.jsx';
 
+// The filter field each entity kind is reached through, per target tab. A kind
+// whose field is absent from a target's filter schema has no count action; see
+// EntityInfoOverlay's count tables.
+const ENTITY_FILTER_FIELD = {
+  tag: 'tags',
+  studio: 'studios',
+  group: 'groups',
+  gallery: 'galleries',
+};
+
+// PerformerFilterType has no `galleries` criterion, so the gallery sheet's
+// Performers count reaches them through the nested gallery filter instead.
+// Its `id` is an IntCriterionInput, hence the Number.
+const galleryPerformersFilter = (gallery) => ({
+  galleries_filter: { id: { modifier: 'EQUALS', value: Number(gallery.id) } },
+});
+
 export default function App() {
   // Subscribing remounts the data tree on Test/Live or URL/key change, so
   // in-flight fetches and state from the previous source are discarded.
   const settings = useSettings();
   const dataKey = dataSourceKey(settings);
+  // Capability-gated UI stays hidden until this resolves; see capabilities.js.
+  const serverVersion = useServerVersion(dataKey);
 
   // Public builds only, and inside the PIN/FirstRun gates because App is what
   // they unmount: nothing is fetched before the user reaches the app.
@@ -99,7 +121,8 @@ export default function App() {
   const surpriseBusy = useRef(false);
 
   const {
-    builderOpen, setBuilderOpen, closeBuilder, applyWorkingFilter, saveBuiltFilter,
+    builderOpen, setBuilderOpen, closeBuilder, applyWorkingFilter, clearWorkingFilter,
+    saveBuiltFilter,
   } = useFilterBuilder({
     activeTab,
     filterMode,
@@ -115,7 +138,7 @@ export default function App() {
   // Activating a tag, studio or gallery, and getting back from what it opened.
   const {
     filterOrigins, setFilterOrigins, activateFiltered, replaceOrigin, openShowroomListing,
-    handleTagSelect, handleStudioSelect, handleGallerySelect,
+    handleTagSelect, handleStudioSelect, handleGroupSelect, handleGallerySelect,
   } = useFilteredNavigation({ activeTab, dataKey, controls, changeTab, setControls });
 
   // What is open in front of a listing: scene detail, performer page or viewer.
@@ -124,6 +147,7 @@ export default function App() {
     selectedScene,
     setSelectedScene,
     sceneOriginId,
+    setSceneOriginId,
     clearedContinueIds,
     imageViewer,
     sceneCardFocus,
@@ -138,7 +162,9 @@ export default function App() {
     handleImageSelect,
     openImageViewer,
     closeImageViewer,
-  } = useDetailSelection({ activeTab, dataKey, changeTab, filterOrigins });
+  } = useDetailSelection({
+    activeTab, dataKey, changeTab, filterOrigins, controls, setControls,
+  });
 
   // The player, the long-press menu, and every way into both.
   const {
@@ -160,6 +186,7 @@ export default function App() {
     activeTab,
     selectedScene,
     setSelectedScene,
+    setSceneOriginId,
     mainFocus,
     sceneCardFocus,
     menuCardFocus,
@@ -174,14 +201,26 @@ export default function App() {
     ? (sceneOriginId || `video-${selectedScene.id}`)
     : null;
 
+  // A chip on the Performers tab comes back to the performer grid, which holds
+  // performer cards: the scene card named by `sceneOriginFocusId` is not there.
+  // The gallery chip already names the performer for this case.
+  const sceneChipOriginFocusId = activeTab === 'performers' && selectedPerformer
+    ? `performer-${selectedPerformer.id}`
+    : sceneOriginFocusId;
+
   const sceneTagSelect = (tag) => {
     setSelectedScene(null);
-    handleTagSelect(tag, sceneOriginFocusId);
+    handleTagSelect(tag, sceneChipOriginFocusId);
   };
 
   const sceneStudioSelect = (studio) => {
     setSelectedScene(null);
-    handleStudioSelect(studio, sceneOriginFocusId);
+    handleStudioSelect(studio, sceneChipOriginFocusId);
+  };
+
+  const sceneGroupSelect = (group) => {
+    setSelectedScene(null);
+    handleGroupSelect(group, sceneChipOriginFocusId);
   };
 
   const handleRelatedSceneSelect = (item) => {
@@ -355,8 +394,8 @@ export default function App() {
     );
   };
 
-  // One dispatcher, not four `onSelect` props: one `<EntityPage>` draws all
-  // four sections and cannot know which, so the tab decides here.
+  // One dispatcher, not one `onSelect` per section: one `<EntityPage>` draws
+  // every browse section and cannot know which, so the tab decides here.
   //
   // Stable between renders: it is the `onSelect` of every memoised entity
   // card, and a fresh identity on an unrelated App render would re-render the
@@ -365,11 +404,12 @@ export default function App() {
     switch (activeTab) {
       case 'tags':      return handleTagSelect(item);
       case 'studios':   return handleStudioSelect(item);
+      case 'groups':    return handleGroupSelect(item);
       case 'galleries': return handleGallerySelect(item);
       case 'images':    return handleImageSelect(item, index, items);
       default:          return undefined;
     }
-  }, [activeTab, handleTagSelect, handleStudioSelect, handleGallerySelect, handleImageSelect]);
+  }, [activeTab, handleTagSelect, handleStudioSelect, handleGroupSelect, handleGallerySelect, handleImageSelect]);
 
   // ── The long-press menu's viewer entries ─────────────────
   // The menu is cleared *without* its restore: the viewer takes focus on mount
@@ -399,7 +439,7 @@ export default function App() {
     });
   };
 
-  // ── The tag/studio sheet ─────────────────────────────────
+  // ── The entity Info sheet ────────────────────────────────
   // Read-only and opened from the menu, so the card the menu remembered is the
   // return target. The menu is dismissed without its restore: the sheet's panel
   // takes focus on mount and would otherwise be fighting the grid for it.
@@ -417,24 +457,28 @@ export default function App() {
   // menu's page context.
   const filterEntityFromMenu = (item, kind) => {
     dismissActionMenu();
-    if (kind === 'tag') handleTagSelect(item);
-    else handleStudioSelect(item);
+    switch (kind) {
+      case 'tag': return handleTagSelect(item);
+      case 'studio': return handleStudioSelect(item);
+      case 'group': return handleGroupSelect(item);
+      case 'gallery': return handleGallerySelect(item);
+      default: return undefined;
+    }
   };
 
   // A count in the info sheet opens that listing. One criterion serves every
-  // target: `tags` is a field on all six filter types, and `studios` on the
-  // four a studio offers. The sheet closes without restoring its card focus:
-  // the tab change is the move, and Back returns to the card through the
-  // origin recorded here.
+  // target: `tags` is a field on all six filter types, `studios` on the four a
+  // studio offers, `groups` on scenes/performers and `galleries` on images and
+  // scenes. The sheet closes without restoring its card focus: the tab change
+  // is the move, and Back returns to the card through the origin recorded here.
   const filterFromEntityInfo = (kind, item, target) => {
-    const field = kind === 'tag' ? 'tags' : 'studios';
+    // A gallery is titled, not named; both feed the stored entry's label.
+    const label = item.name ?? item.title ?? '';
+    const filter = kind === 'gallery' && target === 'performers'
+      ? galleryPerformersFilter(item)
+      : { [ENTITY_FILTER_FIELD[kind]]: { modifier: 'INCLUDES', value: [{ id: item.id, label }] } };
     setEntityInfo(null);
-    activateFiltered(
-      { [field]: { modifier: 'INCLUDES', value: [{ id: item.id, label: item.name }] } },
-      item.name,
-      `${kind}-${item.id}`,
-      target,
-    );
+    activateFiltered(filter, label, `${kind}-${item.id}`, target);
   };
 
   return (
@@ -461,11 +505,12 @@ export default function App() {
           && !(activeTab === 'performers' && selectedPerformer) && (
           <ControlsPanel
             controls={controls}
+            activeTab={activeTab}
             onChange={(patch) => updateControls(patch, savedFilters)}
             modeOptions={config.modeOptions}
             mode={activeMode}
             onModeChange={setActiveMode}
-            sortGroups={config.sortGroups}
+            sortGroups={visibleSortGroups(config?.sortGroups, serverVersion)}
             showOrder={config.showOrder}
             showGridSize={config.showGridSize
               && activeMode !== 'carousel' && activeMode !== 'coverflow' && activeMode !== 'list'}
@@ -520,11 +565,15 @@ export default function App() {
           onSearchPerformerSelect={handleSearchPerformerSelect}
           onSearchTagSelect={handleTagSelect}
           onSearchStudioSelect={handleStudioSelect}
+          onSearchGroupSelect={handleGroupSelect}
+          onSearchGallerySelect={handleGallerySelect}
+          onSearchImageSelect={handleImageSelect}
           onSearchSeeAll={openSearchListing}
         />
       </div>
 
       <AppOverlays
+        serverVersion={serverVersion}
         sceneDetail={{
           scene: selectedScene,
           onClose: handleSceneClose,
@@ -547,9 +596,12 @@ export default function App() {
           ),
           onTagSelect: sceneTagSelect,
           onStudioSelect: sceneStudioSelect,
+          onGroupSelect: sceneGroupSelect,
           onPerformerSelect: (performer) => selectedScene
             && handleScenePerformerSelect(selectedScene, performer),
           onRelatedSceneSelect: handleRelatedSceneSelect,
+          // 0.32+ only; the extra request is skipped on older servers.
+          showProductionDate: supportsCapability(serverVersion, 'productionDate'),
         }}
         actionMenu={{
           menu: actionMenu,
@@ -589,12 +641,14 @@ export default function App() {
         builder={{
           open: builderOpen,
           filterType: config.filterType,
+          serverVersion,
           tab: activeTab,
           // The user's filter without the chips: see combineQuickFilters.
           initial: baseObjectFilter,
           initialName: activeFilter?.name || '',
           onApply: applyWorkingFilter,
           onSave: saveBuiltFilter,
+          onClear: clearWorkingFilter,
           onClose: closeBuilder,
         }}
         settings={{ open: settingsOpen, onClose: closeSettings }}

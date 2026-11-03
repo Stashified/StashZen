@@ -19,6 +19,7 @@
 
 import { coverage, criteriaFor, COMMON, EDITOR } from '../src/utils/filterCriteria.js';
 import { ENUMS, FILTER_TYPES, CRITERION_FIELDS } from '../src/utils/stashFilterSchema.js';
+import { schemaFor } from '../src/utils/filterSchema.js';
 import { translateFilter } from '../src/utils/filterTranslate.js';
 
 let failed = 0;
@@ -111,6 +112,14 @@ for (const ft of SENDABLE) {
       offersRange === declaresValue2,
       `offers range: ${offersRange}, declares value2: ${declaresValue2}`);
 
+    // Resolution is ordered, so it offers the comparisons, never the nullary
+    // pair an enum normally gets.
+    if (c.type === 'ResolutionCriterionInput') {
+      ok(`${ft}.${c.field}: resolution offers the ordered modifiers`,
+        c.modifierOptions.join(',') === 'EQUALS,NOT_EQUALS,GREATER_THAN,LESS_THAN',
+        c.modifierOptions.join(','));
+    }
+
     // A type with no modifier field must offer none. `is_missing` is a bare
     // String whose value carries the whole condition.
     ok(`${ft}.${c.field}: no modifiers where the criterion declares none`,
@@ -140,7 +149,58 @@ ok('PerformerFilterType.circumcised is flagged list-valued',
   circumcised?.editor === EDITOR.ENUM && circumcised.listValued === true,
   `editor ${circumcised?.editor}, listValued ${circumcised?.listValued}`);
 
-// ── 5. The builder's envelope round-trips ─────────────────
+// ── 5. The 0.32 delta ─────────────────────────────────────
+//
+// The pinned snapshot is 0.31. Everything 0.32 adds lives in one delta, and a
+// mistake there hides a criterion or sends a field the server rejects. Check
+// the delta on both sides: present and typed on 0.32, absent on 0.31.
+console.log('\nStash 0.32 delta');
+
+const tag32 = criteriaFor('TagFilterType', '0.32.0');
+const tag31 = criteriaFor('TagFilterType', '0.31.1');
+const schema32 = schemaFor('0.32.0');
+
+const TAG_COUNT_FIELDS = [
+  'scene_count', 'image_count', 'gallery_count', 'performer_count',
+  'studio_count', 'group_count', 'marker_count', 'movie_count',
+];
+
+for (const field of TAG_COUNT_FIELDS) {
+  const c = tag32.find(x => x.field === field);
+  ok(`0.32 ${field} is a hierarchical count`,
+    c?.type === 'HierarchicalCountInput'
+      && c.editor === EDITOR.HIERARCHICAL_COUNT
+      && c.hierarchicalCount === true,
+    `type ${c?.type}, editor ${c?.editor}`);
+  ok(`0.32 ${field}: no nullary modifier on a count that cannot be null`,
+    c && !c.modifierOptions.includes('IS_NULL') && !c.modifierOptions.includes('NOT_NULL'),
+    `modifiers ${JSON.stringify(c?.modifierOptions)}`);
+  ok(`0.32 ${field}: a range is offered where value2 is declared`,
+    c?.supportsRange === true && c.modifierOptions.includes('BETWEEN'));
+  const old = tag31.find(x => x.field === field);
+  ok(`0.31 ${field} stays an IntCriterionInput`,
+    old?.type === 'IntCriterionInput' && old.editor === EDITOR.NUMBER,
+    `type ${old?.type}, editor ${old?.editor}`);
+}
+
+ok('0.32 TagFilterType: every field is accounted for',
+  coverage('TagFilterType', '0.32.0').unexplained.length === 0,
+  coverage('TagFilterType', '0.32.0').unexplained.map(c => `${c.field} (${c.type})`).join(', '));
+
+const pd32 = criteriaFor('SceneFilterType', '0.32.0').find(c => c.field === 'production_date');
+ok('0.32 production_date is a Common date criterion',
+  pd32?.type === 'DateCriterionInput' && pd32.editor === EDITOR.DATE && pd32.common === true,
+  `type ${pd32?.type}, editor ${pd32?.editor}, common ${pd32?.common}`);
+ok('0.31 has no production_date',
+  !criteriaFor('SceneFilterType', '0.31.1').some(c => c.field === 'production_date'));
+
+eq('0.32 HierarchicalCountInput declares the four fields',
+  (schema32.CRITERION_FIELDS.HierarchicalCountInput || []).slice().sort(),
+  ['depth', 'modifier', 'value', 'value2']);
+ok('0.31 has no HierarchicalCountInput',
+  !schemaFor('0.31.1').CRITERION_FIELDS.HierarchicalCountInput);
+
+// ── 6. The builder's envelope round-trips ─────────────────
 //
 // The exact shapes FilterBuilder writes; each must reach GraphQL meaning the
 // same. Translating to `{}` is the silent-widening bug; a nested `value.value`

@@ -13,6 +13,7 @@
 
 import { useKeyHandler } from '../hooks/useKeyHandler.js';
 import { focusOriginCard } from '../utils/focus.js';
+import { restoreControls } from './controlRestore.js';
 
 export function useAppBack({
   activeTab,
@@ -60,11 +61,24 @@ export function useAppBack({
       if (top && top.to === activeTab) {
         const { tab, focusId, filter } = top;
         setFilterOrigins(prev => prev.slice(0, -1));
-        changeTab(tab);
-        setControls(prev => ({ ...prev, ...filter }));
-        // The origin section must re-render before its cards exist to focus,
-        // and its listing may still be in flight, hence the retry.
-        focusOriginCard(tab, focusId);
+        // Same-tab Back is a focus move, not a reload. Bumping tabEpoch here
+        // remounted the listing, and the restore landed on a card the remount
+        // was about to replace, so Back from a group chip focused the first
+        // card. A changed filter still resets the listing through its request
+        // key, so nothing needs the remount.
+        const sameTab = tab === activeTab;
+        if (!sameTab) {
+          changeTab(tab);
+          // The snapshot carries search, chips and sort too; the marker tells
+          // the arrival rule this visit is a return, not a fresh tab.
+          restoreControls(setControls, filter, tab);
+        } else {
+          setControls(prev => ({ ...prev, ...filter }));
+        }
+        // The restored filter commits on this render; starting the restore
+        // before that would find the outgoing listing's cards. A cross-tab
+        // restore waits for the mount anyway, so only the same-tab case defers.
+        focusOriginCard(tab, focusId, { defer: sameTab });
         return;
       }
       // Top-level tab: confirm before exit. Remember what had focus so

@@ -105,25 +105,30 @@ under **Settings → Connection setup → Run setup again**.
 **Browse**
 - **Home**: five shelves (recent scenes, **Continue Watching**, studios, performers, galleries);
   "see all" opens that shelf's listing.
-- **Search**: one field for scenes, performers, tags and studios; "see all" opens that section
-  with the query.
-- **Seven sections**: Scenes, Performers, Markers, Tags, Studios, Galleries and Images, each with
-  search, sort, filters and a view mode remembered per tab. Tags and Studios open as lists.
+- **Search**: one field for scenes, performers, tags, studios, groups, galleries and images;
+  "see all" opens that section with the query.
+- **Eight sections**: Scenes, Performers, Markers, Tags, Studios, Groups, Galleries and Images,
+  each with search, sort, filters and a view mode remembered per tab. Tags and Studios open as
+  lists. Selecting a group opens its scenes filtered to it.
 - **Filters**: build one on the TV or load a saved one, and save it back to Stash. A **Quick**
   row adds one-press chips like Unwatched, Rated 4+ and Has markers; Performers, Tags and
   Studios carry their own (Favourites, Rated 4+).
+- **Stash 0.32**: scenes show and filter by production date, tag count filters can include
+  child tags, studio counts include child studios, and new sorts cover production date, likes,
+  performer count, marker count and performer age. Older servers hide these.
 - **Random scene**: on Scenes, plays one random scene through the current filter and search.
 - **Focus previews**: the focused scene card plays its Stash preview, muted. Turn it off in
   Settings, or mute it from the controls bar.
 
 **Details**
-- **Scene detail**: metadata and rating; resume or play from a marker; **Galleries** and
-  **More from** rows for the studio and performers.
+- **Scene detail**: metadata and rating; resume or play from a marker; **Groups**, **Galleries**
+  and **More from** rows for the studio and performers.
 - **Performer pages**: profile, counts that open that performer's Images and Galleries, tag
   chips that open Scenes, and **Rating** / **Favourite** written back to Stash. When Stash has
   no tags for the performer, the tags that recur on their scenes stand in under **Scene tags**.
-- **Tag and studio info**: hold OK on a tag or studio for its description, aliases, hierarchy
-  and counts; each count with a listing behind it opens that filtered listing.
+- **Info sheets**: hold OK on a tag, studio, group or gallery for its description, aliases,
+  tags and counts; a group also shows its synopsis and related groups, a gallery its performers.
+  Each count with a listing behind it opens that filtered listing.
 - **Image viewer**: a slideshow, pan and zoom, and an info panel over the full-size image.
 
 **Playback**

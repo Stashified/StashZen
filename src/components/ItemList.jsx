@@ -67,6 +67,7 @@ const Row = memo(function Row({ item, index, list, onSelect, onLongPress, view }
   const { ref, focused } = useFocusable({
     id: `${view.focusPrefix}-${item.id}`,
     zone: 'grid',
+    listRow: true,
     onEnter: activate,
     onLongPress: longPress,
     autoFocus: index === 0,

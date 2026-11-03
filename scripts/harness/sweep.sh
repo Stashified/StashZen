@@ -38,7 +38,7 @@ mkdir -p "$OUT"
 # are run one at a time; never while one is in flight.
 rm -rf /tmp/diff-"$LABEL"-*
 
-# name|entry|query|update-check|serial
+# name|entry|query|update-check|serial[|server-version]
 FULL_JOBS=(
   "list-grid|list-entry.jsx|?view=grid|0|0"
   "list-carousel|list-entry.jsx|?view=carousel|0|0"
@@ -71,6 +71,11 @@ FULL_JOBS=(
   # Leaving a tab is the TV's refresh: the arriving page must go to the wire
   # rather than the module-scoped list cache.
   "refresh|refresh-entry.jsx||0|1"
+  # Groups: the cover fallback (placeholder is a 200, so only its flag says it
+  # is not a picture), and Back from both a group card and a scene's Groups
+  # chip. The chip trip stays on one tab, so nothing remounts to hide the
+  # restore.
+  "groups|groups-entry.jsx||0|0"
   "menu|menu-entry.jsx||0|0"
   "menu-actions|menu-entry.jsx|?view=menu|0|0"
   "menu-queue|menu-entry.jsx|?view=queue|0|0"
@@ -92,6 +97,13 @@ FULL_JOBS=(
   # Back, and the two failure answers. App-level for the same reason.
   "info|info-entry.jsx||0|0"
   "filter|filter-entry.jsx||0|0"
+  # The 0.32 server shapes: the production-date criterion, hierarchical tag
+  # counts, recursive studio counts and the studio sheet's extra pills. A
+  # driver that only ever sees 0.31 never runs the gated code at all.
+  # `expect=032` makes the driver fail if the version plumbing regresses and
+  # the 0.32 lane silently runs as 0.31, which would skip the gated checks.
+  "filter-032|filter-entry.jsx|?expect=032|0|0|0.32.0-harness"
+  "info-032|info-entry.jsx|?expect=032|0|0|0.32.0-harness"
   "firstrun|firstrun-entry.jsx||0|0"
   "theme|theme-entry.jsx||0|0"
   "actions-settings|actions-entry.jsx|?view=settings|0|0"
@@ -126,12 +138,16 @@ QUICK_JOBS=(
 JOBS=("${FULL_JOBS[@]}")
 [ "$MODE" = quick ] && JOBS=("${QUICK_JOBS[@]}")
 
-run_one() {  # run_one <port> <name> <entry> [query] [update]
-  local port=$1 name=$2 entry=$3 query=${4:-} update=${5:-0}
+run_one() {  # run_one <port> <name> <entry> [query] [update] [version]
+  local port=$1 name=$2 entry=$3 query=${4:-} update=${5:-0} version=${6:-}
   # The commits probe needs the profiling react-dom for <Profiler> to fire;
   # every other bundle keeps the normal one.
   local profiling=0
   [ "$entry" = "commits-entry.jsx" ] && profiling=1
+  # Only a job that names a version overrides the harness default; an empty
+  # value would otherwise reach server.py as the version string itself.
+  if [ -n "$version" ]; then export HARNESS_SERVER_VERSION="$version"
+  else unset HARNESS_SERVER_VERSION; fi
   ENTRY="scripts/harness/$entry" NAME="diff-$LABEL-$name" PORT="$port" QUERY="$query" \
     HARNESS_UPDATE_CHECK="$update" HARNESS_PROFILING="$profiling" \
     "$HERE/run.sh" >"$OUT/$name.log" 2>&1
@@ -152,14 +168,14 @@ export LABEL OUT HERE
 
 # Each job gets its own port (index-based, so no two can collide) and its own
 # NAME dir (run_one derives it). xargs keeps the pool at WORKERS processes.
-dispatch_pool() {  # stdin: one name|entry|query|update line per job
+dispatch_pool() {  # stdin: one name|entry|query|update|version line per job
   local idx=0 line
   while IFS= read -r line; do
     printf '%s|%s\n' "$idx" "$line"
     idx=$((idx + 1))
   done | xargs -r -P "$WORKERS" -I{} bash -c '
-    IFS="|" read -r idx name entry query update <<< "$1"
-    run_one $((8850 + idx)) "$name" "$entry" "$query" "$update"
+    IFS="|" read -r idx name entry query update version <<< "$1"
+    run_one $((8850 + idx)) "$name" "$entry" "$query" "$update" "$version"
   ' _ {}
 }
 
@@ -178,9 +194,9 @@ fi
 PARALLEL=()
 SERIAL=()
 for job in "${JOBS[@]}"; do
-  IFS='|' read -r name entry query update serial <<< "$job"
-  if [ "$serial" = 1 ]; then SERIAL+=("$name|$entry|$query|$update")
-  else PARALLEL+=("$name|$entry|$query|$update"); fi
+  IFS='|' read -r name entry query update serial version <<< "$job"
+  if [ "$serial" = 1 ]; then SERIAL+=("$name|$entry|$query|$update|$version")
+  else PARALLEL+=("$name|$entry|$query|$update|$version"); fi
 done
 
 if [ "${#PARALLEL[@]}" -gt 0 ]; then
@@ -188,8 +204,8 @@ if [ "${#PARALLEL[@]}" -gt 0 ]; then
   printf '%s\n' "${PARALLEL[@]}" | dispatch_pool
 fi
 for job in "${SERIAL[@]}"; do
-  IFS='|' read -r name entry query update <<< "$job"
-  run_one "$SERIAL_PORT" "$name" "$entry" "$query" "$update"
+  IFS='|' read -r name entry query update version <<< "$job"
+  run_one "$SERIAL_PORT" "$name" "$entry" "$query" "$update" "$version"
 done
 
 # A driver with no result file did not run at all — a missing observation, not

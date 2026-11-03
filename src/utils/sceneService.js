@@ -51,6 +51,7 @@ const FIND_SCENE_DETAIL_QUERY = `
       studio { id name }
       tags { id name }
       performers { id name }
+      groups { scene_index group { id name } }
       galleries { id title }
       stash_ids { endpoint stash_id }
       scene_markers { id seconds end_seconds title primary_tag { name } }
@@ -198,6 +199,16 @@ export function normalizeSceneDetail(scene) {
     studio: scene.studio ? { id: scene.studio.id, name: scene.studio.name } : null,
     tags: (scene.tags || []).map(t => ({ id: t.id, name: t.name })),
     performers: (scene.performers || []).map(p => ({ id: p.id, name: p.name })),
+    // `scene_index` is the user's order inside the group, not a display detail.
+    groups: (scene.groups || [])
+      .map(g => ({
+        id: g.group?.id,
+        name: g.group?.name || '',
+        index: g.scene_index ?? 0,
+      }))
+      .filter(g => g.id)
+      .sort((a, b) => a.index - b.index)
+      .map(({ id, name }) => ({ id, name })),
     // A scene's galleries are in the same library the Galleries tab browses,
     // so a chip here can hand off to that tab by id (see GalleryChip).
     galleries: (scene.galleries || []).map(g => ({
@@ -248,6 +259,23 @@ export async function loadSceneDetail(video) {
   if (getSettings().useMock) return mockDetail(video);
   const data = await runQuery(FIND_SCENE_DETAIL_QUERY, { id: String(video.id) });
   return normalizeSceneDetail(data?.findScene);
+}
+
+// 0.32 adds `Scene.production_date`, but a field the server does not know fails
+// the whole detail query, so this rides as its own request and only when
+// capabilities.js says the server has it.
+const SCENE_PRODUCTION_DATE_QUERY = `
+  query SceneProductionDate($id: ID!) {
+    findScene(id: $id) {
+      production_date
+    }
+  }
+`;
+
+export async function fetchSceneProductionDate(id) {
+  if (getSettings().useMock || !id) return null;
+  const data = await runQuery(SCENE_PRODUCTION_DATE_QUERY, { id: String(id) });
+  return data?.findScene?.production_date || null;
 }
 
 // ═══════════════════════════════════════════════════════════

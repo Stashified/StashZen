@@ -389,6 +389,28 @@ async function run() {
     /VERIFY long studio details/.test(blurbText()) && bounded(studioClamp),
     `${JSON.stringify(studioClamp)}`);
 
+  // ── 10. Right out of a low tab enters a List at its first row ──
+  // Groups, Galleries and Images sit low in the rail, beside rows 2-3 of a
+  // one-column list, so nearest-row scoring skipped the rows above. Entering a
+  // grid at its facing row is still intended; only List changes.
+  await switchTab('nav-galleries');
+  const galleriesLoaded = await waitFor(() => cardIds('gallery-').length > 0, 6000);
+  const droveGalleryList = await driveMode('list');
+  const listReady = await waitFor(
+    () => !!listEl() && cardIds('gallery-').length >= 3, 4000);
+  check('V10 galleries renders in List mode',
+    galleriesLoaded && droveGalleryList && listReady,
+    `loaded=${galleriesLoaded} drove=${droveGalleryList} list=${!!listEl()} rows=${cardIds('gallery-').length}`);
+  const firstGalleryId = cardIds('gallery-')[0];
+  focus('nav-galleries');
+  await sleep(150);
+  const onRail = getCurrentFocusId() === 'nav-galleries';
+  await press('ArrowRight');
+  const enteredAtTop = await waitFor(() => getCurrentFocusId() === firstGalleryId, 2000);
+  check('V10 Right from the rail lands on the first List row',
+    onRail && enteredAtTop,
+    `rail=${onRail} focus=${getCurrentFocusId()} first=${firstGalleryId} rows=${cardIds('gallery-').length}`);
+
   check('V7 no render error was raised', errors.length === 0, errorTail());
 
   // A strip that is never told the request ended keeps the target and

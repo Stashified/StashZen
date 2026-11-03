@@ -108,6 +108,17 @@ export function seedCriterion(desc, c) {
     }
     case EDITOR.IS_MISSING:
       return { modifier: null, value: { value: typeof src.value === 'string' ? src.value : '' } };
+    case EDITOR.HIERARCHICAL_COUNT:
+      // Both a flat request shape ({value, depth}) and Stash's nested number
+      // envelope can arrive; keep depth either way or the next Apply loses it.
+      return {
+        modifier,
+        value: {
+          value: src.value,
+          ...(src.value2 !== undefined ? { value2: src.value2 } : {}),
+          ...(src.depth != null ? { depth: src.depth } : {}),
+        },
+      };
     default:
       return {
         modifier,
@@ -180,8 +191,9 @@ export function isEffective(desc, c) {
   if (inner.value === '' || inner.value === undefined || inner.value === null) return false;
   // An Int criterion with a decimal is a GraphQL type error, and a text box is
   // free to hold one; keep the row visible but out of the request.
-  if (desc.editor === EDITOR.NUMBER) {
-    const isInt = String(desc.type).replace(/[[\]!]/g, '') === 'IntCriterionInput';
+  if (desc.editor === EDITOR.NUMBER || desc.editor === EDITOR.HIERARCHICAL_COUNT) {
+    const base = String(desc.type).replace(/[[\]!]/g, '');
+    const isInt = base === 'IntCriterionInput' || base === 'HierarchicalCountInput';
     const bad = (v) => {
       const n = Number(v);
       return !Number.isFinite(n) || (isInt && !Number.isInteger(n));
@@ -218,9 +230,9 @@ export function effectiveCriteria(order, criteria, byField) {
 
 /**
  * The builder's internal envelopes → the shape Stash's web UI persists.
- * Only text and enums differ: the UI stores a bare string and display strings,
- * while the rows need a nested value and enum member names. Other criterion
- * types already use Stash's stored shape.
+ * Text stores a bare string and enums store display strings; a plain multi is
+ * a labeled-id array while a hierarchical one keeps its items/excluded wrapper.
+ * The rows nest everything, so each shape is converted here.
  */
 export function storedCriterion(desc, c) {
   const inner = c.value && typeof c.value === 'object' && !Array.isArray(c.value) ? c.value : {};
@@ -235,8 +247,33 @@ export function storedCriterion(desc, c) {
           : savedEnumValue(desc.type, inner.value ?? ''),
       };
     case EDITOR.IS_MISSING:
-      return inner.value ?? '';
+      // Stash's UI stores this through its generic modifier envelope even
+      // though the request form is the bare string. A bare string saved here
+      // loaded back as an empty criterion in Stash's web UI.
+      return { modifier: 'EQUALS', value: inner.value ?? '' };
+    case EDITOR.HIERARCHICAL_COUNT:
+      // A nullary count takes no operand. Writing `''` here reached GraphQL as
+      // `value: ""` against `value: Int!`, a coercion error; an empty object
+      // lets the translator supply the typed placeholder.
+      if (NULLARY.has(c.modifier)) return { modifier: c.modifier, value: {} };
+      // Stash's number envelope keeps its operand nested; depth rides along in
+      // the same object so the web UI's re-save does not drop it.
+      return {
+        modifier: c.modifier,
+        value: {
+          value: inner.value ?? '',
+          ...(inner.value2 !== undefined && inner.value2 !== '' ? { value2: inner.value2 } : {}),
+          ...(inner.depth != null ? { depth: inner.depth } : {}),
+        },
+      };
     case EDITOR.MULTI:
+      // A plain multi is Stash's labeled-id criterion: a bare array, no depth
+      // and no excludes. The items/excluded wrapper is the hierarchical shape
+      // and made Stash's web UI load the criterion empty.
+      return {
+        modifier: c.modifier,
+        value: (Array.isArray(inner.items) ? inner.items : []).map(labelled),
+      };
     case EDITOR.HIERARCHICAL:
       // Normalise here too: an entry that never went through the picker would
       // otherwise be written back as a bare id, which is not the stored shape.

@@ -13,7 +13,8 @@
 
 import { useState } from 'react';
 import { setSettings } from '../utils/settings.js';
-import { flattenSortGroups } from '../utils/sortGroups.js';
+import { visibleSortGroups } from '../utils/sortGroups.js';
+import { getServerVersion } from '../utils/serverInfo.js';
 import { DEFAULT_CONTROLS, TAB_CONTROL_CONFIG, WORKING_FILTER_ID } from './tabConfig.js';
 
 export function useListingControls({ activeTab, dataKey, settings }) {
@@ -60,20 +61,31 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   const [controlsForSource, setControlsForSource] = useState(null);
   if (controlsForSource !== dataKey) {
     setControlsForSource(dataKey);
-    setControls(prev => (
-      prev.filterId || prev.workingFilter || prev.quickFilters?.length
-        ? {
-            ...prev,
-            filterId: null,
-            workingFilter: null,
-            workingFilterFor: null,
-            workingFilterLabel: null,
-            // Chip ids are per-type, and a gallery chip's remains meaningless
-            // on Images' schema: start the new source with none.
-            quickFilters: [],
-          }
-        : prev
-    ));
+    setControls(prev => {
+      const patch = {};
+      if (prev.filterId || prev.workingFilter || prev.quickFilters?.length) {
+        patch.filterId = null;
+        patch.workingFilter = null;
+        patch.workingFilterFor = null;
+        patch.workingFilterLabel = null;
+        // Chip ids are per-type, and a gallery chip's remains meaningless
+        // on Images' schema: start the new source with none.
+        patch.quickFilters = [];
+      }
+      // A sort can be gated on the server version, and the source owns the
+      // version: a 0.32-only sort must not reach a 0.31 server. The version
+      // store is already null in this render (useServerVersion resets it
+      // first), so only ungated sorts survive the switch.
+      const config = TAB_CONTROL_CONFIG[activeTab];
+      const valid = visibleSortGroups(config?.sortGroups, getServerVersion())
+        .flatMap(g => g.options)
+        .map(o => o.value);
+      if (valid.length && prev.sort && !valid.includes(prev.sort)) {
+        patch.sort = config?.defaultSort || valid[0];
+        patch.order = config?.defaultOrder || 'desc';
+      }
+      return Object.keys(patch).length ? { ...prev, ...patch } : prev;
+    });
   }
 
   // ── Arriving at a tab adopts its defaults ────────────────
@@ -101,7 +113,8 @@ export function useListingControls({ activeTab, dataKey, settings }) {
   if (controlsForTab !== activeTab) {
     setControlsForTab(activeTab);
     const config = TAB_CONTROL_CONFIG[activeTab];
-    const flat = flattenSortGroups(config?.sortGroups);
+    const visible = visibleSortGroups(config?.sortGroups, getServerVersion())
+      .flatMap(g => g.options);
 
     setControls(prev => {
       // Columns follow the section, not the session: `controls` is shared, so
@@ -115,20 +128,26 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       // page's See-all hand-off, which stages its query for this arrival;
       // pressing the current rail row reloads in place (`tabEpoch`) and keeps
       // the query.
-      const searchHandoff = prev.searchForTab === activeTab;
+      // Back into a listing stages the same fields under `restoreForTab`: it is
+      // returning the user to the section as they left it, so the defaults
+      // below must not apply to that one visit.
+      const restoring = prev.restoreForTab === activeTab;
+      const searchHandoff = prev.searchForTab === activeTab || restoring;
       const patch = {
         cols: gridColsFor(activeTab),
         sortForTab: null,
         searchForTab: null,
+        restoreForTab: null,
         search: searchHandoff ? prev.search : '',
         // Chips are quick narrowings of the listing they were pressed on, and
         // the ids differ per section. A See-all hand-off stages its own filter
         // and arrives clear like everything else.
-        quickFilters: [],
+        quickFilters: restoring ? prev.quickFilters : [],
       };
-      if (flat.length) {
-        const validValues = flat.map(o => o.value);
-        const handoff = prev.sortForTab === activeTab && validValues.includes(prev.sort);
+      if (visible.length) {
+        const validValues = visible.map(o => o.value);
+        const handoff = (prev.sortForTab === activeTab || restoring)
+          && validValues.includes(prev.sort);
         if (!handoff && config.defaultSort) {
           // Sort and order travel together: a declaration naming a sort but
           // inheriting the previous direction opens Tags on "Name,
@@ -159,8 +178,11 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       // change) invalidates the selection. The working marker is the exception
       // while its filter is staying: it is not a server id, and clearing it
       // would deselect the dropdown entry for the filter that caused this
-      // change. Every other case, including a dropped filter's marker, clears.
-      if (prev.filterId && !(prev.filterId === WORKING_FILTER_ID && filterIsForThisTab)) {
+      // change. A Back restore is the other: the id belongs to the tab it is
+      // returning to. Every other case, including a dropped filter's marker,
+      // clears.
+      if (prev.filterId && !(prev.filterId === WORKING_FILTER_ID && filterIsForThisTab)
+          && !restoring) {
         patch.filterId = null;
       }
 
@@ -198,9 +220,11 @@ export function useListingControls({ activeTab, dataKey, settings }) {
         // A filter made in Stash's web UI can carry a sort this tab does not
         // offer. Adopting it would leave the Sort control showing a value it
         // cannot select. Same check the See-all hand-off gets.
-        const validSorts = flattenSortGroups(
-          TAB_CONTROL_CONFIG[activeTab]?.sortGroups,
-        ).map(o => o.value);
+        // A gated sort is not offered for this server, so it is not adopted
+        // either: the control would render a raw value with no selection.
+        const validSorts = visibleSortGroups(
+          TAB_CONTROL_CONFIG[activeTab]?.sortGroups, getServerVersion(),
+        ).flatMap(g => g.options).map(o => o.value);
         if (f?.findFilter?.sort
             && (!validSorts.length || validSorts.includes(f.findFilter.sort))) {
           patch.sort = f.findFilter.sort;

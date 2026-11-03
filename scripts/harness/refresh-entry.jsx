@@ -84,18 +84,25 @@ async function switchTab(id) {
 }
 
 // Type the way the IME does: the native setter (a plain `input.value =` is
-// swallowed by React's controlled-input tracker), then the 300 ms debounce
-// commits. The on-screen keyboard cannot be raised headlessly; the commit path
-// below it is the shipped one.
+// swallowed by React's controlled-input tracker), one dispatch per key with a
+// 180 ms gap. That is under the field's 500 ms debounce, so a whole word
+// commits once; the old 300 ms timer fired between keys and refreshed the grid
+// for most letters. The on-screen keyboard cannot be raised headlessly; the
+// commit path below it is the shipped one.
 async function typeSearch(text) {
   const input = document.querySelector('input[placeholder="Search…"]');
   if (!input) return false;
   const setter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype, 'value',
   ).set;
-  setter.call(input, text);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  await sleep(500);   // the field's debounce is 300 ms
+  let typed = '';
+  for (const ch of text) {
+    typed += ch;
+    setter.call(input, typed);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(180);
+  }
+  await sleep(700);   // the field's debounce is 500 ms
   return true;
 }
 
@@ -190,6 +197,13 @@ async function run() {
     typed && searched,
     `input ${typed}, request with q=kitty ${searched}`);
 
+  // One commit for the word: the reported bug was a refresh per letter.
+  const searchQs = (await getJSON('/requests'))
+    .filter(r => 'scene_filter' in r && r.q).map(r => r.q);
+  check('F7a typing below the debounce cadence commits once',
+    searchQs.length === 1 && searchQs[0] === 'kitty',
+    `q=${JSON.stringify(searchQs)}`);
+
   await clearLogs();
   await switchTab('nav-performers');
   const arrived = await waitFor(async () => (await getJSON('/requests'))
@@ -203,6 +217,54 @@ async function run() {
   check('F9 ...and the search box on the new tab is empty',
     (field?.value ?? null) === '',
     `value=${JSON.stringify(field?.value ?? null)}`);
+
+  // ── F10  the search field's clear control ──────────────
+  // The × only mounts with a term and is its own focus stop. It used to be
+  // visible but unreachable, so the only way to clear was to erase the text
+  // one key at a time.
+  await switchTab('nav-scenes');
+  await waitFor(() => registry.has('video-1'));
+  await clearLogs();
+  await typeSearch('cat');
+  const clearEntry = registry.get('ctrl-search-clear');
+  check('F10 a term puts the clear control on the field', !!clearEntry);
+
+  // The control for F10b: "cat" matches no fixture title, so the grid must be
+  // empty before the clear, or a grid that never filtered would pass it.
+  const cardUp = () => {
+    const el = registry.get('video-1')?.el;
+    return !!el && document.contains(el);
+  };
+  const emptied = await waitFor(() => !cardUp(), 3000);
+  check('F10 control: the term empties the grid', emptied,
+    `video-1 on screen=${cardUp()}`);
+
+  focus('ctrl-search');
+  await sleep(80);
+  (document.activeElement || document.body).dispatchEvent(new KeyboardEvent(
+    'keydown', { key: 'ArrowRight', keyCode: 39, bubbles: true, cancelable: true },
+  ));
+  await sleep(250);
+  check('F10a Right from the field reaches the clear control',
+    document.activeElement === clearEntry?.el,
+    `active=${document.activeElement?.id || document.activeElement?.tagName}`);
+
+  if (clearEntry) {
+    // Whichever way it was reached, Enter is the activation.
+    clearEntry.el.focus();
+    await tapEnter();
+    await sleep(400);
+    const value = document.querySelector('input[placeholder="Search…"]')?.value;
+    // No round trip is expected: the unfiltered page 1 is still in listCache,
+    // so clearing restores those rows from it. Assert what the user sees.
+    const restored = await waitFor(() => cardUp(), 3000);
+    check('F10b Enter clears the term and restores the unfiltered grid',
+      value === '' && restored,
+      `value=${JSON.stringify(value)} video-1 back=${restored}`);
+    check('F10c focus is back on the field, not <body>',
+      document.activeElement === registry.get('ctrl-search')?.el,
+      `active=${document.activeElement?.id || document.activeElement?.tagName}`);
+  }
 }
 
 async function finish() {

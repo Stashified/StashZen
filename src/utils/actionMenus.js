@@ -43,7 +43,7 @@ export function buildActionMenu({ kind, item, list, index = 0 } = {}, handlers) 
       items: buildGalleryMenuItems({ item }, handlers),
     };
   }
-  if (kind === 'tag' || kind === 'studio') {
+  if (kind === 'tag' || kind === 'studio' || kind === 'group') {
     return {
       title: item.name,
       subtitle: item.scene_count
@@ -200,7 +200,7 @@ export function buildImageMenuItems({ item, list, index }, { openImageViewer }) 
 }
 
 /**
- * A tag or studio is browsed as metadata. Enter already filters the scene
+ * A tag, studio or group is browsed as metadata. Enter already filters the scene
  * listing, so the menu adds the read-only Info sheet and repeats that
  * destination for discoverability. Unknown kinds must not fall through to the
  * scene menu, which would offer Play on a tag.
@@ -231,7 +231,7 @@ export function buildEntityMenuItems({ item, kind }, { onInfo, onFilterEntity })
  * "View images" is the same destination as Enter: the Images tab filtered to
  * this gallery.
  */
-export function buildGalleryMenuItems({ item }, { openGallery, openGallerySlideshow }) {
+export function buildGalleryMenuItems({ item }, { openGallery, openGallerySlideshow, onInfo }) {
   return [
     {
       id: 'menu-gallery-view',
@@ -248,5 +248,10 @@ export function buildGalleryMenuItems({ item }, { openGallery, openGallerySlides
       label: 'Shuffle slideshow',
       onSelect: () => openGallerySlideshow(item, { shuffle: true }),
     },
+    ...(onInfo ? [{
+      id: 'menu-gallery-info',
+      label: 'Info',
+      onSelect: () => onInfo(item, 'gallery'),
+    }] : []),
   ];
 }
