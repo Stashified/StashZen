@@ -184,6 +184,14 @@ export function createAvplayBackend({
   let appMuted = false;
   const muteCapability = detectMuteCapability({ tvaudiocontrol, avplay });
 
+  // ── Playback rate ────────────────────────────────────────
+  // Session-local: a different file starts at 1x. It lives here, not only in
+  // the player, because a recovery reopen uses the same URL and the player only
+  // re-sends its state when the source changes. `setSpeed` takes discrete
+  // values only.
+  const AVPLAY_SPEEDS = [1, 2];
+  let desiredPlaybackRate = 1;
+
   const lookup = (target, method) => {
     const obj = target === 'tvaudiocontrol' ? tvaudiocontrol : avplay;
     if (!obj || typeof obj[method] !== 'function') throw new Error(`${method} unavailable`);
@@ -277,6 +285,20 @@ export function createAvplayBackend({
       return NaN;
     }
   };
+
+  // ── Speed ────────────────────────────────────────────────
+  /** Reapply the remembered rate. Only a prepared session accepts setSpeed. */
+  function applyPlaybackRate() {
+    if (!prepared || closed || error) return false;
+    const rate = AVPLAY_SPEEDS.includes(desiredPlaybackRate) ? desiredPlaybackRate : 1;
+    try {
+      avplay.setSpeed(rate);
+      return true;
+    } catch (e) {
+      // An unsupported rate is refused; leave playback at its current speed.
+      return false;
+    }
+  }
 
   const pageHidden = () => !!doc && doc.visibilityState === 'hidden';
 
@@ -592,6 +614,9 @@ export function createAvplayBackend({
     // The setVolume rung can only be applied once the native session exists;
     // this is its second chance.
     if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
+    // Needs a prepared session. A recovery reopen lands here with the value
+    // kept from the same file, so the user's speed survives it.
+    applyPlaybackRate();
     if (pageHidden()) {
       // Prepare finished while the app was hidden. Do not start a session
       // behind the page: enter the suspended state the visibility hook would
@@ -767,6 +792,8 @@ export function createAvplayBackend({
       if (t != null && Math.abs(t - saved) > 1) coalescer.request(saved);
       // suspendSession released the mute; restore the sitting's choice.
       if (desiredMuted != null && desiredMuted !== muted) applyMuted(desiredMuted);
+      // A restore is a new native session and may reset the rate.
+      applyPlaybackRate();
       // The poll emits `playing` when it sees PLAYING; a scene paused before
       // hiding stays paused and emits nothing.
       if (wantPlaying && !playingLatch) startNativePlay();
@@ -823,6 +850,9 @@ export function createAvplayBackend({
     if (String(url || '') !== activeUrl) {
       seekReopenCount = 0;
       cancelRecovery();
+      // A different file owns its own rate. A reopen of the same URL
+      // (recovery, failed restore) keeps it.
+      desiredPlaybackRate = 1;
     }
     activeUrl = String(url || '');
     startAt = Math.max(0, Number(startSeconds) || 0);
@@ -913,6 +943,7 @@ export function createAvplayBackend({
     lastTime = 0;
     cachedPosition = 0;
     desiredMuted = null;
+    desiredPlaybackRate = 1;
   }
 
   function play() {
@@ -1029,6 +1060,7 @@ export function createAvplayBackend({
       mute: muteCapability,
       stats: 'reduced',
       seek: 'coalesced',
+      speedRates: AVPLAY_SPEEDS,
     },
     // No DOM element to attach; these exist so the facade can call them
     // unconditionally on an engine switch.
@@ -1050,6 +1082,13 @@ export function createAvplayBackend({
     isSeekDegraded() { return seekDegraded; },
     getLastFailure() { return lastFailure; },
 
+    /** Returns the rate actually applied; an unknown rate falls back to 1. */
+    setPlaybackRate(rate) {
+      const n = Number(rate);
+      desiredPlaybackRate = AVPLAY_SPEEDS.includes(n) ? n : 1;
+      applyPlaybackRate();
+      return desiredPlaybackRate;
+    },
     // Same meaning as HTMLMediaElement's: "asked for playback and not paused",
     // not "a frame is moving". Treating buffering as paused would make the
     // play/pause button start playback it is already waiting on. A seek has its
@@ -1065,7 +1104,7 @@ export function createAvplayBackend({
     set muted(value) { applyMuted(!!value); },
     get volume() { return 1; },
     set volume(value) { /* the TV owns its volume; mute is the only control */ },
-    get playbackRate() { return 1; },
+    get playbackRate() { return desiredPlaybackRate; },
     get error() { return error; },
     get buffered() { return emptyTimeRanges(); },
     get seekable() { return emptyTimeRanges(); },

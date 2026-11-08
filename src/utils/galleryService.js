@@ -18,6 +18,8 @@ import { createEntityService } from './entityService.js';
 import { getSettings } from './settings.js';
 import { runQuery } from './stashQuery.js';
 import { ratingLabel } from './format.js';
+import { clearListCacheKind } from './listCache.js';
+import { publishRowPatch } from './rowPatches.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 
@@ -152,6 +154,7 @@ function normalizeGalleryInfo(g) {
     details: g.details || null,
     date: g.date || null,
     photographer: g.photographer || null,
+    rating100: g.rating100 ?? null,
     rating: ratingLabel(g.rating100),
     organized: !!g.organized,
     image_count: g.image_count || 0,
@@ -165,22 +168,99 @@ function normalizeGalleryInfo(g) {
   };
 }
 
+// Test mode has no server to read back: remember writes so reopening the
+// sheet shows them.
+const mockWritten = new Map();
+const mockWrittenFor = (id) => mockWritten.get(String(id)) || {};
+const recordMockWrite = (id, patch) => {
+  mockWritten.set(String(id), { ...mockWrittenFor(id), ...patch });
+};
+
 /** One gallery's detail, for the long-press Info overlay. */
 export async function fetchGalleryInfo(id) {
   if (getSettings().useMock) {
     const g = (await generateMockGalleries()).find(x => String(x.id) === String(id));
     if (!g) return null;
-    return normalizeGalleryInfo({
-      ...g,
-      // The mock row is listing-shaped; the detail normalizer reads Stash's raw
-      // fields (rating100, folder { basename }).
-      rating100: g.rating ? Math.round(Number(g.rating) * 10) : null,
-      folder: g.folder ? { basename: g.folder } : null,
-      performers: [],
-      scenes: [],
-      tags: [],
-    });
+    return {
+      ...normalizeGalleryInfo({
+        ...g,
+        // The mock row is listing-shaped; the detail normalizer reads Stash's raw
+        // fields (rating100, folder { basename }).
+        rating100: g.rating ? Math.round(Number(g.rating) * 10) : null,
+        folder: g.folder ? { basename: g.folder } : null,
+        performers: [],
+        scenes: [],
+        tags: [],
+      }),
+      ...mockWrittenFor(id),
+    };
   }
   const data = await runQuery(FIND_GALLERY_INFO_QUERY, { id: String(id) });
   return data?.findGallery ? normalizeGalleryInfo(data.findGallery) : null;
+}
+
+const GALLERY_UPDATE_MUTATION = `
+  mutation GalleryUpdate($input: GalleryUpdateInput!) {
+    galleryUpdate(input: $input) {
+      id
+      rating100
+      organized
+    }
+  }
+`;
+
+function normalizeRating100(value) {
+  if (!Number.isFinite(Number(value))) {
+    throw new RangeError('rating100 must be a finite number');
+  }
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  return clamped > 0 ? clamped : null;
+}
+
+/**
+ * Write a gallery's rating and/or organised flag. Only the fields present in
+ * `patch` are sent, so an organised toggle cannot clear a rating.
+ */
+export async function updateGallery({ id, rating100, organized }) {
+  const input = { id: String(id) };
+  const patch = {};
+  if (rating100 !== undefined) {
+    input.rating100 = normalizeRating100(rating100);
+    patch.rating = ratingLabel(input.rating100);
+  }
+  if (organized !== undefined) {
+    input.organized = !!organized;
+    patch.organized = input.organized;
+  }
+
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    const written = {};
+    if (rating100 !== undefined) {
+      written.rating100 = input.rating100;
+      written.rating = ratingLabel(input.rating100);
+    }
+    if (organized !== undefined) written.organized = input.organized;
+    recordMockWrite(id, written);
+    if (Object.keys(patch).length) publishRowPatch('gallery', id, patch);
+    clearListCacheKind('galleries');
+    return {
+      id: String(id),
+      ...(rating100 !== undefined ? { rating100: input.rating100 } : {}),
+      ...(organized !== undefined ? { organized: input.organized } : {}),
+    };
+  }
+
+  const data = await runQuery(GALLERY_UPDATE_MUTATION, { input });
+  if (!data?.galleryUpdate) throw new Error('the server returned no gallery');
+  const saved = data.galleryUpdate;
+  const saved100 = Number.isFinite(saved.rating100) && saved.rating100 > 0
+    ? saved.rating100
+    : null;
+  publishRowPatch('gallery', id, {
+    rating: ratingLabel(saved100),
+    organized: !!saved.organized,
+  });
+  clearListCacheKind('galleries');
+  return { id: String(id), rating100: saved100, organized: !!saved.organized };
 }

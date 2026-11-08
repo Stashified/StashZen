@@ -38,6 +38,20 @@ export function ratingLabel(rating100) {
   return Number.isFinite(n) && n > 0 ? (n / 10).toFixed(1) : null;
 }
 
+/**
+ * The rating100 a stepper press produces, `direction` +1 or -1.
+ *
+ * Off-grid values exist: another client can write 75. Stepping from the
+ * rounded star count would jump to 90 (or 60 downwards), so the step follows
+ * the stored value instead, to the neighbouring multiple of 10.
+ */
+export function nextRating(rating100, direction) {
+  const n = Number(rating100);
+  const value = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
+  if (direction > 0) return Math.min(100, Math.floor(value / 10) * 10 + 10);
+  return Math.max(0, Math.ceil(value / 10) * 10 - 10);
+}
+
 export function formatTime(seconds, { padMinutes = false } = {}) {
   if (!isFinite(seconds) || seconds < 0) return padMinutes ? '00:00' : '0:00';
 

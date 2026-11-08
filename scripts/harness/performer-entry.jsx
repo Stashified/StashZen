@@ -130,8 +130,10 @@ const linksGroup = () => document.querySelector('[role="group"][aria-label="Link
 const tagsGroup = () => document.querySelector('[role="group"][aria-label="Performer tags"]');
 const actionsGroup = () => document.querySelector('[role="group"][aria-label="Performer actions"]');
 const ratingGroup = () => document.querySelector('[role="group"][aria-label^="Rating, "]');
+// Off-grid values are shown exactly (75 reads "7.5"), so the capture keeps the
+// decimal; an integer-only pattern would silently read -1 for those.
 const ratingStars = () =>
-  Number((ratingGroup()?.getAttribute('aria-label') || '').match(/Rating, (\d+) of 10/)?.[1] ?? -1);
+  Number((ratingGroup()?.getAttribute('aria-label') || '').match(/Rating, ([\d.]+) of 10/)?.[1] ?? -1);
 const favoriteStar = () => document.querySelector('[aria-label="Favorite"]');
 const favoriteButton = () => [...(actionsGroup()?.querySelectorAll('button') || [])]
   .find(b => b.textContent.includes('Favourite'));
@@ -237,7 +239,7 @@ async function run() {
 
   const metaText = header()?.querySelector('[class*="metaRow"]')?.textContent || '';
   check('P1 the engagement counts render as words, not raw numbers',
-    metaText.includes('7 likes') && metaText.includes('11 images') && metaText.includes('2 galleries'),
+    metaText.includes('7 O counts') && metaText.includes('11 images') && metaText.includes('2 galleries'),
     `meta reads "${metaText.trim()}"`);
 
   // ── Links (item 5) ──────────────────────────────────────
@@ -271,13 +273,14 @@ async function run() {
 
   // ── The write authority (item 6) ────────────────────────
   // The card was unrated and unfavourited; the detail answer is 75 and
-  // favourite, so both readings are adopted values. The profile renders the
+  // favourite, so both readings are adopted values. 75 is off-grid and is
+  // shown exactly, not rounded to a whole star. The profile renders the
   // aliases, then an effect copies `rating100`/`favorite` into edit state one
   // commit later, so reading straight after the alias group can catch the
   // card's 0, a race, not a stale answer.
-  await waitFor(() => ratingStars() === 8, 4000);
+  await waitFor(() => ratingStars() === 7.5, 4000);
   check('P1 the rating and favourite come from the detail answer',
-    ratingStars() === 8 && !!favoriteStar()
+    ratingStars() === 7.5 && !!favoriteStar()
       && favoriteButton()?.getAttribute('aria-pressed') === 'true',
     `stars=${ratingStars()} titleStar=${!!favoriteStar()} `
     + `pressed=${favoriteButton()?.getAttribute('aria-pressed')}`);
@@ -362,8 +365,8 @@ async function run() {
   check('P4 ...and no profile words leak into the hero',
     !/Career|Measurements|Tattoos|Ethnicity|Piercings|Fake tits|profile-8701/.test(hText),
     `hero reads "${hText.slice(0, 120)}"`);
-  check('P4 zero counts are hidden rather than printed as "0 likes"',
-    !sparseMeta.includes('0 likes') && !sparseMeta.includes('0 images')
+  check('P4 zero counts are hidden rather than printed as "0 O counts"',
+    !sparseMeta.includes('0 O counts') && !sparseMeta.includes('0 images')
       && !sparseMeta.includes('0 galleries'),
     `meta reads "${sparseMeta.trim()}"`);
   check('P4 ...while the card identity stays, including its gender',
@@ -485,9 +488,9 @@ async function run() {
     `fetched for ${JSON.stringify(fallbackFetches.map(f => f.id))}`);
 
   // ── P7: rating and favourite are optimistic and roll back ───
-  // The stepper works in whole stars; the detail answer is 75, shown as 8. One
-  // press up is 90, the value the mutation must carry, the number the server
-  // stores, not the rounded star count.
+  // The stepper steps to the neighbouring multiple of 10; the detail answer is
+  // 75, shown exactly as 7.5. One press up is 80, the value the mutation must
+  // carry, the number the server stores, not the rounded star count.
   const focusPress = async (id) => {
     const entry = registry.get(id);
     if (!entry) throw new Error(`focus target ${id} is not registered`);
@@ -500,8 +503,8 @@ async function run() {
   await setMode('performerUpdate', 'slow');
   await clearLogs();
   await focusPress('performer-rating-inc');
-  check('P7a the rating paints one star up before the server answers',
-    ratingStars() === 9, `stars=${ratingStars()}`);
+  check('P7a the rating paints one step up before the server answers',
+    ratingStars() === 8, `stars=${ratingStars()}`);
   await waitForAsync(async () => (await updateFetches()).length === 1, 4000);
   // The `slow` arm logs the request, then holds the answer for 1.2 s; waiting
   // it out makes the next press a new write rather than one in flight.
@@ -510,19 +513,19 @@ async function run() {
   check('P7b the write sends the stored 0–100 value, from the server\'s rating',
     slowRating.length === 1
       && slowRating[0].input.id === '8701'
-      && slowRating[0].input.rating100 === 90
+      && slowRating[0].input.rating100 === 80
       && !('favorite' in slowRating[0].input),
     `input=${JSON.stringify(slowRating[0]?.input)}`);
   check('P7c the star survives the server\'s answer',
-    ratingStars() === 9, `stars=${ratingStars()}`);
+    ratingStars() === 8, `stars=${ratingStars()}`);
 
   await setMode('performerUpdate', 'ok');
   await focusPress('performer-rating-dec');
   await waitForAsync(async () => (await updateFetches()).length === 2, 4000);
   await sleep(200);
   const downRating = (await updateFetches())[1];
-  check('P7d stepping down sends 80 and keeps focus on the stepper',
-    downRating?.input.rating100 === 80 && ratingStars() === 8,
+  check('P7d stepping down sends 70 and keeps focus on the stepper',
+    downRating?.input.rating100 === 70 && ratingStars() === 7,
     `input=${JSON.stringify(downRating?.input)} stars=${ratingStars()}`);
 
   // Favourite: the server has it set, so the first press is the un-set.
@@ -544,7 +547,7 @@ async function run() {
   const rolledBack = await waitFor(
     () => (document.body.textContent || '').includes('Rating not saved'), 4000);
   check('P7g a failed rating write rolls the star back and explains',
-    !!rolledBack && ratingStars() === 8
+    !!rolledBack && ratingStars() === 7
       && (document.body.textContent || '').includes('simulated performer write failure'),
     `stars=${ratingStars()} notice=${!!rolledBack}`);
   await focusPress('performer-favorite');
@@ -558,6 +561,51 @@ async function run() {
   check('P7i every press reached the server exactly once',
     writeAttempts.length === 5,
     `${writeAttempts.length} attempt(s): ${JSON.stringify(writeAttempts.map(w => w.input))}`);
+
+  // ── P10: the scene grid carries quick filters ──────────────
+  // The row is the Scenes set minus the favourite chip: this grid is already
+  // one performer, so that chip could only match a co-star. Toggling a chip
+  // must reach the request's filter, not just the button's paint.
+  const quickIds = () => [...registry.keys()].filter(id => id.startsWith('quick-'));
+  const quickLabels = () => quickIds().map(id => (registry.get(id)?.el?.textContent || '').trim());
+  check('P10 the quick row is the Scenes chips without the favourite one',
+    quickIds().join('|') === 'quick-unwatched|quick-rated4|quick-markers|quick-addedThisYear'
+      && quickLabels().join('|') === 'Unwatched|Rated 4+|Has markers|Added this year',
+    `ids=[${quickIds().join(',')}] labels=[${quickLabels().join('|')}]`);
+
+  await clearLogs();
+  const quickPress = async (id) => {
+    const entry = registry.get(id);
+    if (!entry) throw new Error(`focus target ${id} is not registered`);
+    entry.el.focus();
+    await sleep(50);
+    press('Enter', 13);
+    await sleep(60);
+  };
+  await quickPress('quick-unwatched');
+  const chipOn = registry.get('quick-unwatched')?.el.getAttribute('aria-pressed');
+  // A chip beside the performer criterion must nest, or the chip would replace
+  // the performer filter and the grid would show everyone's scenes.
+  // `waitForAsync` answers a boolean, so the record is read back after it.
+  await waitForAsync(async () => (await getJSON('/requests'))
+    .some(r => r.scene_filter?.AND?.AND), 4000);
+  const filtered = (await getJSON('/requests')).slice().reverse()
+    .find(r => r.scene_filter?.AND?.AND);
+  check('P10 toggling Unwatched refetches with the chip folded into the performer filter',
+    chipOn === 'true'
+      && filtered?.scene_filter.AND.AND.performers?.value?.[0] === '8701'
+      && filtered?.scene_filter.AND.AND.performers?.modifier === 'INCLUDES'
+      && filtered?.scene_filter.AND.play_count?.value === 0
+      && filtered?.scene_filter.AND.play_duration?.value === 0
+      && filtered?.scene_filter.AND.resume_time?.value === 0,
+    `pressed=${chipOn} filter=${JSON.stringify(filtered?.scene_filter)}`);
+
+  // The off-toggle is answered from listCache (the base filter was fetched on
+  // mount), so there is no new wire request to assert; the button state is.
+  await quickPress('quick-unwatched');
+  check('P10 pressing again clears the chip',
+    registry.get('quick-unwatched')?.el.getAttribute('aria-pressed') === 'false',
+    `pressed=${registry.get('quick-unwatched')?.el.getAttribute('aria-pressed')}`);
 
   // ── P9: tags fall back to the performer's scenes ────────────
   // Only for a performer with no tags of their own. Both headings come from

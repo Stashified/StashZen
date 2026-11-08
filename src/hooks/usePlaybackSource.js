@@ -36,6 +36,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchSceneStreams } from '../utils/videoService.js';
+import { getSettings } from '../utils/settings.js';
 import { pickTranscodeUrls } from '../utils/playbackSource.js';
 import { buildCandidatePlan } from '../utils/enginePolicy.js';
 import { createEngineController } from '../utils/engineController.js';
@@ -58,6 +59,9 @@ export function usePlaybackSource(video, mediaRef, {
   forcedBrowser = false,
   avplayAvailable = false,
   ready = true,
+  // Bumped by the player when the quality changes mid-scene. The plan only
+  // reads the setting when it is built, so a change needs a new plan.
+  qualityEpoch = 0,
 } = {}) {
   const sceneId = video?.id ?? null;
   const directUrl = video?.stream ?? null;
@@ -283,6 +287,11 @@ export function usePlaybackSource(video, mediaRef, {
     // engine asks first. A failed lookup is left uncached, so the other
     // engine's candidate asks again; caching `[]` there turned one dropped
     // request into "transcoding is off" for the whole plan.
+    //
+    // The tier is snapshotted with the plan. A change in the player's options
+    // bumps `qualityEpoch` and rebuilds the plan, so the value is stable for
+    // one plan and never depends on when the fetch happened.
+    const transcodeQuality = getSettings().transcodeQuality || 'original';
     let streams = null;
     const transcodeUrls = async () => {
       if (streams === null) {
@@ -290,7 +299,7 @@ export function usePlaybackSource(video, mediaRef, {
         if (answer === null) return [];
         streams = answer;
       }
-      return pickTranscodeUrls(streams);
+      return pickTranscodeUrls(streams, transcodeQuality);
     };
 
     // Descriptors from the policy, with URL production attached here, the
@@ -313,7 +322,7 @@ export function usePlaybackSource(video, mediaRef, {
     // primitives for this exact reason, see its comment.
   }, [
     sceneId, directUrl, sceneMeta, setting, forcedBrowser, avplayAvailable, ready,
-    controller, runFrom, clearTimer,
+    qualityEpoch, controller, runFrom, clearTimer,
   ]);
 
   // ── The stall watchdog's off switch ────────────────────────

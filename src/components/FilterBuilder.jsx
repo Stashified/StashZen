@@ -13,8 +13,9 @@
  * portalled child would escape to <body>.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useFocusable, registry } from '../hooks/useFocusable.js';
+import { useArmedConfirm } from '../hooks/useArmedConfirm.js';
 import { criteriaFor } from '../utils/filterCriteria.js';
 import EntityPicker from './EntityPicker.jsx';
 import styles from './FilterBuilder.module.css';
@@ -36,6 +37,9 @@ export default function FilterBuilder({
   onSave,
   onClear,
   onClose,
+  canDelete = false,
+  savedFilterName = '',
+  onDelete,
 }) {
   // Cancel only discards edits; Clear is the gesture that removes the filter
   // already applied. It stays available when every row was removed here, as
@@ -64,6 +68,13 @@ export default function FilterBuilder({
   const [name, setName] = useState(initialName);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  // Local to the builder, so leaving it (or the confirm timing out) discards
+  // the armed state.
+  const [deleteArmed, runDelete] = useArmedConfirm();
+  // Read by the delete guard so a press during the request cannot re-arm.
+  const deletingRef = useRef(false);
 
   // Read by the Back guard below; `picking` alone would arm the guard for a
   // criterion that renders no picker.
@@ -148,6 +159,24 @@ export default function FilterBuilder({
     }
   };
 
+  const doDelete = async () => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete?.();
+    } catch (e) {
+      setDeleteError(e.message || 'Could not delete the filter');
+      // The button never unmounted, but a re-render may have moved focus with
+      // it; putting it back keeps the retry one press away.
+      restoreFocus('fb-delete');
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
+  };
+
   const { ref: addRef, focused: addFocused } = useFocusable({
     id: 'fb-add',
     zone: 'filter-builder',
@@ -173,6 +202,13 @@ export default function FilterBuilder({
     id: 'fb-cancel',
     zone: 'filter-builder',
     onEnter: () => onClose?.(),
+  });
+  const { ref: deleteRef, focused: deleteFocused } = useFocusable({
+    id: 'fb-delete',
+    zone: 'filter-builder',
+    // `runDelete` arms on the first press and commits on the second; the
+    // guard keeps a press during the request from re-arming the button.
+    onEnter: () => { if (!deletingRef.current) runDelete(doDelete); },
   });
 
   return (
@@ -216,7 +252,28 @@ export default function FilterBuilder({
           })}
         </div>
 
+        {deleteError && <p className={styles.deleteError}>{deleteError}</p>}
+
         <footer className={styles.footer}>
+          {canDelete && (
+            <button
+              type="button"
+              ref={deleteRef}
+              className={
+                `${styles.btn} ${styles.btnDanger}`
+                + `${deleteArmed ? ` ${styles.btnArmed}` : ''}`
+                + `${deleteFocused ? ` ${styles.focused}` : ''}`
+              }
+              onClick={() => { if (!deletingRef.current) runDelete(doDelete); }}
+              aria-disabled={deleting ? 'true' : undefined}
+              title={savedFilterName ? `Delete ${savedFilterName}` : undefined}
+            >
+              {deleting
+                ? 'Deleting…'
+                : deleteArmed ? 'Press again to delete' : 'Delete saved filter'}
+            </button>
+          )}
+
           <button
             type="button"
             ref={addRef}

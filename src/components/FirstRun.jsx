@@ -55,12 +55,15 @@ const URL_PLACEHOLDER = 'http://192.168.1.10:9999';
 // ── A text field you select first, then edit ─────────────
 // Same interaction as SettingsPanel's, and the same two traps, held in
 // useEditableField, where the reasoning lives.
-function TextField({ id, label, value, onChange, placeholder, type = 'text', autoFocus = false }) {
+function TextField({
+  id, label, value, onChange, placeholder, type = 'text', autoFocus = false, nextId = null,
+}) {
   const labelId = `${id}-label`;
   const { setWrapperRef, inputRef, selected, editing, inputHandlers } = useEditableField({
     id,
     zone: ZONE,
     autoFocus,
+    nextId,
   });
 
   return (
@@ -94,8 +97,8 @@ function TextField({ id, label, value, onChange, placeholder, type = 'text', aut
   );
 }
 
-function ActionButton({ id, label, primary, busy, onClick }) {
-  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter: onClick });
+function ActionButton({ id, label, primary, busy, onClick, nextId = null }) {
+  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter: onClick, nextId });
   return (
     <button
       ref={ref}
@@ -349,6 +352,9 @@ function SetupScreen({ settings }) {
             onChange={setKey}
             placeholder="Settings → Security in the Stash web app"
             type="password"
+            // The field spans the card while Test sits at its left edge, so
+            // geometry prefers Skip, nearer the centre but a row lower.
+            nextId={{ down: 'firstrun-test' }}
           />
         </div>
 
@@ -377,8 +383,16 @@ function SetupScreen({ settings }) {
             primary
             busy={busy}
             onClick={handleConnect}
+            // Connect and Skip are level, so Down would stay put; with nothing
+            // below the card, make the three actions one Down chain.
+            nextId={{ down: 'firstrun-skip' }}
           />
-          <ActionButton id="firstrun-skip" label="Skip: use sample data" onClick={handleSkip} />
+          <ActionButton
+            id="firstrun-skip"
+            label="Skip: use sample data"
+            onClick={handleSkip}
+            nextId={{ up: 'firstrun-connect' }}
+          />
         </div>
 
         <p className={styles.hint}>

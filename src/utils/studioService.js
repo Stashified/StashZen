@@ -16,6 +16,8 @@ import { getSettings } from './settings.js';
 import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
+import { clearListCacheKind } from './listCache.js';
+import { publishRowPatch } from './rowPatches.js';
 import { ratingLabel } from './format.js';
 import { getServerVersion } from './serverInfo.js';
 import { supportsCapability } from './capabilities.js';
@@ -228,6 +230,14 @@ function normalizeStudioInfo(s) {
   };
 }
 
+// Test mode has no server to read back: remember writes so reopening the
+// sheet shows them, and the next press toggles from the written value.
+const mockWritten = new Map();
+const mockWrittenFor = (id) => mockWritten.get(String(id)) || {};
+const recordMockWrite = (id, patch) => {
+  mockWritten.set(String(id), { ...mockWrittenFor(id), ...patch });
+};
+
 /** One studio's detail, for the long-press Info overlay. */
 export async function fetchStudioInfo(id) {
   if (getSettings().useMock) {
@@ -248,8 +258,38 @@ export async function fetchStudioInfo(id) {
       group_count: s.group_count,
       parentStudio: s.parentStudio,
       childStudios: [],
+      ...mockWrittenFor(id),
     };
   }
   const data = await runQuery(findStudioInfoQuery(), { id: String(id) });
   return data?.findStudio ? normalizeStudioInfo(data.findStudio) : null;
+}
+
+const STUDIO_UPDATE_MUTATION = `
+  mutation StudioUpdate($input: StudioUpdateInput!) {
+    studioUpdate(input: $input) {
+      id
+      favorite
+    }
+  }
+`;
+
+/** Toggle a studio's favourite flag. Returns what the server stored. */
+export async function setStudioFavorite(id, favorite) {
+  const next = !!favorite;
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    recordMockWrite(id, { favorite: next });
+    publishRowPatch('studio', id, { favorite: next });
+    clearListCacheKind('studios');
+    return next;
+  }
+  const data = await runQuery(STUDIO_UPDATE_MUTATION, {
+    input: { id: String(id), favorite: next },
+  });
+  if (!data?.studioUpdate) throw new Error('the server returned no studio');
+  const saved = !!data.studioUpdate.favorite;
+  publishRowPatch('studio', id, { favorite: saved });
+  clearListCacheKind('studios');
+  return saved;
 }

@@ -58,17 +58,19 @@ async function run() {
   const a1 = attemptPin('0000');
   const a2 = attemptPin('0001');
   const a3 = attemptPin('0002');
-  // `retryAfterMs` is the delay the next attempt faces, so the third miss is
-  // still checked and then arms the wait.
+  // The documented contract is three free attempts; the fourth miss is the
+  // first that arms a wait. `retryAfterMs` is the delay the *next* attempt
+  // faces, so this miss is still checked and then arms it.
   check('P2 the first three misses are each checked immediately',
     !a1.ok && !a1.blocked && !a2.ok && !a2.blocked && !a3.ok && !a3.blocked,
     `blocked=${[a1, a2, a3].map(r => r.blocked).join(',')}`);
-  check('P2 delays arm after the first and second miss are zero',
-    a1.retryAfterMs === 0 && a2.retryAfterMs === 0,
-    `delays=${a1.retryAfterMs},${a2.retryAfterMs}`);
-  check('P2 the third miss arms a 1 s delay',
-    a3.retryAfterMs === 1000 && a3.failures === 3,
-    `retry=${a3.retryAfterMs} failures=${a3.failures}`);
+  check('P2 the first three misses are free',
+    a1.retryAfterMs === 0 && a2.retryAfterMs === 0 && a3.retryAfterMs === 0,
+    `delays=${a1.retryAfterMs},${a2.retryAfterMs},${a3.retryAfterMs}`);
+  const a4 = attemptPin('0003');
+  check('P2 the fourth miss arms a 1 s delay',
+    a4.retryAfterMs === 1000 && a4.failures === 4,
+    `retry=${a4.retryAfterMs} failures=${a4.failures}`);
 
   // The important one: a correct PIN during the cooldown must not unlock.
   const blocked = attemptPin('1234');
@@ -99,8 +101,9 @@ async function run() {
 
   await typePin('0001');
   await typePin('0002');
+  await typePin('0003');
   await waitFor(() => errorText().includes('wait'), 1500);
-  check('P6 the third wrong PIN names the delay',
+  check('P6 the fourth wrong PIN names the delay',
     /^Incorrect PIN, wait [12]s before trying again$/.test(errorText()),
     JSON.stringify(errorText()));
 
@@ -165,17 +168,20 @@ async function run() {
   backHost.remove();
 
   // ── 4. The ladder reaches 5 s ────────────────────────────
+  // Misses 1-3 are free, 4 and 5 cost 1 s each, and the sixth costs 5 s.
   setPin('1234');
   attemptPin('0000');
   attemptPin('0001');
   attemptPin('0002');
-  await sleep(1050);
   const fourth = attemptPin('0003');
   await sleep(1050);
   const fifth = attemptPin('0004');
-  check('P9 a fifth consecutive miss costs 5 s',
-    fourth.retryAfterMs === 1000 && fifth.retryAfterMs === 5000,
-    `fourth=${fourth.retryAfterMs} fifth=${fifth.retryAfterMs}`);
+  await sleep(1050);
+  const sixth = attemptPin('0005');
+  check('P9 the sixth consecutive miss costs 5 s',
+    fourth.retryAfterMs === 1000 && fifth.retryAfterMs === 1000
+      && sixth.retryAfterMs === 5000,
+    `fourth=${fourth.retryAfterMs} fifth=${fifth.retryAfterMs} sixth=${sixth.retryAfterMs}`);
 
   // ── 5. A resume must not paint the app before the keypad ─
   // A resumed Tizen app repaints its last frame before a state update from

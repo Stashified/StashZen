@@ -50,7 +50,19 @@ const FIND_SCENE_DETAIL_QUERY = `
       urls
       studio { id name }
       tags { id name }
-      performers { id name }
+      # The performer page draws its header from the card, and a cast chip is
+      # the one route to that page without one, so the chip has to carry the
+      # card's header fields. A scene has a handful of performers.
+      performers {
+        id
+        name
+        image_path
+        scene_count
+        country
+        birthdate
+        height_cm
+        disambiguation
+      }
       groups { scene_index group { id name } }
       galleries { id title }
       stash_ids { endpoint stash_id }
@@ -198,7 +210,18 @@ export function normalizeSceneDetail(scene) {
     urls: scene.urls || [],
     studio: scene.studio ? { id: scene.studio.id, name: scene.studio.name } : null,
     tags: (scene.tags || []).map(t => ({ id: t.id, name: t.name })),
-    performers: (scene.performers || []).map(p => ({ id: p.id, name: p.name })),
+    // A chip hands the whole row to the performer page, so it carries the
+    // header fields the card would have supplied.
+    performers: (scene.performers || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      image_path: withApiKey(p.image_path) || null,
+      scene_count: p.scene_count || 0,
+      country: p.country || null,
+      birthdate: p.birthdate || null,
+      height_cm: p.height_cm ?? null,
+      disambiguation: p.disambiguation || null,
+    })),
     // `scene_index` is the user's order inside the group, not a display detail.
     groups: (scene.groups || [])
       .map(g => ({

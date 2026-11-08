@@ -9,7 +9,7 @@
  */
 
 import { useState } from 'react';
-import { saveFilter } from '../utils/filterService.js';
+import { saveFilter, destroySavedFilter } from '../utils/filterService.js';
 import { focusFirstControl } from '../utils/focus.js';
 import { WORKING_FILTER_ID } from './tabConfig.js';
 
@@ -25,6 +25,12 @@ export function useFilterBuilder({
   mainFocus,
 }) {
   const [builderOpen, setBuilderOpen] = useState(false);
+
+  // The saved filter the builder was opened on. Delete is offered only for a
+  // row on the server: a hand-built working filter has nothing to destroy.
+  const savedFilterId = controls.filterId && controls.filterId !== WORKING_FILTER_ID
+    ? String(controls.filterId)
+    : null;
 
   const closeBuilder = () => {
     setBuilderOpen(false);
@@ -58,6 +64,28 @@ export function useFilterBuilder({
       workingFilterLabel: null,
       filterId: null,
     }));
+    closeBuilder();
+  };
+
+  // Delete the saved filter the builder was opened on, then drop every local
+  // trace of it: a stale filterId would make the next resolution ask Stash for
+  // a row that no longer exists and fetch nothing.
+  const deleteBuiltFilter = async () => {
+    const id = savedFilterId;
+    if (!id) throw new Error('No saved filter is selected');
+    const ok = await destroySavedFilter(id);
+    if (!ok) throw new Error('Stash did not delete this filter');
+    setSavedFilterEcho(prev => (prev?.id === id ? null : prev));
+    setControls(prev => ({
+      ...prev,
+      workingFilter: null,
+      workingFilterFor: null,
+      workingFilterLabel: null,
+      filterId: null,
+    }));
+    // `destroySavedFilter` clears its own cache; the epoch re-runs the hook so
+    // the deleted entry leaves the dropdown.
+    setFiltersEpoch(e => e + 1);
     closeBuilder();
   };
 
@@ -123,5 +151,7 @@ export function useFilterBuilder({
     applyWorkingFilter,
     clearWorkingFilter,
     saveBuiltFilter,
+    canDelete: !!savedFilterId,
+    deleteBuiltFilter,
   };
 }

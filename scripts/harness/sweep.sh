@@ -16,10 +16,15 @@
 #   under /tmp/diff-<label>-<name>, 50–160 MB apiece. Green drivers delete their
 #   dir; a red one keeps it. `df -h /tmp` when one stalls.
 #
-#   The drivers run in a pool, WORKERS at a time (default 3). Concurrency hung
+#   The drivers run in a pool, WORKERS at a time (default 6). Concurrency hung
 #   in the past because every run shared port 8850; each job now gets its own
 #   port and NAME dir. Drivers whose assertions read the clock (`serial=1`) run
 #   one at a time after the pool, so load cannot move their timings.
+#
+#   Six workers measured 372 s against 521 s at three (12 cores, this machine),
+#   with every driver green. The idle-commit probe flaked at six (a late async
+#   arrival inside its idle window) and is serial for that reason; raising
+#   WORKERS further needs a fresh tally.
 #
 # Usage:  bash scripts/harness/sweep.sh [--quick] <label>
 set -u
@@ -32,7 +37,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=/tmp/diff/$LABEL
 BASE_PORT=8850
 SERIAL_PORT=8889
-WORKERS=${WORKERS:-3}
+WORKERS=${WORKERS:-6}
 mkdir -p "$OUT"
 # Leftovers from an interrupted round of the same label. Safe because sweeps
 # are run one at a time; never while one is in flight.
@@ -55,7 +60,9 @@ FULL_JOBS=(
   "pagedlist|pagedlist-entry.jsx||0|0"
   # Commits per interaction: the idle tickometer and the "focus move is DOM
   # only" claim. Needs the profiling react-dom (run_one turns it on by name).
-  "commits|commits-entry.jsx||0|0"
+  # Serial: C1 counts commits in an idle window, and at six workers a late
+  # async arrival landed inside it (1 commit, a false red).
+  "commits|commits-entry.jsx||0|1"
   "boot|boot-entry.jsx||0|0"
   "markerfix|markerfix-entry.jsx||0|0"
   # The focus-move paint contract of all four classic-grid cards. Structural,
@@ -96,6 +103,8 @@ FULL_JOBS=(
   # The read-only tag/studio sheet: long-press menu, merged detail, scroll,
   # Back, and the two failure answers. App-level for the same reason.
   "info|info-entry.jsx||0|0"
+  # Test mode has no server; a quick write must still be there on reopen.
+  "mockwrites|mockwrites-entry.jsx||0|0"
   "filter|filter-entry.jsx||0|0"
   # The 0.32 server shapes: the production-date criterion, hierarchical tag
   # counts, recursive studio counts and the studio sheet's extra pills. A

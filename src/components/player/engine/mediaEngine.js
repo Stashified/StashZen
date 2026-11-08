@@ -29,7 +29,14 @@ import { createAvplayBackend } from './avplayBackend.js';
 
 export { MEDIA_EVENTS, emptyTimeRanges } from './contracts.js';
 
-const HTML5_CAPABILITIES = { mute: 'property', stats: 'full', seek: 'native' };
+// The browser accepts the full ladder. AVPlay's `setSpeed` takes discrete
+// values only, so its capabilities declare the two it can honour.
+const HTML5_CAPABILITIES = {
+  mute: 'property',
+  stats: 'full',
+  seek: 'native',
+  speedRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
+};
 
 class MediaFacade extends EventTarget {
   constructor() {
@@ -133,6 +140,17 @@ class MediaFacade extends EventTarget {
   get seekDegraded() {
     return this.kind === 'avplay' && !!this._avplay?.isSeekDegraded?.();
   }
+  /**
+   * The rate the active backend is asked to play at. Clamping to
+   * `capabilities.speedRates` is the player's job; a backend that cannot take
+   * the value returns what it actually applies.
+   */
+  setPlaybackRate(rate) {
+    const backend = this._engine;
+    if (typeof backend.setPlaybackRate === 'function') return backend.setPlaybackRate(rate);
+    return this.capabilities.speedRates?.[0] ?? 1;
+  }
+
   getMuteCapability() { return this.capabilities.mute; }
   setMuted(value) {
     const backend = this._engine;
@@ -146,11 +164,14 @@ class MediaFacade extends EventTarget {
   open(url, opts) { return this._engine.open(url, opts); }
 
   /**
-   * End the AVPlay session, if any. Not "close the active backend": the browser
-   * path tears down with the <video> unmount, and clearing its `src` here would
-   * race the JSX assignment on an engine fallback.
+   * End the AVPlay session, if any, and stop a browser element still attached.
+   * The <video> unmount is the browser path's usual teardown now that `detach`
+   * stops the element; this covers a plan that exhausted while it stayed up.
    */
-  close() { this._avplay?.close(); }
+  close() {
+    this._avplay?.close();
+    this._html5.close();
+  }
 }
 
 export function createMediaEngine() {

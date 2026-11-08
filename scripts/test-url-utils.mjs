@@ -44,11 +44,18 @@ check('a fragment keeps the key before it',
 check('a key after the fragment does not count as present',
   withApiKey('http://nas:9999/x#?apikey=OTHER') === 'http://nas:9999/x?apikey=KEY#?apikey=OTHER',
   withApiKey('http://nas:9999/x#?apikey=OTHER'));
-check('another host is untouched',
-  withApiKey('http://other:9999/x') === 'http://other:9999/x');
-check('another scheme on the same host is untouched',
-  withApiKey('https://nas:9999/x') === 'https://nas:9999/x',
+// Stash builds its media URLs on `external_host` when it is set, so they can
+// legitimately differ from the endpoint the TV talks to. Every URL passed here
+// is a media path the server itself built, and it already has the key.
+check('a media URL on another origin gets the key (external_host)',
+  withApiKey('http://other:9999/x') === 'http://other:9999/x?apikey=KEY');
+check('another scheme on the same host gets the key too',
+  withApiKey('https://nas:9999/x') === 'https://nas:9999/x?apikey=KEY',
   withApiKey('https://nas:9999/x'));
+check('a data URI is not a network asset and is untouched',
+  withApiKey('data:image/svg+xml,<svg/>') === 'data:image/svg+xml,<svg/>');
+check('a blob URL is not a network asset and is untouched',
+  withApiKey('blob:http://nas:9999/abc') === 'blob:http://nas:9999/abc');
 check('a relative path on the configured host gets the key',
   withApiKey('/x') === '/x?apikey=KEY', withApiKey('/x'));
 
@@ -72,6 +79,17 @@ check('a non-http scheme is refused',
   !normalizeEndpointUrl('ftp://nas:8087').ok, normalizeEndpointUrl('ftp://nas:8087').url);
 check('a nonsense value is refused',
   !normalizeEndpointUrl('http://').ok);
+check('a query string is refused',
+  !normalizeEndpointUrl('http://nas:8087/?a=1').ok);
+check('a bare query marker is refused',
+  !normalizeEndpointUrl('http://nas:8087/?').ok);
+check('a fragment is refused',
+  !normalizeEndpointUrl('http://nas:8087/#x').ok);
+check('embedded credentials are refused',
+  !normalizeEndpointUrl('http://user:pass@nas:8087').ok,
+  normalizeEndpointUrl('http://user:pass@nas:8087').url);
+check('a bare username is refused too',
+  !normalizeEndpointUrl('http://user@nas:8087').ok);
 
 console.log(`\n${passed}/${passed + failed} checks passed`);
 process.exit(failed === 0 ? 0 : 1);

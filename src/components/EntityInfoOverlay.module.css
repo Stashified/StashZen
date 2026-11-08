@@ -136,6 +136,55 @@
   color: var(--text-primary);
 }
 
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 30px;
+  border-bottom: 1px solid var(--border);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.actionOn {
+  color: var(--rating);
+  border-color: var(--border-strong);
+}
+
+.actionFocused {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.actionGlyph {
+  font-size: 15px;
+}
+
+.notice {
+  margin: 12px 30px 0;
+  color: var(--red);
+  font-size: 14px;
+}
+
 .counts {
   display: flex;
   flex-wrap: wrap;

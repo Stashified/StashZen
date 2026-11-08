@@ -126,6 +126,16 @@ const StatsIcon = () => (
   </Svg>
 );
 
+/* Sliders, not a gear: the gear is Settings elsewhere, and these change how
+   this scene plays. */
+const OptionsIcon = () => (
+  <Svg>
+    <path d="M4 8h7M15 8h5M4 16h5M13 16h7" />
+    <circle cx="13" cy="8" r="2" />
+    <circle cx="11" cy="16" r="2" />
+  </Svg>
+);
+
 /**
  * One rail button. `disabled` reaches both the DOM and the D-pad: a DOM-disabled
  * element is skipped as a navigation candidate (see findBestCandidate), so a
@@ -170,6 +180,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   onAddMarker,
   onToggleMute,
   onDetails,
+  onOpenOptions,
   statsOpen,
   onToggleStats,
 }, ref) {
@@ -187,19 +198,26 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
     zone: ZONE,
     onEnter: onOpenQueue,
   });
+  // Same for the options menu's close landing.
+  const optionsBtn = useFocusable({
+    id: 'player-rail-options',
+    zone: ZONE,
+    onEnter: onOpenOptions,
+  });
 
   const railElRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
     focusPlayPause: playPause.focus,
     focusQueue: queueBtn.focus,
+    focusOptions: optionsBtn.focus,
     /**
      * True while the cursor is anywhere on the rail. The player uses it to
      * refuse to auto-hide the controls; asking the rail beats the player
      * knowing its DOM.
      */
     holdsFocus: () => !!railElRef.current?.contains(document.activeElement),
-  }), [playPause.focus, queueBtn.focus]);
+  }), [playPause.focus, queueBtn.focus, optionsBtn.focus]);
 
   return (
     <div ref={railElRef} className={styles.rail} role="toolbar" aria-label="Player controls">
@@ -292,6 +310,16 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
       <RailButton id="player-rail-details" label="Details" onEnter={onDetails}>
         <DetailsIcon />
       </RailButton>
+      <button
+        ref={optionsBtn.ref}
+        type="button"
+        className={[styles.railBtn, optionsBtn.focused ? styles.focused : ''].join(' ')}
+        onClick={onOpenOptions}
+        disabled={!onOpenOptions}
+        aria-label="Playback options"
+      >
+        <OptionsIcon />
+      </button>
       {/* Toggle: the panel stays up until turned off, so the button carries
           its state. */}
       <RailButton

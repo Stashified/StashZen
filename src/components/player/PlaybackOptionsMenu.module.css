@@ -1,0 +1,138 @@
+/* A centred panel: the picture stays visible around it, and the list scrolls
+   without moving its header. The scrim is dark enough to read over any frame,
+   including the transparent AVPlay plane. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  max-height: min(640px, 80vh);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  animation: optionsIn 0.16s var(--ease-tv);
+}
+
+@keyframes optionsIn {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.header {
+  padding: 22px 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.heading {
+  font-family: var(--font-condensed);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sectionLabel {
+  padding: 10px 14px 2px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sectionHint {
+  padding: 0 14px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color 0.15s var(--ease-tv), border-color 0.15s var(--ease-tv);
+}
+
+.row:hover {
+  background: var(--bg-card);
+}
+
+.focused {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+  box-shadow: var(--focus-ring);
+}
+
+.current {
+  background: var(--accent-dim);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.check {
+  flex: 0 0 20px;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.hint {
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hint kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+}

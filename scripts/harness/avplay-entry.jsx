@@ -19,7 +19,8 @@ import { createRoot } from 'react-dom/client';
 import { useEffect, useState } from 'react';
 import VideoPlayer from '../../src/components/VideoPlayer.jsx';
 import { SKIM_STEPS } from '../../src/components/player/constants.js';
-import { setSettings } from '../../src/utils/settings.js';
+import { registry } from '../../src/hooks/useFocusable.js';
+import { getSettings, setSettings } from '../../src/utils/settings.js';
 import { installFakeAvplay } from './fakeAvplay.js';
 // The plane's rules live in the app stylesheet, so a driver that asserts on
 // them has to load it, the overlay's own class rules arrive with the
@@ -736,6 +737,135 @@ async function groupH() {
       + `video=${!!videoEl()} lastOpen=${opensH4[opensH4.length - 1] || '(none)'}`);
 }
 
+// ── I: the sitting's playback rate on AVPlay ─────────────
+// `setSpeed` is discrete and session-bound: the backend defers a rate set
+// before prepare, re-sends it after a restore, keeps it across a queue advance
+// inside the sitting, and starts a new sitting at 1x. The menu is the only
+// route, so opening and closing it is part of the same claim.
+async function groupI() {
+  const optionsDialog = () =>
+    document.querySelector('[role="dialog"][aria-label="Playback options"]');
+  const optionsButton = () => document.querySelector('button[aria-label="Playback options"]');
+  const speedRow = (rate) => registry.get(`player-options-speed-${rate}`)?.el;
+  const upNext = () => registry.get('upnext-play');
+
+  setSettings({ playbackEngine: 'tv' });
+  await remount([
+    scene({ id: '9510', stream: at('/tone9510.wav') }),
+    scene({ id: '9511', stream: at('/tone9511.wav') }),
+  ]);
+  const started = await waitFor(() => fake.state === 'PLAYING', 5000);
+  await sleep(250);
+  check('I1 a prepared AVPlay session is told 1x',
+    started && fake.speed === 1 && fake.calls.speed.includes(1),
+    `state=${fake.state} speed=${fake.speed} sent=${fake.calls.speed.join(',')}`);
+
+  check('I1 the rail offers Playback options', !!optionsButton(),
+    `button=${!!optionsButton()}`);
+  optionsButton()?.focus();
+  await sleep(80);
+  optionsButton()?.click();
+  const opened = await waitFor(() => !!optionsDialog(), 1500);
+  const onCurrent = await waitFor(() => document.activeElement === speedRow(1), 1500);
+  const rows = optionsDialog()?.querySelectorAll('[role="menuitemradio"]').length;
+  const qualityRow = (value) =>
+    registry.get(`player-options-quality-${value}`)?.el;
+  check('I2 the menu opens on 1x, with AVPlay\'s two rates and the three tiers',
+    opened && onCurrent && rows === 5 && !!speedRow(2) && !speedRow(1.25)
+      && !!qualityRow('original') && !!qualityRow('standard') && !!qualityRow('low'),
+    `open=${opened} current=${onCurrent} rows=${rows} `
+      + `2x=${!!speedRow(2)} 1.25x=${!!speedRow(1.25)} `
+      + `tiers=${['original', 'standard', 'low'].filter(v => !!qualityRow(v)).join(',')}`);
+
+  speedRow(2)?.click();
+  const closed = await waitFor(() => !optionsDialog(), 1500);
+  const applied = await waitFor(() => fake.speed === 2, 1500);
+  await sleep(100);
+  check('I3 choosing 2x reaches the native player and closes the menu',
+    closed && applied && fake.calls.speed.includes(2),
+    `closed=${closed} speed=${fake.speed} sent=${fake.calls.speed.join(',')}`);
+  check('I3 the cursor returns to the rail button',
+    document.activeElement === optionsButton(),
+    `focus="${document.activeElement?.getAttribute?.('aria-label')}"`);
+
+  // This tone plays direct, and a direct file has no tiers: choosing one is for
+  // the next transcode, so the native session must not be reopened for it.
+  const directOpens = AVPLAY_OPENS().length;
+  optionsButton()?.click();
+  await waitFor(() => !!optionsDialog(), 1500);
+  qualityRow('low')?.click();
+  await waitFor(() => !optionsDialog(), 1500);
+  await sleep(500);
+  check('I3b a quality change on a direct file keeps the native session',
+    AVPLAY_OPENS().length === directOpens
+      && getSettings().transcodeQuality === 'low',
+    `opens=${AVPLAY_OPENS().length} (was ${directOpens}) `
+      + `quality=${getSettings().transcodeQuality}`);
+  setSettings({ transcodeQuality: 'original' });
+
+  // A restore is a new native session and forgets the rate; hiding the app must
+  // not silently return a 2x sitting to 1x.
+  const restoresBefore = fake.calls.restore.length;
+  let visibility = 'hidden';
+  try {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true, get: () => visibility,
+    });
+  } catch (e) { /* the prototype getter is what the backend reads */ }
+  document.dispatchEvent(new Event('visibilitychange'));
+  await sleep(500);
+  visibility = 'visible';
+  document.dispatchEvent(new Event('visibilitychange'));
+  const restored = await waitFor(
+    () => fake.calls.restore.length > restoresBefore && fake.state === 'PLAYING', 3000);
+  await sleep(200);
+  try { delete document.visibilityState; } catch (e) { /* keep the override */ }
+  check('I4 a hide and return keeps the sitting at 2x',
+    restored && fake.speed === 2 && fake.calls.speed.includes(2),
+    `restored=${restored} speed=${fake.speed} sent=${fake.calls.speed.join(',')}`);
+
+  // The up-next card is a dialog-less focus claim, so the options menu must
+  // hold it back: two surfaces offering keys at once would fight for the
+  // cursor. With the menu closed it must appear, or the guard would pass by
+  // accident on a card that never draws at all.
+  optionsButton()?.focus();
+  await sleep(80);
+  optionsButton()?.click();
+  await waitFor(() => !!optionsDialog(), 1500);
+  fake.positionMs = 590000;
+  fake.advance(0);
+  await sleep(600);
+  const heldBack = !upNext();
+  press('Backspace', 10009);
+  await waitFor(() => !optionsDialog(), 1500);
+  const drewAfter = await waitFor(() => !!upNext(), 2500);
+  check('I5 the up-next card waits under the menu, then draws once it closes',
+    heldBack && drewAfter,
+    `under=${!heldBack} after=${drewAfter}`);
+  press('Escape', 27);
+  await waitFor(() => !upNext(), 1500);
+
+  // The rate is the sitting's, not the file's: a queue advance keeps it.
+  const opensBefore = AVPLAY_OPENS().length;
+  await stepNext();
+  const advanced = await waitFor(
+    () => AVPLAY_OPENS().length > opensBefore
+      && AVPLAY_OPENS()[AVPLAY_OPENS().length - 1].endsWith('/tone9511.wav')
+      && fake.state === 'PLAYING', 5000);
+  await sleep(250);
+  check('I6 a queue advance keeps the sitting at 2x',
+    advanced && fake.speed === 2, `advanced=${advanced} speed=${fake.speed}`);
+
+  // A new mount is a new sitting, and the player's own state is the only
+  // holder: 1x, not whatever the last session used.
+  await remount([scene({ id: '9512', stream: at('/tone9512.wav') })]);
+  const fresh = await waitFor(() => fake.state === 'PLAYING', 5000);
+  await sleep(250);
+  check('I7 a new sitting starts at 1x',
+    fresh && fake.speed === 1 && fake.calls.speed.includes(1),
+    `fresh=${fresh} speed=${fake.speed} sent=${fake.calls.speed.join(',')}`);
+}
+
 setSettings({
   useMock: false,
   stashUrl: `http://127.0.0.1:${PORT}`,
@@ -757,6 +887,7 @@ async function run() {
   await groupF();
   await groupG();
   await groupH();
+  await groupI();
   await unmountPlayer();
 }
 

@@ -36,13 +36,20 @@ check('no chips returns the base object', none === base);
 const unknown = combineQuickFilters(base, scenes, ['nope']);
 check('an unknown chip id is ignored', unknown === base);
 
+// Watch time or a resume point can exist with no view-date row, so the chip
+// requires all three activity fields to be empty.
+const unwatched = {
+  play_count: { value: 0, modifier: 'EQUALS' },
+  play_duration: { value: 0, modifier: 'EQUALS' },
+  resume_time: { value: 0, modifier: 'EQUALS' },
+};
 const one = combineQuickFilters(null, scenes, ['unwatched']);
 check('one chip on no base is the criterion itself',
-  eq(one, { play_count: { value: 0, modifier: 'EQUALS' } }), JSON.stringify(one));
+  eq(one, unwatched), JSON.stringify(one));
 
 const both = combineQuickFilters(null, scenes, ['unwatched', 'markers']);
 check('chips on no base merge at the top level',
-  eq(both, { play_count: { value: 0, modifier: 'EQUALS' }, has_markers: 'true' }),
+  eq(both, { ...unwatched, has_markers: 'true' }),
   JSON.stringify(both));
 
 const folded = combineQuickFilters(base, scenes, ['rated4']);
@@ -67,6 +74,21 @@ check('addedThisYear starts at January 1 as a String',
 
 check('galleries carry no scene-only chip',
   !QUICK_FILTERS.galleries.some(d => d.id === 'unwatched' || d.id === 'markers'));
+
+// A performer's page is already scoped to one performer, so it drops the
+// favourite chip: it would either match every scene (they are favourite) or
+// filter by a co-star. Everything else stays, in the Scenes order.
+check('performer scenes use the Scenes row without the favourite chip',
+  eq(QUICK_FILTERS.performerScenes.map(d => d.id),
+    QUICK_FILTERS.scenes.map(d => d.id).filter(id => id !== 'favorites')));
+const performerBase = { performers: { value: ['7'], modifier: 'INCLUDES' } };
+check('a chip folds into the performer criterion',
+  eq(combineQuickFilters(performerBase, QUICK_FILTERS.performerScenes, ['unwatched']), {
+    AND: { AND: performerBase, ...unwatched },
+  }),
+  JSON.stringify(combineQuickFilters(performerBase, QUICK_FILTERS.performerScenes, ['unwatched'])));
+check('the favourite chip is ignored on the performer page',
+  combineQuickFilters(performerBase, QUICK_FILTERS.performerScenes, ['favorites']) === performerBase);
 
 // Stash spells the performer favourite flag `filter_favorites`, while the tag
 // and studio filter types use `favorite`; getting the pair backwards is a

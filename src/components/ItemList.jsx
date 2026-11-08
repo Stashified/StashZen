@@ -54,6 +54,9 @@ const Row = memo(function Row({ item, index, list, onSelect, onLongPress, view }
 
   const src = view.rowImage ? view.rowImage(item) : view.getImage?.(item);
   const portrait = view.aspect === 'portrait';
+  // Same star as the cards: a favourite is visible before the sheet is opened.
+  // At the row's end, not over the art: a portrait studio logo sits there.
+  const favorite = view.isFavorite?.(item);
 
   // One closure for Enter and click, so the two cannot drift apart.
   const activate = () => {
@@ -104,6 +107,7 @@ const Row = memo(function Row({ item, index, list, onSelect, onLongPress, view }
       </span>
 
       {badge && <span className={styles.badge}>{badge}</span>}
+      {favorite && <span className={styles.favorite} aria-label="Favorite">★</span>}
     </button>
   );
 });

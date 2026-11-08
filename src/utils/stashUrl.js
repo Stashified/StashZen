@@ -19,8 +19,11 @@
  * Test-mode covers are inline SVG data URIs (`mockArt.js`), so they never reach
  * the network and there is nothing to rewrite.
  *
- * Only URLs on the configured Stash host are rewritten; mock and genuinely
- * external assets pass through untouched.
+ * Any http(s) URL is rewritten, not only one on the configured host. Every URL
+ * passed here is a media path the server built, and Stash builds those on
+ * `external_host` when it is set, which can differ from the endpoint the TV
+ * uses. The server already receives the key, so its own media URLs may carry
+ * it too. Data URIs and other non-network assets are left alone.
  */
 
 import { getSettings } from './settings.js';
@@ -49,13 +52,17 @@ export function withApiKey(url) {
   const { stashUrl, stashKey } = getSettings();
   if (!stashKey) return url;
 
+  let parsed;
   try {
-    // Origin, not host: another scheme on the same host is another server.
-    if (new URL(base, stashUrl).origin !== new URL(stashUrl).origin) return url;
+    parsed = new URL(base, stashUrl || undefined);
   } catch (e) {
-    // Unparseable, or no usable base, leave it alone rather than guess.
+    // Unparseable, or a relative path with no usable base. Leave it alone
+    // rather than guess.
     return url;
   }
+  // The origin is deliberately not compared with `stashUrl`: with
+  // `external_host` set, Stash returns its own media on another origin.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return url;
 
   const sep = base.includes('?') ? '&' : '?';
   return `${base}${sep}apikey=${encodeURIComponent(stashKey)}${fragment}`;

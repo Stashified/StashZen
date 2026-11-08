@@ -368,8 +368,10 @@ check('stem: surrounding whitespace is not part of the caption',
 const rows = buildImageInfoRows(IM);
 const keys = rows.map(r => r.key);
 check('info: every populated field becomes a row, in order',
+  // Rating and likes are not rows: the info panel carries live controls for
+  // them now, and a second read-only copy would have to lie during a write.
   JSON.stringify(keys) === JSON.stringify([
-    'studio', 'photographer', 'code', 'resolution', 'size', 'rating', 'likes',
+    'studio', 'photographer', 'code', 'resolution', 'size',
     'tags', 'performers', 'galleries', 'details',
   ]),
   keys.join(','));

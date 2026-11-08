@@ -152,6 +152,70 @@
   font-size: 15px;
 }
 
+.editControls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editLabel {
+  flex: 0 0 64px;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editBtn {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.editMuted {
+  opacity: 0.3;
+}
+
+.editFocused {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+  color: #fff;
+  box-shadow: var(--focus-ring);
+}
+
+.editValue {
+  min-width: 42px;
+  text-align: center;
+  color: var(--text-primary);
+  font-family: var(--font-condensed);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.editNotice {
+  margin: 0 0 14px;
+  color: var(--red);
+  font-size: 14px;
+}
+
 .infoRows {
   margin: 0;
   display: flex;

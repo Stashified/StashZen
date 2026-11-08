@@ -84,47 +84,56 @@ const scanned = cssFiles.map(name => {
 });
 
 const binary = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'doiuse.cmd' : 'doiuse');
-const result = spawnSync(
-  binary,
-  ['--browsers', COMPAT_TARGET, '--ignore', COMPAT_CSS_IGNORES.join(','), ...scanned.map(file => file.copy)],
-  { encoding: 'utf8' },
-);
+const baseArgs = ['--browsers', COMPAT_TARGET, '--ignore', COMPAT_CSS_IGNORES.join(',')];
+
+// One process per file. doiuse's CLI pipes every input into one shared output
+// stream and ends it when the first input finishes, so a single run drops the
+// findings of files still being parsed. main-*.css is last in readdir order,
+// and its tail went unscanned while the check still reported success.
+const findings = [];
+let scanError = null;
+for (const file of scanned) {
+  const result = spawnSync(binary, [...baseArgs, file.copy], { encoding: 'utf8' });
+  if (result.error) {
+    scanError = [`Could not run doiuse: ${result.error.message}`];
+    break;
+  }
+  // doiuse exits 0 even when it reports features (the findings are the
+  // report), so a non-zero status means the tool itself did not finish.
+  if (result.status !== 0) {
+    scanError = [`doiuse exited with status ${result.status}; the CSS scan did not complete.`];
+    if (result.stdout) scanError.push(result.stdout);
+    if (result.stderr) scanError.push(result.stderr);
+    break;
+  }
+
+  const lines = `${result.stdout || ''}${result.stderr || ''}`
+    .split('\n')
+    .filter(line => line.trim());
+
+  // A tokenizer note means doiuse stopped parsing this file, so every rule
+  // after it went unscanned. Filtering it as noise turns a partial scan into a
+  // green check; a healthy bundle has no such note, so any is a failure.
+  const tokenizerNotes = lines.filter(line => line.startsWith('[css-tokenize]'));
+  if (tokenizerNotes.length) {
+    scanError = [
+      ...tokenizerNotes,
+      'CSS: doiuse could not tokenize the built stylesheet; the scan is incomplete.',
+    ];
+    break;
+  }
+
+  // Point the report back at dist/assets.
+  const source = path.relative(root, file.source);
+  for (const line of lines) findings.push(line.split(file.copy).join(source));
+}
 
 rmSync(tempDir, { recursive: true, force: true });
 
-if (result.error) {
-  console.error(`Could not run doiuse: ${result.error.message}`);
+if (scanError) {
+  for (const line of scanError) console.error(line);
   process.exit(1);
 }
-// doiuse exits 0 even when it reports features (the findings are the report),
-// so a non-zero status means the tool itself did not finish.
-if (result.status !== 0) {
-  console.error(`doiuse exited with status ${result.status}; the CSS scan did not complete.`);
-  if (result.stdout) console.error(result.stdout);
-  if (result.stderr) console.error(result.stderr);
-  process.exit(1);
-}
-
-const lines = `${result.stdout || ''}${result.stderr || ''}`
-  .split('\n')
-  .filter(line => line.trim());
-
-// A tokenizer note means doiuse stopped parsing part of the bundle, so every
-// rule after it went unscanned. Filtering it as noise turns a partial scan into
-// a green check; a healthy bundle has no such note, so any is a failure.
-const tokenizerNotes = lines.filter(line => line.startsWith('[css-tokenize]'));
-if (tokenizerNotes.length) {
-  for (const line of tokenizerNotes) console.error(line);
-  console.error('CSS: doiuse could not tokenize the built stylesheet; the scan is incomplete.');
-  process.exit(1);
-}
-
-// Point the report back at dist/assets.
-let output = lines;
-for (const file of scanned) {
-  output = output.map(line => line.split(file.copy).join(path.relative(root, file.source)));
-}
-const findings = output;
 
 /**
  * Every `contain-intrinsic-size: auto <length>` needs the bare-length form

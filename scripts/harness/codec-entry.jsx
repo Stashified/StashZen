@@ -257,6 +257,36 @@ function checkClassification() {
     noOriginal[0] === REAL[9].url && noOriginal[1] === REAL[3].url,
     `chose ${noOriginal.map(labelOf).join(', ')}`);
 
+  // The quality setting picks a tier per format, and the fallbacks keep the
+  // format alive when the server has not generated it. Only the transcode path
+  // is affected: the direct file above is chosen before any of this.
+  const standard = pickTranscodeUrls(REAL, 'standard');
+  check('K5 standard asks every format for its STANDARD transcode',
+    standard[0] === REAL[9].url && standard[1] === REAL[3].url
+      && standard[2] === REAL[6].url,
+    `chose ${standard.map(labelOf).join(', ')}`);
+
+  const low = pickTranscodeUrls(REAL, 'low');
+  check('K5 low asks every format for its LOW transcode',
+    low[0] === REAL[10].url && low[1] === REAL[4].url && low[2] === REAL[7].url,
+    `chose ${low.map(labelOf).join(', ')}`);
+
+  const noStandard = REAL.filter(e => !/resolution=STANDARD/.test(e.url));
+  check('K5 standard falls back to ORIGINAL when no STANDARD row exists',
+    pickTranscodeUrls(noStandard, 'standard')[0] === REAL[8].url,
+    `chose ${pickTranscodeUrls(noStandard, 'standard').map(labelOf).join(', ')}`);
+
+  const noLow = REAL.filter(e => !/resolution=LOW/.test(e.url));
+  check('K5 low falls back to STANDARD before ORIGINAL',
+    pickTranscodeUrls(noLow, 'low')[0] === REAL[9].url,
+    `chose ${pickTranscodeUrls(noLow, 'low').map(labelOf).join(', ')}`);
+
+  const everyQuality = ['original', 'standard', 'low']
+    .flatMap(q => pickTranscodeUrls(REAL, q));
+  check('K5 neither the original file nor its remux is chosen at any quality',
+    !everyQuality.includes(REAL[0].url) && !everyQuality.includes(REAL[1].url),
+    `offered ${[...new Set(everyQuality)].map(labelOf).join(', ')}`);
+
   check('K5 a server with no endpoints at all yields no URLs',
     pickTranscodeUrls([]).length === 0
       && pickTranscodeUrls(null).length === 0
@@ -447,6 +477,38 @@ async function runPlayer() {
     i2Text.slice(0, 140));
   toggleStats();
   await sleep(400);
+
+  // ── I2b: a tier change re-sources the transcode at the playhead ──
+  // I2 is playing a transcode, the one case where the choice has a stream to
+  // change. The dialog is clicked directly (the codec driver never needs the
+  // D-pad for it); the resolver must land on the MP4 LOW row, because Firefox
+  // refuses HLS and the server offers no HLS tier.
+  const v2 = videoEl();
+  v2.currentTime = 8;
+  const qSeeked = await waitFor(() => Math.abs(v2.currentTime - 8) < 1, 2500);
+  await sleep(500);            // a timeupdate carries the position into the ref
+  const qualityOption = (text) => [...document.querySelectorAll(
+    '[role="dialog"][aria-label="Playback options"] button')]
+    .find(b => b.textContent.trim().startsWith(text));
+  document.querySelector('button[aria-label="Playback options"]')?.click();
+  const tierMenu = await waitFor(
+    () => !!document.querySelector('[role="dialog"][aria-label="Playback options"]'), 1500);
+  qualityOption('Low')?.click();
+  const lowSrc = await waitFor(
+    () => acceptedSrc().includes('stream.mp4')
+      && acceptedSrc().includes('resolution=LOW'), 9000);
+  await waitFor(() => hasData(), 5000);
+  await sleep(600);
+  const at2 = videoEl()?.currentTime ?? 0;
+  check('I2b changing the tier re-sources the transcode at the requested tier',
+    tierMenu && lowSrc, `menu=${tierMenu} src=${acceptedSrc()}`);
+  check('I2b ...without restarting the scene',
+    qSeeked && at2 >= 5,
+    `currentTime=${at2.toFixed(1)}s after seeking to 8s `
+      + `(a reload from zero lands near 0.5)`);
+  // Back to the harness default for the rest of the run; the next mount is a
+  // new plan and will read it.
+  setSettings({ transcodeQuality: 'original' });
 
   // ── I3: the reactive half ────────────────────────────────
   // Codec fine, file dead. Nothing about the metadata predicts this, which is

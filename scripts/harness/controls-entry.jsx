@@ -21,7 +21,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import VideoPlayer from '../../src/components/VideoPlayer.jsx';
 import { useKeyHandler } from '../../src/hooks/useKeyHandler.js';
 import { useFocusable, registry } from '../../src/hooks/useFocusable.js';
-import { setSettings } from '../../src/utils/settings.js';
+import { getSettings, setSettings } from '../../src/utils/settings.js';
 
 const PORT = window.__PORT__;
 const results = [];
@@ -1666,6 +1666,104 @@ async function run() {
     applied && video()?.paused === false,
     `paused=${video()?.paused} currentTime=${video()?.currentTime?.toFixed(2)} — the ` +
     'per-open findScene reports 22, so the value RS5 declined demonstrably arrives');
+
+  // ── O: the playback-options menu on the browser engine ───
+  // The browser engine offers the whole ladder, and `playbackRate` on the
+  // element is the observable. The rate is player-session state: it survives a
+  // queue advance and dies with the sitting, so a fresh mount is back at 1x.
+  window.__mountQueue(QUEUE3, 7);
+  await sleep(1400);
+  const optionsBtn = () => registry.get('player-rail-options')?.el;
+  const optionsDialog = () =>
+    document.querySelector('[role="dialog"][aria-label="Playback options"]');
+  const speedRow = (rate) => registry.get(`player-options-speed-${rate}`)?.el;
+
+  check('O1 Options is a rail stop',
+    !!optionsBtn() && !!byLabel('Playback options', rail()),
+    `registry=${!!optionsBtn()} button=${!!byLabel('Playback options', rail())}`);
+
+  focusRailButton('player-rail-options');
+  await sleep(80);
+  ok();
+  const optsOpened = await waitFor(() => !!optionsDialog(), 1500);
+  const optsOnCurrent = await waitFor(() => document.activeElement === speedRow(1), 1500);
+  const rateRows = optionsDialog()?.querySelectorAll('[role="menuitemradio"]').length;
+  const qualityRow = (value) => registry.get(`player-options-quality-${value}`)?.el;
+  check('O2 OK opens the menu on the current rate, with the browser\'s full ladder',
+    optsOpened && optsOnCurrent && rateRows === 9
+      && !!speedRow(0.5) && !!speedRow(1.25) && !!speedRow(2)
+      && !!qualityRow('original') && !!qualityRow('standard') && !!qualityRow('low'),
+    `open=${optsOpened} current=${optsOnCurrent} rows=${rateRows} `
+      + `0.5=${!!speedRow(0.5)} 1.25=${!!speedRow(1.25)} 2=${!!speedRow(2)} `
+      + `tiers=${['original', 'standard', 'low'].filter(v => !!qualityRow(v)).join(',')}`);
+
+  press(document.activeElement, 'ArrowDown', 40);
+  await sleep(120);
+  const movedRate = document.activeElement === speedRow(1.25);
+  press(document.activeElement, 'Enter', 13);
+  const optsClosed = await waitFor(() => !optionsDialog(), 1500);
+  const rateApplied = await waitFor(() => video()?.playbackRate === 1.25, 1500);
+  check('O3 Down walks the rows and OK applies the rate to the element',
+    movedRate && optsClosed && rateApplied,
+    `moved=${movedRate} closed=${optsClosed} rate=${video()?.playbackRate}`);
+  await sleep(120);
+  check('O3 ...and the cursor returns to the rail button',
+    document.activeElement === optionsBtn(),
+    `focus="${document.activeElement?.getAttribute?.('aria-label')}"`);
+
+  // A direct file is not transcoded, so a tier change is for the next scene
+  // only: it must persist and must not re-source this one. `loadstart` is the
+  // element's own proof of a reload; the URL staying put alone would not be.
+  const qEl = video();
+  let qReloads = 0;
+  const onQLoadStart = () => { qReloads += 1; };
+  qEl.addEventListener('loadstart', onQLoadStart);
+  const qSrcBefore = qEl.src;
+  focusRailButton('player-rail-options');
+  await sleep(80);
+  ok();
+  await waitFor(() => !!optionsDialog(), 1500);
+  qualityRow('standard')?.click();
+  await waitFor(() => !optionsDialog(), 1500);
+  await sleep(800);
+  qEl.removeEventListener('loadstart', onQLoadStart);
+  check('O3b a quality change on a direct file persists without a reload',
+    qReloads === 0 && video()?.src === qSrcBefore
+      && getSettings().transcodeQuality === 'standard',
+    `reloads=${qReloads} sameSrc=${video()?.src === qSrcBefore} `
+      + `quality=${getSettings().transcodeQuality}`);
+  // Back to the harness default for the rest of the run.
+  focusRailButton('player-rail-options');
+  await sleep(80);
+  ok();
+  await waitFor(() => !!optionsDialog(), 1500);
+  qualityRow('original')?.click();
+  await waitFor(() => !optionsDialog(), 1500);
+
+  // The menu is a dialog: Back closes it, not the player, and the rail takes
+  // the cursor back or the auto-hide leaves nothing focused.
+  const closedBeforeOptions = closedCount;
+  focusRailButton('player-rail-options');
+  await sleep(80);
+  ok();
+  await waitFor(() => !!optionsDialog(), 1500);
+  press(document.activeElement, 'Backspace', 10009);
+  const closedByOptionsBack = await waitFor(() => !optionsDialog(), 1500);
+  await sleep(120);
+  check('O4 Back closes the menu, not the player, and returns to the rail',
+    closedByOptionsBack && closedCount === closedBeforeOptions
+      && document.activeElement === optionsBtn(),
+    `closed=${closedByOptionsBack} playerClosed += `
+      + `${closedCount - closedBeforeOptions} `
+      + `focus="${document.activeElement?.getAttribute?.('aria-label')}"`);
+
+  // A fresh mount is a new sitting. Without the reset, the last session's rate
+  // would carry into a scene the user never chose it for.
+  window.__mountQueue(QUEUE, 8);
+  await sleep(1400);
+  check('O5 a new sitting starts at 1x',
+    (video()?.playbackRate ?? 0) === 1 && video()?.paused === false,
+    `rate=${video()?.playbackRate} paused=${video()?.paused}`);
 
   await finish();
 }

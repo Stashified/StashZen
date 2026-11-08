@@ -9,7 +9,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseDotenv, scanBundle, checkBundle } from './check-bundle.mjs';
+import { parseDotenv, scanBundle, checkBundle, readViteEnv } from './check-bundle.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -49,6 +49,32 @@ try {
   mkdirSync(join(dist, 'assets'), { recursive: true });
   writeFileSync(join(dist, 'index.html'), '<html><script src="./assets/app.js"></script></html>');
   writeFileSync(join(dist, 'assets', 'app.js'), 'console.log("hello");');
+
+  {
+    // The documented file is `.env`, not `.env.production`, and Vite merges
+    // every file below in this order.
+    const envDir = join(root, 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, '.env'), 'VITE_STASH_API_KEY=from-env\nVITE_USE_MOCK=true\n');
+    writeFileSync(join(envDir, '.env.local'), 'VITE_STASH_API_KEY=from-local\n');
+    writeFileSync(join(envDir, '.env.production'), 'VITE_STASH_API_KEY=from-prod\n');
+    const got = readViteEnv(envDir);
+    check('readViteEnv: every Vite file, in precedence order',
+      got.files.join(',') === '.env,.env.local,.env.production', got.files.join(','));
+    check('readViteEnv: a later file overrides an earlier one',
+      got.env.VITE_STASH_API_KEY === 'from-prod', got.env.VITE_STASH_API_KEY);
+    check('readViteEnv: other variables survive the merge',
+      got.env.VITE_USE_MOCK === 'true', got.env.VITE_USE_MOCK);
+
+    const only = join(root, 'env-key-only');
+    mkdirSync(only, { recursive: true });
+    writeFileSync(join(only, '.env'), 'VITE_STASH_API_KEY=only-key\n');
+    check('readViteEnv: a key only in .env is found',
+      readViteEnv(only).env.VITE_STASH_API_KEY === 'only-key');
+
+    check('readViteEnv: no files means no text',
+      readViteEnv(join(root, 'env-none')).text === null);
+  }
 
   {
     const scan = scanBundle({ distDir: dist, secret: FAKE_KEY });
@@ -133,6 +159,20 @@ try {
     });
     check('CI refuses a present .env.production', res.ok === false);
     check('CI reports .env.production', res.lines.some(l => l.includes('.env.production')));
+  }
+
+  {
+    // The guard used to know only .env.production; a CI run carrying `.env`
+    // (the file the README documents) must be refused too.
+    const res = checkBundle({
+      distDir: dist,
+      envText: 'VITE_STASH_API_KEY=' + FAKE_KEY,
+      envFiles: ['.env'],
+      secret: FAKE_KEY,
+      isCI: true,
+    });
+    check('CI refuses any Vite env file', res.ok === false);
+    check('CI names the file it found', res.lines.some(l => l.includes('.env')));
   }
 
   {

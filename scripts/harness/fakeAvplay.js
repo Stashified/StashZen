@@ -41,6 +41,8 @@ export function installFakeAvplay({
   let listener = null;
   let timer = null;
   let lastTick = 0;
+  // A new native session starts at 1x; the backend must re-send its rate.
+  let speed = 1;
   // During a `slowSeek` the engine decodes the new position and the clock is
   // frozen, as on the TV; the coalescer must wait rather than re-issue.
   let seekHoldUntil = 0;
@@ -60,6 +62,7 @@ export function installFakeAvplay({
     displayMethod: [],
     displayRect: [],
     setVolume: [],
+    speed: [],
     videoPresentAtOpen: [],
     prepareCalls: 0,
     errors: [],
@@ -115,6 +118,7 @@ export function installFakeAvplay({
       state = 'OPENED';
       positionMs = 0;
       completed = false;
+      speed = 1;
       // A new session does not inherit the last one's seek hold.
       seekHoldUntil = 0;
     },
@@ -230,6 +234,16 @@ export function installFakeAvplay({
       setTimeout(() => onSuccess?.(), 10);
     },
 
+    setSpeed(rate) {
+      // Measured shape: refused unless a session is prepared.
+      if (state === 'IDLE' || state === 'OPENED' || state === 'PREPARING') {
+        throw new Error('setSpeed needs a prepared session');
+      }
+      if (mode.has('speedThrow')) throw new Error('speed refused');
+      calls.speed.push(rate);
+      speed = rate;
+    },
+
     getState: () => state,
     getCurrentTime: () => Math.round(positionMs),
     getDuration: () => duration,
@@ -246,6 +260,8 @@ export function installFakeAvplay({
       if (state === 'SUSPENDED') {
         state = mode.has('restoreStaysPaused') ? 'PAUSED' : 'PLAYING';
       }
+      // A restore is a new native session, so it forgets the rate.
+      speed = 1;
     },
   };
 
@@ -284,6 +300,7 @@ export function installFakeAvplay({
     tvCalls,
     mode,
     get state() { return state; },
+    get speed() { return speed; },
     setState(next) { state = next; },
     get positionMs() { return positionMs; },
     set positionMs(ms) { positionMs = ms; },

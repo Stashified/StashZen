@@ -282,9 +282,20 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
             // arrived would be a partial list with a hole at the top.
             blockedRef.current = true;
             loadingRef.current = false;
+            // Drop the carried rows: every consumer shows this error only when
+            // the list is empty, so leaving them showed the replaced query's
+            // results as if they were the new one's, with no error at all when
+            // they filled the old total.
+            seenIdsRef.current = new Set();
+            itemsLenRef.current = 0;
+            totalRef.current = 0;
+            seededRef.current = false;
             setRetrying(false);
             setError(e.message);
             setLoading(false);
+            setItems([]);
+            setTotal(0);
+            setEnded(true);
             return;
           }
           setRetrying(true);

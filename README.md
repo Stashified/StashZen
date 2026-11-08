@@ -114,7 +114,7 @@ under **Settings → Connection setup → Run setup again**.
   row adds one-press chips like Unwatched, Rated 4+ and Has markers; Performers, Tags and
   Studios carry their own (Favourites, Rated 4+).
 - **Stash 0.32**: scenes show and filter by production date, tag count filters can include
-  child tags, studio counts include child studios, and new sorts cover production date, likes,
+  child tags, studio counts include child studios, and new sorts cover production date, O count,
   performer count, marker count and performer age. Older servers hide these.
 - **Random scene**: on Scenes, plays one random scene through the current filter and search.
 - **Focus previews**: the focused scene card plays its Stash preview, muted. Turn it off in

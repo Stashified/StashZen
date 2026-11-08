@@ -110,6 +110,14 @@ check('production_date is a Common date criterion on 0.32',
 check('production_date is absent on 0.31',
   !criteriaFor('SceneFilterType', '0.31.1').some(d => d.field === 'production_date'));
 
+const isMissing32 = scene32.find(d => d.field === 'is_missing');
+const isMissing31 = criteriaFor('SceneFilterType', '0.31.1').find(d => d.field === 'is_missing');
+check('the is_missing vocabulary offers production_date on 0.32',
+  isMissing32?.vocabulary.includes('production_date') === true,
+  `${isMissing32?.vocabulary?.length} names`);
+check('the is_missing vocabulary leaves it out on 0.31',
+  isMissing31?.vocabulary.includes('production_date') === false);
+
 const tagCount32 = criteriaFor('TagFilterType', '0.32.0').find(d => d.field === 'scene_count');
 check('a 0.32 tag count uses the hierarchical-count editor',
   tagCount32?.editor === EDITOR.HIERARCHICAL_COUNT, `editor ${tagCount32?.editor}`);

@@ -15,15 +15,40 @@ import { MEDIA_EVENTS, emptyTimeRanges } from './contracts.js';
 export function createHtml5Backend({ emit }) {
   let el = null;
   const handlers = new Map();
+  // The player's chosen rate, kept on the backend because `load()` resets the
+  // element's rate to `defaultPlaybackRate`, so the value must survive a source
+  // change and be reapplied every time an element is attached or opened.
+  let desiredRate = 1;
+
+  function applyRate() {
+    if (!el) return;
+    try {
+      el.defaultPlaybackRate = desiredRate;
+      el.playbackRate = desiredRate;
+    } catch (e) {
+      // An element can refuse a rate; the next attach/open retries.
+    }
+  }
+
+  // A media element removed from the document keeps playing its audio until it
+  // is paused and unloaded. React drops the <video> on unmount and on an engine
+  // switch, so detaching has to stop it first.
+  function stop(target) {
+    if (!target) return;
+    try { target.pause(); } catch (e) { /* not playing */ }
+    try { target.removeAttribute('src'); target.load(); } catch (e) { /* teardown */ }
+  }
 
   function detach() {
-    if (el) {
+    const previous = el;
+    el = null;
+    if (previous) {
       for (const [type, handler] of handlers) {
-        el.removeEventListener(type, handler);
+        previous.removeEventListener(type, handler);
       }
+      stop(previous);
     }
     handlers.clear();
-    el = null;
   }
 
   function attach(next) {
@@ -35,6 +60,7 @@ export function createHtml5Backend({ emit }) {
       handlers.set(type, handler);
       el.addEventListener(type, handler);
     }
+    applyRate();
   }
 
   return {
@@ -45,12 +71,13 @@ export function createHtml5Backend({ emit }) {
       if (!el || !url) return;
       el.src = url;
       el.load();
+      // `load()` resets `playbackRate` to `defaultPlaybackRate`; set both again
+      // so a scene change keeps the chosen speed.
+      applyRate();
     },
 
     close() {
-      if (!el) return;
-      try { el.pause(); } catch (e) { /* no source */ }
-      try { el.removeAttribute('src'); el.load(); } catch (e) { /* teardown */ }
+      stop(el);
     },
 
     get paused() { return el ? el.paused : true; },
@@ -80,6 +107,12 @@ export function createHtml5Backend({ emit }) {
     play() {
       if (!el) return Promise.resolve();
       return el.play();
+    },
+    setPlaybackRate(rate) {
+      const n = Number(rate);
+      desiredRate = Number.isFinite(n) && n > 0 ? n : 1;
+      applyRate();
+      return desiredRate;
     },
     pause() {
       if (el) el.pause();

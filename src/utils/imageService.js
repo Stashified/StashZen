@@ -23,8 +23,9 @@ import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { getSettings } from './settings.js';
 import { createEntityService } from './entityService.js';
-import { createListCache, listCacheKey } from './listCache.js';
+import { clearListCacheKind, createListCache, listCacheKey } from './listCache.js';
 import { filenameStem, ratingLabel } from './format.js';
+import { publishRowPatch } from './rowPatches.js';
 
 const MOCK_EPOCH = Date.UTC(2024, 0, 1);
 const MOCK_IMAGE_COUNT = 120;
@@ -142,6 +143,7 @@ const FIND_IMAGE_INFO_QUERY = `
       details
       code
       rating100
+      organized
       o_counter
       studio {
         id
@@ -189,6 +191,7 @@ export function normalizeImageDetail(im) {
     details: im.details || null,
     code: im.code || null,
     rating100: im.rating100 ?? null,
+    organized: !!im.organized,
     oCounter: im.o_counter || 0,
     studio: im.studio ? { id: im.studio.id, name: im.studio.name } : null,
     photographer: im.photographer || null,
@@ -217,6 +220,7 @@ function mockImageInfo(image) {
     details: null,
     code: null,
     rating100: image?.rating ? Math.round(Number(image.rating) * 10) : null,
+    organized: false,
     oCounter: image?.o_counter || 0,
     studio: null,
     photographer: null,
@@ -233,6 +237,14 @@ function mockImageInfo(image) {
   };
 }
 
+// Test mode has no server to read back: remember writes so reopening the
+// panel shows them.
+const mockWritten = new Map();
+const mockWrittenFor = (id) => mockWritten.get(String(id)) || {};
+const recordMockWrite = (id, patch) => {
+  mockWritten.set(String(id), { ...mockWrittenFor(id), ...patch });
+};
+
 const imageInfoCache = createListCache();
 
 /**
@@ -245,11 +257,139 @@ const imageInfoCache = createListCache();
 export async function fetchImageInfo(image) {
   const id = typeof image === 'object' && image ? image.id : image;
   if (!id) return null;
-  if (getSettings().useMock) return mockImageInfo(typeof image === 'object' ? image : null);
+  if (getSettings().useMock) {
+    return {
+      ...mockImageInfo(typeof image === 'object' ? image : null),
+      ...mockWrittenFor(id),
+    };
+  }
   return imageInfoCache.get(listCacheKey('image-info', String(id)), async () => {
     const data = await runQuery(FIND_IMAGE_INFO_QUERY, { id: String(id) });
     const detail = normalizeImageDetail(data?.findImage);
     if (!detail) throw new Error('the image was not found on the server');
     return detail;
   });
+}
+
+/**
+ * Drop every cached image detail. A write changes a field an open panel
+ * already fetched, and `forget(key)` cannot cancel an in-flight request, so
+ * reopening after a write must not be served the pre-write answer.
+ */
+export function clearImageInfoCache() {
+  imageInfoCache.clear();
+}
+
+const IMAGE_UPDATE_MUTATION = `
+  mutation ImageUpdate($input: ImageUpdateInput!) {
+    imageUpdate(input: $input) {
+      id
+      rating100
+      organized
+    }
+  }
+`;
+
+const IMAGE_INCREMENT_O_MUTATION = `
+  mutation ImageIncrementO($id: ID!) {
+    imageIncrementO(id: $id)
+  }
+`;
+
+const IMAGE_DECREMENT_O_MUTATION = `
+  mutation ImageDecrementO($id: ID!) {
+    imageDecrementO(id: $id)
+  }
+`;
+
+const IMAGE_RESET_O_MUTATION = `
+  mutation ImageResetO($id: ID!) {
+    imageResetO(id: $id)
+  }
+`;
+
+function normalizeRating100(value) {
+  if (!Number.isFinite(Number(value))) {
+    throw new RangeError('rating100 must be a finite number');
+  }
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  return clamped > 0 ? clamped : null;
+}
+
+/** Write an image's rating and/or organised flag. Absent fields are not sent. */
+export async function updateImage({ id, rating100, organized }) {
+  const input = { id: String(id) };
+  const patch = {};
+  if (rating100 !== undefined) {
+    input.rating100 = normalizeRating100(rating100);
+    patch.rating = ratingLabel(input.rating100);
+  }
+  if (organized !== undefined) {
+    input.organized = !!organized;
+    patch.organized = input.organized;
+  }
+
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    const written = {};
+    if (rating100 !== undefined) written.rating100 = input.rating100;
+    if (organized !== undefined) written.organized = input.organized;
+    recordMockWrite(id, written);
+    if (Object.keys(patch).length) publishRowPatch('image', id, patch);
+    clearListCacheKind('images');
+    return {
+      id: String(id),
+      ...(rating100 !== undefined ? { rating100: input.rating100 } : {}),
+      ...(organized !== undefined ? { organized: input.organized } : {}),
+    };
+  }
+
+  const data = await runQuery(IMAGE_UPDATE_MUTATION, { input });
+  if (!data?.imageUpdate) throw new Error('the server returned no image');
+  const saved = data.imageUpdate;
+  const saved100 = Number.isFinite(saved.rating100) && saved.rating100 > 0
+    ? saved.rating100
+    : null;
+  const savedOrganized = !!saved.organized;
+  clearImageInfoCache();
+  publishRowPatch('image', id, {
+    rating: ratingLabel(saved100),
+    organized: savedOrganized,
+  });
+  clearListCacheKind('images');
+  return { id: String(id), rating100: saved100, organized: savedOrganized };
+}
+
+// `base` is the count on screen; Test mode has no server to increment, so it
+// derives the answer from that.
+async function imageOCount(mutation, id, base) {
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    const start = Number.isFinite(Number(base)) ? Number(base) : 0;
+    const count = mutation === IMAGE_RESET_O_MUTATION
+      ? 0
+      : Math.max(0, start + (mutation === IMAGE_INCREMENT_O_MUTATION ? 1 : -1));
+    recordMockWrite(id, { oCounter: count });
+    publishRowPatch('image', id, { o_counter: count });
+    clearListCacheKind('images');
+    return count;
+  }
+  const data = await runQuery(mutation, { id: String(id) });
+  const count = data?.imageIncrementO ?? data?.imageDecrementO ?? data?.imageResetO;
+  clearImageInfoCache();
+  if (Number.isFinite(count)) publishRowPatch('image', id, { o_counter: count });
+  clearListCacheKind('images');
+  return Number.isFinite(count) ? count : null;
+}
+
+export function incrementImageO(id, base) {
+  return imageOCount(IMAGE_INCREMENT_O_MUTATION, id, base);
+}
+
+export function decrementImageO(id, base) {
+  return imageOCount(IMAGE_DECREMENT_O_MUTATION, id, base);
+}
+
+export function resetImageO(id, base) {
+  return imageOCount(IMAGE_RESET_O_MUTATION, id, base);
 }

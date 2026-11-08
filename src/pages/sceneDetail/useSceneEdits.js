@@ -49,8 +49,8 @@ export function useSceneEdits({ detail, setDetail, flash, onActivityChange, canE
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
-  const setRating = (stars) => {
-    const next = stars * 10;
+  const setRating = (rating100) => {
+    const next = Math.max(0, Math.min(100, Math.round(Number(rating100) || 0)));
     // null and 0 both mean unrated: a second clear is a no-op, not a write.
     if ((detail.rating100 ?? 0) === next) return;
     const sceneId = detail.id;

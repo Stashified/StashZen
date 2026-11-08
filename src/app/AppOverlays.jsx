@@ -188,6 +188,9 @@ export default function AppOverlays({
             onSave={builder.onSave}
             onClear={builder.onClear}
             onClose={builder.onClose}
+            canDelete={builder.canDelete}
+            savedFilterName={builder.savedFilterName}
+            onDelete={builder.onDelete}
           />
         </OverlayGate>
       )}

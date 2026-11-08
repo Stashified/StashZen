@@ -21,6 +21,7 @@ import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
 import { EngineToggle } from './settings/EngineToggle.jsx';
 import { SeekStepToggle } from './settings/SeekStepToggle.jsx';
+import { TranscodeQualityToggle } from './settings/TranscodeQualityToggle.jsx';
 import { TextField } from './settings/TextField.jsx';
 import { AppLockSection } from './settings/AppLockSection.jsx';
 import { LibraryStatsSection } from './settings/LibraryStatsSection.jsx';
@@ -60,6 +61,7 @@ export default function SettingsPanel({ onClose }) {
     previewsEnabled, setPreviewsEnabled,
     reduceMotion, setReduceMotion,
     seekStep, setSeekStep,
+    transcodeQuality, setTranscodeQuality,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
     dirty,
@@ -445,6 +447,21 @@ export default function SettingsPanel({ onClose }) {
               <strong>Adaptive</strong> starts at 5 seconds and climbs to 10,
               30 and 60 when you keep pressing. A fixed step moves the same
               distance on every press. Applies the next time a scene is opened.
+            </p>
+          </div>
+
+          {/* Only the transcode path: a scene the browser or TV can play
+              directly is never re-encoded, so the setting does nothing there. */}
+          <div className={styles.section}>
+            <TranscodeQualityToggle
+              value={transcodeQuality}
+              onChange={setTranscodeQuality}
+            />
+            <p className={styles.hint}>
+              Which version to ask Stash for when a scene has to be transcoded.
+              <strong> Low</strong> and <strong>Standard</strong> trade detail
+              for a smaller stream. Direct play is unchanged. Also in the
+              player's options, where it applies to the playing scene.
             </p>
           </div>
 

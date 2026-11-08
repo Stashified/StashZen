@@ -15,6 +15,7 @@
  */
 
 import '../../src/index.css';
+import { registry } from '../../src/hooks/useFocusable.js';
 
 const LS_KEY = 'tvapp.settings.v1';
 const PORT = window.__PORT__;
@@ -73,6 +74,9 @@ async function enter(el) {
 
 const dialogButtons = () => [...document.querySelectorAll('[role="dialog"] button')];
 const byLabel = (label) => dialogButtons().find(b => b.textContent.trim() === label);
+// The Transcode quality row also has a "Standard" button, and it renders
+// first. The theme's own ids cannot be mistaken for it.
+const themeRadio = (value) => registry.get(`settings-theme-${value}`)?.el;
 
 // The prompt's `autoFocus` lands 50 ms after mount (useFocusable's timer); a
 // focus() before that is stolen back, so the following Enter hits "Keep
@@ -142,12 +146,12 @@ async function run() {
 
   const panel = await mountPanel();
   check('T4 the panel shows the current theme as selected',
-    byLabel('OLED')?.getAttribute('aria-checked') === 'true'
-      && byLabel('Standard')?.getAttribute('aria-checked') === 'false',
-    `OLED=${byLabel('OLED')?.getAttribute('aria-checked')} Standard=${byLabel('Standard')?.getAttribute('aria-checked')}`);
+    themeRadio('oled')?.getAttribute('aria-checked') === 'true'
+      && themeRadio('standard')?.getAttribute('aria-checked') === 'false',
+    `OLED=${themeRadio('oled')?.getAttribute('aria-checked')} Standard=${themeRadio('standard')?.getAttribute('aria-checked')}`);
 
   // Draft discard: choose Standard, back out. Nothing may change.
-  await enter(byLabel('Standard'));
+  await enter(themeRadio('standard'));
   check('T4 choosing Standard updates the draft but not the document',
     htmlTheme() === 'oled' && mod.getSettings().theme === 'oled',
     `data-theme=${JSON.stringify(htmlTheme())} store=${mod.getSettings().theme}`);
@@ -171,7 +175,7 @@ async function run() {
   // draft intact and the cursor restored.
   window.__closed = false;
   const panelBack = await mountPanel();
-  await enter(byLabel('Standard'));
+  await enter(themeRadio('standard'));
   press('Escape', 27);
   const askedBack = await waitFor(() => !!byLabel('Keep editing'), 2000);
   press('Escape', 27);
@@ -181,11 +185,11 @@ async function run() {
     askedBack && window.__closed === false,
     `asked=${askedBack} closed=${!!window.__closed}`);
   check('T5b Back again keeps editing, with the draft intact',
-    backToEditing && byLabel('Standard')?.getAttribute('aria-checked') === 'true'
+    backToEditing && themeRadio('standard')?.getAttribute('aria-checked') === 'true'
       && htmlTheme() === 'oled' && mod.getSettings().theme === 'oled',
-    `open=${backToEditing} Standard=${byLabel('Standard')?.getAttribute('aria-checked')} data-theme=${JSON.stringify(htmlTheme())}`);
+    `open=${backToEditing} Standard=${themeRadio('standard')?.getAttribute('aria-checked')} data-theme=${JSON.stringify(htmlTheme())}`);
   check('T5b ...and focus returns to the control it left',
-    document.activeElement === byLabel('Standard'),
+    document.activeElement === themeRadio('standard'),
     `active=${document.activeElement?.textContent?.trim()}`);
 
   // Save & close from the question is the same commit as the footer button.
@@ -230,13 +234,13 @@ async function run() {
   // Put OLED back so T6 still measures a real transition.
   window.__closed = false;
   const panelReset = await mountPanel();
-  await enter(byLabel('OLED'));
+  await enter(themeRadio('oled'));
   await enter(byLabel('Save'));
   panelReset.unmount();
 
   // Save Standard: applied immediately, persisted, and the page goes back.
   const panel2 = await mountPanel();
-  await enter(byLabel('Standard'));
+  await enter(themeRadio('standard'));
   await enter(byLabel('Save'));
   check('T6 saving Standard applies the base palette',
     htmlTheme() === null
@@ -250,7 +254,7 @@ async function run() {
   // Save OLED: the same transition in the other direction.
   panel2.unmount();
   const panel3 = await mountPanel();
-  await enter(byLabel('OLED'));
+  await enter(themeRadio('oled'));
   await enter(byLabel('Save'));
   check('T6 saving OLED applies the black palette immediately',
     htmlTheme() === 'oled'

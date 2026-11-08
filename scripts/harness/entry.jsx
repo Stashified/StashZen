@@ -343,6 +343,28 @@ async function run() {
     + `tag=${JSON.stringify(tagSelections.map(x => x.id))}`);
   check('T17 a chip does not close the page itself', closedCount === closesBeforeChips);
 
+  // A cast chip is the one route to a performer page with no card behind it,
+  // and the profile query is deliberately profile-only (performer-entry P1).
+  // So the scene detail has to ask for, and the chip hand over, the fields the
+  // page header draws.
+  const performerSelection = (detailQuery.match(/performers \{([^}]*)\}/) || [])[1] || '';
+  const performerHeaderFields = [
+    'image_path', 'scene_count', 'country', 'birthdate', 'height_cm', 'disambiguation',
+  ];
+  check('T17 the scene detail asks for the performer header fields',
+    performerHeaderFields.every(f => performerSelection.includes(f)),
+    `selection="${performerSelection.replace(/\s+/g, ' ').trim()}"`);
+  const chipPerformer = performerSelections[0] || {};
+  check('T17 the chip hands the page the fields its header draws',
+    typeof chipPerformer.image_path === 'string'
+      && chipPerformer.image_path.includes('/performer/1/image.png')
+      && chipPerformer.scene_count === 42
+      && chipPerformer.country === 'US'
+      && chipPerformer.birthdate === '1990-01-02'
+      && chipPerformer.height_cm === 170
+      && chipPerformer.disambiguation === 'VERIFY performer disambiguation',
+    JSON.stringify(chipPerformer));
+
   // ── T18: "More from" rows ───────────────────────────────
   // The fixture carries a studio and one performer, so both rows ask for the
   // listing and the fake server answers four rows including the open 4242.

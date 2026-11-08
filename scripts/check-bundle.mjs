@@ -2,10 +2,15 @@
 /**
  * check-bundle.mjs: refuse to ship an API key in the built bundle.
  *
- * Vite inlines `VITE_STASH_API_KEY` from `.env.production` at build time. Fine
- * for a local package on your own TV, dangerous for anything handed to someone
- * else: the key is then readable in the JavaScript. A local `npm run build` is
- * the path a shared `.wgt` more often comes from.
+ * Vite inlines `VITE_STASH_API_KEY` at build time. Fine for a local package on
+ * your own TV, dangerous for anything handed to someone else: the key is then
+ * readable in the JavaScript. A local `npm run build` is the path a shared
+ * `.wgt` more often comes from.
+ *
+ * Reads the same files Vite does: `.env`, `.env.local`, `.env.production` and
+ * `.env.production.local`, later files overriding earlier ones, plus the
+ * process environment. `.env` is the file the README documents, so reading
+ * only `.env.production` missed the usual local build.
  *
  * Runs as npm's `postbuild`, so both `npm run build` and CI get it. It NEVER
  * prints the key: only file names and whether a key was found.
@@ -53,6 +58,32 @@ const LAN_RE = /\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|17
 
 // The parser lives in parse-dotenv.mjs; re-exported for existing imports.
 export { parseDotenv };
+
+// The files a production `vite build` loads, in precedence order: a later file
+// overrides an earlier one. `npm run build` is always mode=production.
+export const VITE_ENV_FILES = [
+  '.env', '.env.local', '.env.production', '.env.production.local',
+];
+
+/**
+ * Read those files from `root`, merged in Vite's order. `files` is what exists,
+ * `env` is the merged result, and `text` their concatenated contents (null if
+ * none exist), which is all the CI presence check needs.
+ */
+export function readViteEnv(root) {
+  const files = [];
+  const env = {};
+  let text = null;
+  for (const name of VITE_ENV_FILES) {
+    const path = join(root, name);
+    if (!existsSync(path)) continue;
+    const contents = readFileSync(path, 'utf8');
+    files.push(name);
+    text = (text ?? '') + contents + '\n';
+    Object.assign(env, parseDotenv(contents));
+  }
+  return { files, env, text };
+}
 
 function walk(dir, base = dir) {
   const files = [];
@@ -131,13 +162,14 @@ export function scanBundle({ distDir, secret = '' }) {
 /**
  * Decide whether the bundle is shippable.
  *
- * `secret` is the key from `.env.production` when one exists; it is used for a
- * targeted search and never included in a returned message.
+ * `secret` is the key Vite would inline, from the env files or the process
+ * environment; it is used for a targeted search and never included in a
+ * returned message. `envFiles` names the files that exist, for the CI refusal.
  *
  * @returns {{ ok: boolean, lines: string[] }}
  */
 export function checkBundle({
-  distDir, envText = null, secret = '', allowBaked = false, isCI = false,
+  distDir, envText = null, envFiles = [], secret = '', allowBaked = false, isCI = false,
   updateCheckEnabled = false, updateCheckUrl = '',
 }) {
   const lines = [];
@@ -146,11 +178,13 @@ export function checkBundle({
     return { ok: false, lines: ['x dist/ does not exist — run the build first.'] };
   }
 
-  if (isCI && envText !== null) {
+  if (isCI && (envText !== null || envFiles.length > 0)) {
+    const found = envFiles.length > 0 ? envFiles : ['.env.production'];
     return {
       ok: false,
       lines: [
-        'x .env.production is present in CI — refusing to package.',
+        'x A Vite env file is present in CI: refusing to package.',
+        `  Found: ${found.join(', ')}`,
         '  CI builds must not carry a Stash server address or API key.',
       ],
     };
@@ -237,15 +271,18 @@ export function checkBundle({
 
 function main() {
   const root = process.cwd();
-  const envPath = join(root, '.env.production');
-  const envText = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null;
-  const secret = envText !== null ? (parseDotenv(envText).VITE_STASH_API_KEY || '') : '';
+  const { files: envFiles, env, text: envText } = readViteEnv(root);
+  // Vite merges the process environment too, so an inline
+  // `VITE_STASH_API_KEY=… npm run build` would be inlined and this targeted
+  // search would miss it.
+  const secret = env.VITE_STASH_API_KEY || process.env.VITE_STASH_API_KEY || '';
   const isCI = !!process.env.CI;
   const allowBaked = !isCI && process.env.ALLOW_BAKED_KEY === '1';
 
   const { ok, lines } = checkBundle({
     distDir: join(root, 'dist'),
     envText,
+    envFiles,
     secret,
     allowBaked,
     isCI,

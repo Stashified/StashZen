@@ -122,7 +122,7 @@ export default function App() {
 
   const {
     builderOpen, setBuilderOpen, closeBuilder, applyWorkingFilter, clearWorkingFilter,
-    saveBuiltFilter,
+    saveBuiltFilter, canDelete: canDeleteFilter, deleteBuiltFilter,
   } = useFilterBuilder({
     activeTab,
     filterMode,
@@ -650,6 +650,9 @@ export default function App() {
           onSave: saveBuiltFilter,
           onClear: clearWorkingFilter,
           onClose: closeBuilder,
+          canDelete: canDeleteFilter,
+          savedFilterName: activeFilter?.name || '',
+          onDelete: deleteBuiltFilter,
         }}
         settings={{ open: settingsOpen, onClose: closeSettings }}
         exitPrompt={{ open: exitPromptOpen, onCancel: cancelExit }}

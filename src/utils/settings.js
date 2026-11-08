@@ -94,6 +94,23 @@ export function readSeekStep(value) {
 }
 
 /**
+ * Which transcode tier to ask Stash for when a scene cannot play directly.
+ * `original` keeps the old behaviour: the source resolution, no downscale.
+ *
+ * Same boundary rule as SEEK_STEP_OPTIONS: declared above `state`, because
+ * `loadFromStorage` validates through it at module init.
+ */
+export const TRANSCODE_QUALITY_OPTIONS = [
+  { value: 'original', label: 'Original' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'low', label: 'Low' },
+];
+
+export function readTranscodeQuality(value) {
+  return TRANSCODE_QUALITY_OPTIONS.some(o => o.value === value) ? value : 'original';
+}
+
+/**
  * Apply Reduce motion to the document root, same module-init placement and
  * reasoning as applyTheme: the PIN and first-run screens are outside App and
  * must already be still. CSS keys off the attribute.
@@ -190,6 +207,9 @@ function loadFromStorage() {
     reduceMotion: !!saved.reduceMotion,
     // Adaptive is the existing tap-5s-hold-to-climb behaviour.
     seekStep: readSeekStep(saved.seekStep),
+    // Which tier a transcode asks for. Original on a device that has never
+    // chosen: an upgrade must not start downscaling unasked.
+    transcodeQuality: readTranscodeQuality(saved.transcodeQuality),
     // Which engine `Auto` means: the browser first, AVPlay as fallback.
     // `browser` is the rollback lever (the old browser-only player). An
     // unrecognised value falls back to `auto`, like every validated setting.
@@ -236,6 +256,7 @@ function persistToStorage() {
       theme: state.theme,
       reduceMotion: state.reduceMotion,
       seekStep: state.seekStep,
+      transcodeQuality: state.transcodeQuality,
       playbackEngine: state.playbackEngine,
       viewModes: state.viewModes,
       gridCols: state.gridCols,
@@ -305,6 +326,7 @@ export function setSettings(patch) {
   if ('stashUrl' in patch || 'stashKey' in patch || 'previewMuted' in patch
       || 'previewsEnabled' in patch || 'useMock' in patch || 'theme' in patch
       || 'reduceMotion' in patch || 'seekStep' in patch
+      || 'transcodeQuality' in patch
       || 'playbackEngine' in patch
       || 'viewModes' in patch || 'gridCols' in patch || 'onboarded' in patch
       || 'setupRequested' in patch || 'updateCheckEnabled' in patch
@@ -427,6 +449,7 @@ export function clearSettings() {
     theme: 'standard',
     reduceMotion: false,
     seekStep: 'adaptive',
+    transcodeQuality: 'original',
     // `auto` is the safe default on an unknown device: it degrades to the
     // browser without AVPlay, where `browser` would silently disable AVPlay.
     playbackEngine: 'auto',

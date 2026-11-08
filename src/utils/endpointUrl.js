@@ -22,9 +22,29 @@ export function normalizeEndpointUrl(raw) {
 
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return { ok: true, url: candidate };
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, url: '', error: 'The endpoint must be an http:// or https:// URL.' };
     }
+    // `fetch` refuses a URL carrying credentials with a TypeError, which
+    // `stashClient` would report as a network fault. Refuse it here, where the
+    // message can say what is wrong. It also keeps the password out of storage.
+    if (parsed.username || parsed.password) {
+      return {
+        ok: false,
+        url: '',
+        error: 'Enter the server address without a username or password.',
+      };
+    }
+    // `stashClient` appends `/graphql` textually, so a query or fragment would
+    // put it after them and the request would miss the API path.
+    if (text.includes('?') || text.includes('#')) {
+      return {
+        ok: false,
+        url: '',
+        error: 'Enter the server address only, without a query string or #fragment.',
+      };
+    }
+    return { ok: true, url: candidate };
   } catch {
     // Not a URL at all.
   }

@@ -718,13 +718,18 @@ async function run() {
   check('S10b long lists are capped with a +N count',
     /\+2/.test(panelText()) && /\+1/.test(panelText()),
     panelText().replace(/\s+/g, ' ').slice(0, 160));
-  // The panel is read-only and the app is D-pad-only: a focusable inside it
-  // would be an invisible stop with nothing to press it for.
+  // The panel's edit controls are its only D-pad stops.
   const insidePanel = [...registry.entries()]
     .filter(([, e]) => e.el && infoPanel()?.contains(e.el))
-    .map(([id]) => id);
-  check('S10b the panel adds no focus stops of its own',
-    insidePanel.length === 0, `registered inside: ${insidePanel.join(', ') || '(none)'}`);
+    .map(([id]) => id)
+    .sort();
+  const expectedControls = [
+    'image-viewer-o-dec', 'image-viewer-o-inc', 'image-viewer-organized',
+    'image-viewer-rating-dec', 'image-viewer-rating-inc',
+  ];
+  check('S10b the panel registers its five edit controls and nothing else',
+    JSON.stringify(insidePanel) === JSON.stringify(expectedControls),
+    `registered inside: ${insidePanel.join(', ') || '(none)'}`);
 
   // ── S10c  Back peels one layer at a time ────────────────
   // One Back must not close both: the viewer's own Back must stay reachable
@@ -785,8 +790,9 @@ async function run() {
     JSON.stringify(registry.get('image-viewer-play')?.el?.textContent || ''));
 
   // Arrows belong to the D-pad while a header button holds focus, so browse from
-  // the picture: Down returns the ring to the surface, where the arrows step
-  // again. Both targets are cached, so this must add no fetch.
+  // the picture: Down from the Slideshow button returns the ring to the
+  // surface, where the arrows step again. Both targets are cached, so this must
+  // add no fetch.
   await press('ArrowDown');
   await press('ArrowLeft');             // image 2 → 1, panel stays open
   const steppedWithPanel = await waitFor(
@@ -981,6 +987,143 @@ async function run() {
   check('S11f Back resets the zoom before it closes the viewer',
     !!document.querySelector('[role="dialog"][aria-modal="true"]') && zoomLabel() === '',
     `open=${!!document.querySelector('[role="dialog"][aria-modal="true"]')}; zoom="${zoomLabel()}"`);
+
+  // ── S16  the info panel's controls are writes ───────────
+  // Image 1 is rated 75 (8 stars), not organised and an O count of 3, so every control
+  // has somewhere to move and the fake's answer is checkable.
+  const holdEnter = async (ms = 800) => {
+    const el = document.activeElement || document.body;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await sleep(ms);
+    (document.activeElement || el).dispatchEvent(
+      new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await sleep(300);
+  };
+  const editText = () => (infoPanel()?.textContent || '').replace(/\s+/g, ' ');
+  const writes = async () => getJSON('/imageupdates');
+  const editBtn = (id) => registry.get(id)?.el;
+
+  await clearLogs();
+  await press('ArrowUp');               // picture → Info
+  await tapEnter();
+  await waitFor(() => !!editBtn('image-viewer-rating-inc'), 4000);
+  const fetchesBeforeWrites = (await imageInfoFetches()).length;
+  check('S16 the open panel registers its edit controls',
+    ['image-viewer-rating-dec', 'image-viewer-rating-inc', 'image-viewer-organized',
+      'image-viewer-o-dec', 'image-viewer-o-inc'].every(id => !!editBtn(id)),
+    `panel=${!!infoPanel()}`);
+  check('S16 the controls open on the fetched values',
+    /7\.5 ★/.test(editText()) && /O count\s*−\s*3\s*\+/.test(editText())
+      && /○ Organised/.test(editText()),
+    editText().slice(0, 120));
+
+  focus('image-viewer-rating-inc');
+  await tapEnter();
+  const headerRating = () => /★ 8\.0/.test(viewer.textContent || '');
+  const ratingPainted = await waitFor(() => headerRating(), 2000);
+  await sleep(200);
+  const afterRating = await writes();
+  check('S16 a rating press writes a 0-100 value and repaints the header',
+    ratingPainted && afterRating.length === 1 && afterRating[0].op === 'update'
+      && afterRating[0].input.rating100 === 80,
+    `header=${headerRating()} writes=${JSON.stringify(afterRating)}`);
+
+  focus('image-viewer-organized');
+  await tapEnter();
+  const orgPainted = await waitFor(
+    () => editBtn('image-viewer-organized')?.getAttribute('aria-pressed') === 'true', 2000);
+  await sleep(200);
+  const afterOrg = await writes();
+  check('S16 the organised toggle writes the flipped flag',
+    orgPainted && afterOrg.length === 2 && afterOrg[1].input.organized === true,
+    `pressed=${editBtn('image-viewer-organized')?.getAttribute('aria-pressed')} `
+    + `writes=${JSON.stringify(afterOrg)}`);
+
+  focus('image-viewer-o-inc');
+  await tapEnter();
+  const oUp = await waitFor(() => /O count\s*−\s*4\s*\+/.test(editText()), 2000);
+  await sleep(200);
+  const afterInc = await writes();
+  check('S16 the O increment adopts the server count',
+    oUp && afterInc.length === 3 && afterInc[2].op === 'increment'
+      && afterInc[2].o_counter === 4,
+    editText().slice(0, 120));
+
+  focus('image-viewer-o-dec');
+  await tapEnter();
+  const oDown = await waitFor(() => /O count\s*−\s*3\s*\+/.test(editText()), 2000);
+  await sleep(200);
+  const afterDec = await writes();
+  check('S16 the O decrement writes and adopts the count',
+    oDown && afterDec.length === 4 && afterDec[3].op === 'decrement'
+      && afterDec[3].o_counter === 3,
+    editText().slice(0, 120));
+
+  // A held + clears the counter; a tap on − at zero is inert but stays a stop.
+  focus('image-viewer-o-inc');
+  await holdEnter();
+  const oCleared = await waitFor(() => /O count\s*−\s*0\s*\+/.test(editText()), 3000);
+  await sleep(200);
+  const afterReset = await writes();
+  check('S16 holding + clears the counter',
+    oCleared && afterReset.length === 5 && afterReset[4].op === 'reset'
+      && afterReset[4].o_counter === 0,
+    `text="${editText().slice(0, 100)}" writes=${JSON.stringify(afterReset)}`);
+  check('S16 − at zero is muted but still registered',
+    editBtn('image-viewer-o-dec')?.getAttribute('aria-disabled') === 'true',
+    `aria-disabled=${editBtn('image-viewer-o-dec')?.getAttribute('aria-disabled')}`);
+  focus('image-viewer-o-dec');
+  await tapEnter();
+  await sleep(300);
+  const afterZeroTap = await writes();
+  check('S16 …so pressing it writes nothing and says why',
+    afterZeroTap.length === 5 && /already 0/.test(editText()),
+    `writes=${afterZeroTap.length} notice="${editText().slice(0, 100)}"`);
+
+  // A write also stops the slideshow: the panel is a photo decision, not a
+  // place to keep stepping under.
+  focus('image-viewer-play');
+  await tapEnter();
+  const slideCounting = await waitFor(() => /\d+s/.test(countdown()), 2000);
+  focus('image-viewer-rating-inc');
+  await tapEnter();
+  const stopped = await waitFor(() => !document.querySelector('[class*="nextIn"]'), 2000);
+  check('S16 the first write stops a running slideshow',
+    slideCounting && stopped, `counting=${slideCounting} stopped=${stopped}`);
+
+  // A refused write rolls back and names the failure; the notice belongs to
+  // this visit and must not greet the next one.
+  await setMode('imageUpdate', 'fail');
+  focus('image-viewer-organized');
+  await tapEnter();
+  const rolledBack = await waitFor(
+    () => editBtn('image-viewer-organized')?.getAttribute('aria-pressed') === 'true'
+      && /Organised mark not saved/.test(editText()),
+    4000,
+  );
+  check('S16 a failed write rolls the control back and names the failure',
+    rolledBack, editText().slice(0, 140));
+  await setMode('imageUpdate', 'ok');
+
+  await pressBack();                    // close the panel
+  await waitFor(() => !infoPanel(), 2000);
+  await press('ArrowUp');
+  await tapEnter();
+  const cleared = await waitFor(
+    () => !!editBtn('image-viewer-rating-inc') && !/not saved/.test(editText()), 4000,
+  );
+  const reopenFetches = (await imageInfoFetches()).length;
+  check('S16 reopening drops the old notice and refetches after a write',
+    cleared && reopenFetches === fetchesBeforeWrites + 1,
+    `noticeGone=${cleared} fetches=${fetchesBeforeWrites}→${reopenFetches} `
+    + `"${editText().slice(0, 100)}"`);
+  check('S16 …and shows what the server now holds',
+    /9 ★/.test(editText()) && /✓ Organised/.test(editText())
+      && /O count\s*−\s*0\s*\+/.test(editText()),
+    editText().slice(0, 140));
+  await pressBack();                    // close the panel
+  await waitFor(() => !infoPanel(), 2000);
 
   // ── S12  Back closes it and returns focus to the card ───
   await pressBack();

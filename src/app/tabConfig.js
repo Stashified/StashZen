@@ -81,7 +81,7 @@ const SCENE_SORT_GROUPS = [
     group: 'Engagement',
     options: [
       { value: 'rating',         label: 'Rating' },
-      { value: 'o_counter',      label: 'Likes' },
+      { value: 'o_counter',      label: 'O count' },
       { value: 'play_count',     label: 'Play Count' },
       { value: 'play_duration',  label: 'Play Duration' },
       { value: 'last_played_at', label: 'Last Played' },
@@ -117,7 +117,7 @@ const PERFORMER_SORT_GROUPS = [
   {
     group: 'Engagement',
     options: [
-      { value: 'o_counter',      label: 'Likes' },
+      { value: 'o_counter',      label: 'O count' },
       { value: 'play_count',     label: 'Play Count' },
       { value: 'last_played_at', label: 'Last Played' },
     ],
@@ -221,7 +221,7 @@ const STUDIO_SORT_GROUPS = [
   {
     group: 'Engagement',
     options: [
-      { value: 'o_counter', label: 'Likes', capability: 'studioEngagementSorts' },
+      { value: 'o_counter', label: 'O count', capability: 'studioEngagementSorts' },
     ],
   },
   {
@@ -253,7 +253,7 @@ const GROUP_SORT_GROUPS = [
   {
     group: 'Engagement',
     options: [
-      { value: 'o_counter', label: 'Likes' },
+      { value: 'o_counter', label: 'O count' },
     ],
   },
 ];
@@ -307,7 +307,7 @@ const IMAGE_SORT_GROUPS = [
   {
     group: 'Engagement',
     options: [
-      { value: 'o_counter', label: 'Likes' },
+      { value: 'o_counter', label: 'O count' },
     ],
   },
   {

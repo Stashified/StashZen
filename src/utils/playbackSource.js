@@ -94,6 +94,28 @@ export function timelineDuration(elementDuration, sceneDuration) {
 }
 
 /**
+ * The nearest rate a backend can honour. `rates` comes from
+ * `media.capabilities.speedRates`, and an engine fallback can narrow the
+ * ladder: 1.5 on AVPlay clamps to 1 instead of a `setSpeed` call that silently
+ * does nothing. Ties prefer the slower rate.
+ */
+export function clampSpeed(rate, rates) {
+  const list = (Array.isArray(rates) ? rates : []).filter(
+    r => Number.isFinite(Number(r)) && Number(r) > 0,
+  );
+  if (!list.length) return 1;
+  const wanted = Number(rate);
+  if (!Number.isFinite(wanted)) return list.includes(1) ? 1 : list[0];
+  // On a tie the slower rate wins, in either ladder order: 1.5 on AVPlay is
+  // nearer to 1 than to 2 only by intent, and a later 1 must still beat a 2.
+  return list.reduce((best, r) => {
+    const dr = Math.abs(r - wanted);
+    const db = Math.abs(best - wanted);
+    return dr < db || (dr === db && r < best) ? r : best;
+  }, list[0]);
+}
+
+/**
  * Which of Stash's endpoints to prefer, when the direct file is out.
  *
  * **`mime_type` alone does not identify a transcode**, which is why this reads
@@ -138,6 +160,23 @@ const TRANSCODE_FORMATS = [
 
 const urlPath = (u) => String(u).split('?')[0].split('#')[0];
 
+// The tier a transcode URL requests, uppercase, or '' when it carries none.
+// Read from the query string, where Stash puts it; a title or filename can
+// contain the word "low" and must not be mistaken for a tier.
+const resolutionOf = (u) => {
+  const m = /[?&]resolution=([^&#]*)/i.exec(String(u));
+  return m ? decodeURIComponent(m[1]).toUpperCase() : '';
+};
+
+// Per-quality preference, best first. `original` is the old rule; the others
+// fall back rather than lose the format when a server does not offer the tier
+// (transcoding settings vary per server).
+const QUALITY_TIERS = {
+  original: ['ORIGINAL'],
+  standard: ['STANDARD', 'ORIGINAL'],
+  low: ['LOW', 'STANDARD', 'ORIGINAL'],
+};
+
 /**
  * Every usable transcode URL, best first, at most one per format.
  *
@@ -146,18 +185,30 @@ const urlPath = (u) => String(u).split('?')[0].split('#')[0];
  * one untestable off-device), never a resolution, hence only each format's
  * best tier, not the whole matrix.
  *
+ * `quality` chooses which tier is best for this device; the fallbacks keep the
+ * format alive when the server does not generate it. Only the transcode path
+ * is affected, direct play is never re-encoded.
+ *
  * An empty list is ordinary: transcoding disabled, or no file behind the scene.
  */
-export function pickTranscodeUrls(endpoints) {
+export function pickTranscodeUrls(endpoints, quality = 'original') {
   const usable = (endpoints || []).filter((e) => e && e.url);
+  const tiers = QUALITY_TIERS[quality] || QUALITY_TIERS.original;
   const urls = [];
   for (const [mime, ext] of TRANSCODE_FORMATS) {
     const group = usable.filter((e) => (
       norm((e.mime_type || '').split(';')[0]) === mime && urlPath(e.url).endsWith(ext)
     ));
     if (!group.length) continue;
-    const best = group.find((e) => /resolution=ORIGINAL/i.test(e.url))
-      || group.find((e) => !/resolution=LOW/i.test(e.url))
+    let best = null;
+    for (const tier of tiers) {
+      best = group.find((e) => resolutionOf(e.url) === tier);
+      if (best) break;
+    }
+    // Any non-LOW row before a LOW one, the original rule when no requested
+    // tier exists. A row with no resolution counts as non-LOW.
+    best = best
+      || group.find((e) => resolutionOf(e.url) !== 'LOW')
       || group[0];
     urls.push(best.url);
   }

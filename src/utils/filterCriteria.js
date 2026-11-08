@@ -410,6 +410,20 @@ function commonFor(filterTypeName, version) {
   return fields;
 }
 
+/**
+ * `is_missing`'s vocabulary is static because GraphQL cannot say which names a
+ * filter type accepts. `production_date` joined it in 0.32; a 0.31 server
+ * rejects it outright, so it is offered only there.
+ */
+function isMissingFor(filterTypeName, version) {
+  const fields = IS_MISSING_FIELDS[filterTypeName] || [];
+  if (filterTypeName === 'SceneFilterType'
+    && supportsCapability(version, 'productionDate')) {
+    return [...fields, 'production_date'];
+  }
+  return fields;
+}
+
 // ── The descriptor the builder renders ────────────────────
 
 /**
@@ -434,7 +448,7 @@ export function criteriaFor(filterTypeName, version = getServerVersion()) {
     const base = BASE(type);
     const enumOptions = editor === EDITOR.ENUM ? (enumFor(type) || []) : null;
     const vocabulary = editor === EDITOR.IS_MISSING
-      ? (IS_MISSING_FIELDS[filterTypeName] || [])
+      ? isMissingFor(filterTypeName, version)
       : null;
 
     return {

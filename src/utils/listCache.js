@@ -61,6 +61,13 @@ export function createListCache() {
     /**
      * Return the cached value for `key`, or run `loader()` to produce it.
      * Concurrent callers for the same key share one request.
+     *
+     * A joiner must not inherit the owner's abort. The shared loader closed
+     * over the first caller's signal, so if that caller unmounts or resets,
+     * the shared request is aborted under every joiner. On that rejection a
+     * joiner starts a fresh request through its own loader. The owner's entry
+     * is already gone when the recovery runs, so this registers, and later
+     * joiners can coalesce on it, rather than re-reading a dead promise.
      */
     get(key, loader) {
       if (cache.has(key)) {
@@ -68,7 +75,13 @@ export function createListCache() {
         remember(key, hit);                       // touch
         return Promise.resolve(hit);
       }
-      if (inflight.has(key)) return inflight.get(key);
+      const shared = inflight.get(key);
+      if (shared) {
+        return shared.catch(err => {
+          if (err?.name !== 'AbortError') throw err;
+          return api.get(key, loader);
+        });
+      }
 
       const gen = generation;
       // Delete *this* promise, not whatever is under the key: after a clear()
@@ -99,6 +112,25 @@ export function createListCache() {
       cache.delete(key);
     },
 
+    /**
+     * Drop every cached page for one entity kind. A write patches the rows on
+     * screen, but a remount without a tab change (a same-tab view-mode switch)
+     * would otherwise read the page cached before the write.
+     */
+    clearKind(kind) {
+      generation++;
+      const matches = (key) => {
+        const cachedKind = key.split(SEP)[1];
+        return cachedKind === kind || cachedKind === `${kind}:hero`;
+      };
+      for (const key of [...cache.keys()]) {
+        if (matches(key)) cache.delete(key);
+      }
+      for (const key of [...inflight.keys()]) {
+        if (matches(key)) inflight.delete(key);
+      }
+    },
+
     clear() {
       generation++;
       cache.clear();
@@ -119,4 +151,13 @@ export function createListCache() {
  */
 export function clearAllListCaches() {
   for (const cache of caches) cache.clear();
+}
+
+/**
+ * Drop the cached pages of one entity kind (`tags`, `studios`, `galleries`,
+ * `images`), leaving other listings untouched. Call after a write that changes
+ * a row so the next remount reads the server's value.
+ */
+export function clearListCacheKind(kind) {
+  for (const cache of caches) cache.clearKind(kind);
 }

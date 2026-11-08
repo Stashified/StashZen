@@ -35,17 +35,6 @@ export function buildImageInfoRows(detail) {
   if (detail.fileSize > 0) {
     rows.push({ key: 'size', label: 'File size', value: formatBytes(detail.fileSize) });
   }
-  if (detail.rating100 > 0) {
-    rows.push({
-      key: 'rating',
-      label: 'Rating',
-      value: `★ ${(detail.rating100 / 10).toFixed(1)}`,
-    });
-  }
-  if (detail.oCounter > 0) {
-    rows.push({ key: 'likes', label: 'Likes', value: String(detail.oCounter) });
-  }
-
   const tags = names(detail.tags, 6);
   if (tags) rows.push({ key: 'tags', label: 'Tags', value: tags, clamp: true });
 

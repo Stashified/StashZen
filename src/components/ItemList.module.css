@@ -73,6 +73,18 @@
   display: block;
 }
 
+/* The card star, at the row's end: over a studio's portrait logo it could not
+   be told from the art. */
+.favorite {
+  flex: none;
+  width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rating);
+  font-size: 18px;
+}
+
 .fallback {
   font-family: var(--font-condensed);
   font-size: 24px;

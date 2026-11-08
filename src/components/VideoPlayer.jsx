@@ -50,6 +50,7 @@ import {
 import styles from './VideoPlayer.module.css';
 import PlayerControlsRail from './PlayerControlsRail.jsx';
 import PlayerQueuePanel from './PlayerQueuePanel.jsx';
+import PlaybackOptionsMenu from './player/PlaybackOptionsMenu.jsx';
 import PlayerUpNextCard from './PlayerUpNextCard.jsx';
 import MarkerModal from './MarkerModal.jsx';
 import PlaybackInfoPanel from './PlaybackInfoPanel.jsx';
@@ -59,8 +60,8 @@ import { useSpriteVtt } from '../hooks/useSpriteVtt.js';
 import { usePlayQueue } from '../hooks/usePlayQueue.js';
 import { usePlaybackSource } from '../hooks/usePlaybackSource.js';
 import { usePlayerEngine } from './player/usePlayerEngine.js';
-import { timelineDuration } from '../utils/playbackSource.js';
-import { getSettings } from '../utils/settings.js';
+import { timelineDuration, clampSpeed } from '../utils/playbackSource.js';
+import { getSettings, readTranscodeQuality, setSettings } from '../utils/settings.js';
 import { sourceKey } from '../utils/enginePolicy.js';
 import { withApiKey } from '../utils/stashUrl.js';
 import { focusByIdWhenReady } from '../utils/focus.js';
@@ -221,9 +222,28 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // The "Up next" drawer over the video. Local to the player because it is a
   // view of this session's queue, not app navigation.
   const [queueOpen, setQueueOpen] = useState(false);
+  // The playback-options menu, and the speed the sitting was set to. Speed is
+  // player-session state, not a setting: the next scene keeps it, the next
+  // sitting starts at 1×.
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  // The transcode tier, seeded from Settings and owned here while the player is
+  // open. A change persists for the next scene and re-sources this one when it
+  // is a transcode; a direct file is not affected.
+  const [transcodeQuality, setTranscodeQuality] = useState(
+    () => readTranscodeQuality(getSettings().transcodeQuality)
+  );
+  const [qualityEpoch, setQualityEpoch] = useState(0);
+  // Where a quality re-source resumes AVPlay. The browser path reads its own
+  // playhead in usePlayerMedia's fallback ref.
+  const reopenAtRef = useRef({ sceneId: null, time: 0 });
+  // Which scene the last resolved source belonged to. Mid-reload `srcSceneId`
+  // is already null, and this is what tells "reload this scene" from "the next
+  // scene has not resolved yet" (whose playhead must not be carried over).
+  const lastSrcSceneRef = useRef(null);
 
-  // Read once at open, not subscribed: Settings is unreachable from the
-  // player, and the setting says "applies on the next open".
+  // Read once at open, not subscribed: the engine setting is not in the
+  // player's options, and it says "applies on the next open".
   const {
     setting: engineSetting, forcedBrowser, avplay, tvaudiocontrol, ready: engineReady,
   } = usePlayerEngine();
@@ -249,6 +269,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     forcedBrowser,
     avplayAvailable: !!avplay,
     ready: engineReady,
+    qualityEpoch,
   });
 
   // Re-arm key for the media wiring. Includes the engine: a fallback can
@@ -338,6 +359,34 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     setTimeout(() => railRef.current?.focusQueue(), 0);
   }, [goTo, showControls]);
 
+  // The options menu is a dialog too: the key map yields while it is up and its
+  // own Back handler closes it. It cannot open over the queue or the detail
+  // page, both dialogs with the rail unreachable behind them.
+  const openOptions = useCallback(() => {
+    showControls();
+    setOptionsOpen(true);
+  }, [showControls]);
+
+  const closeOptions = useCallback(() => {
+    setOptionsOpen(false);
+    showControls();
+    // The focused speed row unmounts in this commit; land on the rail once its
+    // DOM is gone, the `closeQueue` pattern.
+    setTimeout(() => railRef.current?.focusOptions(), 0);
+  }, [showControls]);
+
+  // A scene or engine change while the menu is up would leave the cursor on a
+  // removed row, and the two engines offer different rates. The ref, not the
+  // open flag alone, keeps this from firing in the commit that opens it.
+  const optionsSceneRef = useRef(null);
+  useEffect(() => {
+    const key = `${video?.id ?? ''}:${engine ?? ''}`;
+    if (optionsSceneRef.current !== null && optionsSceneRef.current !== key && optionsOpen) {
+      closeOptions();
+    }
+    optionsSceneRef.current = key;
+  }, [video?.id, engine, optionsOpen, closeOptions]);
+
   // Hide on the Up next card. The card unmounts under the cursor, so the rail
   // takes it back, the same landing as closing the queue.
   const hideUpNext = useCallback(() => {
@@ -393,15 +442,54 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   const muteIntentRef = useRef(null);
 
   const openOptionsRef = useRef({ startSeconds: 0, autoplay: true });
+  // A quality re-source is a reload of the same scene, not a new start: AVPlay
+  // opens at the playhead the browser path takes from fallbackSeekRef.
+  const reopenAt = reopenAtRef.current;
+  const resumeAt = reopenAt.sceneId === (video?.id ?? null) && reopenAt.time > 0
+    ? reopenAt.time
+    : effectiveStart;
   openOptionsRef.current = {
-    startSeconds: effectiveStart,
+    startSeconds: resumeAt,
     autoplay: !askingToResume,
     muted: muteIntentRef.current,
   };
   useEffect(() => {
     if (engine !== 'avplay' || !playbackSrc) return;
     media.open(playbackSrc, openOptionsRef.current);
+    // Consumed: a later open of the same scene starts from the resume decision.
+    reopenAtRef.current = { sceneId: null, time: 0 };
   }, [media, engine, playbackSrc, mediaKey]);
+
+  // The sitting's rate, clamped to what the active engine can honour: AVPlay's
+  // `setSpeed` takes 1 or 2, so 1.5 chosen in the browser falls back instead of
+  // failing. Declared after the AVPlay open effect so it lands on a session that
+  // already exists; `open()` resets the backend's copy, hence the same deps.
+  const speedRates = media.capabilities.speedRates || [1];
+  const effectiveSpeed = clampSpeed(speed, speedRates);
+  useEffect(() => {
+    media.setPlaybackRate(effectiveSpeed);
+  }, [media, engine, mediaKey, effectiveSpeed]);
+
+  useEffect(() => {
+    if (srcSceneId) lastSrcSceneRef.current = srcSceneId;
+  }, [srcSceneId]);
+
+  // Persist the tier for the next scene, and re-source this one only when it is
+  // actually transcoded: a direct file has no tiers to switch between.
+  const chooseQuality = useCallback((value) => {
+    if (!value || value === transcodeQuality) return;
+    setSettings({ transcodeQuality: value });
+    setTranscodeQuality(value);
+    if (sourceKind === 'direct') return;
+    const sceneId = video?.id ?? null;
+    // A reload of this scene resumes at its playhead; a plan still resolving
+    // for another scene has no playhead here to carry.
+    const sameScene = lastSrcSceneRef.current === sceneId;
+    reopenAtRef.current = (sourceKind || sameScene)
+      ? { sceneId, time: progress.position() }
+      : { sceneId: null, time: 0 };
+    setQualityEpoch(epoch => epoch + 1);
+  }, [transcodeQuality, sourceKind, video?.id, progress]);
 
   // A plan that ran out leaves the previous scene's native session playing
   // under the error card. A plain source change must not close (that would
@@ -525,6 +613,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     && upNextHiddenId !== video?.id
     && !queueOpen
     && !detailsOpen
+    && !optionsOpen
     && !error
     && !askingToResume
     && nearEnd;
@@ -658,6 +747,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
             onAddMarker={openMarkerModal}
             onToggleMute={toggleMute}
             onDetails={openDetails}
+            onOpenOptions={openOptions}
             statsOpen={statsOpen}
             onToggleStats={toggleStats}
           />
@@ -702,6 +792,20 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
           onJump={jumpQueue}
           onRemove={removeAt}
           onClose={closeQueue}
+        />
+      )}
+
+      {/* Inside the player host and outside `.controls`: the AVPlay plane rule
+          and the key routing both need it there, and it must not fade with the
+          rail. */}
+      {optionsOpen && (
+        <PlaybackOptionsMenu
+          speedRates={speedRates}
+          speed={effectiveSpeed}
+          quality={transcodeQuality}
+          onSelectSpeed={setSpeed}
+          onSelectQuality={chooseQuality}
+          onClose={closeOptions}
         />
       )}
 

@@ -38,8 +38,8 @@ let state = loadFromStorage();   // { v, salt, hash } | null
 // Wrong-PIN backoff, deliberately in memory: a persisted timestamp can brick
 // an unlocked device after a clock change, and relaunching to clear the delay
 // should stay inconvenient. Losing the counter on restart is the same
-// fail-open promise as the rest of the module. Indexed by consecutive
-// failures: first three misses free, then 1s, 5s and 30s (10⁴ tries ≈ 3.5 days).
+// fail-open promise as the rest of the module. Index 0 is the first miss:
+// first three misses free, then 1s, 5s and 30s (10⁴ tries ≈ 3.5 days).
 const FAIL_DELAYS_MS = [0, 0, 0, 1000, 1000, 5000, 5000, 5000, 30000];
 
 let failures = 0;
@@ -179,7 +179,9 @@ export function attemptPin(pin) {
   }
 
   failures += 1;
-  const delay = FAIL_DELAYS_MS[Math.min(failures, FAIL_DELAYS_MS.length - 1)];
+  // `failures` counts from 1, the table from 0: without the -1 the first
+  // entry was never read and the documented third free miss was charged 1 s.
+  const delay = FAIL_DELAYS_MS[Math.min(failures - 1, FAIL_DELAYS_MS.length - 1)];
   blockedUntil = delay > 0 ? Date.now() + delay : 0;
   return { ok: false, retryAfterMs: delay, blocked: false, failures };
 }

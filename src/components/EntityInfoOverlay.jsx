@@ -15,11 +15,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useBackKey } from '../hooks/useBackKey.js';
-import { fetchTagInfo } from '../utils/tagService.js';
-import { fetchStudioInfo } from '../utils/studioService.js';
+import { fetchTagInfo, setTagFavorite } from '../utils/tagService.js';
+import { fetchStudioInfo, setStudioFavorite } from '../utils/studioService.js';
 import { fetchGroupInfo } from '../utils/groupService.js';
-import { fetchGalleryInfo } from '../utils/galleryService.js';
-import { formatTime } from '../utils/format.js';
+import { fetchGalleryInfo, updateGallery } from '../utils/galleryService.js';
+import { formatTime, ratingLabel } from '../utils/format.js';
+import { RatingStepper } from '../pages/sceneDetail/RatingStepper.jsx';
 import styles from './EntityInfoOverlay.module.css';
 
 // A tag can have hundreds of aliases or relatives; the sheet is not a listing.
@@ -76,6 +77,7 @@ const KINDS = {
     kindLabel: 'Tag',
     portrait: true,
     favorite: true,
+    setFavorite: setTagFavorite,
     rating: false,
     load: fetchTagInfo,
     counts: TAG_COUNTS,
@@ -94,6 +96,7 @@ const KINDS = {
     kindLabel: 'Studio',
     portrait: false,
     favorite: true,
+    setFavorite: setStudioFavorite,
     rating: true,
     load: fetchStudioInfo,
     counts: STUDIO_COUNTS,
@@ -140,6 +143,8 @@ const KINDS = {
     portrait: false,
     favorite: false,
     rating: true,
+    editRating: true,
+    editOrganized: true,
     load: fetchGalleryInfo,
     counts: GALLERY_COUNTS,
     title: d => d.title,
@@ -194,12 +199,44 @@ function CountButton({ id, value, one, many, nextId, onSelect, label }) {
   );
 }
 
+function ActionButton({
+  id, label, glyph, active, nextId, onEnter, busy,
+}) {
+  const { ref, focused } = useFocusable({
+    id,
+    zone: 'entity-info',
+    onEnter,
+    nextId,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.action} ${active ? styles.actionOn : ''} ${focused ? styles.actionFocused : ''}`}
+      onClick={onEnter}
+      aria-pressed={active}
+      aria-disabled={busy || undefined}
+    >
+      <span className={styles.actionGlyph} aria-hidden="true">{glyph}</span>
+      {label}
+    </button>
+  );
+}
+
 export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVersion }) {
   const { kind, item } = entity;
   const cfg = KINDS[kind];
   const [detail, setDetail] = useState(null);
   const [status, setStatus] = useState('loading');
   const [imageFailed, setImageFailed] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  // Values this sheet wrote. A detail answer that predates a write still has
+  // to land, so its stale fields are merged under these.
+  const writtenRef = useRef({});
+  // Guards a detail answer against a newer request, not against a write.
+  const loadEpochRef = useRef(0);
   // The studio detail query depends on the server version. If the version
   // resolves while the sheet is open, refetch, or the recursive counts stay
   // missing until it is reopened. Other kinds do not depend on it.
@@ -220,27 +257,136 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
   const countIds = countActions.map(c => `entity-count-${c.target}`);
   const firstCountId = countIds[0] || null;
 
+  // One write at a time; the controls stay focusable while it runs and ignore
+  // presses, because a native `disabled` would drop the D-pad ring.
+  const beginWrite = () => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    return true;
+  };
+  const endWrite = () => {
+    busyRef.current = false;
+    setBusy(false);
+  };
+
+  const toggleFavorite = async () => {
+    if (!cfg?.setFavorite || busyRef.current) return;
+    const prev = !!data.favorite;
+    const next = !prev;
+    if (!beginWrite()) return;
+    writtenRef.current.favorite = next;
+    setDetail(d => ({ ...(d || {}), favorite: next }));
+    try {
+      const saved = await cfg.setFavorite(item.id, next);
+      writtenRef.current.favorite = saved;
+      setDetail(d => ({ ...(d || {}), favorite: saved }));
+    } catch (e) {
+      writtenRef.current.favorite = prev;
+      setDetail(d => ({ ...(d || {}), favorite: prev }));
+      setNotice(`Favourite not saved: ${e.message}`);
+    } finally {
+      endWrite();
+    }
+  };
+
+  const setGalleryRating = async (rating100) => {
+    if (!cfg?.editRating || busyRef.current) return;
+    const prev = detail?.rating100 ?? null;
+    const next = Math.max(0, Math.min(100, Math.round(Number(rating100) || 0)));
+    if ((prev ?? 0) === next || !beginWrite()) return;
+    const optimistic = next > 0 ? next : null;
+    writtenRef.current.rating100 = optimistic;
+    writtenRef.current.rating = ratingLabel(optimistic);
+    setDetail(d => ({
+      ...(d || {}), rating100: optimistic, rating: ratingLabel(optimistic),
+    }));
+    try {
+      const saved = await updateGallery({ id: item.id, rating100: next });
+      writtenRef.current.rating100 = saved.rating100;
+      writtenRef.current.rating = ratingLabel(saved.rating100);
+      setDetail(d => ({ ...(d || {}), rating100: saved.rating100, rating: ratingLabel(saved.rating100) }));
+    } catch (e) {
+      writtenRef.current.rating100 = prev;
+      writtenRef.current.rating = ratingLabel(prev);
+      setDetail(d => ({
+        ...(d || {}), rating100: prev, rating: ratingLabel(prev),
+      }));
+      setNotice(`Rating not saved: ${e.message}`);
+    } finally {
+      endWrite();
+    }
+  };
+
+  const toggleOrganized = async () => {
+    if (!cfg?.editOrganized || busyRef.current) return;
+    const prev = !!detail?.organized;
+    const next = !prev;
+    if (!beginWrite()) return;
+    writtenRef.current.organized = next;
+    setDetail(d => ({ ...(d || {}), organized: next }));
+    try {
+      const saved = await updateGallery({ id: item.id, organized: next });
+      writtenRef.current.organized = saved.organized ?? next;
+      setDetail(d => ({ ...(d || {}), organized: saved.organized ?? next }));
+    } catch (e) {
+      writtenRef.current.organized = prev;
+      setDetail(d => ({ ...(d || {}), organized: prev }));
+      setNotice(`Organised mark not saved: ${e.message}`);
+    } finally {
+      endWrite();
+    }
+  };
+
+  // Gallery controls need the detail row: the listing carries only the display
+  // label, not the stored 0-100 value or the organised flag.
+  const showGalleryActions = !!(cfg?.editRating && detail);
+  const actionIds = [
+    ...(cfg?.setFavorite ? ['entity-action-favorite'] : []),
+    ...(showGalleryActions
+      ? ['entity-rating-dec', 'entity-rating-inc', 'entity-action-organized']
+      : []),
+  ];
+  const firstActionId = actionIds[0] || null;
+  const actionNextId = (id) => {
+    const at = actionIds.indexOf(id);
+    const map = {
+      left: actionIds[(at - 1 + actionIds.length) % actionIds.length],
+      right: actionIds[(at + 1) % actionIds.length],
+    };
+    if (firstCountId) map.down = firstCountId;
+    return map;
+  };
+  const panelTargetId = firstActionId || firstCountId;
+
   const { ref: panelRef, focused } = useFocusable({
     id: 'entity-info-panel',
     zone: 'entity-info',
     autoFocus: true,
-    nextId: firstCountId ? { left: firstCountId, right: firstCountId } : null,
+    nextId: panelTargetId ? { left: panelTargetId, right: panelTargetId } : null,
   });
+
+  // A different entity starts with nothing written to protect.
+  useEffect(() => {
+    writtenRef.current = {};
+  }, [cfg, item.id]);
 
   useEffect(() => {
     if (!cfg) return undefined;
+    const epoch = ++loadEpochRef.current;
     let cancelled = false;
     setDetail(null);
     setStatus('loading');
 
     cfg.load(item.id)
       .then(d => {
-        if (cancelled) return;
-        setDetail(d);
+        if (cancelled || epoch !== loadEpochRef.current) return;
+        setDetail(d ? { ...d, ...writtenRef.current } : d);
         setStatus(d ? 'ready' : 'missing');
       })
       .catch(() => {
-        if (!cancelled) setStatus('error');
+        if (!cancelled && epoch === loadEpochRef.current) setStatus('error');
       });
 
     return () => { cancelled = true; };
@@ -253,6 +399,9 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
   // its end.
   const lastScroll = useRef(0);
   const onKeyDown = (e) => {
+    // The panel scrolls only while it owns focus. Arrows from a count or an
+    // action must reach the D-pad's nextId graph instead of being swallowed.
+    if (e.target !== panelRef.current) return;
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
     e.stopPropagation();
@@ -307,8 +456,10 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
               <p className={styles.metaLine}>{meta.join(' · ')}</p>
             )}
             <div className={styles.meta}>
-              {cfg.favorite && data.favorite && <span className={styles.favorite}>★ Favourite</span>}
-              {cfg.rating && data.rating && (
+              {cfg.favorite && !cfg.setFavorite && data.favorite && (
+                <span className={styles.favorite}>★ Favourite</span>
+              )}
+              {cfg.rating && !cfg.editRating && data.rating && (
                 <span className={styles.rating}>★ {data.rating}</span>
               )}
             </div>
@@ -325,6 +476,52 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
           </button>
         </header>
 
+        {actionIds.length > 0 && (
+          <div
+            className={styles.actions}
+            role="group"
+            aria-label="Actions"
+            aria-busy={busy || undefined}
+          >
+            {cfg.setFavorite && (
+              <ActionButton
+                id="entity-action-favorite"
+                label="Favourite"
+                glyph={data.favorite ? '★' : '☆'}
+                active={!!data.favorite}
+                nextId={actionNextId('entity-action-favorite')}
+                onEnter={toggleFavorite}
+                busy={busy}
+              />
+            )}
+            {showGalleryActions && (
+              <>
+                <RatingStepper
+                  rating100={detail.rating100}
+                  idPrefix="entity-rating"
+                  zone="entity-info"
+                  nextId={{
+                    dec: actionNextId('entity-rating-dec'),
+                    inc: actionNextId('entity-rating-inc'),
+                  }}
+                  onChange={setGalleryRating}
+                />
+                <ActionButton
+                  id="entity-action-organized"
+                  label="Organised"
+                  glyph={detail.organized ? '✓' : '○'}
+                  active={!!detail.organized}
+                  nextId={actionNextId('entity-action-organized')}
+                  onEnter={toggleOrganized}
+                  busy={busy}
+                />
+              </>
+            )}
+          </div>
+        )}
+
+        {notice && <p className={styles.notice} role="status">{notice}</p>}
+
         <div className={styles.counts} role="group" aria-label="Counts">
           {counts.map((count) => {
             const at = countActions.indexOf(count);
@@ -339,6 +536,7 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
                 nextId={at === -1 ? null : {
                   left: countIds[(at - 1 + countIds.length) % countIds.length],
                   right: countIds[(at + 1) % countIds.length],
+                  ...(firstActionId ? { up: firstActionId } : {}),
                 }}
                 onSelect={at === -1 ? null : () => onFilter(kind, data, count.target)}
                 label={at === -1 ? undefined
@@ -378,7 +576,12 @@ export default function EntityInfoOverlay({ entity, onClose, onFilter, serverVer
         <footer className={styles.footer}>
           <span><kbd>Back</kbd> Close</span>
           <span><kbd>Up</kbd> / <kbd>Down</kbd> Scroll</span>
-          {countActions.length > 0 && (
+          {actionIds.length > 0 ? (
+            <span>
+              <kbd>←</kbd> / <kbd>→</kbd> Actions
+              {countActions.length > 0 && <> · <kbd>↓</kbd> Counts</>}
+            </span>
+          ) : countActions.length > 0 && (
             <span><kbd>←</kbd> / <kbd>→</kbd> Counts · <kbd>OK</kbd> Open</span>
           )}
         </footer>

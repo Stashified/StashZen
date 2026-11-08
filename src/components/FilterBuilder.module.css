@@ -333,6 +333,26 @@
   color: var(--text-primary);
 }
 
+/* The only destructive control in the panel. Outlined while idle, filled
+   while armed, so the second press cannot be mistaken for the first. */
+.btnDanger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.btnArmed {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.deleteError {
+  margin: 0;
+  padding: 12px 32px 0;
+  color: var(--red);
+  font-size: 14px;
+}
+
 /* DOM children of `.panel`, so they cover it rather than the viewport, which
    is also what makes `focusScopeOf` find them as the nearest dialog. */
 .pickOverlay {

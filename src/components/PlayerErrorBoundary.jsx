@@ -21,6 +21,7 @@ export default class PlayerErrorBoundary extends Component {
     super(props);
     this.state = { error: null };
     this.done = false;
+    this.armed = false;
     this.closeTimer = null;
   }
 
@@ -34,8 +35,20 @@ export default class PlayerErrorBoundary extends Component {
     this.closeTimer = setTimeout(this.finish, CLOSE_DELAY_MS);
   }
 
+  // An error caught while this boundary mounts commits the fallback on the
+  // boundary's first mount, so componentDidUpdate never runs for it. Arm from
+  // both entry points, once.
+  componentDidMount() {
+    this.arm();
+  }
+
   componentDidUpdate(prevProps, prevState) {
-    if (!this.state.error || prevState.error) return;
+    if (this.state.error && !prevState.error) this.arm();
+  }
+
+  arm() {
+    if (!this.state.error || this.armed) return;
+    this.armed = true;
     window.addEventListener('keydown', this.onKey, true);
     this.node?.focus();
   }

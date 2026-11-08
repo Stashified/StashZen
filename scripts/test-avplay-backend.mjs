@@ -12,6 +12,8 @@
  *     classified as content, not a broken engine)
  *   - the seek contract (coalescer targets and the pending-target getter)
  *   - suspend/restore, including the no-args restore this panel insists on
+ *   - the playback rate: deferred until prepare, re-sent after a restore, and
+ *     reset per file but not per reopen
  *   - the poll's lifecycle: it stops on failure or scene end, replay re-arms it
  *   - TV mute and its restore-on-close rule
  */
@@ -41,8 +43,10 @@ function fakeAvplay({
   let state = 'IDLE';
   let position = 0;
   let durationMs = 600000;
+  // A new native session starts at 1x; the backend has to re-send its rate.
+  let speed = 1;
   const calls = {
-    open: [], close: 0, stop: 0, play: 0, pause: 0, seek: [],
+    open: [], close: 0, stop: 0, play: 0, pause: 0, seek: [], speed: [],
     suspend: 0, restore: [], displayMethod: [], displayRect: [],
     // Poll reads; the lifecycle tests prove the poll stopped, not just that it
     // stopped emitting.
@@ -52,7 +56,7 @@ function fakeAvplay({
   // Lets a test refuse the next prepare regardless of which open it belongs to.
   let failNextPrepare = false;
   const api = {
-    open(url) { calls.open.push(url); state = 'OPENED'; position = 0; },
+    open(url) { calls.open.push(url); state = 'OPENED'; position = 0; speed = 1; },
     setListener(l) { listener = l; },
     setDisplayRect(...a) { calls.displayRect.push(a); },
     setDisplayMethod(m) { calls.displayMethod.push(m); },
@@ -98,6 +102,16 @@ function fakeAvplay({
       calls.restore.push(args);
       if (args.length) throw new TypeError('restore() takes no arguments');
       if (state === 'SUSPENDED') state = 'PLAYING';
+      // A restore is a new native session, so it forgets the rate.
+      speed = 1;
+    },
+    setSpeed(rate) {
+      // Measured shape: refused before prepare and after close.
+      if (state !== 'READY' && state !== 'PLAYING' && state !== 'PAUSED') {
+        throw new Error('setSpeed needs a prepared session');
+      }
+      calls.speed.push(rate);
+      speed = rate;
     },
     getState: () => { calls.state += 1; return state; },
     getCurrentTime: () => position,
@@ -113,6 +127,7 @@ function fakeAvplay({
     setPosition: (ms) => { position = ms; },
     setDuration: (ms) => { durationMs = ms; },
     setState: (s) => { state = s; },
+    getSpeed: () => speed,
   };
 }
 
@@ -733,6 +748,97 @@ function rig(opts = {}, backendOpts = {}) {
   const seeksToTarget = r.fake.calls.seek.filter((ms) => ms === 60000).length;
   check('a hide during a seek restores at the seek target',
     seeksToTarget >= 2, `seeks=${r.fake.calls.seek.join(',')}`);
+  r.backend.close();
+}
+
+// ── Playback rate: deferred, reapplied, and per file ──────
+// `setSpeed` needs a prepared session, and the player calls setPlaybackRate
+// from an effect that can run before prepare finishes. The backend has to keep
+// the request and send it when the session exists, and to send it again after
+// the two paths that silently reset it: restore() and a recovery reopen.
+{
+  const r = rig({ prepareMs: 40 });
+  r.backend.open('http://x/1.mp4');
+  const answered = r.backend.setPlaybackRate(2);
+  check('a rate requested before prepare is remembered, not dropped',
+    answered === 2 && r.backend.playbackRate === 2 && r.fake.calls.speed.length === 0,
+    `answered=${answered} sent=${r.fake.calls.speed.join(',')}`);
+  await sleep(80);
+  check('...and is applied once the session is prepared',
+    eq(r.fake.calls.speed, [2]) && r.fake.getSpeed() === 2,
+    `sent=${r.fake.calls.speed.join(',')} speed=${r.fake.getSpeed()}`);
+  check('a prepared session takes a rate change at once',
+    r.backend.setPlaybackRate(1) === 1 && r.fake.getSpeed() === 1);
+  r.backend.close();
+}
+
+{
+  // suspend/restore is a new native session: the rate must be re-sent after it,
+  // or a hidden-and-shown app silently returns to 1x.
+  const r = rig();
+  r.backend.open('http://x/1.mp4');
+  await sleep(60);
+  r.backend.setPlaybackRate(2);
+  await sleep(300);
+  const before = r.fake.calls.speed.length;
+  r.doc.visibilityState = 'hidden';
+  r.doc.fire('visibilitychange');
+  r.doc.visibilityState = 'visible';
+  r.doc.fire('visibilitychange');
+  await sleep(400);
+  check('a restore re-sends the sitting\'s rate',
+    r.fake.getSpeed() === 2 && r.fake.calls.speed.length > before,
+    `speed=${r.fake.getSpeed()} sent=${r.fake.calls.speed.join(',')}`);
+  r.backend.close();
+}
+
+{
+  // A queue advance is a different file and starts at 1x. A recovery reopen
+  // passes the same URL and keeps the rate, which is why the reset is keyed on
+  // the URL, not on every open().
+  const r = rig({ prepareMs: 10 });
+  r.backend.open('http://x/1.mp4');
+  await sleep(60);
+  r.backend.setPlaybackRate(2);
+  r.backend.open('http://x/2.mp4');
+  check('a different file starts at 1x', r.backend.playbackRate === 1);
+  await sleep(40);
+  check('...and its first prepared session is told 1x',
+    r.fake.getSpeed() === 1 && eq(r.fake.calls.speed.slice(-1), [1]),
+    `sent=${r.fake.calls.speed.join(',')} speed=${r.fake.getSpeed()}`);
+
+  r.backend.setPlaybackRate(2);
+  r.backend.open('http://x/2.mp4');
+  check('a reopen of the same URL keeps the rate', r.backend.playbackRate === 2);
+  await sleep(40);
+  check('...and re-sends it to the new native session', r.fake.getSpeed() === 2);
+  r.backend.close();
+}
+
+{
+  // 1.25 and 1.5 are browser rates; AVPlay takes discrete values, so an
+  // unknown one falls back instead of reaching setSpeed.
+  const r = rig();
+  r.backend.open('http://x/1.mp4');
+  await sleep(60);
+  check('an unsupported rate falls back to 1x',
+    r.backend.setPlaybackRate(1.5) === 1 && r.backend.playbackRate === 1);
+  const before = r.fake.calls.speed.length;
+  check('...without sending it to the native player',
+    r.fake.calls.speed.length === before);
+  r.backend.close();
+}
+
+{
+  // A refused setSpeed must not break playback: the player still plays at 1x.
+  const r = rig();
+  r.backend.open('http://x/1.mp4');
+  await sleep(60);
+  r.fake.api.setSpeed = () => { throw new Error('unsupported'); };
+  const answered = r.backend.setPlaybackRate(2);
+  check('a refused setSpeed is contained',
+    answered === 2 && r.backend.playbackRate === 2 && r.backend.error === null);
+  check('...and the session still reports playing', r.backend.readyState === 4);
   r.backend.close();
 }
 

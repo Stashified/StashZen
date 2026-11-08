@@ -19,7 +19,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App.jsx';
 import FirstRun from '../../src/components/FirstRun.jsx';
-import { registry } from '../../src/hooks/useFocusable.js';
+import { registry, getCurrentFocusId } from '../../src/hooks/useFocusable.js';
 import { setSettings, getSettings } from '../../src/utils/settings.js';
 import { isLockSet, clearPin } from '../../src/utils/appLock.js';
 
@@ -110,6 +110,18 @@ function press(id) {
   el.click();
 }
 
+/** An arrow through the window-level nav handler, which throttles repeats. */
+async function pressArrow(key) {
+  (document.activeElement || document.body).dispatchEvent(
+    new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+  );
+  await sleep(140);
+  (document.activeElement || document.body).dispatchEvent(
+    new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }),
+  );
+  await sleep(140);
+}
+
 /** Back, as the remote sends it: a window keydown carrying legacy keyCode. */
 function pressBack() {
   window.dispatchEvent(new KeyboardEvent('keydown', {
@@ -182,6 +194,27 @@ async function run() {
       ? `name ${Math.round(nr.top)}–${Math.round(nr.bottom)}, `
         + `tagline ${Math.round(tr.top)}–${Math.round(tr.bottom)}`
       : 'not measurable');
+
+  // ── A8–A11: Down walks the actions in order ────────────
+  // The API key field spans the card while Test sits at its left edge, so the
+  // scoring preferred Skip, one row lower but nearer the centre.
+  registry.get('firstrun-key')?.el?.focus();
+  await sleep(60);
+  await pressArrow('ArrowDown');
+  check('A8 Down from the API key reaches Test connection',
+    getCurrentFocusId() === 'firstrun-test', `landed on ${getCurrentFocusId()}`);
+
+  await pressArrow('ArrowDown');
+  check('A9 ...then Connect',
+    getCurrentFocusId() === 'firstrun-connect', `landed on ${getCurrentFocusId()}`);
+
+  await pressArrow('ArrowDown');
+  check('A10 ...then Skip',
+    getCurrentFocusId() === 'firstrun-skip', `landed on ${getCurrentFocusId()}`);
+
+  await pressArrow('ArrowUp');
+  check('A11 Up from Skip returns to Connect',
+    getCurrentFocusId() === 'firstrun-connect', `landed on ${getCurrentFocusId()}`);
 
   const phaseA = await calls();
   check('A4 no request of any kind was sent',

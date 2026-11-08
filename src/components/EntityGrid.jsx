@@ -41,6 +41,8 @@ export default function EntityGrid({
     // Back into a filtered listing lands on page 1; the restore in
     // utils/focus.js pages forward.
     focusPrefix: view.focusPrefix,
+    // Subscribes the mounted rows to writes made from the Info sheet.
+    entity: view.entity,
   });
 
   // No `fetchPage`: the Images viewer takes a snapshot and cannot page, and the

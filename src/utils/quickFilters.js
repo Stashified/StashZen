@@ -16,14 +16,20 @@
 // GREATER_THAN 39 because the criterion has no inclusive modifier.
 const RATED_4_MIN = 39;
 
+const SCENE_CHIPS = [
+  { id: 'unwatched', label: 'Unwatched' },
+  { id: 'rated4', label: 'Rated 4+' },
+  { id: 'markers', label: 'Has markers' },
+  { id: 'favorites', label: 'Favourite performers' },
+  { id: 'addedThisYear', label: 'Added this year' },
+];
+
 export const QUICK_FILTERS = {
-  scenes: [
-    { id: 'unwatched', label: 'Unwatched' },
-    { id: 'rated4', label: 'Rated 4+' },
-    { id: 'markers', label: 'Has markers' },
-    { id: 'favorites', label: 'Favourite performers' },
-    { id: 'addedThisYear', label: 'Added this year' },
-  ],
+  scenes: SCENE_CHIPS,
+  // A performer's page is already scoped to one performer, so the favourite
+  // chip would either match every scene (they are favourite) or filter by a
+  // co-star. Same order as the Scenes row otherwise.
+  performerScenes: SCENE_CHIPS.filter(chip => chip.id !== 'favorites'),
   galleries: [
     { id: 'rated4', label: 'Rated 4+' },
     { id: 'favorites', label: 'Favourite performers' },
@@ -57,7 +63,13 @@ export const QUICK_FILTERS = {
 export function quickFilterCriterion(id, now = Date.now()) {
   switch (id) {
     case 'unwatched':
-      return { play_count: { value: 0, modifier: 'EQUALS' } };
+      // Stash can hold watch time or a resume point without a view-date row,
+      // so a play count alone would call those scenes unwatched.
+      return {
+        play_count: { value: 0, modifier: 'EQUALS' },
+        play_duration: { value: 0, modifier: 'EQUALS' },
+        resume_time: { value: 0, modifier: 'EQUALS' },
+      };
     case 'rated4':
       return { rating100: { value: RATED_4_MIN, modifier: 'GREATER_THAN' } };
     case 'markers':

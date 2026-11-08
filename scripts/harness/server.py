@@ -65,6 +65,12 @@ MODE = {
     "stats": "ok", "serverStatus": "ok",
     # sceneMarkers: "empty" strips the detail page's marker row.
     "sceneMarkers": "ok",
+    # The sheet's quick writes: "fail" rolls the control back, "slow" exposes
+    # the optimistic value. `imageO` covers increment/decrement/reset together.
+    "tagUpdate": "ok", "studioUpdate": "ok", "galleryUpdate": "ok",
+    "imageUpdate": "ok", "imageO": "ok",
+    # filterDestroy: "fail" keeps the builder open with its error line.
+    "filterDestroy": "ok",
 }
 LOCK = threading.Lock()
 
@@ -172,7 +178,19 @@ SCENE = {
               "name": "a tag name long enough that it cannot fit the details column, "
                       "which the chip has to cap rather than let overflow"}]
     + [{"id": str(i), "name": f"tag-{i}"} for i in range(10)],
-    "performers": [{"id": "1", "name": "Performer One"}],
+    # The chip is the one route to a performer page with no card behind it, so
+    # it has to carry the card fields the page header draws. The values are
+    # distinct from the listing fixture's so the chip's payload is identifiable.
+    "performers": [{
+        "id": "1",
+        "name": "Performer One",
+        "image_path": "/performer/1/image.png",
+        "scene_count": 42,
+        "country": "US",
+        "birthdate": "1990-01-02",
+        "height_cm": 170,
+        "disambiguation": "VERIFY performer disambiguation",
+    }],
     # Two, so the chip row's focus walk has somewhere to go; no listing gallery
     # shares these ids, so the selected gallery is identifiable.
     "galleries": [
@@ -408,6 +426,17 @@ STUDIO_INFO_FETCHES = []
 GROUP_INFO_FETCHES = []
 GALLERY_INFO_FETCHES = []
 
+# Quick writes and the state they leave. Logs are cleared per phase; the state
+# is what the server holds, so a reopen reads the value the write left.
+TAG_UPDATES = []
+STUDIO_UPDATES = []
+GALLERY_UPDATES = []
+IMAGE_UPDATES = []
+TAG_FAVORITE = {}
+STUDIO_FAVORITE = {}
+GALLERY_STATE = {}
+IMAGE_STATE = {}
+
 # Every stopJob mutation — `{job_id, query}` — and the ids stopped. `/clear`
 # resets both, so each phase starts from the full fixture.
 STOP_FETCHES = []
@@ -582,6 +611,7 @@ IMAGE_INFO = {
     "code": "VERIFY-CODE",
     "rating100": 75,
     "o_counter": 3,
+    "organized": False,
     "studio": {"id": "1", "name": "VERIFY image studio"},
     "photographer": "VERIFY photographer",
     "tags": [{"id": f"t{i}", "name": f"VERIFY info tag {i}"} for i in range(1, 9)],
@@ -1006,6 +1036,10 @@ class Handler(SimpleHTTPRequestHandler):
                 STUDIO_INFO_FETCHES.clear()
                 GROUP_INFO_FETCHES.clear()
                 GALLERY_INFO_FETCHES.clear()
+                TAG_UPDATES.clear()
+                STUDIO_UPDATES.clear()
+                GALLERY_UPDATES.clear()
+                IMAGE_UPDATES.clear()
                 STOP_FETCHES.clear()
                 STOPPED_JOB_IDS.clear()
                 STATS_FETCHES.clear()
@@ -1089,6 +1123,18 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/galleryinfofetches"):
             with LOCK:
                 return self._json(list(GALLERY_INFO_FETCHES))
+        if self.path.startswith("/tagupdates"):
+            with LOCK:
+                return self._json(list(TAG_UPDATES))
+        if self.path.startswith("/studioupdates"):
+            with LOCK:
+                return self._json(list(STUDIO_UPDATES))
+        if self.path.startswith("/galleryupdates"):
+            with LOCK:
+                return self._json(list(GALLERY_UPDATES))
+        if self.path.startswith("/imageupdates"):
+            with LOCK:
+                return self._json(list(IMAGE_UPDATES))
         if self.path.startswith("/stopfetches"):
             with LOCK:
                 return self._json(list(STOP_FETCHES))
@@ -1737,8 +1783,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"errors": [{"message": "simulated image info failure"}]})
             # The studio name carries the requested id; other fields are identical,
             # so a stale answer under the next image would otherwise look right.
+            with LOCK:
+                answer = {**IMAGE_INFO, **IMAGE_STATE.get(iid, {})}
             return self._json({"data": {"findImage": {
-                **IMAGE_INFO,
+                **answer,
                 "id": iid,
                 "studio": {"id": "1", "name": f"VERIFY image studio {iid}"},
             }}})
@@ -1758,8 +1806,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"errors": [{"message": "simulated tag info failure"}]})
             if mode == "missing":
                 return self._json({"data": {"findTag": None}})
+            # A write leaves its favourite behind, so a reopen reads it back.
+            with LOCK:
+                favorite = TAG_FAVORITE.get(tid, TAG_INFO["favorite"])
             return self._json({"data": {"findTag": {
                 **TAG_INFO, "id": tid, "name": f"VERIFY tag info {tid}",
+                "favorite": favorite,
             }}})
 
         if "FindStudioInfo" in query:
@@ -1780,6 +1832,8 @@ class Handler(SimpleHTTPRequestHandler):
                 k: v for k, v in STUDIO_INFO.items()
                 if k not in ("o_counter", "scene_marker_count") or k in query
             }
+            with LOCK:
+                answer["favorite"] = STUDIO_FAVORITE.get(sid, STUDIO_INFO["favorite"])
             return self._json({"data": {"findStudio": {
                 **answer, "id": sid, "name": f"VERIFY studio info {sid}",
             }}})
@@ -1810,8 +1864,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"errors": [{"message": "simulated gallery info failure"}]})
             if mode == "missing":
                 return self._json({"data": {"findGallery": None}})
+            with LOCK:
+                answer = {**GALLERY_INFO, **GALLERY_STATE.get(gid, {})}
             return self._json({"data": {"findGallery": {
-                **GALLERY_INFO, "id": gid,
+                **answer, "id": gid,
                 "title": f"VERIFY gallery info {gid}",
             }}})
 
@@ -2042,6 +2098,12 @@ class Handler(SimpleHTTPRequestHandler):
         if "DestroySavedFilter" in query:
             fid = str((variables.get("input") or {}).get("id"))
             with LOCK:
+                mode = MODE.get("filterDestroy", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated delete failure"}]})
+            with LOCK:
                 hit = False
                 for bucket in SAVED_FILTERS.values():
                     for i, f in enumerate(bucket):
@@ -2071,6 +2133,103 @@ class Handler(SimpleHTTPRequestHandler):
                 "organized": inp.get("organized", SCENE["organized"]),
             }
             return self._json({"data": {"sceneUpdate": out}})
+
+        # The sheet's quick writes. Each log records the input the client sent;
+        # each state dict is what the matching Find*Info answers afterwards.
+        if "TagUpdate" in query:
+            inp = variables.get("input") or {}
+            tid = str(inp.get("id"))
+            with LOCK:
+                mode = MODE.get("tagUpdate", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated tag write failure"}]})
+            with LOCK:
+                TAG_UPDATES.append({"id": tid, "input": inp})
+                if "favorite" in inp:
+                    TAG_FAVORITE[tid] = bool(inp["favorite"])
+                favorite = TAG_FAVORITE.get(tid, TAG_INFO["favorite"])
+            return self._json({"data": {"tagUpdate": {"id": tid, "favorite": favorite}}})
+
+        if "StudioUpdate" in query:
+            inp = variables.get("input") or {}
+            sid = str(inp.get("id"))
+            with LOCK:
+                mode = MODE.get("studioUpdate", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated studio write failure"}]})
+            with LOCK:
+                STUDIO_UPDATES.append({"id": sid, "input": inp})
+                if "favorite" in inp:
+                    STUDIO_FAVORITE[sid] = bool(inp["favorite"])
+                favorite = STUDIO_FAVORITE.get(sid, STUDIO_INFO["favorite"])
+            return self._json({"data": {"studioUpdate": {
+                "id": sid, "favorite": favorite,
+            }}})
+
+        if "GalleryUpdate" in query:
+            inp = variables.get("input") or {}
+            gid = str(inp.get("id"))
+            with LOCK:
+                mode = MODE.get("galleryUpdate", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated gallery write failure"}]})
+            with LOCK:
+                GALLERY_UPDATES.append({"id": gid, "input": inp})
+                state = GALLERY_STATE.setdefault(gid, {})
+                for key in ("rating100", "organized"):
+                    if key in inp:
+                        state[key] = inp[key]
+                answer = {
+                    key: state.get(key, GALLERY_INFO[key])
+                    for key in ("rating100", "organized")
+                }
+            return self._json({"data": {"galleryUpdate": {"id": gid, **answer}}})
+
+        if "ImageUpdate" in query:
+            inp = variables.get("input") or {}
+            iid = str(inp.get("id"))
+            with LOCK:
+                mode = MODE.get("imageUpdate", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated image write failure"}]})
+            with LOCK:
+                IMAGE_UPDATES.append({"op": "update", "id": iid, "input": inp})
+                state = IMAGE_STATE.setdefault(iid, {})
+                for key in ("rating100", "organized"):
+                    if key in inp:
+                        state[key] = inp[key]
+                answer = {
+                    "rating100": state.get("rating100", IMAGE_INFO["rating100"]),
+                    "organized": state.get("organized", IMAGE_INFO["organized"]),
+                }
+            return self._json({"data": {"imageUpdate": {"id": iid, **answer}}})
+
+        if any(op in query for op in ("ImageIncrementO", "ImageDecrementO", "ImageResetO")):
+            iid = str(variables.get("id"))
+            op = ("increment" if "ImageIncrementO" in query
+                  else "decrement" if "ImageDecrementO" in query else "reset")
+            with LOCK:
+                mode = MODE.get("imageO", "ok")
+            if mode in ("slow", "fail"):
+                time.sleep(1.2)
+            if mode == "fail":
+                return self._json({"errors": [{"message": "simulated image O failure"}]})
+            with LOCK:
+                state = IMAGE_STATE.setdefault(iid, {})
+                current = state.get("o_counter", IMAGE_INFO["o_counter"])
+                count = (current + 1 if op == "increment"
+                         else max(0, current - 1) if op == "decrement" else 0)
+                state["o_counter"] = count
+                IMAGE_UPDATES.append({"op": op, "id": iid, "o_counter": count})
+            return self._json({"data": {f"image{op.capitalize()}O": count}})
 
         # The marker form's tag picker, told apart from the Tags section's query
         # by the absence of `tag_filter` (that one is handled above). Name

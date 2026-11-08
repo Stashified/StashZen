@@ -49,8 +49,16 @@ import {
 } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { isBackCode } from '../utils/input.js';
-import { fetchImageInfo, fetchImages } from '../utils/imageService.js';
+import {
+  fetchImageInfo,
+  fetchImages,
+  updateImage,
+  incrementImageO,
+  decrementImageO,
+  resetImageO,
+} from '../utils/imageService.js';
 import { buildImageInfoRows } from '../utils/imageInfo.js';
+import { ratingLabel, nextRating } from '../utils/format.js';
 import { stableSort } from '../utils/randomSort.js';
 import styles from './ImageViewer.module.css';
 
@@ -84,6 +92,149 @@ const GALLERY_MAX_PAGES = 100;
 // of slack is enough for the next page to land unseen.
 const GALLERY_RUNWAY_PAGES = 3;
 
+function EditButton({
+  id, label, glyph, active, disabled, nextId, onEnter, onLongPress, onFocus, onBlur,
+}) {
+  const { ref, focused } = useFocusable({
+    id,
+    zone: 'image-viewer',
+    onEnter,
+    onLongPress,
+    onFocus,
+    onBlur,
+    nextId,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.editBtn} ${focused ? styles.editFocused : ''} ${disabled ? styles.editMuted : ''}`}
+      onClick={onEnter}
+      aria-label={label}
+      aria-disabled={disabled || undefined}
+      aria-pressed={active}
+    >
+      {glyph}
+    </button>
+  );
+}
+
+function ImageEditControls({
+  detail, busy, onRating, onOrganized,
+  onOIncrement, onODecrement, onOReset, onFocusChange,
+}) {
+  const rating = Math.max(0, Math.min(100, Math.round(Number(detail.rating100) || 0)));
+  // Show an off-grid value exactly (75 is 7.5), and step from it: rounding to
+  // 8★ first would make one press write 90 or 60.
+  const ratingDisplay = rating === 0
+    ? '–'
+    : (rating % 10 === 0 ? String(rating / 10) : (rating / 10).toFixed(1));
+  const oCount = detail.oCounter || 0;
+
+  const ratingDecNext = {
+    right: 'image-viewer-rating-inc',
+    down: 'image-viewer-organized',
+    up: 'image-viewer-info',
+  };
+  const ratingIncNext = {
+    left: 'image-viewer-rating-dec',
+    down: 'image-viewer-organized',
+    up: 'image-viewer-info',
+  };
+  const organizedNext = {
+    up: 'image-viewer-rating-inc',
+    down: 'image-viewer-o-dec',
+  };
+  const oDecNext = {
+    right: 'image-viewer-o-inc',
+    up: 'image-viewer-organized',
+    down: 'image-viewer',
+  };
+  // Down returns to the picture, so browsing under the open panel still works.
+  const oIncNext = {
+    left: 'image-viewer-o-dec',
+    up: 'image-viewer-organized',
+    down: 'image-viewer',
+  };
+
+  return (
+    <div
+      className={styles.editControls}
+      role="group"
+      aria-label="Image actions"
+      aria-busy={busy || undefined}
+    >
+      <div className={styles.editRow}>
+        <span className={styles.editLabel}>Rating</span>
+        <EditButton
+          id="image-viewer-rating-dec"
+          label="Decrease rating"
+          glyph="−"
+          disabled={rating <= 0 || busy}
+          nextId={ratingDecNext}
+          onEnter={() => onRating(nextRating(rating, -1))}
+          onFocus={() => onFocusChange('image-viewer-rating-dec')}
+          onBlur={() => onFocusChange(null)}
+        />
+        <span className={styles.editValue}>
+          {ratingDisplay} <span aria-hidden="true">★</span>
+        </span>
+        <EditButton
+          id="image-viewer-rating-inc"
+          label="Increase rating"
+          glyph="+"
+          disabled={rating >= 100 || busy}
+          nextId={ratingIncNext}
+          onEnter={() => onRating(nextRating(rating, 1))}
+          onFocus={() => onFocusChange('image-viewer-rating-inc')}
+          onBlur={() => onFocusChange(null)}
+        />
+      </div>
+
+      <div className={styles.editRow}>
+        <span className={styles.editLabel}>Status</span>
+        <EditButton
+          id="image-viewer-organized"
+          label={detail.organized ? 'Remove organised mark' : 'Mark organised'}
+          glyph={detail.organized ? '✓ Organised' : '○ Organised'}
+          active={!!detail.organized}
+          disabled={busy}
+          nextId={organizedNext}
+          onEnter={onOrganized}
+          onFocus={() => onFocusChange('image-viewer-organized')}
+          onBlur={() => onFocusChange(null)}
+        />
+      </div>
+
+      <div className={styles.editRow}>
+        <span className={styles.editLabel}>O count</span>
+        <EditButton
+          id="image-viewer-o-dec"
+          label="Decrease O count"
+          glyph="−"
+          disabled={oCount <= 0 || busy}
+          nextId={oDecNext}
+          onEnter={onODecrement}
+          onFocus={() => onFocusChange('image-viewer-o-dec')}
+          onBlur={() => onFocusChange(null)}
+        />
+        <span className={styles.editValue}>{oCount}</span>
+        <EditButton
+          id="image-viewer-o-inc"
+          label="Increase O count, hold to clear"
+          glyph="+"
+          disabled={busy}
+          nextId={oIncNext}
+          onEnter={onOIncrement}
+          onLongPress={onOReset}
+          onFocus={() => onFocusChange('image-viewer-o-inc')}
+          onBlur={() => onFocusChange(null)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ImageViewer({
   items = [],
   index = 0,
@@ -115,7 +266,20 @@ export default function ImageViewer({
   const [infoStatus, setInfoStatus] = useState('idle'); // idle | loading | ready | error
   const [infoData, setInfoData] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
+  const [editNotice, setEditNotice] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [focusedControl, setFocusedControlState] = useState(null);
+  // The picture-change effect reads the last control that held focus. A ref,
+  // so that effect does not need to re-run when focus moves.
+  const focusedControlRef = useRef(null);
+  const setFocusedControl = (id) => {
+    focusedControlRef.current = id;
+    setFocusedControlState(id);
+  };
   const currentIdRef = useRef(null);
+  // A write started after the info request; that answer is now stale.
+  const infoEpochRef = useRef(0);
+  const editBusyRef = useRef(false);
 
   // The picture on screen. Local, not App's: stepping must not re-render App
   // and the whole grid sitting behind this overlay, and the viewer reports the
@@ -155,26 +319,13 @@ export default function ImageViewer({
   });
   const closeInfo = useCallback(() => {
     setInfoOpen(false);
+    // The notice belongs to this panel; don't greet the next open with it.
+    setEditNotice('');
+    setFocusedControl(null);
     ref.current?.focus();
   }, [ref]);
 
   const togglePlaying = () => setPlaying(p => !p);
-
-  const playBtn = useFocusable({
-    id: 'image-viewer-play',
-    zone: 'image-viewer',
-    nextId: { right: 'image-viewer-info', down: 'image-viewer' },
-    onEnter: togglePlaying,
-  });
-  const infoBtn = useFocusable({
-    id: 'image-viewer-info',
-    zone: 'image-viewer',
-    nextId: { left: 'image-viewer-play', down: 'image-viewer' },
-    // `onEnter`, not just `onClick`: useFocusable prevents native button
-    // activation on Enter, so `onClick` alone never fires from the remote. Same
-    // convention as tvActions.ActionButton. `closeInfo` is hoisted below.
-    onEnter: () => (infoOpen ? closeInfo() : setInfoOpen(true)),
-  });
 
   // Memoized because the effect that preloads the next picture keys on it,
   // and the default `items = []` is a fresh array every render.
@@ -189,6 +340,153 @@ export default function ImageViewer({
   const canNext = currentIndex < sourceItems.length - 1;
   const loaded = itemId !== null && loadedId === itemId;
   const imgError = itemId !== null && errorId === itemId;
+  // Controls and readouts only ever speak for the picture they were fetched
+  // for; a stale answer from the previous image must not paint under this one.
+  const detailForItem = item && infoData && String(infoData.id) === String(item.id)
+    ? infoData
+    : null;
+
+  const playBtn = useFocusable({
+    id: 'image-viewer-play',
+    zone: 'image-viewer',
+    nextId: { right: 'image-viewer-info', down: 'image-viewer' },
+    onEnter: togglePlaying,
+  });
+  const infoBtn = useFocusable({
+    id: 'image-viewer-info',
+    zone: 'image-viewer',
+    // Down enters the first control once it exists; while loading it must
+    // still reach the picture.
+    nextId: {
+      left: 'image-viewer-play',
+      down: infoOpen && detailForItem ? 'image-viewer-rating-dec' : 'image-viewer',
+    },
+    // `onEnter`, not just `onClick`: useFocusable prevents native button
+    // activation on Enter, so `onClick` alone never fires from the remote. Same
+    // convention as tvActions.ActionButton. `closeInfo` is hoisted below.
+    onEnter: () => (infoOpen ? closeInfo() : setInfoOpen(true)),
+  });
+  // Stable, unlike the hook's returned object: the picture-change effect
+  // focuses this button and must not re-run on every render.
+  const focusInfoBtn = infoBtn.focus;
+
+  const sameImage = (id) => currentIdRef.current != null
+    && id != null
+    && String(currentIdRef.current) === String(id);
+
+  const beginEdit = () => {
+    if (editBusyRef.current) return false;
+    editBusyRef.current = true;
+    setEditBusy(true);
+    setEditNotice('');
+    // A write started now outranks an info answer already in flight.
+    infoEpochRef.current += 1;
+    // Editing is a decision about this picture; stop the timer.
+    setPlaying(false);
+    return true;
+  };
+  const endEdit = () => {
+    editBusyRef.current = false;
+    setEditBusy(false);
+  };
+  const patchDetail = (id, patch) => {
+    setInfoData(d => (d && String(d.id) === String(id) ? { ...d, ...patch } : d));
+  };
+
+  const editRating = async (rating100) => {
+    const imageId = item?.id;
+    if (!detailForItem || imageId == null || editBusyRef.current) return;
+    const prev = detailForItem.rating100 ?? null;
+    const next = Math.max(0, Math.min(100, Math.round(Number(rating100) || 0)));
+    if ((prev ?? 0) === next || !beginEdit()) return;
+    patchDetail(imageId, { rating100: next > 0 ? next : null });
+    try {
+      const saved = await updateImage({ id: imageId, rating100: next });
+      patchDetail(imageId, { rating100: saved.rating100 });
+    } catch (e) {
+      patchDetail(imageId, { rating100: prev });
+      if (sameImage(imageId)) setEditNotice(`Rating not saved: ${e.message}`);
+    } finally {
+      endEdit();
+    }
+  };
+
+  const editOrganized = async () => {
+    const imageId = item?.id;
+    if (!detailForItem || imageId == null || editBusyRef.current) return;
+    const prev = !!detailForItem.organized;
+    const next = !prev;
+    if (!beginEdit()) return;
+    patchDetail(imageId, { organized: next });
+    try {
+      const saved = await updateImage({ id: imageId, organized: next });
+      patchDetail(imageId, { organized: saved.organized ?? next });
+    } catch (e) {
+      patchDetail(imageId, { organized: prev });
+      if (sameImage(imageId)) setEditNotice(`Organised mark not saved: ${e.message}`);
+    } finally {
+      endEdit();
+    }
+  };
+
+  const incrementO = async () => {
+    const imageId = item?.id;
+    if (!detailForItem || imageId == null || editBusyRef.current) return;
+    const prev = detailForItem.oCounter || 0;
+    if (!beginEdit()) return;
+    patchDetail(imageId, { oCounter: prev + 1 });
+    try {
+      const count = await incrementImageO(imageId, prev);
+      if (typeof count === 'number') patchDetail(imageId, { oCounter: count });
+    } catch (e) {
+      patchDetail(imageId, { oCounter: prev });
+      if (sameImage(imageId)) setEditNotice(`O count not saved: ${e.message}`);
+    } finally {
+      endEdit();
+    }
+  };
+
+  const decrementO = async () => {
+    const imageId = item?.id;
+    if (!detailForItem || imageId == null || editBusyRef.current) return;
+    const prev = detailForItem.oCounter || 0;
+    if (prev <= 0) {
+      setEditNotice('O count is already 0');
+      return;
+    }
+    if (!beginEdit()) return;
+    patchDetail(imageId, { oCounter: prev - 1 });
+    try {
+      const count = await decrementImageO(imageId, prev);
+      if (typeof count === 'number') patchDetail(imageId, { oCounter: count });
+    } catch (e) {
+      patchDetail(imageId, { oCounter: prev });
+      if (sameImage(imageId)) setEditNotice(`O count not saved: ${e.message}`);
+    } finally {
+      endEdit();
+    }
+  };
+
+  const clearO = async () => {
+    const imageId = item?.id;
+    if (!detailForItem || imageId == null || editBusyRef.current) return;
+    const prev = detailForItem.oCounter || 0;
+    if (prev <= 0) {
+      setEditNotice('O count is already 0');
+      return;
+    }
+    if (!beginEdit()) return;
+    patchDetail(imageId, { oCounter: 0 });
+    try {
+      const count = await resetImageO(imageId, prev);
+      patchDetail(imageId, { oCounter: typeof count === 'number' ? count : 0 });
+    } catch (e) {
+      patchDetail(imageId, { oCounter: prev });
+      if (sameImage(imageId)) setEditNotice(`O count not cleared: ${e.message}`);
+    } finally {
+      endEdit();
+    }
+  };
 
   // Stable: it is in the slide timer's dependencies, where a fresh identity
   // would restart the six-second countdown on any unrelated re-render and tear
@@ -203,7 +501,12 @@ export default function ImageViewer({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [item?.id]);
+    setEditNotice('');
+    // A slide while a control holds focus unmounts it and drops focus to
+    // <body>; land on Info instead.
+    if (focusedControlRef.current) focusInfoBtn();
+    setFocusedControl(null);
+  }, [item?.id, focusInfoBtn]);
 
   // The preloader fetches the next picture during the six-second wait, so its
   // load can beat React's listener and leave a spinner over a picture that is
@@ -225,12 +528,14 @@ export default function ImageViewer({
     if (!infoOpen || !item?.id) return undefined;
     let cancelled = false;
     const requestedId = item.id;
+    const epoch = ++infoEpochRef.current;
     setInfoStatus('loading');
     setInfoMessage('');
     const timer = setTimeout(() => {
       fetchImageInfo(item)
         .then(d => {
-          if (cancelled || currentIdRef.current !== requestedId) return;
+          if (cancelled || currentIdRef.current !== requestedId
+            || epoch !== infoEpochRef.current) return;
           if (!d) {
             setInfoData(null);
             setInfoStatus('error');
@@ -241,7 +546,8 @@ export default function ImageViewer({
           setInfoStatus('ready');
         })
         .catch(e => {
-          if (cancelled || currentIdRef.current !== requestedId) return;
+          if (cancelled || currentIdRef.current !== requestedId
+            || epoch !== infoEpochRef.current) return;
           setInfoData(null);
           setInfoStatus('error');
           setInfoMessage(e.message);
@@ -412,6 +718,9 @@ export default function ImageViewer({
       if (e.key === 'Escape' || e.key === 'Backspace' || isBackCode(e.keyCode)) {
         e.preventDefault();
         e.stopPropagation();
+        // A held Back repeats; each repeat would re-run the ladder against the
+        // new state and peel another layer. One press, one layer.
+        if (e.repeat) return;
         // Back peels one layer at a time: the panel, then the zoom, then the
         // viewer.
         if (infoOpen) closeInfo();
@@ -476,9 +785,10 @@ export default function ImageViewer({
   const src = item ? (item.full || item.image_path) : null;
   // Never draw the previous image's metadata under the new one while the
   // next request is in flight.
-  const infoRows = item && infoData && infoData.id === item.id
-    ? buildImageInfoRows(infoData)
-    : [];
+  const infoRows = detailForItem ? buildImageInfoRows(detailForItem) : [];
+  const headerRating = detailForItem
+    ? ratingLabel(detailForItem.rating100)
+    : (item?.rating || null);
   const title = gallery ? (gallery.title || 'Gallery') : (item?.title || 'Image');
   const empty = gallery && galleryStatus === 'ready' && !item;
   // One of the header buttons holds the D-pad; the footer then names its
@@ -541,6 +851,21 @@ export default function ImageViewer({
                 Couldn't load info{infoMessage ? `: ${infoMessage}` : ''}
               </p>
             )}
+            {infoStatus === 'ready' && detailForItem && (
+              <ImageEditControls
+                detail={detailForItem}
+                busy={editBusy}
+                onRating={editRating}
+                onOrganized={editOrganized}
+                onOIncrement={incrementO}
+                onODecrement={decrementO}
+                onOReset={clearO}
+                onFocusChange={setFocusedControl}
+              />
+            )}
+            {editNotice && (
+              <p className={styles.editNotice} role="status">{editNotice}</p>
+            )}
             {infoStatus === 'ready' && (
               <dl className={styles.infoRows}>
                 {infoRows.map(row => (
@@ -559,7 +884,7 @@ export default function ImageViewer({
         <h2 className={styles.title}>{title}</h2>
         <div className={styles.meta}>
           {item?.date && <span>{item.date}</span>}
-          {item?.rating && <span className={styles.rating}>★ {item.rating}</span>}
+          {headerRating && <span className={styles.rating}>★ {headerRating}</span>}
         </div>
         <div className={styles.actions}>
           <button
@@ -604,6 +929,15 @@ export default function ImageViewer({
                 : <><kbd>▶</kbd> Info</>}
               <kbd>▼</kbd> Picture
               <kbd>Back</kbd> {infoOpen ? 'Close info' : 'Close'}
+            </>
+          ) : focusedControl ? (
+            <>
+              <kbd>▲</kbd> <kbd>▼</kbd> Controls
+              <kbd>OK</kbd> Change
+              {focusedControl === 'image-viewer-o-inc' && (
+                <><kbd>Hold OK</kbd> Clear O count</>
+              )}
+              <kbd>Back</kbd> Close info
             </>
           ) : zoom > 1 && !infoOpen ? (
             <>

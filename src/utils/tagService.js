@@ -15,6 +15,8 @@ import { getSettings } from './settings.js';
 import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery } from './stashQuery.js';
 import { createEntityService } from './entityService.js';
+import { clearListCacheKind } from './listCache.js';
+import { publishRowPatch } from './rowPatches.js';
 
 // A fixed base rather than `Date.now()`, so mock order is identical on every
 // launch. (The older generators use the wall clock, so their Test-mode order
@@ -195,12 +197,49 @@ function normalizeTagInfo(t) {
   };
 }
 
+// Test mode has no server to read back: remember writes so reopening the
+// sheet shows them, and the next press toggles from the written value.
+const mockWritten = new Map();
+const mockWrittenFor = (id) => mockWritten.get(String(id)) || {};
+const recordMockWrite = (id, patch) => {
+  mockWritten.set(String(id), { ...mockWrittenFor(id), ...patch });
+};
+
 /** One tag's detail, for the long-press Info overlay. */
 export async function fetchTagInfo(id) {
   if (getSettings().useMock) {
     const t = (await generateMockTags()).find(x => String(x.id) === String(id));
-    return t ? normalizeTagInfo(t) : null;
+    return t ? { ...normalizeTagInfo(t), ...mockWrittenFor(id) } : null;
   }
   const data = await runQuery(FIND_TAG_INFO_QUERY, { id: String(id) });
   return data?.findTag ? normalizeTagInfo(data.findTag) : null;
+}
+
+const TAG_UPDATE_MUTATION = `
+  mutation TagUpdate($input: TagUpdateInput!) {
+    tagUpdate(input: $input) {
+      id
+      favorite
+    }
+  }
+`;
+
+/** Toggle a tag's favourite flag. Returns what the server stored. */
+export async function setTagFavorite(id, favorite) {
+  const next = !!favorite;
+  if (getSettings().useMock) {
+    await new Promise(r => setTimeout(r, 250));
+    recordMockWrite(id, { favorite: next });
+    publishRowPatch('tag', id, { favorite: next });
+    clearListCacheKind('tags');
+    return next;
+  }
+  const data = await runQuery(TAG_UPDATE_MUTATION, {
+    input: { id: String(id), favorite: next },
+  });
+  if (!data?.tagUpdate) throw new Error('the server returned no tag');
+  const saved = !!data.tagUpdate.favorite;
+  publishRowPatch('tag', id, { favorite: saved });
+  clearListCacheKind('tags');
+  return saved;
 }

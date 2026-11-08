@@ -274,7 +274,10 @@ async function loadVideos({
     // `sort` may be `random_<n>`; the comparator knows only `random`.
     videos.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
 
-    return { videos, total: videos.length, page };
+    // Slice like the marker and entity mocks do. Returning the whole library
+    // for every page defeated paging and ignored the search sections' limit.
+    const start = (page - 1) * limit;
+    return { videos: videos.slice(start, start + limit), total: videos.length, page };
   }
 
   // ── GraphQL branch ───────────────────────────────────────

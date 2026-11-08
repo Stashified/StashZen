@@ -162,10 +162,12 @@ async function run() {
   await tapEnter();
   const onlyUnwatched = await lastSceneFilterWhen(
     f => f?.play_count?.value === 0 && !f?.rating100);
-  check('Q2 Unwatched reaches the server as a play-count criterion',
+  check('Q2 Unwatched reaches the server as zero count, duration and resume',
     pressed('unwatched') === 'true'
       && onlyUnwatched?.play_count?.value === 0
-      && onlyUnwatched?.play_count?.modifier === 'EQUALS',
+      && onlyUnwatched?.play_count?.modifier === 'EQUALS'
+      && onlyUnwatched?.play_duration?.value === 0
+      && onlyUnwatched?.resume_time?.value === 0,
     `pressed=${pressed('unwatched')} scene_filter=${JSON.stringify(onlyUnwatched)}`);
 
   await clearLog();
@@ -176,6 +178,8 @@ async function run() {
   check('Q3 a second chip composes with the first rather than replacing it',
     pressed('unwatched') === 'true' && pressed('rated4') === 'true'
       && twoChips?.play_count?.value === 0
+      && twoChips?.play_duration?.value === 0
+      && twoChips?.resume_time?.value === 0
       && twoChips?.rating100?.value === 39
       && twoChips?.rating100?.modifier === 'GREATER_THAN',
     `pressed=${pressed('unwatched')},${pressed('rated4')} scene_filter=${JSON.stringify(twoChips)}`);
@@ -187,7 +191,10 @@ async function run() {
     f => f && !f.play_count && f.rating100?.value === 39);
   check('Q4 pressing an active chip removes just its criterion',
     pressed('unwatched') === 'false' && pressed('rated4') === 'true'
-      && oneChip?.play_count === undefined && oneChip?.rating100?.value === 39,
+      && oneChip?.play_count === undefined
+      && oneChip?.play_duration === undefined
+      && oneChip?.resume_time === undefined
+      && oneChip?.rating100?.value === 39,
     `pressed=${pressed('unwatched')},${pressed('rated4')} scene_filter=${JSON.stringify(oneChip)}`);
 
   // ── Q5  chips do not travel between tabs ────────────────
@@ -656,7 +663,7 @@ async function run() {
   if (clearBtn) {
     clearBtn.click();
     await sleep(400);
-    const filterAfter = (document.getElementById('ctrl-filter')?.textContent || '').trim();
+    const filterAfter = (registry.get('ctrl-filter')?.el?.textContent || '').trim();
     const listingBack = await waitFor(() => {
       const el = registry.get('video-1')?.el;
       return !!el && document.contains(el);
@@ -877,6 +884,126 @@ async function run() {
       }
     }
   }
+
+  // ── D  deleting the saved filter the builder was opened on ──
+  // A saved filter is the only thing Delete is offered for, so the first case
+  // is a hand-built working filter, which must not show the button at all.
+  registry.get('nav-scenes')?.el.focus();
+  await sleep(120);
+  await tapEnter();
+  await sleep(700);
+  await waitFor(() => registry.has('video-1'), 4000);
+
+  btnByText(document, 'Build…')?.click();
+  await sleep(300);
+  const bD = dialogNamed(/^Filter scenes/);
+  check('D1 a hand-built working filter offers no Delete',
+    !!bD && !registry.has('fb-delete') && !btnByText(bD, 'Delete saved filter'),
+    `builder=${!!bD} delete=${!!registry.has('fb-delete')}`);
+  btnByText(bD || document, 'Clear filter')?.click();
+  await sleep(400);
+
+  // Save a filter through the UI so it is selected: the save path is what sets
+  // `filterId` to the server row the builder may then delete.
+  btnByText(document, 'Build…')?.click();
+  await sleep(300);
+  const bSave = dialogNamed(/^Filter scenes/);
+  btnByText(bSave, '+ Add criterion')?.click();
+  await waitFor(() => registry.has('fp-title'), 2000);
+  const fpD = registry.get('fp-title');
+  fpD?.el.focus();
+  await tapEnter();
+  await sleep(250);
+  const vD = dialogNamed(/^Filter scenes/)?.querySelector('[class*="valueInput"]');
+  if (vD) {
+    setter.call(vD, 'deleteme');
+    vD.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(150);
+  }
+  btnByText(dialogNamed(/^Filter scenes/), 'Save…')?.click();
+  await sleep(250);
+  const promptD = dialogNamed(/Save filter/);
+  const nameD = promptD?.querySelector('[class*="pickInput"]');
+  if (nameD) {
+    setter.call(nameD, 'Delete me');
+    nameD.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(150);
+  }
+  btnByText(promptD, 'Save')?.click();
+  await sleep(700);
+  const storeD = () => getJson('/savedfilters').then(s => s.SCENES || []);
+  const seeded = (await storeD()).find(f => f.name === 'Delete me');
+  check('D2 setup: the saved filter is on the server and selected',
+    !!seeded && !dialogNamed(/^Filter scenes/),
+    `store=${JSON.stringify((await storeD()).map(f => f.name))}`);
+
+  btnByText(document, 'Build…')?.click();
+  await sleep(300);
+  const bDel = dialogNamed(/^Filter scenes/);
+  const delBtn = () => btnByText(dialogNamed(/^Filter scenes/), 'Delete saved filter')
+    || btnByText(dialogNamed(/^Filter scenes/), 'Press again to delete');
+  check('D3 a builder opened on a saved filter offers Delete',
+    !!bDel && !!btnByText(bDel, 'Delete saved filter'),
+    `buttons=${Array.from(bDel?.querySelectorAll('footer button') || [])
+      .map(b => b.textContent.trim()).join(' | ')}`);
+
+  delBtn()?.click();
+  await sleep(250);
+  check('D4 the first press arms instead of deleting',
+    !!btnByText(dialogNamed(/^Filter scenes/), 'Press again to delete')
+      && (await storeD()).some(f => f.name === 'Delete me'),
+    `label="${btnByText(dialogNamed(/^Filter scenes/), 'Press again')
+      ? 'Press again to delete' : 'Delete saved filter'}"`);
+
+  // A forgotten arm must not stay live: 4 s later it is a plain Delete again.
+  await sleep(4200);
+  check('D5 a forgotten arm disarms itself',
+    !!btnByText(dialogNamed(/^Filter scenes/), 'Delete saved filter')
+      && !btnByText(dialogNamed(/^Filter scenes/), 'Press again to delete'),
+    'after 4.2 s');
+
+  // A refused delete keeps the builder and the row; the error names the reason.
+  await fetch('/mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filterDestroy: 'fail' }),
+  });
+  delBtn()?.click();
+  await sleep(200);
+  delBtn()?.click();
+  const deleteFailed = await waitFor(
+    () => /simulated delete failure/.test(dialogNamed(/^Filter scenes/)?.textContent || ''),
+    4000,
+  );
+  check('D6 a refused delete keeps the builder and the filter, and names it',
+    deleteFailed && (await storeD()).some(f => f.name === 'Delete me'),
+    `error=${deleteFailed} store=${JSON.stringify((await storeD()).map(f => f.name))}`);
+  await fetch('/mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filterDestroy: 'ok' }),
+  });
+
+  delBtn()?.click();
+  await sleep(200);
+  delBtn()?.click();
+  const closedD = await waitFor(() => !dialogNamed(/^Filter scenes/), 3000);
+  const removedD = !(await storeD()).some(f => f.name === 'Delete me');
+  const listBack = await waitFor(() => {
+    const el = registry.get('video-1')?.el;
+    return !!el && document.contains(el);
+  }, 3000);
+  const barD = () => (registry.get('ctrl-filter')?.el?.textContent || '').trim();
+  // The filter matched nothing ("deleteme" against "VERIFY scene N"), so rows
+  // coming back is itself the proof it stopped applying. The dropdown must
+  // settle on All rather than keep naming the row that no longer exists.
+  const barClean = await waitFor(() => {
+    const t = barD();
+    return t !== '' && !/Custom filter/.test(t) && !/Delete me/.test(t);
+  }, 3000);
+  check('D7 the second press deletes it, closes the builder and drops the filter',
+    closedD && removedD && listBack && barClean,
+    `closed=${closedD} removed=${removedD} listing=${listBack} bar="${barD()}"`);
 
   check('no uncaught errors', errors.length === 0, errors.slice(-3).join(' | ') || 'none');
 }

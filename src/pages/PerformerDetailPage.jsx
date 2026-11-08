@@ -14,6 +14,7 @@ import { isBackKey, focusScopeOf, dialogOpen } from '../utils/input.js';
 import {
   loadPerformerDetail, loadPerformerSceneTags, updatePerformer,
 } from '../utils/performerService.js';
+import { QUICK_FILTERS, combineQuickFilters } from '../utils/quickFilters.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
 import {
@@ -43,7 +44,7 @@ const SCENE_SORT_GROUPS = [
     group: 'Engagement',
     options: [
       { value: 'rating',         label: 'Rating' },
-      { value: 'o_counter',      label: 'Likes' },
+      { value: 'o_counter',      label: 'O count' },
       { value: 'play_count',     label: 'Play Count' },
       { value: 'play_duration',  label: 'Play Duration' },
       { value: 'last_played_at', label: 'Last Played' },
@@ -66,6 +67,7 @@ const DEFAULT_DETAIL_CONTROLS = {
   order: 'desc',
   cols:  4,
   search: '',
+  quickFilters: [],
 };
 
 // Back button: focusable so mouse/click users have a path too.
@@ -138,13 +140,30 @@ export default function PerformerDetailPage({
   const [profileStatus, setProfileStatus] = useState('loading');
   const [profileError, setProfileError] = useState(null);
 
-  // Memoised so unrelated state changes do not re-trigger the grid fetch.
-  const objectFilter = useMemo(() => ({
-    performers: { value: [String(performer.id)], modifier: 'INCLUDES' },
-  }), [performer.id]);
+  // Memoised so unrelated state changes do not re-trigger the grid fetch. The
+  // chips compose with the performer criterion rather than replacing it.
+  const objectFilter = useMemo(() => combineQuickFilters(
+    { performers: { value: [String(performer.id)], modifier: 'INCLUDES' } },
+    QUICK_FILTERS.performerScenes,
+    controls.quickFilters,
+  ), [performer.id, controls.quickFilters]);
 
   const updateControls = (patch) => {
     setControls(prev => ({ ...prev, ...patch }));
+  };
+
+  // Chips live in the page's own controls, so the per-performer reset above
+  // clears them with the sort and search.
+  const toggleQuickFilter = (id) => {
+    setControls(prev => {
+      const active = prev.quickFilters || [];
+      return {
+        ...prev,
+        quickFilters: active.includes(id)
+          ? active.filter(x => x !== id)
+          : [...active, id],
+      };
+    });
   };
 
   useEffect(() => {
@@ -248,9 +267,9 @@ export default function PerformerDetailPage({
   // where the ids are generated data with no row behind them.
   const canEdit = profileStatus === 'ready' && profile?.writable !== false;
 
-  const setRating = (stars) => {
+  const setRating = (rating100) => {
     if (!canEdit) return;
-    const next = Math.max(0, Math.min(100, stars * 10));
+    const next = Math.max(0, Math.min(100, Math.round(Number(rating100) || 0)));
     const attempt = ++ratingAttempt.current;
     setEdits(e => ({ ...e, rating100: next }));
     ratingQueue.current = ratingQueue.current.then(async () => {
@@ -379,7 +398,7 @@ export default function PerformerDetailPage({
             <span className={styles.sceneCount}>
               <strong>{performer.scene_count}</strong> {performer.scene_count === 1 ? 'scene' : 'scenes'}
             </span>
-            {profile?.oCounter > 0 && <span>{profile.oCounter} likes</span>}
+            {profile?.oCounter > 0 && <span>{profile.oCounter} O counts</span>}
             {profile?.imageCount > 0 && (
               <MetaButton
                 id="performer-images"
@@ -529,12 +548,19 @@ export default function PerformerDetailPage({
         showGridSize={true}
         filterOptions={null}
         showSearch={true}
+        quickFilterOptions={QUICK_FILTERS.performerScenes}
+        quickFilters={controls.quickFilters}
+        onQuickFilterToggle={toggleQuickFilter}
         previewMuted={previewMuted}
         onMuteToggle={onMuteToggle}
       />
 
 
+      {/* Keyed: the page keeps its instance across an in-place swap (a scene's
+          cast chip), and a shared grid would keep the previous performer's
+          rows on screen while the new page 1 is in flight. */}
       <VideoGrid
+        key={String(performer.id)}
         controls={controls}
         objectFilter={objectFilter}
         searchQuery={controls.search || ''}

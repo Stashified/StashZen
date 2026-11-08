@@ -20,6 +20,12 @@
  * Red control: `inFlightRef.current === true` makes L7 fail with B stuck at 40
  * rows. Which trigger wins in the real app is timing, and the guard makes it
  * moot.
+ *
+ * The third probe fails the new identity's page 1 after its retry budget. The
+ * reset carries the outgoing rows forward while that page is fetched; if the
+ * failure leaves them, every consumer hides the error (it renders only on an
+ * empty list) and shows the replaced query's results under the new controls.
+ * Red control: without the clear, L16 reports 40 rows still there.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -111,6 +117,35 @@ function KeyProbe() {
   return <div data-probe-key>{`${key}: ${list.items.length} of ${list.total}`}</div>;
 }
 
+// ── Probe 3: a page 1 that fails after the identity changed (R2) ────
+// A complete first listing, then an identity whose every page 1 rejects, with
+// the retry budget's 3 s spacing. Controlled, so the timing is not a race.
+const failProbe = { setKey: null, list: null };
+const failRequests = [];
+
+function failingFetch(key) {
+  return (page) => {
+    failRequests.push(`${key}:${page}`);
+    if (key === 'BAD') return Promise.reject(new Error('probe failure'));
+    // 40 rows and total 40: a fully loaded list, the case where `exhausted`
+    // is true and even the "couldn't load more" line stays hidden.
+    return Promise.resolve({ items: rowsFor('OK', 1), total: 40 });
+  };
+}
+
+function FailProbe() {
+  const [key, setKey] = useState('OK');
+  failProbe.setKey = setKey;
+
+  const list = usePagedList({
+    fetchPage: failingFetch(key),
+    requestKey: `fail-probe-${key}`,
+  });
+  failProbe.list = list;
+
+  return <div data-probe-fail>{`${key}: ${list.items.length} of ${list.total}`}</div>;
+}
+
 async function run() {
   // The listing has 100 rows at 40 per page: page 2 is full, page 3 is short.
   const settled = await waitFor(() => latest && !latest.loading && latest.items.length > 40, 8000);
@@ -184,6 +219,25 @@ async function run() {
     keyProbe.list?.items.length === 60
       && keyProbe.list.items.every(i => String(i.id).startsWith('B-')),
     `${keyProbe.list?.items.length} rows, first ${keyProbe.list?.items[0]?.id}`);
+
+  // ── R2: the new identity's page 1 exhausts its retry budget ──
+  const okReady = await waitFor(
+    () => failProbe.list?.items.length === 40 && !failProbe.list.loading,
+  );
+  check('L14 the first identity loads a complete page', okReady,
+    failProbe.list ? `${failProbe.list.items.length} of ${failProbe.list.total}` : 'no listing');
+
+  failProbe.setKey('BAD');
+  // Two RETRY_DELAY_MS (3 s) waits after the first attempt.
+  const failed = await waitFor(() => !!failProbe.list?.error, 12000);
+  check('L15 a failed page 1 reports its error', failed, failProbe.list?.error || 'no error');
+  check('L16 the replaced identity\'s rows are gone, so the error is visible',
+    failProbe.list?.items.length === 0,
+    `${failProbe.list?.items.length} rows left (red control: 40)`);
+  check('L17 the carried count is cleared and the retry spinner is off',
+    failProbe.list?.total === 0 && failProbe.list?.loading === false
+      && failProbe.list?.retrying === false,
+    `total ${failProbe.list?.total}, loading ${failProbe.list?.loading}, retrying ${failProbe.list?.retrying}`);
 }
 
 async function finish() {
@@ -201,7 +255,7 @@ document.body.style.margin = '0';
 // Before the render, so the first fetch already sees the fake endpoint.
 setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
 
-createRoot(root).render(<><Probe /><KeyProbe /></>);
+createRoot(root).render(<><Probe /><KeyProbe /><FailProbe /></>);
 
 run()
   .then(finish)
