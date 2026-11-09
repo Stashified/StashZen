@@ -1,4 +1,4 @@
-/* The What's new dialog. Overlay conventions follow Settings and PinPad: a
+/* The changelog dialog. Overlay conventions follow Settings and PinPad: a
    flat scrim, not a blur, because this opens over the settings panel on a TV. */
 
 .overlay {

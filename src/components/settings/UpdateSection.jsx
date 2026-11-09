@@ -56,7 +56,7 @@ export function UpdateSection({ changelogOpenRef }) {
   };
 
   return (
-    <div className={`${styles.section} ${styles.sectionFirst}`}>
+    <div className={styles.section}>
       <div className={styles.sectionRow}>
         <div className={styles.sectionText}>
           <span className={styles.fieldLabel}>Updates</span>
@@ -85,7 +85,7 @@ export function UpdateSection({ changelogOpenRef }) {
           {changelogArmed() && (
             <ActionButton
               id="settings-changelog"
-              label="What's new"
+              label="Changelog"
               onClick={openChangelog}
             />
           )}

@@ -2,6 +2,88 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.45.0",
+      "date": "2026-11-09",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "A scene can be queued from its info sheet without leaving the list you are browsing.",
+            "Saved filters now remember the sort order as well as the filter itself.",
+            "The performer page lists every studio the performer has worked with.",
+            "Tag cards show their parent tag, so a deep hierarchy is readable at a glance.",
+            "Galleries gained a slideshow speed setting with three fixed steps.",
+            "The player shows the remaining time on the seek bar when you press Down.",
+            "Images can be rotated in the viewer without leaving the full-screen view.",
+            "A new random button on Home opens a scene from the current tab."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Listing pages now keep their scroll position when you return from a detail view.",
+            "The focus ring is easier to see on the OLED theme and on bright cover art.",
+            "Marker lists load in one request instead of one per marker.",
+            "The setup screen explains what the Test button checks before it runs.",
+            "Long tag and studio names wrap instead of running under the card edge.",
+            "Playback options open on the side of the screen that matches the cursor.",
+            "The queue remembers its order across a restart.",
+            "Search results appear sooner while you are still typing on the TV keyboard."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Back from a marker list returned to the first scene rather than the one that was playing.",
+            "A scene with no cover could leave an empty card focused at the end of a row.",
+            "The player volume stayed muted after switching from the TV engine to the browser.",
+            "A saved filter with a deleted tag now drops the tag instead of failing to run.",
+            "The image viewer could show the previous image for a moment after a fast next press.",
+            "Changing the transcode quality during playback no longer restarts the scene twice.",
+            "The settings panel could scroll behind the PIN keypad when the keyboard was open.",
+            "The update check ran twice when Settings was opened during the daily check."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.44.0",
+      "date": "2026-11-08",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Quick filters on studio pages, matching the performer page.",
+            "The scene info sheet can open the list of scenes that share its studio.",
+            "Image viewers gained a fit and fill toggle that is remembered per device.",
+            "A new card in Search lists saved filters across every tab.",
+            "The playback options menu shows the bitrate of the stream in use.",
+            "Groups can be pinned to the top of their listing."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Opening a scene from a queue no longer rebuilds the whole player.",
+            "The home shelves load one after another rather than all at once.",
+            "Covers are decoded off the main thread, so focus moves sooner on a full page.",
+            "The rail collapses its labels on narrow windows to leave more room for cards.",
+            "Error messages from a failed connection now name the step that failed."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "The D-pad could leave a dialog through the edge of a focusable scroll pane.",
+            "A gallery with a single image closed the viewer after the slideshow advanced.",
+            "The TV player ignored a resume point when the scene was opened from Up next.",
+            "Backspace in the search field could close Settings while the field was focused.",
+            "The screen reader label on the queue button named the wrong action."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.43.1",
       "date": "2026-11-08",
       "sections": [

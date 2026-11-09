@@ -1,5 +1,5 @@
 /**
- * What's new, a nested dialog inside Settings.
+ * Changelog, a nested dialog inside Settings.
  *
  * Rendered by UpdateSection, like PinPad inside AppLockSection: `role="dialog"`
  * is the focus scope the D-pad walks, and the nearest one wins, so the pane
@@ -25,32 +25,46 @@ export function ChangelogOverlay({ onClose }) {
     id: 'settings-changelog-panel',
     zone: 'settings-changelog',
     autoFocus: true,
-    // Up/Down are the scroll keys; sideways is the way to the Close button.
-    nextId: { left: 'settings-changelog-close', right: 'settings-changelog-close' },
+    // Close sits above the pane, so Up leaves for it once the pane is at the
+    // top. Sideways and Down stay put; a self-reference blocks those edges.
+    nextId: {
+      up: 'settings-changelog-close',
+      left: 'settings-changelog-panel',
+      right: 'settings-changelog-panel',
+      down: 'settings-changelog-panel',
+    },
   });
 
   useBackKey(onClose);
 
-  // The scroll keys belong to the pane only while there is notes to scroll.
-  // In the loading, error and empty states they must reach the buttons.
+  // Up/Down scroll only while the pane can move that way. At the top, Up is
+  // left to the focus handler, which goes to Close; when the notes fit, both
+  // keys navigate instead of doing nothing.
   const lastScroll = useRef(0);
   const onKeyDown = (e) => {
-    if (e.target !== paneRef.current) return;
+    const pane = paneRef.current;
+    if (!pane || e.target !== pane) return;
     if (status !== 'ready') return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (e.key === 'ArrowUp') {
+      if (pane.scrollTop <= 0) return;
+    } else if (e.key === 'ArrowDown') {
+      if (pane.scrollHeight - pane.scrollTop - pane.clientHeight <= 1) return;
+    } else {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     if (e.repeat && Date.now() - lastScroll.current < 90) return;
     lastScroll.current = Date.now();
-    paneRef.current?.scrollBy({ top: e.key === 'ArrowDown' ? 180 : -180 });
+    pane.scrollBy({ top: e.key === 'ArrowDown' ? 180 : -180 });
   };
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="What's new">
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Changelog">
       <div className={styles.panel}>
         <header className={styles.header}>
           <div>
-            <h2 className={styles.heading}>What&apos;s new</h2>
+            <h2 className={styles.heading}>Changelog</h2>
             <p className={styles.subtitle}>
               {view.mode === 'newer'
                 ? `Newer than v${__APP_VERSION__}`
@@ -69,7 +83,7 @@ export function ChangelogOverlay({ onClose }) {
           ref={paneRef}
           className={`${styles.scroll} ${focused ? styles.scrollFocused : ''}`}
           onKeyDown={onKeyDown}
-          aria-label="Release notes"
+          aria-label="Changelog"
         >
           {status === 'loading' && (
             <p className={styles.state} role="status">Loading release notes…</p>

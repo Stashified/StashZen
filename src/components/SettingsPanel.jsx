@@ -266,9 +266,10 @@ export default function SettingsPanel({ onClose }) {
         </header>
 
         <div className={styles.body} ref={bodyRef}>
-          {updateGate && <UpdateSection changelogOpenRef={changelogOpenRef} />}
-
+          {/* First stop: the panel opens with the cursor on Test/Live. */}
           <ModeToggle value={useMock} onChange={setUseMock} />
+
+          {updateGate && <UpdateSection changelogOpenRef={changelogOpenRef} />}
 
           {/* Unmounted in Test mode, not dimmed: a `.disabled` class leaves the
               fields reachable by D-pad and editable while the hint says they
