@@ -1,20 +1,20 @@
 import { useBackKey } from './useBackKey.js';
 
 /**
- * Settings' Back contract: close the panel, except while the PIN keypad is
- * open, which owns Backspace/Esc/Back itself.
+ * Settings' Back contract: close the panel, except while a nested dialog owns
+ * Back: the PIN keypad, or the changelog viewer.
  *
- * Both this and PinPad register capture-phase listeners on `window`, and
+ * All of them register capture-phase listeners on `window`, and
  * `stopPropagation()` does not suppress a sibling listener on the same target
- * (only `stopImmediatePropagation` would), without the guard the first
- * Backspace would close the whole panel. `pinFlowRef` is read through a ref
- * because the handler is registered once.
+ * (only `stopImmediatePropagation` would), without the guards the first
+ * Backspace would close the whole panel. The guards are refs because the
+ * handler is registered once.
  *
  * The text-field rule is `useBackKey`'s default, see `isBackKey`.
  */
-export function useSettingsBack(onClose, pinFlowRef) {
+export function useSettingsBack(onClose, ...guards) {
   useBackKey(() => {
-    if (pinFlowRef.current) return;
+    if (guards.some(guard => guard?.current)) return;
     onClose?.();
   });
 }

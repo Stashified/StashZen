@@ -153,8 +153,9 @@ jobs:
 
       # Deliberately does NOT receive the signing secrets, and no .env.production
       # exists in CI (gitignored), so nothing of your Stash server ends up in the
-      # released bundle. The only VITE_ variables set here are the update-check
-      # pair below, neither of which is a credential. See the guard step below.
+      # released bundle. The only VITE_ variables set here are the public-only
+      # update and changelog URLs below, neither of which is a credential. See
+      # the guard step below.
       - name: Build web app
         id: version
         env:
@@ -166,6 +167,9 @@ jobs:
           # empty URL too, so api.github.com is never inlined.
           VITE_UPDATE_CHECK: "${{ github.repository == 'Stashified/StashZen' && 'true' || 'false' }}"
           VITE_UPDATE_CHECK_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://api.github.com/repos/Stashified/StashZen/releases/latest' || '' }}"
+          # The changelog is the second half of that public pair: same lock,
+          # separate URL (the app fetches the raw file on demand).
+          VITE_CHANGELOG_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://raw.githubusercontent.com/Stashified/StashZen/main/changelog.json' || '' }}"
         run: |
           set -euo pipefail
 
@@ -182,6 +186,14 @@ jobs:
           if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]]; then
             echo "::error::Version '$VERSION' is not a dotted numeric version (expected 1.2.3 or 1.2.3.4)"
             exit 1
+          fi
+          # The release body is rendered from changelog.json, so a tag with no
+          # entry would publish empty notes. A manual build only needs the file
+          # to parse.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            node scripts/publish-changelog.mjs body --version "$VERSION" >/dev/null
+          else
+            node scripts/publish-changelog.mjs validate
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           # The release job names the artifact from these outputs, so they are
@@ -235,6 +247,7 @@ jobs:
         env:
           VITE_UPDATE_CHECK: "${{ github.repository == 'Stashified/StashZen' && 'true' || 'false' }}"
           VITE_UPDATE_CHECK_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://api.github.com/repos/Stashified/StashZen/releases/latest' || '' }}"
+          VITE_CHANGELOG_URL: "${{ github.repository == 'Stashified/StashZen' && 'https://raw.githubusercontent.com/Stashified/StashZen/main/changelog.json' || '' }}"
         run: node scripts/check-bundle.mjs
 
       # The TV floor: JS is checked from source and CSS from the bundle built
@@ -441,9 +454,33 @@ jobs:
             exit 1
           fi
 
+          # The release body comes from the tagged changelog.json, the same file
+          # the app fetches. The build job already proved the entry exists; this
+          # renders it rather than trusting --generate-notes, which would list
+          # commits instead of user-facing changes.
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$GH_REPO/contents/changelog.json?ref=$TAG" \
+            > "$RUNNER_TEMP/changelog.json"
+          jq -r --arg v "$VERSION" '
+            ([.releases[] | select(.version == $v)][0]) as $r
+            | if $r == null then empty
+              else $r.sections[]
+                | "## " + .title + "\n\n"
+                  + ([.items[] | "- " + .] | join("\n")) + "\n"
+              end' "$RUNNER_TEMP/changelog.json" > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "::error::changelog.json has no entry for $VERSION — refusing to publish empty notes."
+            exit 1
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists — replacing the asset."
+            echo "Release $TAG exists — refreshing the notes and asset."
+            # A re-cut must not keep the previous body.
+            gh release edit "$TAG" --title "StashZen $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$TAG" "$WGT" --clobber
           else
-            gh release create "$TAG" "$WGT" --title "$TAG" --generate-notes
+            gh release create "$TAG" "$WGT" --title "StashZen $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
           fi

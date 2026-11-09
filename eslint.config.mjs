@@ -52,6 +52,7 @@ export default [
         __FORCE_BROWSER_ENGINE__: 'readonly',
         __UPDATE_CHECK__: 'readonly',
         __UPDATE_URL__: 'readonly',
+        __CHANGELOG_URL__: 'readonly',
       },
     },
     plugins: {

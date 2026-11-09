@@ -109,6 +109,8 @@ export default function SettingsPanel({ onClose }) {
   // component renders nothing different for it; the Back handler only needs to
   // stay out of the way.
   const pinFlowRef = useRef(null);
+  // Same channel for the changelog viewer inside UpdateSection.
+  const changelogOpenRef = useRef(false);
 
   // Flipping to Live jumps focus into the URL field; otherwise spatial nav
   // lands on "Save". It focuses the field's *wrapper*, not its input, which
@@ -161,8 +163,8 @@ export default function SettingsPanel({ onClose }) {
   };
 
   // Trap Back / Esc to close, except while typing (Backspace deletes) or while
-  // the PIN keypad owns the keys. See the hook.
-  useSettingsBack(requestClose, pinFlowRef);
+  // a nested dialog (PIN keypad, changelog viewer) owns the keys. See the hook.
+  useSettingsBack(requestClose, pinFlowRef, changelogOpenRef);
 
   // An edit invalidates a test still in flight, not just the result on screen:
   // otherwise a 12-second test of the old address paints "Connected" over the
@@ -264,7 +266,7 @@ export default function SettingsPanel({ onClose }) {
         </header>
 
         <div className={styles.body} ref={bodyRef}>
-          {updateGate && <UpdateSection />}
+          {updateGate && <UpdateSection changelogOpenRef={changelogOpenRef} />}
 
           <ModeToggle value={useMock} onChange={setUseMock} />
 

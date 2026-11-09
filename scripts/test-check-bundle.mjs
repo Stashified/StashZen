@@ -82,6 +82,7 @@ try {
     check('clean bundle: no JWT hit', scan.jwtFiles.length === 0);
     check('clean bundle: no key hit', scan.keyFiles.length === 0);
     check('clean bundle: no GitHub API hit', scan.githubApiFiles.length === 0);
+    check('clean bundle: no changelog host hit', scan.changelogFiles.length === 0);
   }
 
   writeFileSync(join(dist, 'assets', 'binary.bin'), Buffer.from([0, 1, 2]));
@@ -263,11 +264,13 @@ try {
   {
     // The public update check's endpoint. Allowed only when the build was
     // explicitly armed; a private build carrying it is a wiring bug.
+    // The public pair ships together, so a passing armed build carries both.
+    const PUBLIC_CHANGELOG = 'https://raw.githubusercontent.com/x/y/main/changelog.json';
     const ghDist = join(root, 'gh');
     mkdirSync(ghDist, { recursive: true });
     writeFileSync(
       join(ghDist, 'app.js'),
-      'const u = "https://api.github.com/repos/x/y/releases/latest";',
+      `const u = "https://api.github.com/repos/x/y/releases/latest"; const c = "${PUBLIC_CHANGELOG}";`,
     );
 
     const off = checkBundle({ distDir: ghDist });
@@ -286,6 +289,7 @@ try {
     const ENDPOINT = 'https://api.github.com/repos/x/y/releases/latest';
     const on = checkBundle({
       distDir: ghDist, updateCheckEnabled: true, updateCheckUrl: ENDPOINT,
+      changelogUrl: PUBLIC_CHANGELOG,
     });
     check('GitHub API URL passes an armed build', on.ok === true, on.lines.join(' | '));
     check(
@@ -296,10 +300,12 @@ try {
 
     // Armed is not enough: the exact endpoint must be inlined, or a typo ships
     // a check that never fetches and CI stays green.
-    const noUrl = checkBundle({ distDir: ghDist, updateCheckEnabled: true });
+    const noUrl = checkBundle({
+      distDir: ghDist, updateCheckEnabled: true, changelogUrl: PUBLIC_CHANGELOG,
+    });
     check('an armed build without the URL fails', noUrl.ok === false, noUrl.lines.join(' | '));
     const wrongUrl = checkBundle({
-      distDir: ghDist, updateCheckEnabled: true,
+      distDir: ghDist, updateCheckEnabled: true, changelogUrl: PUBLIC_CHANGELOG,
       updateCheckUrl: 'https://api.github.com/repos/x/z/releases/latest',
     });
     check('an armed build with another endpoint fails',
@@ -310,6 +316,7 @@ try {
     writeFileSync(join(emptyDist, 'app.js'), 'console.log("hi");');
     const missing = checkBundle({
       distDir: emptyDist, updateCheckEnabled: true, updateCheckUrl: ENDPOINT,
+      changelogUrl: PUBLIC_CHANGELOG,
     });
     check('an armed build with no API URL at all fails',
       missing.ok === false, missing.lines.join(' | '));
@@ -330,6 +337,53 @@ try {
     const scan = scanBundle({ distDir: plainDist });
     check('plain github.com is not an API hit', scan.githubApiFiles.length === 0, scan.githubApiFiles.join(','));
     check('plain github.com link passes', checkBundle({ distDir: plainDist }).ok === true);
+  }
+
+  {
+    // The changelog host. Armed by its own URL, but the public pair moves
+    // together: an update-armed build must also carry the changelog URL.
+    const CHANGELOG = 'https://raw.githubusercontent.com/Stashified/StashZen/main/changelog.json';
+    const rawDist = join(root, 'raw-gh');
+    mkdirSync(rawDist, { recursive: true });
+    writeFileSync(join(rawDist, 'app.js'), `const c = "${CHANGELOG}";`);
+
+    const scan = scanBundle({ distDir: rawDist });
+    check('the changelog host is detected',
+      scan.changelogFiles.includes('app.js'), scan.changelogFiles.join(','));
+
+    const off = checkBundle({ distDir: rawDist });
+    check('the changelog URL fails an unarmed build', off.ok === false, off.lines.join(' | '));
+    check('the unarmed changelog failure names the file',
+      off.lines.some(l => l.includes('app.js')), off.lines.join(' | '));
+    check('the unarmed changelog failure says how to arm',
+      off.lines.some(l => l.includes('VITE_CHANGELOG_URL')), off.lines.join(' | '));
+
+    const on = checkBundle({ distDir: rawDist, changelogUrl: CHANGELOG });
+    check('the exact changelog URL passes an armed build',
+      on.ok === true, on.lines.join(' | '));
+    check('the armed changelog message is an ok line',
+      on.lines.some(l => l.startsWith('ok changelog')), on.lines.join(' | '));
+
+    const wrong = checkBundle({
+      distDir: rawDist,
+      changelogUrl: 'https://raw.githubusercontent.com/Stashified/StashZen/main/other.json',
+    });
+    check('an armed changelog with another endpoint fails',
+      wrong.ok === false, wrong.lines.join(' | '));
+
+    // The public pair cannot drift: an update-armed build with no changelog
+    // URL is refused even though its own endpoint is present.
+    const UPDATE = 'https://api.github.com/repos/x/y/releases/latest';
+    const bothDist = join(root, 'public-pair');
+    mkdirSync(bothDist, { recursive: true });
+    writeFileSync(join(bothDist, 'app.js'), `const u = "${UPDATE}"; const c = "${CHANGELOG}";`);
+    const drift = checkBundle({
+      distDir: bothDist, updateCheckEnabled: true, updateCheckUrl: UPDATE,
+    });
+    check('an update-armed build without the changelog URL fails',
+      drift.ok === false, drift.lines.join(' | '));
+    check('...and says the changelog URL is missing',
+      drift.lines.some(l => l.includes('changelog URL is not set')), drift.lines.join(' | '));
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

@@ -85,6 +85,10 @@ export default defineConfig(({ mode }) => {
     // without the flag.
     __UPDATE_CHECK__: JSON.stringify(env.VITE_UPDATE_CHECK === 'true'),
     __UPDATE_URL__: JSON.stringify(env.VITE_UPDATE_CHECK_URL || ''),
+    // The release-notes viewer. Same public-only rule as the update check: a
+    // private build leaves it empty, so raw.githubusercontent.com is not
+    // inlined and the button does not exist.
+    __CHANGELOG_URL__: JSON.stringify(env.VITE_CHANGELOG_URL || ''),
   },
   };
 });

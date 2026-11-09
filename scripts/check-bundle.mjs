@@ -39,6 +39,11 @@ const JWT_MARKER = 'eyJhbGciOi';
 // private build carrying it means the gate was wired wrong.
 const GITHUB_API_MARKER = 'api.github.com';
 
+// The changelog's public host. Same rule, separate URL: the two public-only
+// features are armed together, so a build with one and not the other is a
+// wiring bug rather than a smaller build.
+const CHANGELOG_MARKER = 'raw.githubusercontent.com';
+
 // A private-network address in a release bundle means the builder's own server
 // was inlined. Not a credential, but worth saying.
 //
@@ -112,12 +117,12 @@ function peekBinary(path) {
  * Scan `distDir` for credential-shaped content.
  *
  * @param {{ distDir: string, secret?: string }} opts
- * @returns {{ filesScanned: number, skippedFiles: string[], jwtFiles: string[], keyFiles: string[], lanFiles: string[], githubApiFiles: string[] }}
+ * @returns {{ filesScanned: number, skippedFiles: string[], jwtFiles: string[], keyFiles: string[], lanFiles: string[], githubApiFiles: string[], changelogFiles: string[] }}
  */
 export function scanBundle({ distDir, secret = '' }) {
   const result = {
     filesScanned: 0, skippedFiles: [], jwtFiles: [], keyFiles: [], lanFiles: [],
-    githubApiFiles: [],
+    githubApiFiles: [], changelogFiles: [],
   };
   if (!existsSync(distDir)) return result;
 
@@ -147,6 +152,7 @@ export function scanBundle({ distDir, secret = '' }) {
     if (text.includes(JWT_MARKER)) result.jwtFiles.push(rel);
     if (secret && secret.length >= 8 && text.includes(secret)) result.keyFiles.push(rel);
     if (text.includes(GITHUB_API_MARKER)) result.githubApiFiles.push(rel);
+    if (text.includes(CHANGELOG_MARKER)) result.changelogFiles.push(rel);
     // Remove the documented placeholder first, then look for anything else: a
     // file may legitimately contain both.
     if (LAN_RE.test(text.split(LAN_PLACEHOLDER).join(''))) result.lanFiles.push(rel);
@@ -156,6 +162,7 @@ export function scanBundle({ distDir, secret = '' }) {
   result.keyFiles.sort();
   result.lanFiles.sort();
   result.githubApiFiles.sort();
+  result.changelogFiles.sort();
   return result;
 }
 
@@ -170,7 +177,7 @@ export function scanBundle({ distDir, secret = '' }) {
  */
 export function checkBundle({
   distDir, envText = null, envFiles = [], secret = '', allowBaked = false, isCI = false,
-  updateCheckEnabled = false, updateCheckUrl = '',
+  updateCheckEnabled = false, updateCheckUrl = '', changelogUrl = '',
 }) {
   const lines = [];
 
@@ -263,8 +270,34 @@ export function checkBundle({
     lines.push(`ok update check: the public GitHub API URL is in dist/ (${scan.githubApiFiles.join(', ')}).`);
   }
 
+  // The changelog's own gate. The public pair moves together: an update-armed
+  // build without a changelog URL would ship a viewer with no endpoint, and an
+  // unarmed build carrying raw.githubusercontent.com means a URL leaked.
+  let changelogBlocked = false;
+  const changelogFound = !!changelogUrl && scan.changelogFiles.some(rel =>
+    readFileSync(join(distDir, rel), 'utf8').includes(changelogUrl));
+  if (updateCheckEnabled && !changelogUrl) {
+    changelogBlocked = true;
+    lines.push('x The update check is armed but the changelog URL is not set.');
+    lines.push('  Set VITE_CHANGELOG_URL to the public changelog endpoint.');
+  } else if (!changelogUrl) {
+    if (scan.changelogFiles.length > 0) {
+      changelogBlocked = true;
+      lines.push('x A raw.githubusercontent.com URL is inlined into dist/ but the changelog is not armed.');
+      lines.push(`  Found in: ${scan.changelogFiles.join(', ')}`);
+      lines.push('  Only the public build may carry it: set VITE_CHANGELOG_URL.');
+    }
+  } else if (!changelogFound) {
+    changelogBlocked = true;
+    lines.push('x The changelog is armed but its endpoint is not in dist/.');
+    lines.push('  Set VITE_CHANGELOG_URL to the changelog endpoint.');
+  } else {
+    lines.push(`ok changelog: the public changelog URL is in dist/ (${scan.changelogFiles.join(', ')}).`);
+  }
+
   return {
-    ok: (!baked || effectiveAllowBaked) && !updateBlocked && !overJs && !overCss,
+    ok: (!baked || effectiveAllowBaked) && !updateBlocked && !changelogBlocked
+      && !overJs && !overCss,
     lines,
   };
 }
@@ -288,6 +321,7 @@ function main() {
     isCI,
     updateCheckEnabled: process.env.VITE_UPDATE_CHECK === 'true',
     updateCheckUrl: process.env.VITE_UPDATE_CHECK_URL || '',
+    changelogUrl: process.env.VITE_CHANGELOG_URL || '',
   });
 
   for (const line of lines) console.log(line);

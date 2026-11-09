@@ -11,9 +11,13 @@
  * App's instance through the module-level in-flight promise in the hook.
  */
 
+import { useState } from 'react';
 import { ActionButton } from '../tvActions.jsx';
 import { useSettings, setSettings } from '../../utils/settings.js';
 import { useAutoUpdateCheck } from '../../hooks/useAutoUpdateCheck.js';
+import { useRestoreFocus } from '../../hooks/useRestoreFocus.js';
+import { changelogArmed } from '../../utils/changelog.js';
+import { ChangelogOverlay } from './ChangelogOverlay.jsx';
 import styles from '../SettingsPanel.module.css';
 
 function statusText({ phase, availableVersion, latest, lastAt, error }) {
@@ -29,10 +33,27 @@ function statusText({ phase, availableVersion, latest, lastAt, error }) {
   return 'Not checked yet.';
 }
 
-export function UpdateSection() {
+export function UpdateSection({ changelogOpenRef }) {
   const settings = useSettings();
   const updateCheck = useAutoUpdateCheck(settings);
   const enabled = !!settings.updateCheckEnabled;
+
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const { remember, restore } = useRestoreFocus();
+
+  // Set synchronously, not in an effect: Settings' capture listener runs on the
+  // same keydown as this dialog's, and must see the flag already true.
+  const openChangelog = () => {
+    const active = document.activeElement;
+    if (active && active !== document.body) remember(active);
+    if (changelogOpenRef) changelogOpenRef.current = true;
+    setChangelogOpen(true);
+  };
+  const closeChangelog = () => {
+    if (changelogOpenRef) changelogOpenRef.current = false;
+    setChangelogOpen(false);
+    restore();
+  };
 
   return (
     <div className={`${styles.section} ${styles.sectionFirst}`}>
@@ -61,6 +82,13 @@ export function UpdateSection() {
             label={updateCheck.phase === 'checking' ? 'Checking…' : 'Check now'}
             onClick={updateCheck.checkNow}
           />
+          {changelogArmed() && (
+            <ActionButton
+              id="settings-changelog"
+              label="What's new"
+              onClick={openChangelog}
+            />
+          )}
         </div>
       </div>
 
@@ -71,6 +99,8 @@ export function UpdateSection() {
         The update-check toggle takes effect immediately; no save action is
         needed.
       </p>
+
+      {changelogOpen && <ChangelogOverlay onClose={closeChangelog} />}
     </div>
   );
 }

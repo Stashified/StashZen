@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "version": "0.43.1",
+      "date": "2026-11-08",
+      "sections": [
+        {
+          "title": "Changes",
+          "items": [
+            "Quick edits from the Info sheet: favourites, ratings, organised and O count.",
+            "Favourite tags and studios show a star on their cards.",
+            "Delete a saved filter from the filter builder; press twice to confirm.",
+            "Transcode quality and playback speed in Settings and the player's options.",
+            "Quick filters on a performer's scenes.",
+            "Cover art and playback now work when Stash uses an external host.",
+            "Unwatched now treats a scene with watch time or a resume point as watched.",
+            "And other minor bug fixes."
+          ]
+        }
+      ]
+    }
+  ]
+}

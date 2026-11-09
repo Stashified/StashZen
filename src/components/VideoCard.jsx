@@ -16,9 +16,10 @@
  * redirect-following client sees as `200 text/html`. Neither is distinguishable
  * from success by status code, so `onError` plus a watchdog is the design.
  *
- * Cost control: only the focused card mounts a `<video>`, and only once the
- * D-pad has settled, a held arrow crosses several cards a second. The signal
- * is the `is-navigating` body class.
+ * Cost control: only the focused card mounts a `<video>`, once the D-pad has
+ * settled, and only after every cover on the page has loaded. A preview is
+ * 1-3 MB against a cover's 10 KB; starting it first fills the listing row by
+ * row.
  */
 
 import { memo, useEffect, useRef, useState } from 'react';
@@ -31,6 +32,20 @@ import styles from './VideoCard.module.css';
 const PREVIEW_ARM_DELAY_MS = 400;
 // No `playing` within this window → stop trying for this focus.
 const PREVIEW_WATCHDOG_MS = 1200;
+// A preview is 1-3 MB, a cover around 10 KB. Wait for every cover on the page
+// before starting one, or the preview competes with the grid. Cards register
+// their own cover while it is in flight; the set is module-level because what
+// matters is the page, not this card.
+const COVER_SETTLE_MS = 300;
+// Safety valve: never hold a preview longer than this if a cover never reports.
+const PREVIEW_COVER_WAIT_MS = 10000;
+let lastCoverLoadAt = 0;
+const pendingCovers = new Set();
+
+function noteCoverLoad() { lastCoverLoadAt = Date.now(); }
+function coversReady() {
+  return pendingCovers.size === 0 && Date.now() - lastCoverLoadAt >= COVER_SETTLE_MS;
+}
 
 /**
  * Scenes whose preview errored, so they are never tried again, otherwise
@@ -144,6 +159,31 @@ function VideoCard({
 
   const armTimerRef = useRef(null);
   const previewRef = useRef(null);
+  const imgRef = useRef(null);
+
+  // The cover token identifies this card in `pendingCovers`. The done flag
+  // covers an image that decoded before the effect below could register it.
+  const coverTokenRef = useRef(null);
+  if (coverTokenRef.current === null) coverTokenRef.current = {};
+  const coverDoneRef = useRef(false);
+
+  const coverDone = () => {
+    coverDoneRef.current = true;
+    pendingCovers.delete(coverTokenRef.current);
+    noteCoverLoad();
+  };
+
+  useEffect(() => {
+    if (coverDoneRef.current || imgError || !item.thumbnail) return undefined;
+    // Already decoded before this effect ran: nothing to wait for.
+    if (imgRef.current?.complete) {
+      coverDoneRef.current = true;
+      noteCoverLoad();
+      return undefined;
+    }
+    pendingCovers.add(coverTokenRef.current);
+    return () => pendingCovers.delete(coverTokenRef.current);
+  }, [item.thumbnail, imgError]);
 
   useEffect(() => {
     clearTimeout(armTimerRef.current);
@@ -152,18 +192,23 @@ function VideoCard({
     setGaveUp(false);
     if (!focused || !canTry) return;
 
-    // Re-checked on a loop, not once: a *held* arrow can stop at the edge of
-    // the grid, so focus never moves again and `is-navigating` may still be set
-    // when a single check would run. It would never arm, and the card under the
-    // cursor would have no preview for no visible reason.
-    const settle = () => {
+    // Re-checked on a loop: a held arrow can stop at the grid edge, leaving
+    // `is-navigating` set with focus unmoved.
+    //
+    // Covers get the pipe first: the preview waits until the page's covers
+    // have loaded, so the grid fills as it does with previews off.
+    const settle = (startedAt) => {
       if (document.body.classList.contains('is-navigating')) {
-        armTimerRef.current = setTimeout(settle, 200);
+        armTimerRef.current = setTimeout(() => settle(startedAt), 200);
+        return;
+      }
+      if (!coversReady() && Date.now() - startedAt < PREVIEW_COVER_WAIT_MS) {
+        armTimerRef.current = setTimeout(() => settle(startedAt), 150);
         return;
       }
       setArmed(true);
     };
-    armTimerRef.current = setTimeout(settle, PREVIEW_ARM_DELAY_MS);
+    armTimerRef.current = setTimeout(() => settle(Date.now()), PREVIEW_ARM_DELAY_MS);
 
     return () => clearTimeout(armTimerRef.current);
   }, [focused, canTry]);
@@ -204,11 +249,15 @@ function VideoCard({
       <div className={styles.thumb}>
         {!imgError && item.thumbnail ? (
           <img
+            ref={imgRef}
             src={item.thumbnail}
             alt=""
             className={styles.img}
-            onError={() => setImgError(true)}
-            loading="lazy"
+            onLoad={coverDone}
+            onError={() => { coverDone(); setImgError(true); }}
+            // Eager on purpose: the preview gate waits for this card, so a
+            // lazy cover would hold the preview until it is scrolled to.
+            loading="eager"
             decoding="async"
           />
         ) : (
