@@ -119,6 +119,52 @@
   margin-top: -8px;
 }
 
+/* Play all and Shuffle. The hero's own entry into the grid, and the first
+   stop Down or Right from Back. */
+.playRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.playBtn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 20px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-condensed);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.playBtn:hover {
+  border-color: var(--accent);
+}
+
+/* Without this the D-pad reaches the two buttons and nothing on screen says
+   so; they were reported as unreachable while the ring was right on them. */
+.playBtn.focused {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.playBtn[aria-busy="true"] {
+  color: var(--text-muted);
+}
+
+.playGlyph {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .metaRow {
   display: flex;
   gap: 20px;

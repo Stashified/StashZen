@@ -336,7 +336,10 @@ export async function updateSceneRating(id, rating100) {
 
 export async function setSceneOrganized(id, organized) {
   const result = await sceneUpdate({ id: String(id), organized: !!organized });
-  return result?.organized ?? !!organized;
+  const saved = result?.organized ?? !!organized;
+  // The grid card now carries the organised mark.
+  publishRowPatch('scene', id, { organized: saved });
+  return saved;
 }
 
 /**
@@ -345,8 +348,10 @@ export async function setSceneOrganized(id, organized) {
  */
 export async function addSceneO(id) {
   const data = await runQuery(SCENE_ADD_O_MUTATION, { id: String(id) });
+  const count = data?.sceneAddO?.count;
   clearScenePages();
-  return data?.sceneAddO?.count;
+  if (typeof count === 'number') publishRowPatch('scene', id, { o_counter: count });
+  return count;
 }
 
 /**
@@ -360,7 +365,9 @@ export async function addSceneO(id) {
 export async function resetSceneO(id) {
   const data = await runQuery(SCENE_RESET_O_MUTATION, { id: String(id) });
   clearScenePages();
-  return data?.sceneResetO;
+  const count = data?.sceneResetO;
+  if (typeof count === 'number') publishRowPatch('scene', id, { o_counter: count });
+  return count;
 }
 
 /**

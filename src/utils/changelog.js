@@ -42,9 +42,14 @@ function normalizeText(value) {
 function isIsoDate(value) {
   const m = ISO_DATE_RE.exec(value);
   if (!m) return false;
+  const year = Number(m[1]);
   const month = Number(m[2]);
   const day = Number(m[3]);
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  // Round-trip through UTC: a range check alone accepts 2026-02-31.
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year
+    && d.getUTCMonth() === month - 1
+    && d.getUTCDate() === day;
 }
 
 // 0.44 and 0.44.0 are the same version; pad so dedupe uses that, not strings.

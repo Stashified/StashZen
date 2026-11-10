@@ -57,6 +57,9 @@ export function usePlayerTransport({
     // and engine. Before the first press the intent stays null, so `open()` keeps
     // adopting an already-muted TV. The initial read below is not this path.
     const sync = () => {
+      // An engine swap restores the TV mute on the way out; that is not a
+      // preference and must not replace the one the viewer chose.
+      if (v.switching) return;
       setMuted(!!v.muted);
       if (muteIntentRef && muteIntentRef.current != null) {
         muteIntentRef.current = !!v.muted;

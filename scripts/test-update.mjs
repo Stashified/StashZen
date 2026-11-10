@@ -10,7 +10,7 @@
 
 import {
   parseVersionTag, compareVersions, isNewerVersion, isUpdateCheckDue,
-  fetchLatestRelease, UPDATE_INTERVAL_MS, UPDATE_TIMEOUT_MS,
+  fetchLatestRelease, UPDATE_INTERVAL_MS, UPDATE_MAX_BYTES, UPDATE_TIMEOUT_MS,
 } from '../src/utils/updateCheck.js';
 import { StashError } from '../src/utils/stashClient.js';
 
@@ -81,7 +81,7 @@ const URL = 'https://api.github.com/repos/Stashown/Example/releases/latest';
     seen = { url, options, timeoutMs };
     return consume({
       ok: true,
-      json: async () => ({ tag_name: 'v0.37.2', name: 'ignore me' }),
+      text: async () => JSON.stringify({ tag_name: 'v0.37.2', name: 'ignore me' }),
     });
   };
   const res = await fetchLatestRelease({ url: URL, fetchImpl });
@@ -106,7 +106,7 @@ const URL = 'https://api.github.com/repos/Stashown/Example/releases/latest';
     timeoutMs: 1234,
     fetchImpl: (url, options, timeoutMs, consume) => {
       seenTimeout = timeoutMs;
-      return consume({ ok: true, json: async () => ({ tag_name: '1.2.3' }) });
+      return consume({ ok: true, text: async () => JSON.stringify({ tag_name: '1.2.3' }) });
     },
   });
   check('fetch: an explicit timeout is passed through', seenTimeout === 1234);
@@ -119,7 +119,7 @@ const URL = 'https://api.github.com/repos/Stashown/Example/releases/latest';
     fetchImpl: (url, options, timeoutMs, consume) => consume({
       ok: false,
       status: 403,
-      json: async () => ({ message: 'rate limited' }),
+      text: async () => JSON.stringify({ message: 'rate limited' }),
     }),
   });
   eq('fetch: a non-2xx answer is reported as http with its status',
@@ -132,10 +132,33 @@ const URL = 'https://api.github.com/repos/Stashown/Example/releases/latest';
     url: URL,
     fetchImpl: (url, options, timeoutMs, consume) => consume({
       ok: true,
-      json: async () => { throw new SyntaxError('bad json'); },
+      text: async () => { throw new SyntaxError('bad json'); },
     }),
   });
   check('fetch: a body that is not JSON is a parse failure', res.reason === 'parse', JSON.stringify(res));
+}
+
+// Oversized bodies, declared or measured.
+{
+  const res = await fetchLatestRelease({
+    url: URL,
+    fetchImpl: (url, options, timeoutMs, consume) => consume({
+      ok: true,
+      headers: { get: () => String(UPDATE_MAX_BYTES + 1) },
+      text: async () => '{}',
+    }),
+  });
+  check('fetch: a declared oversize body is a size failure', res.reason === 'size', JSON.stringify(res));
+}
+{
+  const res = await fetchLatestRelease({
+    url: URL,
+    fetchImpl: (url, options, timeoutMs, consume) => consume({
+      ok: true,
+      text: async () => 'x'.repeat(UPDATE_MAX_BYTES + 1),
+    }),
+  });
+  check('fetch: a measured oversize body is a size failure', res.reason === 'size', JSON.stringify(res));
 }
 
 // A readable body with no usable tag.
@@ -143,7 +166,7 @@ const URL = 'https://api.github.com/repos/Stashown/Example/releases/latest';
   for (const body of [{}, { tag_name: 'nightly' }, { tag_name: null }]) {
     const res = await fetchLatestRelease({
       url: URL,
-      fetchImpl: (url, options, timeoutMs, consume) => consume({ ok: true, json: async () => body }),
+      fetchImpl: (url, options, timeoutMs, consume) => consume({ ok: true, text: async () => JSON.stringify(body) }),
     });
     check(`fetch: unusable tag ${JSON.stringify(body)} is a tag failure`, res.reason === 'tag', JSON.stringify(res));
   }

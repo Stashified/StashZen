@@ -24,6 +24,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+// A write before metadata throws in the browser. Returns whether it landed, so
+// the caller does not move the timeline for a seek that was dropped.
+function seekMedia(media, seconds) {
+  if (!media || !(media.readyState >= 1)) return false;
+  try { media.currentTime = seconds; } catch (e) { return false; }
+  return true;
+}
 import {
   SKIM_STEPS, SKIM_ACCEL_RESET_MS, SKIM_RUNG_HOLD_MS, SKIM_REPEAT_MS,
   SKIM_GLIDE_MS, SKIM_PREVIEW_HIDE_DELAY,
@@ -135,7 +143,8 @@ export function useSkim({
   // every caller (keys, rail buttons) gets the same acceleration.
   const skim = useCallback((delta, isRepeat = false) => {
     const v = mediaRef.current;
-    if (!v) return;
+    // No metadata, no seek: a press would move only the bar.
+    if (!v || !(v.readyState >= 1)) return;
     const direction = delta > 0 ? 1 : -1;
     const now = Date.now();
     // A held key repeats far faster than a person can tap. Drop only repeats,
@@ -190,9 +199,13 @@ export function useSkim({
       seekTimerRef.current = null;
       pendingSeekRef.current = null;
       if (skimPendingRef) skimPendingRef.current = false;
-      v.currentTime = target;
-      displayRef.current = target;
-      setCurrentTime(target);
+      if (seekMedia(v, target)) {
+        displayRef.current = target;
+        setCurrentTime(target);
+      } else {
+        // Refused, so let the element supply the base next time.
+        displayRef.current = null;
+      }
     } else {
       pendingSeekRef.current = target;
       // Stop the element's own `timeupdate` from moving the timeline while the
@@ -211,7 +224,7 @@ export function useSkim({
         if (skimPendingRef) skimPendingRef.current = false;
         const media = mediaRef.current;
         if (at == null || !media) return;
-        media.currentTime = at;
+        if (!seekMedia(media, at)) displayRef.current = null;
       }, quiet);
       glideTo(target);
     }

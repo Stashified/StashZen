@@ -256,6 +256,7 @@ export function useDetailSelection({
     selectedScene,
     setSelectedScene,
     sceneOriginId,
+    setSceneOriginId,
     clearedContinueIds,
     imageViewer,
     sceneCardFocus,

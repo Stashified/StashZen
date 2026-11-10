@@ -28,6 +28,7 @@
 #
 # Usage:  bash scripts/harness/sweep.sh [--quick] <label>
 set -u
+set -o pipefail
 
 MODE=full
 if [ "${1:-}" = "--quick" ]; then MODE=quick; shift; fi
@@ -36,7 +37,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=/tmp/diff/$LABEL
 BASE_PORT=8850
-SERIAL_PORT=8889
+# Far enough above the pool that adding a driver cannot land on it.
+SERIAL_PORT=$((BASE_PORT + 100))
 WORKERS=${WORKERS:-6}
 mkdir -p "$OUT"
 # Leftovers from an interrupted round of the same label. Safe because sweeps
@@ -78,6 +80,10 @@ FULL_JOBS=(
   # Leaving a tab is the TV's refresh: the arriving page must go to the wire
   # rather than the module-scoped list cache.
   "refresh|refresh-entry.jsx||0|1"
+  # The connection banner: a real transport outage (the fake closes the socket),
+  # a Retry that fails, the one that recovers, and that a GraphQL-level failure
+  # is not an outage. Reads focus, so it runs alone.
+  "connection|connection-entry.jsx||0|1"
   # Groups: the cover fallback (placeholder is a 200, so only its flag says it
   # is not a picture), and Back from both a group card and a scene's Groups
   # chip. The chip trip stays on one tab, so nothing remounts to hide the
@@ -166,14 +172,17 @@ run_one() {  # run_one <port> <name> <entry> [query] [update] [version]
     n=$(python3 -c "import json;r=json.load(open('$OUT/$name.json'));print(f\"{sum(1 for x in r if x['pass'])}/{len(r)}\")")
     printf '%s\n' "$n" > "$OUT/$name.tally"
     # Green drivers give back their 50–160 MB as they finish; a red one keeps
-    # its dir for post-mortem. `${n%%/*}` vs `${n##*/}` is "all passed".
-    if [ "${n%%/*}" = "${n##*/}" ]; then rm -rf "/tmp/diff-$LABEL-$name"; fi
+    # its dir for post-mortem. `0/0` is not green: it means the driver
+    # collected nothing, so the run covered no checks.
+    if [ "${n%%/*}" = "${n##*/}" ] && [ "${n##*/}" != "0" ]; then
+      rm -rf "/tmp/diff-$LABEL-$name"
+    fi
   else
     printf 'NO RESULTS\n' > "$OUT/$name.tally"
   fi
 }
 export -f run_one
-export LABEL OUT HERE
+export LABEL OUT HERE BASE_PORT
 
 # Each job gets its own port (index-based, so no two can collide) and its own
 # NAME dir (run_one derives it). xargs keeps the pool at WORKERS processes.
@@ -184,7 +193,7 @@ dispatch_pool() {  # stdin: one name|entry|query|update|version line per job
     idx=$((idx + 1))
   done | xargs -r -P "$WORKERS" -I{} bash -c '
     IFS="|" read -r idx name entry query update version <<< "$1"
-    run_one $((8850 + idx)) "$name" "$entry" "$query" "$update" "$version"
+    run_one $((BASE_PORT + idx)) "$name" "$entry" "$query" "$update" "$version"
   ' _ {}
 }
 
@@ -224,7 +233,10 @@ for job in "${JOBS[@]}"; do
   name=${job%%|*}
   tally=$(cat "$OUT/$name.tally" 2>/dev/null || printf 'NO RESULTS')
   echo "  $name: $tally"
-  [ "$tally" = "NO RESULTS" ] && MISSING=$((MISSING + 1))
+  # A tally that is absent, malformed or an empty run is a missing observation.
+  if [[ ! "$tally" =~ ^[0-9]+/[0-9]+$ ]] || [ "${tally##*/}" = "0" ]; then
+    MISSING=$((MISSING + 1))
+  fi
 done
 echo "── $LABEL done ──"
 if [ "$MISSING" -gt 0 ]; then

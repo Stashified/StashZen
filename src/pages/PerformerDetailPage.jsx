@@ -14,6 +14,8 @@ import { isBackKey, focusScopeOf, dialogOpen } from '../utils/input.js';
 import {
   loadPerformerDetail, loadPerformerSceneTags, updatePerformer,
 } from '../utils/performerService.js';
+import { fetchVideos } from '../utils/videoService.js';
+import { stableSort } from '../utils/randomSort.js';
 import { QUICK_FILTERS, combineQuickFilters } from '../utils/quickFilters.js';
 import { ActionButton } from './sceneDetail/ActionButton.jsx';
 import { RatingStepper } from './sceneDetail/RatingStepper.jsx';
@@ -28,6 +30,10 @@ import styles from './PerformerDetailPage.module.css';
 const MAX_ALIAS_CHIPS = 4;
 const MAX_TAG_CHIPS = 5;
 const MAX_LINK_CHIPS = 3;
+
+// Must match VideoGrid's page size: the queue pages the same listing the grid
+// below shows, so Play all continues where the grid would have.
+const QUEUE_PAGE_SIZE = 40;
 
 // Scene sort groups for the inner grid, kept local rather than threaded from App.
 const SCENE_SORT_GROUPS = [
@@ -120,9 +126,32 @@ function MetaButton({ id, className, label, onClick, children }) {
   );
 }
 
+// The header's two playback buttons. Same zone as the hub controls, so
+// Left/Right walks from one to the next.
+function PlayButton({ id, glyph, label, busy, onClick }) {
+  const { ref, focused } = useFocusable({
+    id,
+    zone: 'performer-detail',
+    onEnter: onClick,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.playBtn} ${focused ? styles.focused : ''}`}
+      onClick={onClick}
+      aria-label={label}
+      aria-busy={busy ? 'true' : undefined}
+    >
+      <span className={styles.playGlyph} aria-hidden="true">{glyph}</span>
+      {busy ? 'Starting…' : label}
+    </button>
+  );
+}
+
 export default function PerformerDetailPage({
   performer, onBack, onImages, onGalleries, onTagSelect,
-  onVideoSelect, onVideoLongPress, previewMuted, onMuteToggle,
+  onVideoSelect, onVideoLongPress, onStartQueue, previewMuted, onMuteToggle,
 }) {
   const [controls, setControls] = useState(DEFAULT_DETAIL_CONTROLS);
   // The page keeps its instance on an in-place swap (a scene's cast chip opens
@@ -222,6 +251,70 @@ export default function PerformerDetailPage({
     favorite: !!performer.favorite,
   }));
   const [notice, flash] = useFlash();
+
+  // The header's Play all and Shuffle. The queue's first page is fetched here
+  // rather than reusing the grid's rows, because the grid can be sorted or
+  // filtered differently from what the buttons promise (Shuffle always is).
+  const [starting, setStarting] = useState(null);
+  const startingRef = useRef(false);
+  // An in-place swap (a scene's cast chip) can land mid-fetch, and Back can
+  // leave the page: neither may start playing once the answer arrives.
+  const performerIdRef = useRef(String(performer.id));
+  performerIdRef.current = String(performer.id);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+  // A late failure belongs to the start that asked for it, and a swap or Back
+  // no longer stops the `finally` from clearing the flag of a newer one.
+  const startTokenRef = useRef(0);
+
+  const startQueue = (shuffle) => {
+    if (startingRef.current) return;
+    const id = String(performer.id);
+    const kind = shuffle ? 'shuffle' : 'all';
+    // A seeded sort dealt fresh on each press: `random` alone would repeat the
+    // same permutation for every page of this listing, and `fetchVideos` pins
+    // its own seed, so the shuffle has to come from here.
+    const sort = shuffle
+      ? stableSort('random', 'performer-scenes', id, Math.random())
+      : controls.sort;
+    const fetchPage = (page, signal) => fetchVideos({
+      sort,
+      order: controls.order,
+      filter: objectFilter,
+      q: controls.search || '',
+      page,
+      limit: QUEUE_PAGE_SIZE,
+      signal,
+    }).then(d => ({ items: d.videos, total: d.total }));
+
+    startingRef.current = true;
+    setStarting(kind);
+    const token = ++startTokenRef.current;
+    fetchPage(1)
+      .then((first) => {
+        if (!aliveRef.current || performerIdRef.current !== id) return;
+        if (!first.items.length) {
+          flash('No scenes to play.');
+          return;
+        }
+        onStartQueue?.({
+          items: first.items, total: first.total, page: 1, fetchPage,
+        });
+      })
+      .catch((e) => {
+        if (!aliveRef.current || performerIdRef.current !== id) return;
+        flash(`Couldn't start playback: ${e.message}`);
+      })
+      .finally(() => {
+        if (startTokenRef.current !== token) return;
+        startingRef.current = false;
+        setStarting(null);
+      });
+  };
+
   const ratingAttempt = useRef(0);
   const favoriteAttempt = useRef(0);
   // The last value the *server* acknowledged. Reverting to the optimistic value
@@ -345,7 +438,9 @@ export default function PerformerDetailPage({
   // controls bar, and horizontal moves never cross zones. The first hub
   // control the profile supplies is the target; before any load the edge
   // falls through to geometry.
-  const firstHeroId = profile?.imageCount > 0 ? 'performer-images'
+  const showPlay = performer.scene_count !== 0;
+  const firstHeroId = showPlay ? 'performer-play-all'
+    : profile?.imageCount > 0 ? 'performer-images'
     : profile?.galleryCount > 0 ? 'performer-galleries'
     : tags.length > 0 ? `performer-tag-${tags[0].id}`
     : 'performer-rating-dec';
@@ -392,6 +487,25 @@ export default function PerformerDetailPage({
 
           {performer.disambiguation && (
             <p className={styles.disambiguation}>{performer.disambiguation}</p>
+          )}
+
+          {showPlay && (
+            <div className={styles.playRow} role="group" aria-label="Play this performer's scenes">
+              <PlayButton
+                id="performer-play-all"
+                glyph="▶"
+                label="Play all"
+                busy={starting === 'all'}
+                onClick={() => startQueue(false)}
+              />
+              <PlayButton
+                id="performer-shuffle"
+                glyph="⇄"
+                label="Shuffle"
+                busy={starting === 'shuffle'}
+                onClick={() => startQueue(true)}
+              />
+            </div>
           )}
 
           <div className={styles.metaRow}>

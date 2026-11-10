@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.44.0",
+      "date": "2026-11-10",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Settings opens Changelog: the changes in the newest releases, read from the project's changelog. It works whether an update is waiting or not.",
+            "A long press on a scene card now offers Mark played, Add O, Clear resume and Mark organised, so those edits no longer need the scene page.",
+            "Cards carry small marks for watched, organised and the O count, so library state is visible while browsing.",
+            "Settings has a Remote help guide: every key for browsing, the card menu, the player, the image viewer and typing, without the README.",
+            "Search now includes markers, remembers recent searches as one-press chips and offers Retry when a section fails to load.",
+            "A performer page has Play all and Shuffle, which play their scenes under the page's current sort, filter and search.",
+            "If the Stash server cannot be reached, a banner on every screen says so and offers Retry, so a spell of Wi-Fi trouble no longer looks like a broken app."
+          ]
+        },
+        {
+          "title": "Fixes",
+          "items": [
+            "Focus previews wait until every cover on the page has loaded, so a listing fills exactly as it does with previews off. The preview still appears on the focused card, a little later.",
+            "Changing transcode quality while paused no longer starts playback.",
+            "A failed load at the end of a queue no longer ends the queue: the next press retries.",
+            "And other bug fixes."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.43.1",
       "date": "2026-11-08",
       "sections": [

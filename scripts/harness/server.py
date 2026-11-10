@@ -33,6 +33,10 @@ MODE = {
     # sceneAddO: "slow-first" holds the first reply 1.2 s after the increment,
     # so two rapid presses answer out of order (stale 1 last).
     "sceneAddO": "ok",
+    # transport: "down" closes the socket on every /graphql POST with no HTTP
+    # reply, so the client sees a network error rather than a status. /mode
+    # itself stays reachable, which lets one run flip the outage on and off.
+    "transport": "ok",
     # findPerformer: "sparse" empties optional fields; "length-only" clears the
     # career bounds but keeps career_length; "slow"/"fail" delay.
     "performerDetail": "ok", "performerSceneTags": "ok", "resume": 0, "oSeed": 0,
@@ -1053,6 +1057,11 @@ class Handler(SimpleHTTPRequestHandler):
                 FILTER_WRITES.clear()
             return self._json({"ok": True})
 
+        if self.path == "/graphql" and MODE.get("transport") == "down":
+            # Close with no reply: the client must see a transport failure.
+            self.close_connection = True
+            return
+
         if self.path == "/graphql":
             return self._graphql(json.loads(raw or b"{}"))
 
@@ -1601,6 +1610,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({
                     "data": {"findScenes": {"count": SCENE_COUNT, "scenes": []}}
                 })
+            # `fail` is the scene-search failure arm: every FindScenes request
+            # fails, so the Search tab's Scenes section can show its error.
+            if mode == "fail":
+                return self._json({"errors": [{"message": "VERIFY scenes refused"}]})
             # `short` is a listing that has ended: one full row, then one lone card.
             # R11 needs that card — with nothing below the cursor, the only Down
             # candidate is the fixed Settings row (the sidebar-drop bug).
@@ -2299,6 +2312,18 @@ class Handler(SimpleHTTPRequestHandler):
                     "tags": [],
                 }
             rows = [marker(9001, 1), marker(9002, 2)]
+            # The fixture's marker titles are generic, so the parent scene and
+            # tag count as matches too: a scene-title query must still reach
+            # them for the Search tab's marker section to render. The default
+            # Markers tab sends no q.
+            needle = str((variables.get("filter") or {}).get("q") or "").strip().lower()
+            if needle:
+                rows = [
+                    r for r in rows
+                    if needle in r["title"].lower()
+                    or needle in r["scene"]["title"].lower()
+                    or needle in r["primary_tag"]["name"].lower()
+                ]
             return self._json({"data": {"findSceneMarkers": {
                 "count": len(rows), "scene_markers": rows,
             }}})

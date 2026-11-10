@@ -98,13 +98,16 @@ function TextField({
 }
 
 function ActionButton({ id, label, primary, busy, onClick, nextId = null }) {
-  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter: onClick, nextId });
+  // aria-disabled, not disabled: Chromium blurs a focused button when it is
+  // disabled, and the request can run for seconds with no ring on screen.
+  const activate = () => { if (!busy) onClick(); };
+  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter: activate, nextId });
   return (
     <button
       ref={ref}
       className={`${styles.actionBtn} ${primary ? styles.actionPrimary : ''} ${focused ? styles.focused : ''}`}
-      onClick={onClick}
-      disabled={busy}
+      onClick={activate}
+      aria-disabled={busy || undefined}
     >
       {label}
     </button>

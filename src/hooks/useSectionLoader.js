@@ -52,8 +52,13 @@ export function useSectionLoader(loadData, { emptyMessage = 'The server returned
   }, [loadData, emptyMessage]);
 
   // Show a held answer again without refetching; hide keeps it in `data`.
+  // Bumping the token drops an answer still in flight, which would otherwise
+  // paint over the closed section.
   const show = useCallback(() => setPhase('ready'), []);
-  const hide = useCallback(() => setPhase('closed'), []);
+  const hide = useCallback(() => {
+    requestRef.current += 1;
+    setPhase('closed');
+  }, []);
 
   return { phase, data, message, load, show, hide, sectionRef };
 }

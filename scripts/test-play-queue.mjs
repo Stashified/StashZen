@@ -132,6 +132,47 @@ const single = buildSceneMenuItems({ item: card, list: null, index: 0 }, { openP
 check('a card with no listing gets only Play and Details',
   single.map(i => i.id), ['menu-play', 'menu-details']);
 
+// ── Quick edits ────────────────────────────────────────────
+// The menu writes without opening the scene. Clear resume only exists when
+// there is progress, and the organised row names the state it moves to.
+const edits = [];
+const editHandlers = {
+  openPlayer,
+  onDetails,
+  onMarkPlayed: (i) => edits.push(['played', i.id]),
+  onAddO: (i) => edits.push(['o', i.id]),
+  onClearResume: (i) => edits.push(['resume', i.id]),
+  onToggleOrganized: (i) => edits.push(['organized', i.id]),
+};
+const fresh = { ...card, id: 'fresh', resume_time: 0, organized: false, o_counter: 0 };
+const quick = buildSceneMenuItems({ item: fresh, list: null, index: 0 }, editHandlers);
+check('quick edits sit between Play and Details',
+  quick.map(i => i.id),
+  ['menu-play', 'menu-mark-played', 'menu-add-o', 'menu-organized', 'menu-details']);
+check('no Clear resume without progress',
+  quick.some(i => i.id === 'menu-clear-resume'), false);
+check('the organised row offers the opposite state',
+  quick.find(i => i.id === 'menu-organized').label, 'Mark organised');
+check('no O hint at zero', quick.find(i => i.id === 'menu-add-o').hint, undefined);
+
+const watched = {
+  ...card, id: 'watched', resume_time: 95, organized: true, o_counter: 4,
+};
+const rows = buildSceneMenuItems({ item: watched, list: null, index: 0 }, editHandlers);
+check('Clear resume appears with progress and names the position',
+  rows.find(i => i.id === 'menu-clear-resume').hint, 'at 1:35');
+check('an organised scene offers to unmark',
+  rows.find(i => i.id === 'menu-organized').label, 'Mark unorganised');
+check('the O row shows the current count',
+  rows.find(i => i.id === 'menu-add-o').hint, 'now 4');
+rows.find(i => i.id === 'menu-mark-played').onSelect();
+rows.find(i => i.id === 'menu-add-o').onSelect();
+rows.find(i => i.id === 'menu-clear-resume').onSelect();
+rows.find(i => i.id === 'menu-organized').onSelect();
+check('every quick edit hands its card back',
+  edits,
+  [['played', 'watched'], ['o', 'watched'], ['resume', 'watched'], ['organized', 'watched']]);
+
 // ── Markers ────────────────────────────────────────────────
 // Two markers on one scene are two timestamps into one video. The queue is
 // keyed by scene, so the listing collapses them; the second marker must still

@@ -46,7 +46,7 @@ function MenuItem({ id, label, hint, danger, onSelect, autoFocus }) {
   );
 }
 
-export default function ActionMenu({ title, subtitle, items = [], onClose }) {
+export default function ActionMenu({ title, subtitle, items = [], notice = '', onClose }) {
   // Capture phase, so Back/Esc closes the menu rather than reaching the grid.
   // The hook registers once and holds the handler in a ref, so a changing
   // `onClose` does not reorder window-capture listeners.
@@ -97,7 +97,9 @@ export default function ActionMenu({ title, subtitle, items = [], onClose }) {
         </div>
 
         <footer className={styles.footer}>
-          <span className={styles.footerHint}><kbd>Back</kbd> Close</span>
+          {notice
+            ? <span className={styles.notice} role="status" aria-live="polite">{notice}</span>
+            : <span className={styles.footerHint}><kbd>Back</kbd> Close</span>}
         </footer>
       </div>
     </div>

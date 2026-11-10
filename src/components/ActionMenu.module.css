@@ -122,3 +122,12 @@
   font-family: var(--font-condensed);
   letter-spacing: 0.05em;
 }
+
+/* A refused quick edit, where the Back hint usually sits. It stays on screen
+   while the menu is open, so the failure cannot be mistaken for a no-op. */
+.notice {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--red);
+  text-align: right;
+}

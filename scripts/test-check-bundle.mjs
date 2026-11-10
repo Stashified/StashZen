@@ -195,6 +195,23 @@ try {
   }
 
   {
+    // A NUL byte makes a JS file look binary. Treating that as a clean skip
+    // would let an unscannable source file hide a key.
+    const hidden = join(root, 'hidden-text');
+    mkdirSync(hidden, { recursive: true });
+    writeFileSync(join(hidden, 'app.js'), Buffer.from([0x63, 0x00, 0x6f]));
+    const res = checkBundle({ distDir: hidden });
+    check('an unscannable text file fails the build', res.ok === false, res.lines.join(' | '));
+    check('...and names the file', res.lines.some(l => l.includes('app.js')), res.lines.join(' | '));
+
+    const image = join(root, 'image-skip');
+    mkdirSync(image, { recursive: true });
+    writeFileSync(join(image, 'icon.png'), Buffer.from([0x89, 0x00, 0x00]));
+    const imgRes = checkBundle({ distDir: image });
+    check('a skipped image still passes', imgRes.ok === true, imgRes.lines.join(' | '));
+  }
+
+  {
     // A LAN address alone is a warning, not a failure.
     const cleanDist = join(root, 'clean');
     mkdirSync(cleanDist, { recursive: true });

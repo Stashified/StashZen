@@ -9,7 +9,7 @@
  * Each prop group is `{ open/record, ...handlers }`; nothing is decided here.
  */
 
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 import ActionMenu from '../components/ActionMenu.jsx';
 import EntityInfoOverlay from '../components/EntityInfoOverlay.jsx';
 import MarkerModal from '../components/MarkerModal.jsx';
@@ -54,6 +54,10 @@ export default function AppOverlays({
     ? buildActionMenu(actionMenu.menu, {
       openPlayer: actionMenu.openPlayer,
       onDetails: actionMenu.onDetails,
+      onMarkPlayed: actionMenu.onMarkPlayed,
+      onAddO: actionMenu.onAddO,
+      onClearResume: actionMenu.onClearResume,
+      onToggleOrganized: actionMenu.onToggleOrganized,
       openImageViewer: actionMenu.openImageViewer,
       openGallery: actionMenu.openGallery,
       openGallerySlideshow: actionMenu.openGallerySlideshow,
@@ -95,6 +99,7 @@ export default function AppOverlays({
           title={action.title}
           subtitle={action.subtitle}
           items={action.items}
+          notice={actionMenu.menu?.notice}
           onClose={actionMenu.onClose}
         />
       )}
@@ -158,16 +163,17 @@ export default function AppOverlays({
         // Scoped boundary: a render error here closes the player and returns
         // to the screen underneath instead of taking the whole app down.
         <PlayerErrorBoundary onClose={player.onClose}>
-          {/* Inside the boundary: a chunk that fails to load closes the
-              player instead of leaving an empty screen over the grid. */}
-          <Suspense fallback={null}>
+          {/* Inside the boundary: while the chunk loads, the gate holds focus
+              and swallows keys. Suspense fallback={null} left the grid live
+              under a player the user had already asked for. */}
+          <OverlayGate onClose={player.onClose}>
             <VideoPlayer
               queue={player.session}
               onClose={player.onClose}
               onActivityChange={player.onActivityChange}
               onSceneChange={player.onSceneChange}
             />
-          </Suspense>
+          </OverlayGate>
         </PlayerErrorBoundary>
       )}
 

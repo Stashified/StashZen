@@ -418,7 +418,8 @@ jobs:
     # Belt and braces: the signing step refuses test mode on a tag, and this
     # keeps a future edit to that step from publishing the result.
     if: >-
-      github.ref_type == 'tag'
+      github.event_name == 'push'
+      && github.ref_type == 'tag'
       && needs.build.outputs.signing != 'test'
       && needs.build.outputs.variant != 'test'
     # Same image as the build job: an artifact produced there is downloaded and
@@ -462,8 +463,14 @@ jobs:
           gh api -H "Accept: application/vnd.github.raw" \
             "repos/$GH_REPO/contents/changelog.json?ref=$TAG" \
             > "$RUNNER_TEMP/changelog.json"
+          # Compare like the app and the build gate do: 0.44 and 0.44.0 are one
+          # version, so an exact string match could miss the entry.
+          # parseVersionTag's reading: trim, drop a -rc1/+build suffix, then
+          # split. A raw tonumber errors out on those, after the build is green.
           jq -r --arg v "$VERSION" '
-            ([.releases[] | select(.version == $v)][0]) as $r
+            def vkey: sub("^[vV]"; "") | sub("[-+].*$"; "") | gsub("^\\s+|\\s+$"; "")
+              | split(".") | map(tonumber) | . + [0, 0, 0, 0] | .[0:4];
+            ([.releases[] | select((.version | vkey) == ($v | vkey))][0]) as $r
             | if $r == null then empty
               else $r.sections[]
                 | "## " + .title + "\n\n"

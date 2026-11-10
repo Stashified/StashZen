@@ -94,8 +94,14 @@
   flex-direction: column;
 }
 
-.status {
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 16px;
+}
+
+.status {
   font-family: var(--font-condensed);
   font-size: 14px;
   letter-spacing: 0.08em;
@@ -162,6 +168,72 @@
   margin: 0 0 12px;
   font-size: 16px;
   color: var(--red);
+}
+
+/* A failed search, with Retry beside the reason. */
+.failure {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recentLabel {
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: min(1100px, 100%);
+}
+
+.chip {
+  padding: 10px 20px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 17px;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.chipFocused {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--focus-ring);
+}
+
+/* Shares the See-all shape: a compact control that sits beside text. */
+.retry {
+  flex: none;
+  padding: 6px 14px;
+  border: 1.5px solid var(--red);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: color 0.15s, box-shadow 0.15s;
+}
+
+.retryFocused {
+  color: var(--text-primary);
+  box-shadow: var(--focus-ring);
 }
 
 .state {

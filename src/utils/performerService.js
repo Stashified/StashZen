@@ -5,12 +5,12 @@
  */
 
 import { getSettings } from './settings.js';
-import { withApiKey } from './stashUrl.js';
+import { withApiKey, isDefaultAsset } from './stashUrl.js';
 import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
-import { baseSort, stableSort } from './randomSort.js';
+import { stableSort } from './randomSort.js';
 import { ratingLabel } from './format.js';
 
 // `height` is the sort value; the row carries `height_cm`. Everything else
@@ -324,7 +324,10 @@ export function normalizePerformer(p) {
     id: p.id,
     name: p.name,
     disambiguation: p.disambiguation,
-    image_path: withApiKey(p.image_path) || null,
+    // Stash's placeholder path would render as a broken face.
+    image_path: !p.image_path || isDefaultAsset(p.image_path)
+      ? null
+      : withApiKey(p.image_path),
     scene_count: p.scene_count || 0,
     favorite: !!p.favorite,
     rating: ratingLabel(p.rating100),
@@ -378,7 +381,7 @@ async function loadPerformers({
     }
 
     // `sort` may be `random_<n>`; the comparator knows only `random`.
-    performers.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
+    performers.sort(mockComparator(sort, order, MOCK_SORT_ALIAS));
 
     // Paginate
     const start = (page - 1) * limit;

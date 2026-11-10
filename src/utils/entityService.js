@@ -25,7 +25,7 @@ import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
-import { baseSort, stableSort } from './randomSort.js';
+import { stableSort } from './randomSort.js';
 
 /**
  * Build a list service.
@@ -74,9 +74,8 @@ export function createEntityService({
         ));
       }
       // `sort` may be the seeded spelling (`random_<n>`), which the comparator
-      // does not know; `baseSort` maps it back so Test mode keeps its stable
-      // id-rank shuffle.
-      all.sort(mockComparator(baseSort(sort), order, mockSortKey));
+      // ranks too, so Test mode shuffles per seed and pages stably.
+      all.sort(mockComparator(sort, order, mockSortKey));
 
       const total = all.length;
       const start = (page - 1) * limit;

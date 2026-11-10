@@ -120,8 +120,8 @@ export function usePlayQueue(queue) {
         setTotal(cur.items.length);
         return false;
       } catch {
-        // A failed extension is not worth interrupting playback for: the
-        // current scene is still playing and the user can press next again.
+        // Not worth interrupting playback for, and not the end of the queue:
+        // one timeout would truncate the sitting. The next press retries.
         return false;
       }
     })();

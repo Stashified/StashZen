@@ -48,7 +48,13 @@ export function clearServerVersionCache() {
   setServerVersion(null);
 }
 
-export function useServerVersion(dataKey) {
+/**
+ * `epoch` re-runs the probe after a connection Retry. The cache holds failures
+ * out (a null answer is not cached), but a version that never landed stays null
+ * until something asks again, which is the epoch's job once the cache is
+ * cleared.
+ */
+export function useServerVersion(dataKey, epoch = 0) {
   const [version, setVersion] = useState(null);
   const [versionFor, setVersionFor] = useState(null);
 
@@ -69,7 +75,7 @@ export function useServerVersion(dataKey) {
       setVersion(v);
     });
     return () => { live = false; };
-  }, [dataKey]);
+  }, [dataKey, epoch]);
 
   return version;
 }

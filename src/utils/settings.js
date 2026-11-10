@@ -16,6 +16,7 @@ import { useSyncExternalStore } from 'react';
 import { graphqlRequest } from './stashClient.js';
 import { sha256Hex } from './sha256.js';
 import { readPlaybackEngine } from './enginePolicy.js';
+import { noteSourceChanged } from './connectionHealth.js';
 
 const LS_KEY = 'tvapp.settings.v1';
 
@@ -122,6 +123,15 @@ export function applyReduceMotion(on) {
   else delete el.dataset.reduceMotion;
 }
 
+/**
+ * How many search terms the Search tab remembers. Enough for a session's
+ * exploring, few enough for one row on a 10-foot screen.
+ *
+ * Above `state`: module init reads it through `readRecentSearches`, so a
+ * `const` below would be in its TDZ.
+ */
+export const RECENT_SEARCH_LIMIT = 8;
+
 // ── In-memory state ──────────────────────────────────────
 let state = loadFromStorage();
 applyTheme(state.theme);
@@ -141,6 +151,27 @@ export function readViewModes(saved) {
   const out = {};
   for (const [tab, mode] of Object.entries(saved)) {
     if (VIEW_MODES.includes(mode)) out[tab] = mode;
+  }
+  return out;
+}
+
+/**
+ * The stored search history, oldest entries and junk dropped. Case-insensitive
+ * duplicates collapse: "Jane" and "jane" are one search to a person, and the
+ * newer spelling wins.
+ *
+ * Its limit sits above `state` because module init reaches this.
+ */
+export function readRecentSearches(saved) {
+  if (!Array.isArray(saved)) return [];
+  const out = [];
+  for (const value of saved) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (!text || text.length > 120) continue;
+    if (out.some(s => s.toLowerCase() === text.toLowerCase())) continue;
+    out.push(text);
+    if (out.length >= RECENT_SEARCH_LIMIT) break;
   }
   return out;
 }
@@ -222,6 +253,9 @@ function loadFromStorage() {
     // Per-section column counts, keyed by tab: { performers: 6 }. Absent means
     // the section default (see gridColsFor in App.jsx).
     gridCols,
+    // The Search tab's history, newest first. Recorded when a search is
+    // committed or a result is opened, never on every keystroke.
+    recentSearches: readRecentSearches(saved.recentSearches),
     // The first-run answer; null means "never asked", which the setup screen
     // gates on. A device with an endpoint or key already saved is inferred to
     // have answered `live`, without that, every configured device would be
@@ -260,6 +294,7 @@ function persistToStorage() {
       playbackEngine: state.playbackEngine,
       viewModes: state.viewModes,
       gridCols: state.gridCols,
+      recentSearches: state.recentSearches,
       onboarded: state.onboarded,
       setupRequested: state.setupRequested,
       updateCheckEnabled: state.updateCheckEnabled,
@@ -314,7 +349,12 @@ export function dataSourceKey(s = state) {
 }
 
 export function setSettings(patch) {
+  const before = dataSourceKey(state);
   state = { ...state, ...patch };
+  // A new source retires every answer still in flight. Done here, not in an
+  // effect: the new source's first requests start from child effects, before
+  // App's effects run, and they would carry the old number.
+  if (dataSourceKey(state) !== before) noteSourceChanged();
   // Recomputed, never set by callers, so it cannot drift from its two source
   // fields. A just-saved connection counts as saved, so revisiting the setup
   // screen does not clear a field the user already filled.
@@ -328,7 +368,8 @@ export function setSettings(patch) {
       || 'reduceMotion' in patch || 'seekStep' in patch
       || 'transcodeQuality' in patch
       || 'playbackEngine' in patch
-      || 'viewModes' in patch || 'gridCols' in patch || 'onboarded' in patch
+      || 'viewModes' in patch || 'gridCols' in patch || 'recentSearches' in patch
+      || 'onboarded' in patch
       || 'setupRequested' in patch || 'updateCheckEnabled' in patch
       || 'lastUpdateCheckAt' in patch || 'updateLatestVersion' in patch) {
     persistToStorage();
@@ -438,6 +479,7 @@ export async function testStashConnection({ url, key }) {
  * a relaunch.
  */
 export function clearSettings() {
+  const before = dataSourceKey(state);
   state = {
     stashUrl: '',
     stashKey: '',
@@ -458,6 +500,7 @@ export function clearSettings() {
     // An empty object, not absent: App reads `gridCols[tab]`, so a missing map
     // crashes the tab-change effect instead of defaulting.
     gridCols: {},
+    recentSearches: [],
     // Back to "never asked": a reset device should meet the setup screen, not
     // a dead endpoint, the whole reason onboarding exists.
     onboarded: null,
@@ -467,6 +510,9 @@ export function clearSettings() {
     updateLatestVersion: '',
     hasSavedEndpoint: false,
   };
+  // A reset goes to an empty endpoint, and App may be about to unmount for
+  // the setup screen, so the old source's verdict must not survive here.
+  if (dataSourceKey(state) !== before) noteSourceChanged();
   applyTheme(state.theme);
   applyReduceMotion(state.reduceMotion);
   persistToStorage();

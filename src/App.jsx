@@ -7,16 +7,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NavRail from './components/NavRail.jsx';
 import ControlsPanel from './components/ControlsPanel.jsx';
+import ConnectionBanner from './components/ConnectionBanner.jsx';
 import { useRestoreFocus } from './hooks/useRestoreFocus.js';
 import { useFlash } from './hooks/useFlash.js';
-import { focusFirstControl } from './utils/focus.js';
+import { focusByIdWhenReady, focusFirstControl } from './utils/focus.js';
+import { getCurrentFocusId } from './hooks/useFocusable.js';
 import { publishRowPatch, publishRowRemove } from './utils/rowPatches.js';
 import { queueOf } from './utils/playQueue.js';
 import { fetchRandomVideo } from './utils/videoService.js';
 import styles from './App.module.css';
-import { useSettings, setSettings, dataSourceKey } from './utils/settings.js';
+import {
+  useSettings, setSettings, dataSourceKey, RECENT_SEARCH_LIMIT,
+} from './utils/settings.js';
 import { useAutoUpdateCheck } from './hooks/useAutoUpdateCheck.js';
-import { useServerVersion } from './hooks/useServerVersion.js';
+import { useServerVersion, clearServerVersionCache } from './hooks/useServerVersion.js';
+import { useConnectionHealth } from './hooks/useConnectionHealth.js';
+import { runQuery } from './utils/stashQuery.js';
 import { supportsCapability } from './utils/capabilities.js';
 import { visibleSortGroups } from './utils/sortGroups.js';
 import { TAB_CONTROL_CONFIG } from './app/tabConfig.js';
@@ -53,8 +59,11 @@ export default function App() {
   // in-flight fetches and state from the previous source are discarded.
   const settings = useSettings();
   const dataKey = dataSourceKey(settings);
+  // A Retry after the server was unreachable asks for the version again, so the
+  // capability-gated UI is not left hidden for the rest of the session.
+  const [versionEpoch, setVersionEpoch] = useState(0);
   // Capability-gated UI stays hidden until this resolves; see capabilities.js.
-  const serverVersion = useServerVersion(dataKey);
+  const serverVersion = useServerVersion(dataKey, versionEpoch);
 
   // Public builds only, and inside the PIN/FirstRun gates because App is what
   // they unmount: nothing is fetched before the user reaches the app.
@@ -179,9 +188,14 @@ export default function App() {
     closeActionMenu,
     dismissActionMenu,
     handleMenuDetails,
+    handleMenuMarkPlayed,
+    handleMenuAddO,
+    handleMenuClearResume,
+    handleMenuToggleOrganized,
     playSceneAt,
     handleScenePlay,
     handleMarkerSelect,
+    handlePlayQueue,
   } = usePlayback({
     activeTab,
     selectedScene,
@@ -190,6 +204,7 @@ export default function App() {
     mainFocus,
     sceneCardFocus,
     menuCardFocus,
+    onSceneActivityChange: handleSceneActivityChange,
   });
 
   // ── Chips and related rows on a scene detail ─────────────
@@ -303,6 +318,99 @@ export default function App() {
     setSettings({ previewMuted: !previewMuted });
   };
 
+  // ── Connection health ────────────────────────────────────
+  // The banner appears whenever the transport reports an unreachable server
+  // (see utils/connectionHealth.js) and is hidden while any overlay owns the
+  // screen, so its autofocus can never fight a dialog.
+  const connection = useConnectionHealth();
+  const [connectionBusy, setConnectionBusy] = useState(false);
+  const connectionBusyRef = useRef(false);
+  const [connectionError, setConnectionError] = useState('');
+  // The latest tab and changeTab, for a retry that answers seconds later.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const changeTabRef = useRef(changeTab);
+  changeTabRef.current = changeTab;
+  // The verdict belongs to one server: another source must not inherit an
+  // outage, and Test mode could never clear it. A retry in flight is retired
+  // with the source it asked.
+  const retryGenRef = useRef(0);
+  const sourceMountedRef = useRef(false);
+  useEffect(() => {
+    // The health store is already reset by the settings store, which knows
+    // when the source really changed; this retires a Retry of the old one.
+    if (!sourceMountedRef.current) {
+      sourceMountedRef.current = true;
+      return;
+    }
+    retryGenRef.current += 1;
+    setConnectionError('');
+    connectionBusyRef.current = false;
+    setConnectionBusy(false);
+  }, [dataKey]);
+  // The banner owns the cursor, so when it clears focus drops to <body>.
+  // Remember where the user was and put it back unless something took it.
+  const focusBeforeOutage = useRef(null);
+  const wasDownRef = useRef(false);
+  useEffect(() => {
+    if (connection.down) {
+      wasDownRef.current = true;
+      if (focusBeforeOutage.current === null) {
+        const active = document.activeElement;
+        focusBeforeOutage.current = active && active !== document.body
+          ? getCurrentFocusId() || ''
+          : '';
+      }
+      return;
+    }
+    // Retire the old failure text, or it greets the next outage as new.
+    setConnectionError('');
+    // Also runs on the initial mount: nothing to come back from.
+    if (!wasDownRef.current) return;
+    wasDownRef.current = false;
+    const id = focusBeforeOutage.current;
+    focusBeforeOutage.current = null;
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      // Nothing was captured (the cursor was on <body>): land on the rail's
+      // current row instead.
+      focusByIdWhenReady(id || `nav-${activeTabRef.current}`, {
+        fallback: focusFirstControl,
+      });
+    }
+  }, [connection.down]);
+
+  const retryConnection = () => {
+    if (connectionBusyRef.current) return;
+    const gen = retryGenRef.current;
+    connectionBusyRef.current = true;
+    setConnectionBusy(true);
+    setConnectionError('');
+    // The version query is the cheapest round trip there is, and its success
+    // is what clears the state.
+    runQuery('{ version { version } }')
+      .then(() => {
+        if (retryGenRef.current !== gen) return;
+        // Only after a success: a failed probe must leave the cached version
+        // and the gating that reads it alone.
+        clearServerVersionCache();
+        setVersionEpoch(n => n + 1);
+        // Remount the current tab and drop the list caches, so every listing
+        // that failed while the server was down asks again.
+        changeTabRef.current(activeTabRef.current);
+      })
+      .catch(e => {
+        if (retryGenRef.current === gen) {
+          setConnectionError(`Still unreachable: ${e.message}`);
+        }
+      })
+      .finally(() => {
+        if (retryGenRef.current !== gen) return;
+        connectionBusyRef.current = false;
+        setConnectionBusy(false);
+      });
+  };
+
   const closeSettings = () => {
     setSettingsOpen(false);
     // Restore focus to whatever opened the panel; deferred so the panel's
@@ -357,6 +465,19 @@ export default function App() {
     replaceOrigin({ tab: 'search', focusId, to: tab });
     setControls(prev => ({ ...prev, search: query, searchForTab: tab }));
     changeTab(tab);
+  };
+
+  // Recent searches: newest first, case-insensitive dedupe, one saved row.
+  // Recorded on commit and on opening a result, so a half-typed term never
+  // becomes a chip.
+  const rememberSearch = (text) => {
+    const q = String(text || '').trim();
+    if (!q) return;
+    const prev = settings.recentSearches || [];
+    const next = [q, ...prev.filter(s => s.toLowerCase() !== q.toLowerCase())]
+      .slice(0, RECENT_SEARCH_LIMIT);
+    if (next.length === prev.length && next.every((v, i) => v === prev[i])) return;
+    setSettings({ recentSearches: next });
   };
 
   // ── Performer hub ────────────────────────────────────────
@@ -499,6 +620,17 @@ export default function App() {
           column rather than beside the nav. */}
       <div className={styles.content}>
 
+        {connection.down && !playSession && !settingsOpen && !exitPromptOpen
+          && !builderOpen && !actionMenu && !selectedScene && !imageViewer
+          && !entityInfo && !markerEditor && !markerDelete && (
+          <ConnectionBanner
+            message={connection.message}
+            busy={connectionBusy}
+            error={connectionError}
+            onRetry={retryConnection}
+          />
+        )}
+
         {/* Hidden on Home (the showroom has no sort, filter or search) and on
             a performer detail page, which renders its own scoped panel. */}
         {config?.showControls !== false
@@ -556,6 +688,7 @@ export default function App() {
           onPerformerImages={openPerformerImages}
           onPerformerGalleries={openPerformerGalleries}
           onPerformerTagSelect={openPerformerTag}
+          onStartQueue={handlePlayQueue}
           previewMuted={previewMuted}
           onMuteToggle={togglePreviewMuted}
           onEntitySelect={handleEntitySelect}
@@ -569,6 +702,9 @@ export default function App() {
           onSearchGallerySelect={handleGallerySelect}
           onSearchImageSelect={handleImageSelect}
           onSearchSeeAll={openSearchListing}
+          onSearchMarkerSelect={handleMarkerSelect}
+          recentSearches={settings.recentSearches}
+          onRememberSearch={rememberSearch}
         />
       </div>
 
@@ -607,6 +743,10 @@ export default function App() {
           menu: actionMenu,
           openPlayer,
           onDetails: handleMenuDetails,
+          onMarkPlayed: handleMenuMarkPlayed,
+          onAddO: handleMenuAddO,
+          onClearResume: handleMenuClearResume,
+          onToggleOrganized: handleMenuToggleOrganized,
           openImageViewer: openImageViewerFromMenu,
           openGallery: openGalleryFromMenu,
           openGallerySlideshow,

@@ -55,9 +55,12 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
     const root = scrollRef.current;
     if (!sentinel || !root) return;
 
+    // Three rows of lead, not one: the request plus forty covers takes a
+    // moment on the TV's Wi-Fi, and asking when the sentinel is already
+    // visible is what puts "Loading more…" on screen at every page edge.
     const observer = new IntersectionObserver(
       entries => { if (entries[0].isIntersecting) loadMore(); },
-      { root, rootMargin: '400px 0px', threshold: 0 }
+      { root, rootMargin: '1200px 0px', threshold: 0 }
     );
 
     observer.observe(sentinel);

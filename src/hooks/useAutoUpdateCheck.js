@@ -25,6 +25,7 @@ function failureText(result) {
     case 'timeout': return 'The check timed out.';
     case 'http': return 'GitHub returned an error.';
     case 'parse':
+    case 'size':
     case 'tag': return 'The release information was unreadable.';
     case 'unconfigured': return '';
     default: return 'No network connection.';

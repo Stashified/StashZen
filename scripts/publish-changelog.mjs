@@ -38,22 +38,45 @@ function normalizeText(value) {
 export function parseDraft(text) {
   const sections = [];
   let current = null;
+  // Index of the item a following plain line continues, or null. Drafts are
+  // written wrapped at about 80 columns, and a parser that dropped the second
+  // line published half a sentence.
+  let openItem = null;
   for (const line of String(text ?? '').split(/\r?\n/)) {
     const heading = /^##\s+(.+)$/.exec(line);
     if (heading) {
       current = { title: normalizeText(heading[1]), items: [] };
       sections.push(current);
+      openItem = null;
+      continue;
+    }
+    // A list marker with nothing after it closes the item, so the prose below
+    // is not swallowed as a continuation.
+    if (/^\s*[-*+]\s*$/.test(line)) {
+      openItem = null;
       continue;
     }
     const bullet = /^\s*-\s+(.+)$/.exec(line);
-    if (!bullet) continue;
-    const item = normalizeText(bullet[1]);
-    if (!item || CONTROL_RE.test(item)) continue;
-    if (!current) {
-      current = { title: 'Changes', items: [] };
-      sections.push(current);
+    if (bullet) {
+      const item = normalizeText(bullet[1]);
+      if (!item || CONTROL_RE.test(item)) {
+        openItem = null;
+        continue;
+      }
+      if (!current) {
+        current = { title: 'Changes', items: [] };
+        sections.push(current);
+      }
+      current.items.push(item);
+      openItem = current.items.length - 1;
+      continue;
     }
-    current.items.push(item);
+    // A blank line or the start of other prose ends the wrapped item.
+    if (openItem === null || !line.trim()) {
+      openItem = null;
+      continue;
+    }
+    current.items[openItem] = normalizeText(`${current.items[openItem]} ${line}`);
   }
   return sections.filter(s => s.title && s.items.length > 0);
 }
@@ -191,7 +214,8 @@ function body(args) {
     fail([`x ${path} is invalid:`, ...checked.errors.map(e => `  ${e}`)]);
     return;
   }
-  const release = checked.releases.find(r => r.version === args.version);
+  // Compare the way the app does: 0.44 and 0.44.0 are one version.
+  const release = checked.releases.find(r => compareVersions(r.version, args.version) === 0);
   if (!release) {
     fail([`x changelog.json has no entry for ${args.version}. Run publish first.`]);
     return;

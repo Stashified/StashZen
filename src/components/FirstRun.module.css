@@ -194,7 +194,9 @@
   color: var(--text-primary);
 }
 
-.actionBtn:disabled {
+/* Busy is aria-disabled, not the disabled attribute, so the focus ring
+   survives a slow request; this dims the button then. */
+.actionBtn[aria-disabled="true"] {
   opacity: 0.55;
   cursor: default;
 }

@@ -151,6 +151,25 @@ async function run() {
     gridReady && detailReady && railActive().toLowerCase() === 'performers',
     `grid=${gridReady} detail=${detailReady} rail=${railActive()} errors: ${errorTail()}`);
 
+  // The play row sits at the top of the hero, so Up from a scene card climbs
+  // past the quick filters, the controls bar and the hero's lower rows. The
+  // buttons were reported unreachable; the keys did reach them, the missing
+  // ring is checked in performer-entry, this pins the travel itself.
+  const cardId = [...registry.keys()].find(k => k.startsWith('video-'));
+  registry.get(cardId)?.el.focus();
+  await sleep(80);
+  const climb = [];
+  for (let i = 0; i < 8; i++) {
+    press('ArrowUp', 38);
+    await sleep(140);
+    climb.push(getCurrentFocusId());
+    if (climb[climb.length - 1] === 'performer-play-all'
+      || climb[climb.length - 1] === 'performer-shuffle') break;
+  }
+  check('H1d Up from a scene card reaches the play row',
+    climb.some(id => id === 'performer-play-all' || id === 'performer-shuffle'),
+    `first card ${cardId}: ${climb.join(' -> ')}`);
+
   /** Open a spoke, read it, then Back and read the return trip. */
   async function spoke({ control, tab, filterKey, matches, label }) {
     await clearLogs();
@@ -200,9 +219,9 @@ async function run() {
   });
 
   // ── H1c: Back's declared edges enter the hero ────────────
-  // The back button sits in its own zone, so Down used to skip the whole hub
-  // row into the controls bar and Right was dead (horizontal moves never cross
-  // zones).
+  // The back button sits in its own zone, so Down used to skip the whole hero
+  // into the controls bar and Right was dead (horizontal moves never cross
+  // zones). The first stop is now the play row at the top of the hero.
   focus('detail-back');
   await sleep(80);
   press('ArrowDown', 40);
@@ -213,8 +232,8 @@ async function run() {
   press('ArrowRight', 39);
   await sleep(220);
   const rightFromBack = getCurrentFocusId();
-  check('H1c Down and Right from Back enter the hub controls',
-    downFromBack === 'performer-images' && rightFromBack === 'performer-images',
+  check('H1c Down and Right from Back enter the hero controls',
+    downFromBack === 'performer-play-all' && rightFromBack === 'performer-play-all',
     `down=${downFromBack} right=${rightFromBack}`);
 
   // ── H1b: a second level from the spoke ──────────────────

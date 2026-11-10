@@ -15,7 +15,7 @@ import { createListCache, listCacheKey } from './listCache.js';
 import { publishRowPatch } from './rowPatches.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
-import { baseSort, stableSort } from './randomSort.js';
+import { stableSort } from './randomSort.js';
 import { ratingLabel } from './format.js';
 
 // The two scene sort values whose mock field has another name: `duration` is
@@ -65,6 +65,9 @@ async function generateMockVideos(count = 48) {
       // states, and Test mode is where the difference gets looked at.
       rating: rng() > 0.25 ? (rng() * 3.5 + 6).toFixed(1) : null,
       o_counter: rng() > 0.6 ? Math.floor(rng() * 9) : 0,
+      // Derived from `i`, not the RNG: adding a draw here would shift every
+      // fixture value below it.
+      organized: i % 3 === 1,
       play_count: plays,
       play_duration: plays ? Math.round(seconds * rng() * plays) : 0,
       // Only watched scenes carry a position, and only some of those are far
@@ -102,6 +105,8 @@ const SCENE_ROW_FIELDS = `
     date
     rating100
     play_count
+    o_counter
+    organized
     files {
       duration
       width
@@ -187,6 +192,8 @@ export function normalizeScene(scene) {
     vtt: withApiKey(scene.paths?.vtt) || null,
     preview: withApiKey(scene.paths?.preview) || null,
     play_count: scene.play_count || 0,
+    o_counter: scene.o_counter || 0,
+    organized: !!scene.organized,
     studio: scene.studio?.name,
     tags: scene.tags?.map(t => t.name) || [],
     width: file?.width,
@@ -271,8 +278,8 @@ async function loadVideos({
       videos = videos.filter(v => String(v.title || '').toLowerCase().includes(needle));
     }
 
-    // `sort` may be `random_<n>`; the comparator knows only `random`.
-    videos.sort(mockComparator(baseSort(sort), order, MOCK_SORT_ALIAS));
+    // `sort` may be `random_<n>`; the comparator ranks that seed too.
+    videos.sort(mockComparator(sort, order, MOCK_SORT_ALIAS));
 
     // Slice like the marker and entity mocks do. Returning the whole library
     // for every page defeated paging and ignored the search sections' limit.
@@ -589,7 +596,11 @@ export async function addScenePlay(id, at = new Date()) {
       id: String(id),
       times: [at.toISOString()],
     });
-    return { ok: true, count: data?.sceneAddPlay?.count ?? 0 };
+    const count = data?.sceneAddPlay?.count ?? 0;
+    // The card reads play_count: patch it, drop cached pages.
+    clearScenePages();
+    publishRowPatch('scene', id, { play_count: count });
+    return { ok: true, count };
   } catch (e) {
     console.warn('[addScenePlay] failed:', e.message);
     return { ok: false, error: e };

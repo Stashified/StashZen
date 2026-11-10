@@ -1,6 +1,6 @@
 /**
  * SearchPage, one query across every tab Stash can name in one text field:
- * scenes, performers, tags, studios, groups, galleries and images.
+ * scenes, markers, performers, tags, studios, groups, galleries and images.
  *
  * Each section asks Stash for the same six rows the grid would draw, using the
  * existing card components so a result is recognisable as the card in its own
@@ -23,7 +23,9 @@ import PerformerCard from '../components/PerformerCard.jsx';
 import {
   TAG_VIEW, STUDIO_VIEW, GROUP_VIEW, GALLERY_VIEW, IMAGE_VIEW,
 } from '../components/entityViews.jsx';
+import { MARKER_VIEW } from '../components/carouselViews.js';
 import { fetchVideos } from '../utils/videoService.js';
+import { fetchMarkers } from '../utils/markerService.js';
 import { fetchPerformers } from '../utils/performerService.js';
 import { fetchTags } from '../utils/tagService.js';
 import { fetchStudios } from '../utils/studioService.js';
@@ -51,6 +53,21 @@ const SECTIONS = [
     load: (q, signal) => fetchVideos({
       q, sort: null, order: null, page: 1, limit: LIMIT, signal,
     }).then(d => ({ items: d.videos, total: d.total })),
+  },
+  {
+    key: 'markers',
+    heading: 'Markers',
+    noun: 'markers',
+    one: 'marker',
+    tab: 'markers',
+    focusPrefix: 'marker',
+    // Markers are timestamps inside scenes, so their cards play the parent
+    // scene from that point. The server's default title order keeps names
+    // predictable, the same as the entity sections below.
+    Card: MARKER_VIEW.Card,
+    load: (q, signal) => fetchMarkers({
+      q, page: 1, limit: LIMIT, signal,
+    }).then(d => ({ items: d.markers, total: d.total })),
   },
   {
     key: 'performers',
@@ -138,6 +155,7 @@ export default function SearchPage({
   query,
   onQueryChange,
   onSceneSelect,
+  onMarkerSelect,
   onPerformerSelect,
   onTagSelect,
   onStudioSelect,
@@ -145,9 +163,17 @@ export default function SearchPage({
   onGallerySelect,
   onImageSelect,
   onSeeAll,
+  recentSearches = [],
+  onRememberSearch,
 }) {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  // Bumped by Retry. Part of the fetch identity, so the same query runs again
+  // even though neither it nor `query` changed.
+  const [attempt, setAttempt] = useState(0);
+  // The retry button unmounts the moment the fetch starts, so the click hands
+  // the cursor back to the field rather than letting it fall to <body>.
+  const fieldFocusRef = useRef(null);
 
   useEffect(() => {
     const q = (query || '').trim();
@@ -174,16 +200,27 @@ export default function SearchPage({
       cancelled = true;
       controller.abort();
     };
-  }, [query]);
+  }, [query, attempt]);
+
+  const trimmed = (query || '').trim();
+  // A search worth keeping is one that was committed or led somewhere, not
+  // every paused keystroke the debounce happened to send.
+  const remember = () => {
+    if (trimmed) onRememberSearch?.(trimmed);
+  };
 
   const select = {
-    scenes: (item) => onSceneSelect?.(item),
-    performers: (item) => onPerformerSelect?.(item),
-    tags: (item) => onTagSelect?.(item),
-    studios: (item) => onStudioSelect?.(item),
-    groups: (item) => onGroupSelect?.(item),
-    galleries: (item) => onGallerySelect?.(item),
-    images: (item, index, items) => onImageSelect?.(item, index, items),
+    scenes: (item) => { remember(); onSceneSelect?.(item); },
+    markers: (item) => { remember(); onMarkerSelect?.(item); },
+    performers: (item) => { remember(); onPerformerSelect?.(item); },
+    tags: (item) => { remember(); onTagSelect?.(item); },
+    studios: (item) => { remember(); onStudioSelect?.(item); },
+    groups: (item) => { remember(); onGroupSelect?.(item); },
+    galleries: (item) => { remember(); onGallerySelect?.(item); },
+    images: (item, index, items) => {
+      remember();
+      onImageSelect?.(item, index, items);
+    },
   };
 
   const byKey = new Map((results || []).map(row => [row.key, row]));
@@ -195,16 +232,54 @@ export default function SearchPage({
     : null;
   const anyItems = (results || []).some(row => row.items.length > 0);
   const anyError = (results || []).some(row => row.error);
-  const trimmed = (query || '').trim();
+  const recent = trimmed ? [] : recentSearches;
+  const recentDownId = recent.length ? 'search-recent-0' : null;
+
+  const retry = () => {
+    setAttempt(a => a + 1);
+    fieldFocusRef.current?.();
+  };
+
+  // The chips unmount the moment the query is non-empty, so the press moves the
+  // cursor to the field instead of leaving it on a removed button.
+  const chooseRecent = (text) => {
+    onQueryChange?.(text);
+    onRememberSearch?.(text);
+    setTimeout(() => fieldFocusRef.current?.(), 0);
+  };
 
   return (
     <div className={styles.page}>
-      <SearchField value={query} onChange={onQueryChange} downTo={firstDownId} />
+      <SearchField
+        value={query}
+        onChange={onQueryChange}
+        onCommit={onRememberSearch}
+        downTo={firstDownId || recentDownId}
+        focusRef={fieldFocusRef}
+      />
 
       {!trimmed && (
-        <p className={styles.intro}>
-          Search scenes, performers, tags, studios, groups, galleries and images.
-        </p>
+        <>
+          <p className={styles.intro}>
+            Search scenes, markers, performers, tags, studios, groups, galleries
+            and images.
+          </p>
+          {recent.length > 0 && (
+            <div className={styles.recent}>
+              <span className={styles.recentLabel}>Recent searches</span>
+              <div className={styles.chips}>
+                {recent.map((text, index) => (
+                  <RecentChip
+                    key={text}
+                    id={`search-recent-${index}`}
+                    label={text}
+                    onClick={() => chooseRecent(text)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {trimmed && !anyItems && loading && (
@@ -215,16 +290,24 @@ export default function SearchPage({
       )}
 
       {trimmed && !anyItems && !loading && (
-        <p className={styles.stateText}>
-          {anyError ? 'Could not search your library.' : `No matches for “${trimmed}”.`}
-        </p>
+        <div className={styles.failure}>
+          <p className={styles.stateText}>
+            {anyError ? 'Could not search your library.' : `No matches for “${trimmed}”.`}
+          </p>
+          {anyError && <RetryButton id="search-retry" onClick={retry} />}
+        </div>
       )}
 
       {trimmed && anyItems && (
         <div className={styles.results}>
-          <p className={styles.status} role="status" aria-live="polite">
-            {loading ? 'Searching…' : `Results for “${trimmed}”`}
-          </p>
+          <div className={styles.statusRow}>
+            <p className={styles.status} role="status" aria-live="polite">
+              {loading ? 'Searching…' : `Results for “${trimmed}”`}
+            </p>
+            {!loading && anyError && (
+              <RetryButton id="search-retry" onClick={retry} />
+            )}
+          </div>
 
           {SECTIONS.map((section) => {
             const row = byKey.get(section.key);
@@ -237,7 +320,10 @@ export default function SearchPage({
                 row={row}
                 query={trimmed}
                 onSelect={select[section.key]}
-                onSeeAll={onSeeAll}
+                onSeeAll={(tab, q, focusId) => {
+                  remember();
+                  onSeeAll?.(tab, q, focusId);
+                }}
               />
             );
           })}
@@ -247,7 +333,7 @@ export default function SearchPage({
   );
 }
 
-function SearchField({ value, onChange, downTo }) {
+function SearchField({ value, onChange, onCommit, downTo, focusRef }) {
   // A restore is on its way back to a result card (from a detail page). Taking
   // focus here would pull it off that card a frame later, so this mount must
   // not auto-focus. Captured once: a later change of this flag would arm the
@@ -261,13 +347,34 @@ function SearchField({ value, onChange, downTo }) {
     onChange(next);
   }, [onChange]);
 
-  const { setWrapperRef, inputRef, selected, editing, inputHandlers } = useEditableField({
+  const {
+    setWrapperRef, inputRef, selected, editing, inputHandlers, focusWrapper,
+  } = useEditableField({
     id: 'search-field',
     zone: 'grid',
     autoFocus,
     nextId: downTo ? { down: downTo } : null,
-    onCommit: () => flush(draft),
+    onCommit: () => {
+      flush(draft);
+      onCommit?.(draft);
+    },
   });
+
+  // The query can also change from outside: a recent chip, or Back restoring
+  // the tab's previous search. The field must show what is being searched.
+  // Skipped while the input has focus, or the debounced value would rewrite
+  // characters typed since the timer was armed.
+  useEffect(() => {
+    if (document.activeElement === inputRef.current) return;
+    setDraft(value || '');
+  }, [value, inputRef]);
+
+  // Retry puts the cursor back here: the button that was pressed is gone.
+  useEffect(() => {
+    if (!focusRef) return undefined;
+    focusRef.current = focusWrapper;
+    return () => { focusRef.current = null; };
+  }, [focusRef, focusWrapper]);
 
   const handleChange = (e) => {
     const next = e.target.value;
@@ -298,7 +405,7 @@ function SearchField({ value, onChange, downTo }) {
           type="text"
           value={draft}
           onChange={handleChange}
-          placeholder="Search scenes, performers, tags, studios, groups…"
+          placeholder="Search scenes, markers, performers, tags…"
           aria-label="Search your library"
           tabIndex={-1}
           spellCheck={false}
@@ -373,6 +480,36 @@ function SeeAllButton({ id, label, onClick }) {
       onClick={onClick}
     >
       {label} <span aria-hidden="true">→</span>
+    </button>
+  );
+}
+
+function RecentChip({ id, label, onClick }) {
+  const { ref, focused } = useFocusable({ id, zone: 'grid', onEnter: onClick });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.chip} ${focused ? styles.chipFocused : ''}`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+// One Retry either for the whole page or for the sections that failed; the
+// results it replaces are still on screen, so the failure stays visible.
+function RetryButton({ id, onClick }) {
+  const { ref, focused } = useFocusable({ id, zone: 'grid', onEnter: onClick });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.retry} ${focused ? styles.retryFocused : ''}`}
+      onClick={onClick}
+    >
+      Retry
     </button>
   );
 }

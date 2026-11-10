@@ -47,14 +47,17 @@ const FIND_SAVED_FILTERS_QUERY = `
   }
 `;
 
-// `object_filter` may come back as a JSON string OR as an already-parsed
-// object depending on Stash version / scalar handling. Normalise both.
+// `object_filter` may be a JSON string or an object, depending on version and
+// scalar handling. A null is a filter that saved only find options, so `{}` is
+// right. An unreadable value returns null, which the caller drops: `{}` there
+// would silently match the whole library.
 function parseObjectFilter(raw) {
   if (raw == null) return {};
+  let value = raw;
   if (typeof raw === 'string') {
-    try { return JSON.parse(raw); } catch { return {}; }
+    try { value = JSON.parse(raw); } catch { return null; }
   }
-  return raw;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
 // ── Cache ────────────────────────────────────────────────
@@ -84,17 +87,21 @@ export async function fetchSavedFilters(mode, source = '') {
   };
   const p = runQuery(FIND_SAVED_FILTERS_QUERY, { mode })
     .then(data => {
-      const list = (data?.findSavedFilters || []).map(f => ({
-        id: f.id,
-        name: f.name,
-        objectFilter: parseObjectFilter(f.object_filter),
-        // find_filter holds q/sort/direction/per_page, many saved filters
-        // do their actual work via `q` (search) rather than typed criteria.
-        findFilter: f.find_filter || null,
-        // Stash stores display options (columns, etc.) beside the filter. An
-        // update overwrites the whole row, so they must travel back on save.
-        uiOptions: f.ui_options ?? null,
-      }));
+      const list = (data?.findSavedFilters || []).map(f => {
+        const objectFilter = parseObjectFilter(f.object_filter);
+        if (objectFilter == null) return null;
+        return {
+          id: f.id,
+          name: f.name,
+            objectFilter,
+          // find_filter holds q/sort/direction/per_page, many saved filters
+          // do their actual work via `q` (search) rather than typed criteria.
+          findFilter: f.find_filter || null,
+          // Stash stores display options (columns, etc.) beside the filter. An
+          // update overwrites the whole row, so they must travel back on save.
+          uiOptions: f.ui_options ?? null,
+        };
+      }).filter(Boolean);
       settle();
       if (gen === generation) cache.set(key, list);
       return list;

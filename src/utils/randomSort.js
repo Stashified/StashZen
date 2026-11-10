@@ -12,11 +12,9 @@
  * shares a permutation and changing the filter starts a new one, while "Random"
  * deals a fresh order next time the app starts.
  *
- * The mock comparator does not know the seeded spelling; `baseSort` maps it
- * back so Test mode keeps shuffling by id.
+ * The mock comparator ranks the seeded spelling too, so Test mode shuffles
+ * per seed and pages stably.
  */
-
-const SEEDED = /^random_\d+$/;
 
 // Captured once at module load: stable for every page of this session, new on
 // the next launch.
@@ -43,9 +41,4 @@ export function stableSort(sort, ...identity) {
   // sort grammar, and 0 is a perfectly valid seed but reads like a bug.
   const seed = (hash(JSON.stringify([SESSION_SALT, ...identity])) % 2147483646) + 1;
   return `random_${seed}`;
-}
-
-/** The UI/mock spelling of a possibly seeded sort. */
-export function baseSort(sort) {
-  return SEEDED.test(String(sort || '')) ? 'random' : sort;
 }

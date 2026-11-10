@@ -27,6 +27,10 @@ const PORT = window.__PORT__;
 const VIEW = new URLSearchParams(location.search).get('view') || 'keys';
 
 const results = [];
+// A handler that throws keeps the menu open and looks exactly like a dead row,
+// so an uncaught error has to fail the run.
+const pageErrors = [];
+window.addEventListener('error', e => pageErrors.push(String(e.message) + ' :: ' + String(e.error?.stack)));
 function check(name, pass, detail) {
   results.push({ name, pass: !!pass, detail: detail ?? '' });
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
@@ -247,6 +251,29 @@ async function runKeys() {
   check('K3 unflagged repeats do not arm a second long press',
     sixStillThere && NO_OVERLAY() && active() === cardEl('6'),
     `${overlayState()}, card 6 present: ${sixStillThere}, focus: ${focusLabel()}`);
+
+  // ── Details from the menu ────────────────────────────────
+  // The row has to open the same page a card press does. Checking only that
+  // the label was drawn left a dead action green.
+  focusCard('2');
+  await holdEnter(900);
+  await waitFor(inMenu);
+  for (let i = 0; i < 10; i++) {
+    if (active()?.textContent.trim().startsWith('Details')) break;
+    press('ArrowDown', 40);
+    await sleep(90);
+  }
+  check('K3b Details is reachable in the menu',
+    active()?.textContent.trim().startsWith('Details'), focusLabel());
+  press('Enter', 13);
+  const menuDetail = await waitFor(detailOpen, 3000);
+  check('K3b its Enter opens the detail page and closes the menu',
+    menuDetail && !menuOpen(), `${overlayState()} errors: ${pageErrors.join(' | ')}`);
+  press('Escape', 27);
+  await waitFor(() => !detailOpen(), 1500);
+  await sleep(300);
+  check('K3b Back from that page returns to the card',
+    NO_OVERLAY() && active() === cardEl('2'), focusLabel());
 
   // ── Movement cancels ─────────────────────────────────────
   focusCard('3');
@@ -649,11 +676,15 @@ async function runButtons() {
     !!plus && rating() === 7, `rating ${rating()}, + button ${!!plus}`);
 
   plus?.focus();
+  // The page can still autofocus a control it renders later, and a hold aimed
+  // at the wrong button moves the rating the other way.
+  const focused = await waitFor(() => document.activeElement === plus, 1000);
   await holdEnter(1000);
   await sleep(500);
   check('B3 a held OK advances a button once, not thirty times',
-    rating() === 8,
+    focused && rating() === 8,
     `rating group: ${ratingLabel() ?? '<not on screen>'} after a 1s hold (7 + 1 expected); `
+    + `focus on ${JSON.stringify(document.activeElement?.getAttribute('aria-label'))}; `
     + `${overlayState()}; dialog text: ${(document.querySelector(DETAIL)?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80)}`);
 
   // The control for this one is deleting the `if (e.repeat)` guard in
@@ -704,6 +735,10 @@ goToScenes()
   .then(run)
   .then(async () => {
     check('view under test', true, VIEW);
+    // A handler that threw used to be invisible here: the key looked dead, not
+    // broken. The Details row did exactly that.
+    check('no uncaught error reached the page',
+      pageErrors.length === 0, pageErrors.join(' | ') || 'none');
     await finish();
   })
   .catch(async (e) => {

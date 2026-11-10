@@ -43,6 +43,9 @@ class MediaFacade extends EventTarget {
     super();
     /** @type {'html5'|'avplay'} */
     this.kind = 'html5';
+    // True while an engine swap is closing AVPlay. Its mute restore emits
+    // volumechange, which must not be read as a user preference.
+    this.switching = false;
     /**
      * What the active backend can do, read by the mute button and the stats
      * panel, not the Settings lever. `stats: 'reduced'` means buffer, seekable,
@@ -81,8 +84,15 @@ class MediaFacade extends EventTarget {
     }
     const next = kind === 'avplay' ? 'avplay' : 'html5';
     if (this.kind === next) return;
-    if (this.kind === 'avplay') this._avplay?.close();
+    // Set `kind` first so the transport's carry-over sees html5. `switching`
+    // suppresses the volumechange that close() emits while restoring the TV's
+    // mute, which would otherwise overwrite the user's intent.
+    const closingAvplay = this.kind === 'avplay';
     this.kind = next;
+    if (closingAvplay) {
+      this.switching = true;
+      try { this._avplay?.close(); } finally { this.switching = false; }
+    }
     this.capabilities = next === 'avplay'
       ? { ...this._avplay.capabilities }
       : { ...HTML5_CAPABILITIES };

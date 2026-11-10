@@ -61,14 +61,21 @@ export function buildActionMenu({ kind, item, list, index = 0 } = {}, handlers) 
 
 /**
  * @param {{ item, list, index }} actionMenu   the card the menu opened on
- * @param {{ openPlayer, onDetails }} handlers
+ * @param {{ openPlayer, onDetails, onMarkPlayed, onAddO, onClearResume,
+ *           onToggleOrganized }} handlers
  *
  * "Play all" / "Play from here" continue through the listing, so need a view
  * that has one, every card opening this menu does. `restoreBy: 'video'` tells
  * Back to return to the last-viewed scene card rather than the queue's origin;
  * single-scene Play omits it (its card never changes).
+ *
+ * The quick edits write without opening the scene. Clear resume is offered
+ * only when there is something to clear.
  */
-export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetails }) {
+export function buildSceneMenuItems(
+  { item, list, index },
+  { openPlayer, onDetails, onMarkPlayed, onAddO, onClearResume, onToggleOrganized },
+) {
   return [
     { id: 'menu-play', label: 'Play', onSelect: () => openPlayer(queueOf(item)) },
     ...(list?.items?.length ? [
@@ -89,6 +96,29 @@ export function buildSceneMenuItems({ item, list, index }, { openPlayer, onDetai
         }),
       },
     ] : []),
+    ...(onMarkPlayed ? [{
+      id: 'menu-mark-played',
+      label: 'Mark played',
+      hint: 'without watching',
+      onSelect: () => onMarkPlayed(item),
+    }] : []),
+    ...(onAddO ? [{
+      id: 'menu-add-o',
+      label: 'Add O',
+      hint: item.o_counter ? `now ${item.o_counter}` : undefined,
+      onSelect: () => onAddO(item),
+    }] : []),
+    ...(onClearResume && item.resume_time > 0 ? [{
+      id: 'menu-clear-resume',
+      label: 'Clear resume',
+      hint: `at ${formatTime(item.resume_time)}`,
+      onSelect: () => onClearResume(item),
+    }] : []),
+    ...(onToggleOrganized ? [{
+      id: 'menu-organized',
+      label: item.organized ? 'Mark unorganised' : 'Mark organised',
+      onSelect: () => onToggleOrganized(item),
+    }] : []),
     {
       id: 'menu-details',
       label: 'Details',

@@ -12,6 +12,11 @@ import { useCallback, useRef, useState } from 'react';
 import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
 import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
+import { getSettings } from '../utils/settings.js';
+import { publishRowPatch } from '../utils/rowPatches.js';
+import {
+  markScenePlayed, addSceneO, resetSceneProgress, setSceneOrganized,
+} from '../utils/sceneService.js';
 
 /** Which entity sections have a long-press menu, and what to call it. */
 const ENTITY_MENU_KIND = {
@@ -30,6 +35,7 @@ export function usePlayback({
   mainFocus,
   sceneCardFocus,
   menuCardFocus,
+  onSceneActivityChange,
 }) {
   // The playback session: an ordered queue of scenes plus where to start. Null
   // when nothing is playing. One scene is the ordinary case; a longer queue is
@@ -38,6 +44,9 @@ export function usePlayback({
   // The long-press menu: `{ kind, item, list, index }` for the card it opened
   // on. `kind` is 'scene' | 'marker' | 'image' | 'gallery' | 'tag' | 'studio'.
   const [actionMenu, setActionMenu] = useState(null);
+  // Which opening of the menu this is. A slow write may only close the one it
+  // started from. A notice update keeps the generation: same menu.
+  const menuGenRef = useRef(0);
   // The queue row the player shows *now*: a listing queue can be skipped
   // through, and Back returns to the card of the scene actually on screen. The
   // row, not its id, a marker queue names its card with `markerId`.
@@ -52,6 +61,7 @@ export function usePlayback({
   const openPlayer = useCallback((session) => {
     lastItemRef.current = session?.items?.[session?.startIndex ?? 0] ?? null;
     setSelectedScene(null);
+    menuGenRef.current += 1;
     setActionMenu(null);
     setPlaySession(session);
   }, [setSelectedScene]);
@@ -68,6 +78,7 @@ export function usePlayback({
   const rememberMain = mainFocus.remember;
   const openMenu = useCallback((menu) => {
     rememberMenuCard(document.activeElement);
+    menuGenRef.current += 1;
     setActionMenu(menu);
   }, [rememberMenuCard]);
 
@@ -98,19 +109,97 @@ export function usePlayback({
   }, [activeTab, openMenu]);
 
   const closeActionMenu = () => {
+    menuGenRef.current += 1;
     setActionMenu(null);
     menuSceneOriginRef.current = null;
     // Same deferred restore as every other overlay close: the menu's DOM has
-    // to be gone before focus can land on the card again.
-    menuCardFocus.restore();
+    // to be gone before focus can land on the card again. A cleared resume
+    // point can prune the card from Continue Watching while the menu is open,
+    // so fall back to the first control rather than <body>.
+    menuCardFocus.restore({ fallback: focusFirstControl });
   };
 
   // Clearing without restoring is what the viewer entries need: the viewer
   // takes focus itself, and restoring to the card first would fight its own
   // restore (and briefly drop the D-pad onto the grid behind the viewer).
   const dismissActionMenu = () => {
+    menuGenRef.current += 1;
     setActionMenu(null);
     menuSceneOriginRef.current = null;
+  };
+
+  // ── Quick edits from the scene menu ─────────────────────
+  // The row changes under the menu before the write returns, so the card is
+  // never a press behind; a refused write puts it back and the menu that
+  // asked keeps the reason in its footer. One edit at a time, or a held Enter
+  // would count twice.
+  const quickEditBusyRef = useRef(false);
+  // `after` is the local half of an edit, so Test mode runs it too (it skips
+  // `write`, not this) and only once the write succeeded.
+  const runQuickEdit = async (item, patch, revert, write, failText, after) => {
+    if (quickEditBusyRef.current) return;
+    quickEditBusyRef.current = true;
+    const gen = menuGenRef.current;
+    publishRowPatch('scene', item.id, patch);
+    try {
+      // Test mode has no server to write to; the patch is the whole edit.
+      if (!getSettings().useMock) await write();
+      after?.();
+      // If the user moved on, closing now would shut a newer menu and take
+      // the cursor with it.
+      if (menuGenRef.current === gen) closeActionMenu();
+    } catch (e) {
+      publishRowPatch('scene', item.id, revert);
+      // The menu on screen may be a different one by now; its footer is not
+      // this scene's to correct.
+      if (menuGenRef.current === gen) {
+        setActionMenu(m => (m ? { ...m, notice: `${failText}: ${e.message}` } : m));
+      }
+    } finally {
+      quickEditBusyRef.current = false;
+    }
+  };
+
+  const handleMenuMarkPlayed = (item) => runQuickEdit(
+    item,
+    { play_count: (item.play_count || 0) + 1 },
+    { play_count: item.play_count || 0 },
+    () => markScenePlayed(item.id).then((res) => {
+      if (!res.ok) throw res.error || new Error('the write failed');
+    }),
+    'Not marked played',
+  );
+
+  const handleMenuAddO = (item) => runQuickEdit(
+    item,
+    { o_counter: (item.o_counter || 0) + 1 },
+    { o_counter: item.o_counter || 0 },
+    () => addSceneO(item.id),
+    'O not saved',
+  );
+
+  const handleMenuClearResume = (item) => runQuickEdit(
+    item,
+    { resume_time: 0 },
+    { resume_time: item.resume_time || 0 },
+    async () => {
+      const ok = await resetSceneProgress(item.id);
+      if (!ok) throw new Error('the server did not apply it');
+    },
+    'Resume not cleared',
+    // Home prunes a cleared card out of Continue Watching in place.
+    () => onSceneActivityChange?.(item.id, { resumeTime: 0 }),
+  );
+
+  const handleMenuToggleOrganized = (item) => {
+    const next = !item.organized;
+    return runQuickEdit(
+      item,
+      { organized: next },
+      { organized: !!item.organized },
+      () => setSceneOrganized(item.id, next),
+      'Not saved',
+    );
   };
 
   const handleMenuDetails = (video) => {
@@ -120,6 +209,7 @@ export function usePlayback({
     sceneCardFocus.remember(menuCardFocus.targetRef.current);
     setSceneOriginId(menuSceneOriginRef.current || null);
     menuSceneOriginRef.current = null;
+    menuGenRef.current += 1;
     setActionMenu(null);
     setSelectedScene(video);
   };
@@ -146,6 +236,14 @@ export function usePlayback({
     // A marker is a timestamp inside a scene, so the queue item is built by
     // hand, see queueItemFromMarker for the fields it must forward.
     openPlayer(queueOf(queueItemFromMarker(marker), marker.seconds || 0));
+  }, [rememberMain, openPlayer]);
+
+  // A queue started from a control rather than a card (the performer header's
+  // Play all and Shuffle). There is no origin card, so Back falls back to the
+  // element restore and lands on the button that started it.
+  const handlePlayQueue = useCallback((session) => {
+    rememberMain(document.activeElement);
+    openPlayer({ ...session, startIndex: 0, startSeconds: 0 });
   }, [rememberMain, openPlayer]);
 
   // Where a closed player puts the cursor: the card for the scene on screen
@@ -194,9 +292,14 @@ export function usePlayback({
     closeActionMenu,
     dismissActionMenu,
     handleMenuDetails,
+    handleMenuMarkPlayed,
+    handleMenuAddO,
+    handleMenuClearResume,
+    handleMenuToggleOrganized,
     playSceneAt,
     handleScenePlay,
     handleMarkerSelect,
+    handlePlayQueue,
     // The overlay handlers need the element the menu opened from, so an image
     // or gallery viewer returns focus to *that* card.
     menuCardFocus,

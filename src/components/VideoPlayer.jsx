@@ -440,17 +440,22 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
   // source opens. AVPlay captures the TV mute state at open, so a queue advance
   // would otherwise unmute a muted sitting between two scenes.
   const muteIntentRef = useRef(null);
+  // A quality change re-sources the same scene. If the viewer had paused it,
+  // opening the new tier must not start playing under them.
+  const holdAutoplayRef = useRef(false);
 
   const openOptionsRef = useRef({ startSeconds: 0, autoplay: true });
   // A quality re-source is a reload of the same scene, not a new start: AVPlay
   // opens at the playhead the browser path takes from fallbackSeekRef.
   const reopenAt = reopenAtRef.current;
-  const resumeAt = reopenAt.sceneId === (video?.id ?? null) && reopenAt.time > 0
-    ? reopenAt.time
-    : effectiveStart;
+  // A matching id is this scene's quality reload. Only a positive playhead is
+  // a usable start; the id alone still covers a pause before the first
+  // progress tick, when `position()` is 0.
+  const qualityReload = reopenAt.sceneId === (video?.id ?? null);
+  const resumeAt = qualityReload && reopenAt.time > 0 ? reopenAt.time : effectiveStart;
   openOptionsRef.current = {
     startSeconds: resumeAt,
-    autoplay: !askingToResume,
+    autoplay: !askingToResume && !(qualityReload && holdAutoplayRef.current),
     muted: muteIntentRef.current,
   };
   useEffect(() => {
@@ -474,6 +479,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     if (srcSceneId) lastSrcSceneRef.current = srcSceneId;
   }, [srcSceneId]);
 
+  // A new scene keeps the sitting's normal autoplay; the hold belongs only to
+  // the quality reload that set it.
+  useEffect(() => { holdAutoplayRef.current = false; }, [video?.id]);
+
   // Persist the tier for the next scene, and re-source this one only when it is
   // actually transcoded: a direct file has no tiers to switch between.
   const chooseQuality = useCallback((value) => {
@@ -488,8 +497,9 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     reopenAtRef.current = (sourceKind || sameScene)
       ? { sceneId, time: progress.position() }
       : { sceneId: null, time: 0 };
+    holdAutoplayRef.current = media.paused;
     setQualityEpoch(epoch => epoch + 1);
-  }, [transcodeQuality, sourceKind, video?.id, progress]);
+  }, [transcodeQuality, sourceKind, video?.id, progress, media.paused]);
 
   // A plan that ran out leaves the previous scene's native session playing
   // under the error card. A plain source change must not close (that would
@@ -511,6 +521,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     showControls,
     effectiveStart,
     askingToResume,
+    holdAutoplayRef,
     startSeekedRef,
     pendingLiveResumeRef,
     fallbackSeekRef,

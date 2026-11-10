@@ -52,14 +52,16 @@ const seed = (obj) => {
   localStorage.setItem(LS_KEY, JSON.stringify(obj));
 };
 
-// Exercises every field `loadFromStorage` validates, with `viewModes` present
-// and non-empty, the condition that made init throw.
+// Exercises every field `loadFromStorage` validates, with the non-empty shapes
+// that reach past its early returns: `viewModes` (the init crash this driver
+// covers) and `recentSearches` (whose limit must exist at module init).
 const SAVED = {
   stashUrl: `http://127.0.0.1:${PORT}`,
   stashKey: 'harness',
   useMock: false,
   onboarded: 'live',
   viewModes: { performers: 'carousel' },
+  recentSearches: ['jane'],
 };
 
 /**
@@ -97,6 +99,9 @@ async function run() {
       && mod.getSettings().useMock === false
       && mod.getSettings().stashUrl === `http://127.0.0.1:${PORT}`,
     `onboarded=${mod.getSettings().onboarded} useMock=${mod.getSettings().useMock}`);
+  check('B1b the saved search history was read at init too',
+    JSON.stringify(mod.getSettings().recentSearches) === JSON.stringify(['jane']),
+    JSON.stringify(mod.getSettings().recentSearches));
 
   // ── 2. What the validator does with the other shapes ──
   // These take the early return and never reach the throwing line, which is

@@ -178,6 +178,43 @@
   z-index: 3;
 }
 
+/* Top-right, opposite the rating. A row, not a stack: three marks still fit
+   clear of the cover's centre. */
+.badges {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 3;
+}
+
+/* Dark like `.duration`, so the label does not depend on the cover behind it;
+   the other two badges are solid fills for the same reason. */
+.badge {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.watched {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+}
+
+.organized {
+  background: var(--green);
+  color: #04140d;
+}
+
+.oCount {
+  background: var(--accent-fill);
+  color: #fff;
+}
+
 .info {
   padding: 10px 12px 12px;
 }

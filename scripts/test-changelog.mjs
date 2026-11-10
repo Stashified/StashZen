@@ -77,6 +77,10 @@ const PAYLOAD = {
     validateChangelogPayload({
       schemaVersion: 1, releases: [RELEASE('0.44.0', '2026-13-40', ['a'])],
     }).ok === false);
+  check('a day the month does not have fails',
+    validateChangelogPayload({
+      schemaVersion: 1, releases: [RELEASE('0.44.0', '2026-02-31', ['a'])],
+    }).ok === false);
   check('an empty item list fails',
     validateChangelogPayload({
       schemaVersion: 1,
@@ -234,6 +238,13 @@ function fakeFetch(text, { status = 200, headers = {} } = {}) {
       && sections[0].items.join('|') === 'One new thing|Another new thing'
       && sections[1].items.join('|') === 'A fix',
     JSON.stringify(sections));
+
+  const wrapped = parseDraft('## New\n- A sentence that wraps\n  onto a second line.\n- Next');
+  check('a wrapped bullet joins its continuation line',
+    wrapped[0]?.items.length === 2
+      && wrapped[0].items[0] === 'A sentence that wraps onto a second line.'
+      && wrapped[0].items[1] === 'Next',
+    JSON.stringify(wrapped));
 
   const loose = parseDraft('- before any heading\n## Later\n- after');
   check('a bullet before a heading lands under Changes',

@@ -16,7 +16,7 @@ import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
 import { translateFilter } from './filterTranslate.js';
 import { mockComparator } from './mockSort.js';
-import { baseSort, stableSort } from './randomSort.js';
+import { stableSort } from './randomSort.js';
 
 // ── Mock generator ────────────────────────────────────────
 // Seeded on the marker's id, like the scene generator in videoService.js, so
@@ -163,8 +163,16 @@ async function loadMarkers({
     await new Promise(r => setTimeout(r, 400));
     let markers = await generateMockMarkers(60);
 
+    // Same filter as the scene mock, so the Search tab's marker section can
+    // report "no matches" in Test mode instead of always showing six rows.
+    const needle = (q || '').trim().toLowerCase();
+    if (needle) {
+      markers = markers.filter(m => String(m.title || '').toLowerCase().includes(needle)
+        || String(m.scene?.title || '').toLowerCase().includes(needle));
+    }
+
     // `sort` may be `random_<n>`; the comparator knows only `random`.
-    markers.sort(mockComparator(baseSort(sort), order));
+    markers.sort(mockComparator(sort, order));
 
     const start = (page - 1) * limit;
     const slice = markers.slice(start, start + limit).map(normalizeMarker);

@@ -448,6 +448,9 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     return registerFocusListing(focusPrefix, {
       loadMore: () => driverStateRef.current?.loadMore(),
       canLoad: () => !!driverStateRef.current?.canLoad,
+      // Read through the ref: a restore that lands on the page-1 seed must
+      // wait for the fresh page, or a re-ordered list drops the focused card.
+      revalidating: () => !!driverStateRef.current?.revalidating?.(),
       pending: false,
     });
   }, [focusPrefix]);

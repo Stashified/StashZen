@@ -99,6 +99,13 @@ const cardWith = (patch) => ({ ...CARD, ...patch });
 // Hub activations, recorded by argument: a handler that receives the page's
 // own performer, not a lookalike, is what the wiring must prove.
 const hubCalls = { images: [], galleries: [], tags: [] };
+// The play row's queue sessions, recorded whole: the session carries the page
+// fetch, so the checks can page it forward the way the player would.
+const queueCalls = [];
+const live = (id) => {
+  const el = registry.get(id)?.el;
+  return !!el && document.contains(el);
+};
 
 function Harness({ card }) {
   // App.jsx owns the global key handler in production; without it nothing is
@@ -111,6 +118,7 @@ function Harness({ card }) {
       onImages={(p) => hubCalls.images.push(p.id)}
       onGalleries={(p) => hubCalls.galleries.push(p.id)}
       onTagSelect={(t) => hubCalls.tags.push(t.id)}
+      onStartQueue={(session) => queueCalls.push(session)}
       onVideoSelect={() => {}}
       previewMuted={false}
       onMuteToggle={() => {}}
@@ -431,7 +439,8 @@ async function run() {
     + `focusable=${focusableInert.length}`);
   const hubIds = idsInside(header());
   const expectedHub = [
-    'detail-back', 'performer-images', 'performer-galleries',
+    'detail-back', 'performer-play-all', 'performer-shuffle',
+    'performer-images', 'performer-galleries',
     'performer-tag-t1', 'performer-tag-t2',
     ...expectedActions,
   ];
@@ -656,6 +665,86 @@ async function run() {
   check('P9 a failed fallback query leaves the page intact and quiet',
     !derivedGroup() && !!profileGroup() && uncaught.length === 0,
     `row=${!!derivedGroup()} facts=${!!profileGroup()} uncaught=${uncaught.join(' | ') || 'none'}`);
+
+  // ── P11: Play all and Shuffle start the page's own listing ──
+  // The queue must page the listing the grid pages (same filter, sort and
+  // page size), and Shuffle must deal a fresh permutation per press. Plain
+  // `random` would be pinned to one seed by fetchVideos, so every press would
+  // replay the same order.
+  await setMode('performerDetail', 'ok');
+  await setMode('performerSceneTags', 'ok');
+  await clearLogs();
+  queueCalls.length = 0;
+  mount(CARD);
+  const playReady = await waitFor(
+    () => live('performer-play-all') && live('performer-shuffle'), 4000);
+  check('P11 the play buttons are focus stops in the hero', playReady,
+    `playAll=${live('performer-play-all')} shuffle=${live('performer-shuffle')}`);
+
+  const isThisPerformer = (r) => r.scene_filter?.performers?.modifier === 'INCLUDES'
+    && String(r.scene_filter?.performers?.value?.[0]) === '8701';
+
+  // Back claims focus 50 ms after mount (autoFocusWhenIdle); a press before
+  // that lands on Back instead of the button.
+  await sleep(300);
+  await focusPress('performer-play-all');
+  await waitForAsync(async () => queueCalls.length === 1, 4000);
+  const allQueue = queueCalls[0];
+  check('P11a Play all queues the first page of this performer\'s scenes',
+    allQueue?.items?.length === 40 && allQueue?.total === 100 && allQueue?.page === 1,
+    `calls=${queueCalls.length} items=${allQueue?.items?.length} `
+    + `total=${allQueue?.total} page=${allQueue?.page} `
+    + `uncaught=${uncaught.join(' | ') || 'none'} `
+    + `tail=${(document.body.textContent || '').slice(-160)}`);
+
+  // The next page is the player's next card, and it must ask for the same
+  // listing, not the unseeded grid default.
+  const page2 = await allQueue.fetchPage(2);
+  const page2Req = (await getJSON('/requests')).slice().reverse()
+    .find(r => r.page === 2 && r.per_page === 40 && r.sort === 'created_at' && isThisPerformer(r));
+  check('P11b the queue pages the same filtered listing forward',
+    page2.items.length === 40 && !!page2Req,
+    `rows=${page2.items.length} request=${JSON.stringify(page2Req && {
+      sort: page2Req.sort, per_page: page2Req.per_page, filter: page2Req.scene_filter,
+    })}`);
+
+  await focusPress('performer-shuffle');
+  await waitForAsync(async () => queueCalls.length === 2, 4000);
+  await sleep(150);
+  await focusPress('performer-shuffle');
+  await waitForAsync(async () => queueCalls.length === 3, 4000);
+  const randomReqs = (await getJSON('/requests'))
+    .filter(r => String(r.sort || '').startsWith('random_'));
+  const shuffleReqs = randomReqs.filter(isThisPerformer);
+  const seeds = shuffleReqs.map(r => r.sort);
+  check('P11c Shuffle is seeded per press, so two presses deal two orders',
+    shuffleReqs.length === 2 && seeds[0] !== seeds[1]
+      && queueCalls[1].items.length === 40 && queueCalls[2].items.length === 40,
+    `seeds=${seeds.join(',') || '(none)'} `
+    + `rows=${queueCalls[1]?.items?.length}/${queueCalls[2]?.items?.length}`);
+  check('P11d ...and each shuffle still carries the performer filter',
+    randomReqs.length === 2
+      && randomReqs.every(r => isThisPerformer(r) && r.per_page === 40),
+    `requests=${JSON.stringify(randomReqs.map(r => ({
+      sort: r.sort, per_page: r.per_page, performers: r.scene_filter?.performers,
+    })))}`);
+
+  // The buttons were reachable by D-pad all along, but nothing painted them
+  // as focused, so on a TV they read as unreachable. Assert the ring itself.
+  const shadowOf = (id) => getComputedStyle(registry.get(id).el).boxShadow;
+  registry.get('performer-rating-inc')?.el.focus();
+  await sleep(80);
+  const unfocusedPlay = shadowOf('performer-play-all');
+  registry.get('performer-play-all')?.el.focus();
+  await sleep(80);
+  const focusedPlay = shadowOf('performer-play-all');
+  registry.get('performer-shuffle')?.el.focus();
+  await sleep(80);
+  const focusedShuffle = shadowOf('performer-shuffle');
+  check('P11e both play buttons paint the focus ring',
+    focusedPlay !== 'none' && focusedShuffle !== 'none'
+      && unfocusedPlay !== focusedPlay,
+    `unfocused=${unfocusedPlay} play=${focusedPlay} shuffle=${focusedShuffle}`);
 
   await finish();
 }

@@ -238,13 +238,18 @@ function VideoCard({
 
   const previewMounted = armed && !gaveUp && canTry;
   const res = resolutionLabel(item.height);
+  // Only some rows carry these (related rows and the mock library do), so
+  // every mark is optional.
+  const oCount = Number(item.o_counter) || 0;
 
   return (
     <button
       ref={ref}
       className={`${styles.card} ${fill ? styles.fill : ''} ${focused ? styles.focused : ''}`}
       onClick={() => onSelect?.(item, list)}
-      aria-label={`${item.title}${item.year ? `, ${item.year}` : ''}${item.rating ? `, rated ${item.rating}` : ''}`}
+      aria-label={`${item.title}${item.year ? `, ${item.year}` : ''}${item.rating ? `, rated ${item.rating}` : ''}`
+        + `${item.play_count ? ', watched' : ''}${item.organized ? ', organised' : ''}`
+        + `${oCount ? `, O count ${oCount}` : ''}`}
     >
       <div className={styles.thumb}>
         {!imgError && item.thumbnail ? (
@@ -292,6 +297,19 @@ function VideoCard({
           <div className={styles.duration}>{[res, item.duration].filter(Boolean).join(' ')}</div>
         )}
         {item.rating && <div className={styles.rating}>★ {item.rating}</div>}
+        {(item.play_count > 0 || item.organized || oCount > 0) && (
+          <div className={styles.badges}>
+            {item.play_count > 0 && (
+              <span className={`${styles.badge} ${styles.watched}`} aria-hidden="true">▶</span>
+            )}
+            {item.organized && (
+              <span className={`${styles.badge} ${styles.organized}`} aria-hidden="true">✓</span>
+            )}
+            {oCount > 0 && (
+              <span className={`${styles.badge} ${styles.oCount}`} aria-hidden="true">O {oCount}</span>
+            )}
+          </div>
+        )}
       </div>
       {item.resume_time > 10 && item.durationSeconds > 0 && (
         <div className={styles.resumeBar} aria-hidden="true">

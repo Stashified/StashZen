@@ -50,6 +50,8 @@ const SHOWROOM_QUERY = `
         date
         rating100
         play_count
+        o_counter
+        organized
         files { duration width height video_codec audio_codec format }
         resume_time
         paths { screenshot stream sprite vtt preview }
@@ -64,6 +66,8 @@ const SHOWROOM_QUERY = `
         date
         rating100
         play_count
+        o_counter
+        organized
         files { duration width height video_codec audio_codec format }
         resume_time
         paths { screenshot stream sprite vtt preview }

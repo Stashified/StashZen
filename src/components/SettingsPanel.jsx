@@ -27,6 +27,7 @@ import { AppLockSection } from './settings/AppLockSection.jsx';
 import { LibraryStatsSection } from './settings/LibraryStatsSection.jsx';
 import { ServerStatusSection } from './settings/ServerStatusSection.jsx';
 import { UpdateSection } from './settings/UpdateSection.jsx';
+import { RemoteHelpSection } from './settings/RemoteHelpSection.jsx';
 import { isNewerVersion, updateCheckArmed } from '../utils/updateCheck.js';
 import { useArmedConfirm } from '../hooks/useArmedConfirm.js';
 import { useSettingsDraft } from '../hooks/useSettingsDraft.js';
@@ -111,6 +112,8 @@ export default function SettingsPanel({ onClose }) {
   const pinFlowRef = useRef(null);
   // Same channel for the changelog viewer inside UpdateSection.
   const changelogOpenRef = useRef(false);
+  // And for the remote guide, which is static but still owns Back while open.
+  const helpOpenRef = useRef(false);
 
   // Flipping to Live jumps focus into the URL field; otherwise spatial nav
   // lands on "Save". It focuses the field's *wrapper*, not its input, which
@@ -163,8 +166,9 @@ export default function SettingsPanel({ onClose }) {
   };
 
   // Trap Back / Esc to close, except while typing (Backspace deletes) or while
-  // a nested dialog (PIN keypad, changelog viewer) owns the keys. See the hook.
-  useSettingsBack(requestClose, pinFlowRef, changelogOpenRef);
+  // a nested dialog (PIN keypad, changelog and help viewers) owns the keys. See
+  // the hook.
+  useSettingsBack(requestClose, pinFlowRef, changelogOpenRef, helpOpenRef);
 
   // An edit invalidates a test still in flight, not just the result on screen:
   // otherwise a 12-second test of the old address paints "Connected" over the
@@ -206,10 +210,11 @@ export default function SettingsPanel({ onClose }) {
     const restore = returnFocusRef.current;
     returnFocusRef.current = null;
     setLeavePrompt(false);
-    // A refused save keeps the panel open, and the button that had the cursor
-    // just unmounted. Put it back where Back was pressed, or the D-pad has no
-    // target while the error is on screen.
-    if (!handleSave()) restore?.focus?.();
+    // The prompt button that had the cursor just unmounted. Both paths keep
+    // the panel up for a moment (an error, or the saved tick), so put focus
+    // back where Back was pressed or the D-pad has no target.
+    handleSave();
+    restore?.focus?.();
   };
   const discardAndClose = () => {
     setLeavePrompt(false);
@@ -481,6 +486,8 @@ export default function SettingsPanel({ onClose }) {
           <LibraryStatsSection />
 
           <ServerStatusSection />
+
+          <RemoteHelpSection helpOpenRef={helpOpenRef} />
 
           <AppLockSection pinFlowRef={pinFlowRef} />
         </div>

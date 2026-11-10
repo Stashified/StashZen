@@ -46,6 +46,9 @@ for screen in "${SCREENS[@]}"; do
   if [ "$DIM" != '1920x1080' ]; then
     echo "  WRONG SIZE: $DIM (wanted 1920x1080)"
     FAILED=1
+  elif ! printf '%s' "$SD" | grep -Eq '^[0-9]+([.][0-9]+)?$'; then
+    echo "  UNREADABLE standard-deviation: '$SD'"
+    FAILED=1
   elif awk "BEGIN{exit !($SD < 1000)}"; then
     echo "  LOOKS BLANK: standard-deviation $SD"
     FAILED=1

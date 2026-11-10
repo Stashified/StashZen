@@ -38,6 +38,7 @@ export default function TabContent({
   onPerformerImages,
   onPerformerGalleries,
   onPerformerTagSelect,
+  onStartQueue,
   previewMuted,
   onMuteToggle,
   onEntitySelect,
@@ -51,6 +52,9 @@ export default function TabContent({
   onSearchGallerySelect,
   onSearchImageSelect,
   onSearchSeeAll,
+  onSearchMarkerSelect,
+  recentSearches,
+  onRememberSearch,
 }) {
   return (
     /* Keying main remounts the active page on a data-source change (Test↔Live,
@@ -60,7 +64,7 @@ export default function TabContent({
         cleared by `changeTab` before this remount. */
     <main key={`${dataKey}\u0000${tabEpoch}`} className={styles.main} role="main">
       {activeTab === 'home'       && <ShowroomPage   onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} onStudioSelect={onStudioSelect} onPerformerSelect={onShowroomPerformerSelect} onGallerySelect={onGallerySelect} onSeeAll={onSeeAll} clearedSceneIds={clearedSceneIds} />}
-      {activeTab === 'search'     && <SearchPage     query={searchText} onQueryChange={onSearchQueryChange} onSceneSelect={onVideoSelect} onPerformerSelect={onSearchPerformerSelect} onTagSelect={onSearchTagSelect} onStudioSelect={onSearchStudioSelect} onGroupSelect={onSearchGroupSelect} onGallerySelect={onSearchGallerySelect} onImageSelect={onSearchImageSelect} onSeeAll={onSearchSeeAll} />}
+      {activeTab === 'search'     && <SearchPage     query={searchText} onQueryChange={onSearchQueryChange} onSceneSelect={onVideoSelect} onMarkerSelect={onSearchMarkerSelect} onPerformerSelect={onSearchPerformerSelect} onTagSelect={onSearchTagSelect} onStudioSelect={onSearchStudioSelect} onGroupSelect={onSearchGroupSelect} onGallerySelect={onSearchGallerySelect} onImageSelect={onSearchImageSelect} onSeeAll={onSearchSeeAll} recentSearches={recentSearches} onRememberSearch={onRememberSearch} />}
       {activeTab === 'scenes'     && <ScenesPage     mode={mode} controls={controls} objectFilter={objectFilter} searchQuery={searchQuery} onVideoSelect={onVideoSelect} onVideoLongPress={onVideoLongPress} />}
       {activeTab === 'performers' && (
         selectedPerformer
@@ -70,6 +74,7 @@ export default function TabContent({
               onImages={onPerformerImages}
               onGalleries={onPerformerGalleries}
               onTagSelect={onPerformerTagSelect}
+              onStartQueue={onStartQueue}
               onVideoSelect={onVideoSelect}
               // The performer's grid is a scene listing like any other, so
               // the action menu and queue are scoped to this listing.

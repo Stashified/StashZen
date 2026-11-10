@@ -11,16 +11,20 @@
  * debounce is real and waited for.
  *
  *   Q1     the rail's last row opens the field
- *   Q2     one query fills all four sections
+ *   Q2     one query fills all eight sections, markers included
  *   Q2b    Down from the field goes to the first result
  *   Q3/Q4  performers are performer cards; scenes stay scene cards
  *   Q5     tags and studios use their entity cards and images
  *   Q5b    Down from a performer row reaches the tags
  *   Q6     a section with more matches offers See all
+ *   Q6c    marker results are marker cards with the parent scene's frame
  *   Q7     Enter on a performer opens the performer
  *   Q8     Back returns to the results with the card focused
  *   Q9     See all opens that section with the query applied
  *   Q10    Back from that listing returns to the results
+ *   Q12    clearing the field brings the search back as a one-press chip
+ *   Q13    the chip runs that search and leaves the cursor on the field
+ *   Q14    a failed section shows Retry, and Retry recovers it
  */
 
 import '../../src/index.css';
@@ -100,6 +104,12 @@ const railActive = () =>
     .find(b => b.getAttribute('aria-current') === 'page')?.textContent.trim() || '(none)';
 const getJSON = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
 
+const setMode = (patch) => fetch('/mode', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(patch),
+});
+
 async function goto(tab) {
   focus(`nav-${tab}`);
   await sleep(120);
@@ -147,13 +157,14 @@ async function run() {
 
   // ── Q2  one query fills every section ───────────────────
   const typed = await typeQuery(QUERY);
-  const filled = await waitFor(() => live('video-1') && live('performer-1')
-    && live('tag-1') && live('studio-1')
+  const filled = await waitFor(() => live('video-1') && live('marker-9001')
+    && live('performer-1') && live('tag-1') && live('studio-1')
     && live('group-1') && live('gallery-1') && live('image-1'));
-  check('Q2 one query fills all seven sections',
+  check('Q2 one query fills all eight sections',
     typed && filled,
-    `typed=${typed}; scenes=${live('video-1')} performers=${live('performer-1')} `
-      + `tags=${live('tag-1')} studios=${live('studio-1')} groups=${live('group-1')} `
+    `typed=${typed}; scenes=${live('video-1')} markers=${live('marker-9001')} `
+      + `performers=${live('performer-1')} tags=${live('tag-1')} `
+      + `studios=${live('studio-1')} groups=${live('group-1')} `
       + `galleries=${live('gallery-1')} images=${live('image-1')}; errors: ${errorTail()}`);
 
   // ── Q2b  the field hands Down to the first result ──────
@@ -212,6 +223,15 @@ async function run() {
   check('Q6 every section with more matches offers See all',
     seeAll.length === seeAllIds.length, `offered: ${seeAll.join(', ') || '(none)'}`);
 
+  // The fixture has two markers, fewer than the six a section shows, so this
+  // section must not offer See all. The card draws the parent scene's frame,
+  // not the marker's "Pending Generate" placeholder.
+  check('Q6c marker results are marker cards without a See-all',
+    live('marker-9001') && !live('search-seeall-markers')
+      && /\/scene\/1\/thumb\.png/.test(srcOf('marker-9001')),
+    `marker=${live('marker-9001')}; seeall=${live('search-seeall-markers')}; `
+      + `img=${srcOf('marker-9001') || '(none)'}`);
+
   // ── Q7  a performer result opens the performer ──────────
   focus('performer-1');
   await sleep(150);
@@ -250,7 +270,50 @@ async function run() {
   check('Q10 Back from the full listing returns to the results',
     backAgain && seeAllBack, `rail=${railActive()}; focus=${focusedId()}`);
 
-  check('Q11 no uncaught error during the run', errors.length === 0, errorTail());
+  // ── Q12  the last search comes back as a chip ───────────
+  // Q7 opened a result under this query, which is what files it.
+  await typeQuery('');
+  const chipUp = await waitFor(() => live('search-recent-0'), 4000);
+  const chipText = registry.get('search-recent-0')?.el?.textContent.trim() ?? '(none)';
+  check('Q12 clearing the field leaves the last search as a chip',
+    chipUp && chipText === QUERY, `chip=${chipUp}; text=${JSON.stringify(chipText)}`);
+
+  // ── Q13  the chip runs that search ──────────────────────
+  focus('search-recent-0');
+  await sleep(140);
+  await tapEnter();
+  const chipRan = await waitFor(() => live('video-1') && live('marker-9001'), 6000);
+  const fieldText = document
+    .querySelector('input[aria-label="Search your library"]')?.value ?? '(none)';
+  check('Q13 the chip reruns the search and the cursor lands on the field',
+    chipRan && fieldText === QUERY && focusedId() === 'search-field',
+    `results=${chipRan}; field=${JSON.stringify(fieldText)}; focus=${focusedId()}`);
+
+  // ── Q14  a failed section offers Retry ──────────────────
+  // Only scenes fail: the other sections still answer, which is the partial
+  // failure case the retry button lives in.
+  // A term the fixture's scene titles actually contain, and one that was not
+  // already fetched successfully, or the cached answer would hide the refetch.
+  await setMode({ findScenes: 'fail' });
+  await typeQuery('VERIFY scene 1');
+  const retryUp = await waitFor(() => live('search-retry'), 6000);
+  check('Q14 a failed section shows Retry beside the results',
+    retryUp, `retry=${retryUp}; errors: ${errorTail()}`);
+
+  await setMode({ findScenes: 'ok' });
+  focus('search-retry');
+  await sleep(140);
+  await tapEnter();
+  const recovered = await waitFor(() => live('video-1') && !live('search-retry'), 8000);
+  const statusNow = document.querySelector('[role="status"]')?.textContent ?? '(none)';
+  const errsNow = [...document.querySelectorAll('[class*="error"]')]
+    .map(e => e.textContent).join(' | ');
+  check('Q14b Retry refetches and clears the failure',
+    recovered,
+    `scenes=${live('video-1')}; retry still up=${live('search-retry')}; `
+      + `status=${JSON.stringify(statusNow)}; errors=${JSON.stringify(errsNow)}`);
+
+  check('Q15 no uncaught error during the run', errors.length === 0, errorTail());
 }
 
 const root = document.getElementById('root');

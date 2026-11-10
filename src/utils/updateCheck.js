@@ -9,6 +9,9 @@
 import { fetchWithTimeout, StashError } from './stashClient.js';
 
 export const UPDATE_TIMEOUT_MS = 8000;
+// A release is a few KiB. A declared length over this is refused before the
+// body is read, and the text is measured after, since the header can lie.
+export const UPDATE_MAX_BYTES = 256 * 1024;
 export const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Off the boot path: a TV that just woke should paint before it uses the
 // network, and an update is never urgent.
@@ -89,8 +92,22 @@ export async function fetchLatestRelease({
         if (!res.ok) {
           throw new StashError(`GitHub returned HTTP ${res.status}.`, 'http', res.status);
         }
+        const declared = Number(res.headers?.get?.('content-length'));
+        if (Number.isFinite(declared) && declared > UPDATE_MAX_BYTES) {
+          throw new StashError('Unexpected response from GitHub.', 'size');
+        }
+        let text;
         try {
-          return await res.json();
+          text = await res.text();
+        } catch {
+          throw new StashError('Unexpected response from GitHub.', 'parse');
+        }
+        // The header can be absent or wrong, so measure the body too.
+        if (text.length > UPDATE_MAX_BYTES) {
+          throw new StashError('Unexpected response from GitHub.', 'size');
+        }
+        try {
+          return JSON.parse(text);
         } catch {
           throw new StashError('Unexpected response from GitHub.', 'parse');
         }
@@ -102,7 +119,8 @@ export async function fetchLatestRelease({
   } catch (e) {
     const reason = e?.code === 'timeout' ? 'timeout'
       : e?.code === 'http' ? 'http'
-        : e?.code === 'parse' ? 'parse' : 'network';
+        : e?.code === 'parse' ? 'parse'
+          : e?.code === 'size' ? 'size' : 'network';
     return { ok: false, reason, status: e?.status };
   }
 }

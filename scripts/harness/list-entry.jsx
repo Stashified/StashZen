@@ -107,6 +107,17 @@ async function toBottom() {
   await sleep(400);
 }
 
+// A loaded sweep shares Firefox's connection pool with every cover on the
+// page, so the paging request can land after `toBottom`'s fixed sleep. Wait
+// for the request log to reach `want` instead of assuming the delay.
+async function waitForLog(want, ms = 6000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if ((await log()).length >= want) return;
+    await sleep(50);
+  }
+}
+
 // Focus a card by asking the real focus registry where it is. The cards
 // carry no DOM id, so this is the only handle on them.
 const focusCard = (id) => {
@@ -162,6 +173,21 @@ async function runGrid() {
     first[0]?.page === 1 && first[0]?.sort === 'created_at' && first[0]?.direction === 'DESC',
     JSON.stringify(first[0]));
 
+  // ── G12: covers load with the card ──────────────────────
+  // Every card mounts with the page, so its cover is fetched whether or not it
+  // is on screen. This pins `loading="eager"`, which the preview gate relies
+  // on: a lazy cover would hold a preview until the card is scrolled to.
+  if (VIEW === 'grid') {
+    const coverLoaded = (id) => {
+      const img = registry.get(`video-${id}`)?.el?.querySelector('img');
+      return !!img && img.complete && img.naturalWidth > 0;
+    };
+    const loaded = Array.from({ length: PAGE_SIZE }, (_, i) => i + 1)
+      .filter(coverLoaded).length;
+    check(`${t}12 every cover on the page is fetched, on screen or not`,
+      loaded === PAGE_SIZE, `${loaded}/${PAGE_SIZE} loaded`);
+  }
+
   // Only List can answer these: the grid is four columns. The mode must change
   // the shape (rows stacked, full width), not render one card per line by
   // accident or shrink-wrap each row.
@@ -188,6 +214,7 @@ async function runGrid() {
 
   // ── Reaching the bottom loads exactly one more page ──────
   await toBottom();
+  await waitForLog(2);
   const afterTwo = await log();
   check(`${t}2 bottom asked for page 2`, afterTwo.length === 2 && afterTwo[1].page === 2,
     pagesOf(afterTwo).join(', '));
@@ -196,6 +223,7 @@ async function runGrid() {
 
   // ── And stops once the short last page lands ─────────────
   await toBottom();
+  await waitForLog(3);
   const afterThree = await log();
   check(`${t}3 bottom asked for page 3`, afterThree.length === 3 && afterThree[2].page === 3,
     pagesOf(afterThree).join(', '));

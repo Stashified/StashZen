@@ -17,6 +17,7 @@
 #   WINDOW firefox window size (default 1920,1080 — the TV's viewport)
 #   SCREENSHOT  path to capture instead of collecting results. See shoot.sh.
 set -u
+set -o pipefail
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 ENTRY=${ENTRY:-scripts/harness/entry.jsx}
@@ -47,6 +48,7 @@ cd "$REPO" || exit 1
 HARNESS_ENTRY="$ENTRY" HARNESS_OUT="$OUT" \
   HARNESS_UPDATE_CHECK="${HARNESS_UPDATE_CHECK:-0}" \
   HARNESS_UPDATE_URL="${HARNESS_UPDATE_URL:-}" \
+  HARNESS_CHANGELOG_URL="${HARNESS_CHANGELOG_URL:-}" \
   HARNESS_PROFILING="${HARNESS_PROFILING:-0}" \
   npx vite build --config scripts/harness/vite.config.mjs 2>&1 | tail -5 || exit 1
 
@@ -85,13 +87,26 @@ PY
 # they must differ per scene, and a file on disk cannot vary by who asked.
 
 echo "── starting server on :$PORT ──"
+# Checked before the fork: a leftover server from a SIGKILLed run answers the
+# readiness curl, and the fresh child has not reached bind() when the old
+# guard looked at it, so that guard passed on exactly the case it named.
+if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/"; then
+  echo "port :$PORT already has a server, refusing to run against it"
+  exit 1
+fi
 python3 "$HARNESS/server.py" "$OUT" "$PORT" &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
+READY=0
 for _ in $(seq 1 40); do
-  curl -sf "http://127.0.0.1:$PORT/" -o /dev/null && break
+  if curl -sf "http://127.0.0.1:$PORT/" -o /dev/null; then READY=1; break; fi
   sleep 0.25
 done
+# And it must be ours: a server that failed to bind leaves this child dead.
+if [ "$READY" != 1 ] || ! kill -0 "$SRV" 2>/dev/null; then
+  echo "server on :$PORT did not start"
+  exit 1
+fi
 
 echo "── running firefox ──"
 PROFILE=/tmp/$NAME/profile

@@ -44,6 +44,12 @@ export default defineConfig({
         ? (process.env.HARNESS_UPDATE_URL || 'https://updates.test/latest')
         : '',
     ),
+    // Armed with the update check: the public pair travels together.
+    __CHANGELOG_URL__: JSON.stringify(
+      process.env.HARNESS_UPDATE_CHECK === '1'
+        ? (process.env.HARNESS_CHANGELOG_URL || 'https://changelog.test/changelog.json')
+        : '',
+    ),
   },
 
   build: {

@@ -11,7 +11,7 @@
  *   off  none of the above exists and no update request is ever made, even with
  *        persisted state that would otherwise show an update.
  *
- * Only the update URL is stubbed; every other fetch goes to the fake Stash
+ * Both public endpoints are stubbed; every other fetch goes to the fake Stash
  * server. The app runs in Test mode, so no Stash server is needed at all.
  */
 
@@ -21,12 +21,15 @@ import App from '../../src/App.jsx';
 import { registry } from '../../src/hooks/useFocusable.js';
 import { setSettings, getSettings } from '../../src/utils/settings.js';
 import { UPDATE_AUTO_DELAY_MS } from '../../src/utils/updateCheck.js';
+import { clearChangelogCache } from '../../src/hooks/useChangelog.js';
 
 const LS_KEY = 'tvapp.settings.v1';
 const APP = __APP_VERSION__;
 const ARMED = __UPDATE_CHECK__;
 const UPDATE_URL = __UPDATE_URL__;
+const CHANGELOG_URL = __CHANGELOG_URL__;
 const HOUR = 60 * 60 * 1000;
+const notesPayload = releases => JSON.stringify({ schemaVersion: 1, releases });
 
 const results = [];
 function check(name, pass, detail) {
@@ -51,13 +54,28 @@ window.addEventListener('unhandledrejection', (e) => {
   errors.push(`unhandled rejection: ${(e.reason && e.reason.message) || e.reason}`);
 });
 
-// ── The update endpoint, stubbed ────────────────────────────
+// ── The public endpoints, stubbed ───────────────────────────
 const realFetch = window.fetch.bind(window);
 const updateCalls = [];
+const changelogCalls = [];
 let stub = { tag: 'v99.0.0', status: 200, delay: 0 };
+let changelogStub = { status: 200, body: '{}' };
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : (input && input.url) || '';
-  if (!UPDATE_URL || !url.startsWith(UPDATE_URL)) return realFetch(input, init);
+  // In the private lane the URL is '', so match any changelog-looking request:
+  // a hardcoded leak then shows up in G1 instead of being forwarded.
+  if (CHANGELOG_URL ? url.startsWith(CHANGELOG_URL) : /changelog/i.test(url)) {
+    changelogCalls.push({ url, options: init });
+    if (changelogStub.status !== 200) {
+      return new Response('no', { status: changelogStub.status });
+    }
+    return new Response(changelogStub.body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const looksLikeUpdate = UPDATE_URL ? url.startsWith(UPDATE_URL) : /releases\/latest/i.test(url);
+  if (!looksLikeUpdate) return realFetch(input, init);
   updateCalls.push({ url, options: init });
   if (stub.delay) await sleep(stub.delay);
   if (stub.status !== 200) return new Response('no', { status: stub.status });
@@ -179,8 +197,9 @@ async function runArmed() {
     !!autoFired && updateCalls.length === 1, `${updateCalls.length} calls`);
   check('U3 the request is a bare GET for the release JSON, no auth and no body',
     !!call && call.url === UPDATE_URL && call.options.method === 'GET'
+      && Object.keys(call.options.headers || {}).join(',') === 'Accept'
       && call.options.headers?.Accept === 'application/vnd.github+json'
-      && !call.options.headers?.Authorization && !call.options.body,
+      && !call.options.body,
     call ? JSON.stringify(call.options) : 'no call');
   check('U3 available is shown in the row, the header and the rail dot',
     !!autoStatus && versionLine().includes('v99.0.0 available')
@@ -269,7 +288,82 @@ async function runArmed() {
     !!manualDisabled && getSettings().updateCheckEnabled === false,
     `checked=${!!manualDisabled} enabled=${getSettings().updateCheckEnabled}`);
 
-  check('U10 no error was raised during the run',
+  // ── U10  Changelog viewer ──────────────────────────────
+  const changelogBtn = () => registry.get('settings-changelog')?.el || null;
+  const pane = () => document.querySelector('[role="dialog"][aria-label="Changelog"]');
+  const paneText = () => pane()?.textContent || '';
+  const pressBack = () => window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  }));
+
+  check('U10 the armed build offers the changelog',
+    !!changelogBtn() && CHANGELOG_URL !== '',
+    `button=${!!changelogBtn()} url="${CHANGELOG_URL}"`);
+
+  changelogCalls.length = 0;
+  changelogStub = {
+    status: 200,
+    body: notesPayload([
+      { version: '99.0.0', date: '2026-12-01', sections: [{ title: 'New', items: ['Newest note'] }] },
+      { version: '98.0.0', date: '2026-11-01', sections: [{ title: 'Fixes', items: ['Older note'] }] },
+      { version: APP, date: '2026-10-01', sections: [{ title: 'Changes', items: ['Installed note'] }] },
+    ]),
+  };
+  await enterFocusId('settings-changelog');
+  const newestShown = await waitFor(() => paneText().includes('Newest note'), 4000);
+  const changelogCall = changelogCalls[0];
+  check('U10 opening the viewer makes one bare GET for the JSON',
+    changelogCalls.length === 1 && changelogCall?.url === CHANGELOG_URL
+      && changelogCall.options.method === 'GET'
+      && Object.keys(changelogCall.options.headers || {}).join(',') === 'Accept'
+      && changelogCall.options.headers?.Accept === 'application/json'
+      && !changelogCall.options.body,
+    changelogCall ? JSON.stringify(changelogCall.options) : 'no call');
+  check('U10 newer releases render newest first and hide the installed one',
+    !!newestShown
+      && paneText().indexOf('v99.0.0') < paneText().indexOf('v98.0.0')
+      && !paneText().includes('Installed note'),
+    JSON.stringify(paneText().slice(0, 160)));
+
+  pressBack();
+  const backToSettings = await waitFor(
+    () => !pane() && document.activeElement === changelogBtn(), 3000);
+  check('U11 Back closes only the viewer and returns focus to its button',
+    !!backToSettings && !!dialog(), `pane=${!!pane()}`);
+
+  const beforeCached = changelogCalls.length;
+  await enterFocusId('settings-changelog');
+  const reopened = await waitFor(() => paneText().includes('Newest note'), 2000);
+  check('U12 reopening inside the cache window makes no request',
+    reopened && changelogCalls.length === beforeCached,
+    `pane=${reopened} ${beforeCached} → ${changelogCalls.length}`);
+  pressBack();
+  await waitFor(() => !pane(), 2000);
+
+  clearChangelogCache();
+  changelogStub = { status: 500, body: '' };
+  await enterFocusId('settings-changelog');
+  const failedNotes = await waitFor(
+    () => paneText().includes('GitHub returned an error.'), 4000);
+  check('U13 a failed load shows the error and Try again',
+    !!failedNotes && !!registry.get('settings-changelog-retry'),
+    `error=${!!failedNotes} retry=${!!registry.get('settings-changelog-retry')}`);
+
+  changelogStub = {
+    status: 200,
+    body: notesPayload([
+      { version: APP, date: '2026-10-01', sections: [{ title: 'Changes', items: ['Installed note'] }] },
+    ]),
+  };
+  await enterFocusId('settings-changelog-retry');
+  const recovered = await waitFor(() => paneText().includes('Installed note'), 4000);
+  check('U14 Try again recovers and an up-to-date build shows its own notes',
+    !!recovered && !paneText().includes('Newest note'),
+    JSON.stringify(paneText().slice(0, 160)));
+  pressBack();
+  await waitFor(() => !pane(), 2000);
+
+  check('U15 no error was raised during the run',
     errors.length === 0, errors.length ? errors.slice(-2).join(' | ') : 'none');
 }
 
@@ -277,8 +371,9 @@ async function runArmed() {
 // Private shape
 // ═══════════════════════════════════════════════════════════
 async function runOff() {
-  check('G0 the private build has no flag and no endpoint',
-    ARMED === false && UPDATE_URL === '', `armed=${ARMED} url="${UPDATE_URL}"`);
+  check('G0 the private build has no flag and no endpoints',
+    ARMED === false && UPDATE_URL === '' && CHANGELOG_URL === '',
+    `armed=${ARMED} url="${UPDATE_URL}" changelog="${CHANGELOG_URL}"`);
 
   // Persisted state that would otherwise demand a check and show a version.
   setSettings({
@@ -301,6 +396,9 @@ async function runOff() {
     `header="${versionLine()}" rail=${railSaysUpdate()} dot=${!!railDot()}`);
   check('G1 no update request is made',
     updateCalls.length === 0, `${updateCalls.length} calls`);
+  check('G1 the changelog button is absent and no changelog request is made',
+    !registry.get('settings-changelog') && changelogCalls.length === 0,
+    `button=${!!registry.get('settings-changelog')} calls=${changelogCalls.length}`);
 
   check('G2 no error was raised during the run',
     errors.length === 0, errors.length ? errors.slice(-2).join(' | ') : 'none');

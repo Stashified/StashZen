@@ -25,6 +25,7 @@ export function usePlayerMedia({
   showControls,
   effectiveStart,
   askingToResume,
+  holdAutoplayRef,
   startSeekedRef,
   pendingLiveResumeRef,
   fallbackSeekRef,
@@ -63,6 +64,8 @@ export function usePlayerMedia({
     if (!v) return;
 
     const onPlay      = () => {
+      // A user play ends the quality reload's hold: the next source is live.
+      if (holdAutoplayRef) holdAutoplayRef.current = false;
       // Replaying a finished scene is a new sitting: its position is reportable
       // again, or the completion latch would keep writing 0. The app's own
       // duration rule, because the element reports NaN/Infinity on some
@@ -93,6 +96,10 @@ export function usePlayerMedia({
       // fallback target. Ignore the tick; the reporter keeps the pre-switch
       // position. See `sourceFreshRef`.
       if (sourceFreshRef.current) return;
+      // AVPlay can resume on its own after a seek past the end, with no `play`
+      // event. A moving clock is proof the scene runs, so the overlay must not
+      // show Play over moving video.
+      if (!v.paused) setPlaying(true);
       // The credit rule lives in the reporter's `tick`; a seek in flight must
       // not be credited even though it is not a pause.
       progress.tick(t, v.paused || v.seeking);
@@ -196,7 +203,7 @@ export function usePlayerMedia({
     showControls, effectiveStart, video?.id, goNext, progress, reportSourceFailure,
     codecs, askingToResume, mediaRef, startSeekedRef,
     pendingLiveResumeRef, fallbackSeekRef, sourceFreshRef, skimPendingRef,
-    setCurrentTime,
+    setCurrentTime, holdAutoplayRef,
     setElementDuration, setError,
   ]);
 
@@ -212,12 +219,12 @@ export function usePlayerMedia({
     // The old session is still open until the new source resolves; playing it
     // would restart the previous scene in the gap.
     if (sourceSceneId !== video.id) return;
-    if (askingToResume) return;
+    if (askingToResume || holdAutoplayRef?.current) return;
     v.play().catch(() => {});
     // `playbackSrc` is here for the fallback, not the first load: changing the
     // element's `src` runs the load algorithm, which stops playback, so a
     // re-sourced scene would sit paused with nothing but the big ▶ to explain.
-  }, [video?.id, askingToResume, playbackSrc, sourceSceneId, mediaRef]);
+  }, [video?.id, askingToResume, playbackSrc, sourceSceneId, mediaRef, holdAutoplayRef]);
 
   /**
    * Re-arm the start seek when the source changes under a scene.

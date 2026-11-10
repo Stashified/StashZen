@@ -17,7 +17,7 @@ import { useFocusable } from '../hooks/useFocusable.js';
 import styles from './MarkerCard.module.css';
 import { formatTime } from '../utils/format.js';
 
-function MarkerCard({ item, index, list, onSelect, onLongPress }) {
+function MarkerCard({ item, index, list, onSelect, onLongPress, autoFocus = index === 0 }) {
   const [imgError, setImgError] = useState(false);
 
   const { ref, focused } = useFocusable({
@@ -27,7 +27,7 @@ function MarkerCard({ item, index, list, onSelect, onLongPress }) {
     // Opt-in, like VideoCard's: without a handler the press stays a plain tap
     // and its short action runs on keydown.
     onLongPress: onLongPress ? () => onLongPress(item, list, index) : undefined,
-    autoFocus: index === 0,
+    autoFocus,
     autoFocusWhenIdle: true,
   });
 

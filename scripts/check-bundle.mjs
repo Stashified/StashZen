@@ -58,6 +58,10 @@ const CHANGELOG_MARKER = 'raw.githubusercontent.com';
 const MAX_JS_BYTES = 620 * 1024;
 const MAX_CSS_BYTES = 120 * 1024;
 
+// Skipping an image or a font is harmless; skipping a JS or JSON file means a
+// credential scan never looked at something that can hold a string.
+const TEXT_ASSET_RE = /\.(?:m?js|css|html?|json|map|xml|txt|svg)$/i;
+
 const LAN_PLACEHOLDER = '192.168.1.10:9999';
 const LAN_RE = /\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/;
 
@@ -200,6 +204,7 @@ export function checkBundle({
   const scan = scanBundle({ distDir, secret });
   const credentialFiles = [...new Set([...scan.jwtFiles, ...scan.keyFiles])];
   const baked = credentialFiles.length > 0;
+  const unscannedText = scan.skippedFiles.filter(rel => TEXT_ASSET_RE.test(rel));
   // Enforced here too, not only in main(): CI never gets the opt-out.
   const effectiveAllowBaked = allowBaked && !isCI;
 
@@ -223,6 +228,10 @@ export function checkBundle({
     if (scan.skippedFiles.length) {
       lines.push(`! Not inspected (binary or over 8 MiB): ${scan.skippedFiles.join(', ')}`);
     }
+  }
+  if (unscannedText.length > 0) {
+    lines.push('x A text bundle file could not be scanned for credentials.');
+    lines.push(`  Found: ${unscannedText.join(', ')}`);
   }
 
   if (scan.lanFiles.length > 0) {
@@ -297,7 +306,7 @@ export function checkBundle({
 
   return {
     ok: (!baked || effectiveAllowBaked) && !updateBlocked && !changelogBlocked
-      && !overJs && !overCss,
+      && unscannedText.length === 0 && !overJs && !overCss,
     lines,
   };
 }

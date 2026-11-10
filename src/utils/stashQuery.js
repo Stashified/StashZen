@@ -21,10 +21,21 @@
 
 import { getSettings } from './settings.js';
 import { graphqlRequest } from './stashClient.js';
+import { noteQueryResult, getConnectionGeneration } from './connectionHealth.js';
 
 export function runQuery(query, variables, { signal } = {}) {
   const { stashUrl, stashKey } = getSettings();
-  return graphqlRequest(query, variables, { url: stashUrl, key: stashKey, signal });
+  const gen = getConnectionGeneration();
+  const request = graphqlRequest(query, variables, { url: stashUrl, key: stashKey, signal });
+  // Noted here, not in stashClient: that module is deliberately pure, and every
+  // Stash request comes through this function. Both handlers are given so the
+  // derived promise never rejects unobserved. The generation is read now, so
+  // an answer that outlives a source switch is dropped.
+  request.then(
+    () => noteQueryResult(null, gen),
+    (e) => noteQueryResult(e, gen),
+  );
+  return request;
 }
 
 /**

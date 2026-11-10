@@ -8,9 +8,10 @@
  * service knows both of (`duration` → `durationSeconds`, `height` →
  * `height_cm`, `scenes_count` → `scene_count`).
  *
- * `random` is the second special case: the server reshuffles per request, but a
- * mock that reshuffled between pages would page through a list that drops and
- * duplicates rows, the order must be stable, so each id gets a hash as rank.
+ * `random` is the second special case: a mock that reshuffled between pages
+ * would drop and duplicate rows, so the order is stable, each id getting a
+ * hash as rank. The seeded spelling hashes the seed with the id too, so a
+ * reshuffle deals a new order and still pages stably.
  *
  * Numbers compare numerically and strings case-insensitively; a null or missing
  * value sorts low rather than throwing, because a mock row is as likely to be
@@ -19,9 +20,9 @@
 
 const RANKS = new Map();
 
-/** FNV-1a, 32-bit, a stable, dependency-free rank for one id. */
-function rankOf(id) {
-  const key = String(id ?? '');
+/** FNV-1a, 32-bit, a stable, dependency-free rank for one key. */
+function rankOf(text) {
+  const key = String(text ?? '');
   let rank = RANKS.get(key);
   if (rank === undefined) {
     let h = 0x811c9dc5;
@@ -38,10 +39,13 @@ function rankOf(id) {
 export function mockComparator(sort, order, alias) {
   const descending = order !== 'asc';
   const key = (alias && alias[sort]) || sort;
+  const seeded = /^random_(\d+)$/.exec(String(sort ?? ''));
 
-  if (key === 'random') {
+  if (seeded || key === 'random') {
+    // Empty for plain `random`, so its order stays as it was.
+    const prefix = seeded ? `${seeded[1]}:` : '';
     return (a, b) => {
-      const d = rankOf(a?.id) - rankOf(b?.id);
+      const d = rankOf(prefix + String(a?.id ?? '')) - rankOf(prefix + String(b?.id ?? ''));
       return d === 0 ? 0 : (descending ? -d : d);
     };
   }

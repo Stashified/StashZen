@@ -83,6 +83,7 @@ export function ChangelogOverlay({ onClose }) {
           ref={paneRef}
           className={`${styles.scroll} ${focused ? styles.scrollFocused : ''}`}
           onKeyDown={onKeyDown}
+          role="group"
           aria-label="Changelog"
         >
           {status === 'loading' && (
