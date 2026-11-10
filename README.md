@@ -69,7 +69,7 @@ under **Settings → Connection setup → Run setup again**.
 |---|---|
 | D-pad | Move focus. |
 | OK | Open the focused item or activate the control. On a card, opens its detail page. |
-| Long press OK | The card's menu; entries depend on the card. Scenes and markers: **Play**, **Play all**, **Play from here**, **Details** (a marker's Play starts at its timestamp; markers also offer edit and delete). Images: **View**, slideshow entries and **Info**. Galleries: **View images**, **Slideshow**, **Shuffle slideshow**. |
+| Long press OK | The card's menu; entries depend on the card. Scenes and markers: **Play**, **Play all**, **Play from here**, **Details** (a marker's Play starts at its timestamp; markers also offer edit and delete). A scene's menu also carries **Mark played**, **Add O**, **Clear resume** and **Mark organised**, which write without opening the scene. Images: **View**, slideshow entries and **Info**. Galleries: **View images**, **Slideshow**, **Shuffle slideshow**. |
 | Back / Esc | Close the topmost thing: dropdown, page, player. On Home and the PIN screen it asks to exit. |
 
 **Navigating**
@@ -105,8 +105,11 @@ under **Settings → Connection setup → Run setup again**.
 **Browse**
 - **Home**: five shelves (recent scenes, **Continue Watching**, studios, performers, galleries);
   "see all" opens that shelf's listing.
-- **Search**: one field for scenes, performers, tags, studios, groups, galleries and images;
-  "see all" opens that section with the query.
+- **Search**: one field for scenes, performers, markers, tags, studios, groups, galleries and
+  images; "see all" opens that section with the query. Recent searches stay as one-press chips,
+  and a section that fails to load offers Retry.
+- **Card marks and actions**: cards show watched, organised and O count. Hold OK for quick edits:
+  **Mark played**, **Add O**, **Clear resume** and **Mark organised**.
 - **Eight sections**: Scenes, Performers, Markers, Tags, Studios, Groups, Galleries and Images,
   each with search, sort, filters and a view mode remembered per tab. Tags and Studios open as
   lists. Selecting a group opens its scenes filtered to it.
@@ -124,8 +127,9 @@ under **Settings → Connection setup → Run setup again**.
 - **Scene detail**: metadata and rating; resume or play from a marker; **Groups**, **Galleries**
   and **More from** rows for the studio and performers.
 - **Performer pages**: profile, counts that open that performer's Images and Galleries, tag
-  chips that open Scenes, and **Rating** / **Favourite** written back to Stash. When Stash has
-  no tags for the performer, the tags that recur on their scenes stand in under **Scene tags**.
+  chips that open Scenes, and **Rating** / **Favourite** written back to Stash. **Play all** and
+  **Shuffle** play their scenes under the current filter, sort and search. When Stash has no
+  tags for the performer, the tags that recur on their scenes stand in under **Scene tags**.
 - **Info sheets**: hold OK on a tag, studio, group or gallery for its description, aliases,
   tags and counts; a group also shows its synopsis and related groups, a gallery its performers.
   Each count with a listing behind it opens that filtered listing.
@@ -144,6 +148,11 @@ under **Settings → Connection setup → Run setup again**.
 
 **System**
 - **Library stats and server jobs**: counts, watch time, running jobs and a library scan.
+- **Changelog**: Settings shows the notes for recent releases, whether or not an update is
+  waiting.
+- **Remote help**: every key in the app, grouped by screen, without leaving Settings.
+- **Connection check**: a banner on every screen with Retry when the Stash server cannot be
+  reached.
 - **Theme**: Standard or OLED.
 - **Reduce motion**: stops fades, slides and focus previews.
 - **PIN lock**: optional four-digit code at launch.
