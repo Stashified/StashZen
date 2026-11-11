@@ -238,7 +238,9 @@ async function run() {
 
   // ── P7: a ~100 fps source keeps its cover ───────────────────
   // Previews made from 100 fps sources blank the whole TV screen on Tizen
-  // (measured 2026-11-11), so the card must not even request one.
+  // (measured 2026-11-11), so the card must not even request one. The fake
+  // server answers frame_rate only when the listing selects it, as Stash does,
+  // so dropping the field from SCENE_ROW_FIELDS fails here.
   await clearLog();
   focusCard(7);
   await sleep(SETTLE_MS);

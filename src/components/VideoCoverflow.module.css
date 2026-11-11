@@ -105,10 +105,15 @@
 
 /* The perspective lives on each rotated slot, not here: a <video> under a 3D
    ancestor renders as a black plane on Tizen, and the centred card is the only
-   one that previews. Its transform is 2D, so it never enters 3D space. */
+   one that previews. Its transform is 2D, so it never enters 3D space.
+
+   `isolation` keeps this a stacking context, which the old perspective used to
+   provide: without one the slots' z-index (95-100) climbs over .floor (1) and
+   .loadingMore (10), hiding the fade and the paging indicator behind cards. */
 .scene {
   position: absolute;
   inset: 0;
+  isolation: isolate;
 }
 
 /* Anchored at the stage's centre. The inline transform composes:

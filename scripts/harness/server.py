@@ -364,6 +364,21 @@ def listing_scene(n):
     }
 
 
+def selected_scene_rows(rows, query):
+    """Real Stash answers only the fields a query selects. frame_rate is the one
+    whose absence matters here: the preview guard reads it, so dropping it from
+    a card fragment must fail a check, not pass on a fixture that answers anyway."""
+    if "frame_rate" in query:
+        return rows
+    return [
+        {**row, "files": [
+            {k: v for k, v in entry_file.items() if k != "frame_rate"}
+            for entry_file in row.get("files") or []
+        ]}
+        for row in rows
+    ]
+
+
 # ── The same listing shape for the two grids ──
 # MarkerGrid and PerformerGrid had no fixture, so both fell through to the
 # unhandled-query error and never rendered. Same 100 rows and page size.
@@ -1518,7 +1533,8 @@ class Handler(SimpleHTTPRequestHandler):
                         "scene_filter": sf,
                     })
                     alias = "byStudio" if "studios" in sf else "byPerformer"
-                    rows = [listing_scene(n) for n in (7, 8, 9, 4242)]
+                    rows = selected_scene_rows(
+                        [listing_scene(n) for n in (7, 8, 9, 4242)], query)
                     payload[alias] = {"scenes": rows[:int(f.get("per_page") or 40)]}
                     i += 1
             return self._json({"data": payload})
@@ -1565,9 +1581,11 @@ class Handler(SimpleHTTPRequestHandler):
 
             # The in-progress set, the same 41–45 the standalone handler serves,
             # so the Continue shelf cannot be mistaken for the newest scenes.
-            continue_rows = [dict(listing_scene(n), resume_time=60) for n in range(41, 46)]
+            continue_rows = selected_scene_rows(
+                [dict(listing_scene(n), resume_time=60) for n in range(41, 46)], query)
             payload = {
-                "recentScenes": {"scenes": rows_of(listing_scene, 1, SCENE_COUNT)},
+                "recentScenes": {"scenes": selected_scene_rows(
+                    rows_of(listing_scene, 1, SCENE_COUNT), query)},
                 "continueScenes": {"scenes": continue_rows},
                 "studios": {"studios": rows_of(listing_studio, 1, STUDIO_COUNT)},
                 "performers": {"performers": rows_of(listing_performer, 1, PERFORMER_COUNT)},
@@ -1603,6 +1621,15 @@ class Handler(SimpleHTTPRequestHandler):
             with LOCK:
                 REQUESTS.append(entry)
                 mode = MODE.get("findScenes")
+
+            # Dropping frame_rate from SCENE_ROW_FIELDS must turn P7 red rather
+            # than pass on a fixture that answers unconditionally.
+            def scene_page(rows, count):
+                return self._json({
+                    "data": {"findScenes": {"count": count,
+                                            "scenes": selected_scene_rows(rows, query)}},
+                })
+
             # `slow-page-2` delays only page 2: the stale-response test needs one
             # request in flight while the list moves on, and the replacement must
             # land first or the bad append is overwritten and the bug invisible.
@@ -1615,9 +1642,7 @@ class Handler(SimpleHTTPRequestHandler):
             # `empty-page-2` is the no-progress page: count says rows exist, page 2
             # adds none, and the listing must stop rather than ask for page 3.
             if mode == "empty-page-2" and entry["page"] == 2:
-                return self._json({
-                    "data": {"findScenes": {"count": SCENE_COUNT, "scenes": []}}
-                })
+                return scene_page([], SCENE_COUNT)
             # `fail` is the scene-search failure arm: every FindScenes request
             # fails, so the Search tab's Scenes section can show its error.
             if mode == "fail":
@@ -1627,12 +1652,12 @@ class Handler(SimpleHTTPRequestHandler):
             # candidate is the fixed Settings row (the sidebar-drop bug).
             if mode == "short":
                 rows = [listing_scene(n) for n in range(1, 6)]
-                return self._json({"data": {"findScenes": {"count": 5, "scenes": rows}}})
+                return scene_page(rows, 5)
             # Surprise's empty arm: the filter matches nothing, and the notice is
             # the only way the user learns that. Only the random, one-row fetch
             # is answered here, so a listing refetch is unaffected.
             if mode == "random-empty" and entry["sort"] == "random":
-                return self._json({"data": {"findScenes": {"count": 0, "scenes": []}}})
+                return scene_page([], 0)
             # A scene detail's related rows ("More from <studio>"): the
             # criterion names an entity, so answer a small set that includes
             # the open scene 4242. The page must drop it, and four rows to
@@ -1645,7 +1670,7 @@ class Handler(SimpleHTTPRequestHandler):
                        or (entry["scene_filter"] or {}).get("performers"))
             if related and related.get("value") and entry["per_page"] == 5:
                 rows = [listing_scene(n) for n in (7, 8, 9, 4242)]
-                return self._json({"data": {"findScenes": {"count": len(rows), "scenes": rows}}})
+                return scene_page(rows, len(rows))
 
             # A `title` criterion is honoured for the filter-builder driver alone.
             # Other handlers ignore filters, which is fine for "which page
@@ -1659,7 +1684,7 @@ class Handler(SimpleHTTPRequestHandler):
             # No scene carries a tag, so "filtered" is an empty listing; a build
             # that dropped the filter returns 40 rows, which cannot happen here.
             if ((entry["scene_filter"] or {}).get("tags") or {}).get("value"):
-                return self._json({"data": {"findScenes": {"count": 0, "scenes": []}}})
+                return scene_page([], 0)
 
             # The Continue Watching criterion, likewise: without it a build asking
             # for `last_played_at` but dropping the filter draws five healthy cards
@@ -1680,7 +1705,7 @@ class Handler(SimpleHTTPRequestHandler):
                     # the player's usable window, so a stale card still prompts.
                     rows = [dict(listing_scene(n), resume_time=60)
                             for n in range(41, 46) if 60 > threshold]
-                    return self._json({"data": {"findScenes": {"count": len(rows), "scenes": rows}}})
+                    return scene_page(rows, len(rows))
 
             title = (entry["scene_filter"] or {}).get("title") or {}
             needle = title.get("value")
@@ -1696,7 +1721,7 @@ class Handler(SimpleHTTPRequestHandler):
                 start = (entry["page"] - 1) * entry["per_page"]
                 window = keep[start:start + entry["per_page"]]
                 rows = [listing_scene(n) for n in window]
-                return self._json({"data": {"findScenes": {"count": len(keep), "scenes": rows}}})
+                return scene_page(rows, len(keep))
 
             # Free-text search, honoured so focus checks have rows that change; a
             # search leaving all forty would let a stolen focus pass.
@@ -1707,14 +1732,14 @@ class Handler(SimpleHTTPRequestHandler):
                 start = (entry["page"] - 1) * entry["per_page"]
                 window = keep[start:start + entry["per_page"]]
                 rows = [listing_scene(n) for n in window]
-                return self._json({"data": {"findScenes": {"count": len(keep), "scenes": rows}}})
+                return scene_page(rows, len(keep))
 
             start = (entry["page"] - 1) * entry["per_page"]
             rows = [
                 listing_scene(i + 1)
                 for i in range(start, min(start + entry["per_page"], SCENE_COUNT))
             ]
-            return self._json({"data": {"findScenes": {"count": SCENE_COUNT, "scenes": rows}}})
+            return scene_page(rows, SCENE_COUNT)
 
         # ── The performer listing ──
         # `FindPerformers` had no handler, so every PerformerGrid fetch fell
