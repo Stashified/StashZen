@@ -8,6 +8,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px;
   animation: overlayIn 0.16s var(--ease-tv);
 }
 
@@ -23,6 +24,11 @@
   border-radius: 16px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
   overflow: hidden;
+  /* Bounded, with only the item list scrolling: a menu taller than the screen
+     was clipped with no way to reach its last rows. */
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   animation: panelIn 0.2s var(--ease-tv);
 }
 
@@ -59,6 +65,8 @@
   flex-direction: column;
   padding: 8px;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .item {

@@ -12,8 +12,12 @@
 export function scrollContainerOf(el) {
   let n = el?.parentElement;
   while (n && n !== document.body && n !== document.documentElement) {
-    const oy = getComputedStyle(n).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    // Layout read first: it is the rare answer, while getComputedStyle forces
+    // a style resolve on every ancestor.
+    if (n.scrollHeight > n.clientHeight) {
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === 'auto' || oy === 'scroll') return n;
+    }
     n = n.parentElement;
   }
   return null;

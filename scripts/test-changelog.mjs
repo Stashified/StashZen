@@ -205,6 +205,58 @@ function fakeFetch(text, { status = 200, headers = {} } = {}) {
       fetchImpl: fakeFetch('{}', { headers: { 'content-length': String(CHANGELOG_MAX_BYTES + 1) } }),
     })).reason === 'size');
 
+  // No `body`, so the stream-less fallback has to read `text()`.
+  const fallback = (url, options, timeoutMs, consume) => Promise.resolve(consume({
+    ok: true,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(PAYLOAD),
+  }));
+  check('a response without a stream still parses',
+    (await fetchChangelog({ url: 'x', fetchImpl: fallback })).ok === true);
+
+  // Each code unit is one UTF-16 unit but two UTF-8 bytes, so a code-unit
+  // count would let this through.
+  const multiByte = 'é'.repeat(CHANGELOG_MAX_BYTES / 2 + 1);
+  check('the fallback cap counts bytes, not UTF-16 code units',
+    (await fetchChangelog({
+      url: 'x',
+      fetchImpl: (url2, options, timeoutMs, consume) => Promise.resolve(consume({
+        ok: true, headers: { get: () => null }, text: async () => multiByte,
+      })),
+    })).reason === 'size');
+
+  // A chunk boundary in the middle of 'é' (0xc3 0xa9) must not decode twice.
+  const utf8 = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: 1,
+    releases: [{
+      version: '0.44.0',
+      date: '2026-11-20',
+      sections: [{ title: 'Changes', items: ['Café notes.'] }],
+    }],
+  }));
+  const cut = utf8.indexOf(0xc3) + 1;
+  const pieces = [utf8.slice(0, cut), utf8.slice(cut)];
+  const split = (url, options, timeoutMs, consume) => {
+    let at = 0;
+    return Promise.resolve(consume({
+      ok: true,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          read: async () => (at < pieces.length
+            ? { done: false, value: pieces[at++] }
+            : { done: true }),
+          cancel: async () => {},
+        }),
+      },
+    }));
+  };
+  const decoded = await fetchChangelog({ url: 'x', fetchImpl: split });
+  check('a multi-byte character split across chunks decodes once',
+    decoded.ok === true
+      && decoded.releases?.[0].sections[0].items[0] === 'Café notes.',
+    JSON.stringify(decoded));
+
   check('a timeout is reported as timeout',
     (await fetchChangelog({
       url: 'x', fetchImpl: () => Promise.reject(new StashError('late', 'timeout')),
@@ -270,6 +322,26 @@ function fakeFetch(text, { status = 200, headers = {} } = {}) {
   const replaced = addRelease(base, RELEASE('0.43.1', '2026-11-20', ['again']), { replace: true });
   check('--replace overwrites the entry',
     replaced.ok === true && replaced.payload.releases[0].sections[0].items[0] === 'again');
+
+  const nullRoot = addRelease(null, RELEASE('0.44.0', '2026-11-20', ['new']));
+  check('a literal null payload is refused',
+    nullRoot.ok === false && /not a JSON object/.test(nullRoot.errors[0]), nullRoot.errors?.join(' | '));
+
+  const badList = addRelease({ releases: 'nope' }, RELEASE('0.44.0', '2026-11-20', ['new']));
+  check('a non-array releases field is refused',
+    badList.ok === false && /not an array/.test(badList.errors[0]), badList.errors?.join(' | '));
+
+  const badEntry = addRelease(
+    { schemaVersion: 1, releases: [null] }, RELEASE('0.44.0', '2026-11-20', ['new']));
+  check('a non-object release entry is refused',
+    badEntry.ok === false && /non-object/.test(badEntry.errors[0]), badEntry.errors?.join(' | '));
+
+  const withMeta = addRelease(
+    { schemaVersion: 7, note: 'keep me', releases: [] },
+    RELEASE('0.44.0', '2026-11-20', ['new']));
+  check('unknown top-level metadata survives a publish',
+    withMeta.ok === true && withMeta.payload.schemaVersion === 7
+      && withMeta.payload.note === 'keep me', JSON.stringify(withMeta.payload));
 
   const validated = validateChangelogPayload(added.payload);
   check('the publisher output passes strict validation', validated.ok === true,

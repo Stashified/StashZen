@@ -115,6 +115,10 @@ check('gender nullary stays valid',
   { gender: { modifier: 'IS_NULL', value: ENUMS.GenderEnum[0] } });
 check('a blank gender is dropped',
   performer({ gender: { modifier: 'INCLUDES', value: [] } }), {});
+check('blank entries are dropped from a list value',
+  t({ orientation: { value: [null, ''] } }), {});
+check('a null scalar is dropped, not sent as value: null',
+  t({ details: { modifier: 'EQUALS', value: null } }), {});
 check('resolution display string maps to its member name',
   t({ resolution: { modifier: 'EQUALS', value: '1080p' } }),
   { resolution: { value: 'FULL_HD', modifier: 'EQUALS' } });

@@ -63,14 +63,26 @@ const ENDPOINT = env.VITE_STASH_URL.replace(/\/+$/, '') + '/graphql';
 setSettings({ stashUrl: env.VITE_STASH_URL, stashKey: env.VITE_STASH_API_KEY || '' });
 
 async function post(query, variables) {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(env.VITE_STASH_API_KEY ? { ApiKey: env.VITE_STASH_API_KEY } : {}),
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  let res;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(env.VITE_STASH_API_KEY ? { ApiKey: env.VITE_STASH_API_KEY } : {}),
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+  } catch (e) {
+    // A transport failure is a result for this run, not an unhandled
+    // rejection. Shaped as a GraphQL error so every caller already reports it,
+    // and host-free because this text gets pasted into logs.
+    const code = e?.cause?.code ? ` (${e.cause.code})` : '';
+    return {
+      status: 0,
+      json: { errors: [{ message: `could not reach the configured endpoint${code}` }] },
+    };
+  }
   let json = null;
   try { json = await res.json(); } catch { /* HTML or empty body */ }
   return { status: res.status, json };
@@ -186,9 +198,24 @@ for (const spec of MODES) {
   if (!saved.length) continue;
 
   for (const f of saved) {
-    const stored = typeof f.object_filter === 'string'
-      ? (() => { try { return JSON.parse(f.object_filter); } catch { return null; } })()
-      : f.object_filter;
+    // An empty string is Stash's "no criteria". Anything else that will not
+    // parse is corrupted filter data, which must fail rather than read as
+    // search/sort only.
+    let stored = f.object_filter;
+    let parseError = null;
+    if (typeof stored === 'string') {
+      try { stored = stored.trim() ? JSON.parse(stored) : null; }
+      catch (e) { parseError = e; stored = null; }
+    }
+
+    if (parseError) {
+      checked++;
+      failures++;
+      // V8 quotes the input in its message, and that input is the filter's own
+      // criteria: keep it out of the default log.
+      console.log(`  ✗ ${f.name}: object_filter is not valid JSON${VERBOSE ? ` (${parseError.message})` : ''}`);
+      continue;
+    }
 
     if (stored == null || typeof stored !== 'object') {
       // An empty object_filter means "no criteria", the saved filter does its
@@ -245,8 +272,12 @@ for (const spec of MODES) {
 }
 
 console.log(`\n${'─'.repeat(72)}`);
-if (!checked) {
-  console.log('No saved filters with criteria were found — nothing to verify.');
+// Only say "nothing to verify" when nothing failed either: an unreachable
+// endpoint also leaves `checked` at zero, and the two read very differently.
+if (!checked && !failures) {
+  console.log('No saved filters with criteria were found; nothing to verify.');
+} else if (!checked) {
+  console.log('No saved filters could be checked: see the errors above.');
 } else {
   console.log(`${checked} saved filters with criteria · ${checked - failures}/${checked} pass · ${rescued} rescued by translation`);
   if (appChecks) console.log(`${appChecks} end-to-end checks through the app's own fetchVideos`);

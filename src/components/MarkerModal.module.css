@@ -10,6 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px;
   background: rgba(0, 0, 0, 0.72);
   /* Above the controls bar now that the form also opens from the Markers tab;
      inside the player its parent overlay is the stacking context. */
@@ -18,7 +19,14 @@
 
 .panel {
   width: 980px;
-  max-width: calc(100vw - 80px);
+  /* Fills the overlay's padded content box; a hand-computed 100vw - 80px
+     would drift the moment the padding above changes. */
+  max-width: 100%;
+  /* Bounded so a long tag set cannot push Save off the screen; the panel
+     scrolls, and focus() brings each row into view. */
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
   padding: 28px 32px 24px;
   border-radius: 14px;
   border: 1px solid var(--border-strong);

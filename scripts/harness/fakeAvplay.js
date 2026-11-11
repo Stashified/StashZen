@@ -47,6 +47,10 @@ export function installFakeAvplay({
   // frozen, as on the TV; the coalescer must wait rather than re-issue.
   let seekHoldUntil = 0;
   let openUrl = '';
+  // A delayed prepare belongs to the session that asked for it. Without this,
+  // a timeout left over from a closed or re-opened session completes the new
+  // one, which is exactly what slowPrepare is meant to exercise.
+  let sessionGen = 0;
 
   const calls = {
     open: [],
@@ -96,6 +100,12 @@ export function installFakeAvplay({
     }
   }
 
+  // Idle ticks no-op; leaving the interval armed leaks one per session.
+  function stopClock() {
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
   function complete() {
     if (completed) return;
     completed = true;
@@ -107,6 +117,7 @@ export function installFakeAvplay({
     getVersion: () => 'fake-7.0',
 
     open(url) {
+      sessionGen += 1;
       // An attempt that throws is still an attempt: openAttempts counts asks,
       // which differs from sessions actually opened.
       calls.openAttempts.push(String(url));
@@ -131,7 +142,10 @@ export function installFakeAvplay({
     prepareAsync(onSuccess, onError) {
       calls.prepareCalls += 1;
       state = 'PREPARING';
+      const gen = sessionGen;
       setTimeout(() => {
+        // The session moved on while this one waited.
+        if (gen !== sessionGen || state !== 'PREPARING') return;
         // `failDirect`: the original file is refused, the HLS transcode is not
         //, an older TV playing fewer containers than the probe's panel.
         const directRefused = mode.has('failPrepare')
@@ -170,18 +184,23 @@ export function installFakeAvplay({
     stop() {
       calls.stop += 1;
       state = 'IDLE';
+      stopClock();
+      sessionGen += 1;      // pending timers belong to the old session
     },
 
     close() {
       calls.close += 1;
       state = 'IDLE';
+      stopClock();
+      sessionGen += 1;
     },
 
     seekTo(ms, onSuccess) {
       calls.seek.push(Math.round(ms));
+      const gen = sessionGen;
       if (mode.has('seekThrow')) throw new Error('seek refused');
       if (mode.has('seekError')) {
-        setTimeout(() => { fire('onerror'); }, 20);
+        setTimeout(() => { if (gen === sessionGen) fire('onerror'); }, 20);
         return;
       }
       const target = Math.max(0, Math.round(ms));
@@ -191,6 +210,7 @@ export function installFakeAvplay({
         const wait = Number(win.__fakeSlowSeekMs) || 3000;
         seekHoldUntil = Date.now() + wait;
         setTimeout(() => {
+          if (gen !== sessionGen) return;
           seekHoldUntil = 0;
           positionMs = target;
           lastTick = Date.now();
@@ -214,7 +234,7 @@ export function installFakeAvplay({
         // so it is a runtime error, not a seek-phase one.
         mode.delete('seekErrorOnce');
         positionMs = target;
-        setTimeout(() => { fire('onerror'); }, 600);
+        setTimeout(() => { if (gen === sessionGen) fire('onerror'); }, 600);
         return;
       }
       if (mode.has('stuckSeekOnce')) {
@@ -321,8 +341,7 @@ export function installFakeAvplay({
     },
     complete,
     uninstall() {
-      if (timer) clearInterval(timer);
-      timer = null;
+      stopClock();
       win.webapis = priorWebapis;
       win.tizen = priorTizen;
     },

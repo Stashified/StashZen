@@ -198,25 +198,28 @@ export function useListingControls({ activeTab, dataKey, settings }) {
       setSettings({ gridCols: { ...gridCols, [activeTab]: patch.cols } });
     }
     setControls(prev => {
+      // A copy: the caller's patch can outlive this call, and StrictMode runs
+      // the updater twice.
+      const p = { ...patch };
       // Moving the dropdown off the in-memory filter discards it. Checked
       // against the raw patch value: "All" is `''`, a move away just like
       // picking a saved filter. Without this, choosing All would silently leave
       // the built filter applied.
-      if (patch.filterId !== undefined && patch.filterId !== prev.filterId
-          && patch.filterId !== WORKING_FILTER_ID && prev.workingFilter) {
-        patch.workingFilter = null;
+      if (p.filterId !== undefined && p.filterId !== prev.filterId
+          && p.filterId !== WORKING_FILTER_ID && prev.workingFilter) {
+        p.workingFilter = null;
         // The label and tab marker go with it: leaving the label names a
         // filter no longer applied, and the marker would tell the tab-change
         // effect a filter it no longer has belongs to this tab.
-        patch.workingFilterLabel = null;
-        patch.workingFilterFor = null;
+        p.workingFilterLabel = null;
+        p.workingFilterFor = null;
       }
 
       // Picking a saved filter: also adopt its sort/direction so the
       // visible Sort/Order controls reflect what's actually applied.
       // The user can still override afterwards.
-      if (patch.filterId && patch.filterId !== prev.filterId) {
-        const f = savedFilters.find(x => String(x.id) === String(patch.filterId));
+      if (p.filterId && p.filterId !== prev.filterId) {
+        const f = savedFilters.find(x => String(x.id) === String(p.filterId));
         // A filter made in Stash's web UI can carry a sort this tab does not
         // offer. Adopting it would leave the Sort control showing a value it
         // cannot select. Same check the See-all hand-off gets.
@@ -227,13 +230,13 @@ export function useListingControls({ activeTab, dataKey, settings }) {
         ).flatMap(g => g.options).map(o => o.value);
         if (f?.findFilter?.sort
             && (!validSorts.length || validSorts.includes(f.findFilter.sort))) {
-          patch.sort = f.findFilter.sort;
+          p.sort = f.findFilter.sort;
         }
         if (f?.findFilter?.direction) {
-          patch.order = f.findFilter.direction.toLowerCase() === 'asc' ? 'asc' : 'desc';
+          p.order = f.findFilter.direction.toLowerCase() === 'asc' ? 'asc' : 'desc';
         }
       }
-      return { ...prev, ...patch };
+      return { ...prev, ...p };
     });
   };
 

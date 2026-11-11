@@ -22,8 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env.production
+# Deny every env file: these hold the Stash key that builds inline. The
+# template is the one exception.
 .env
+.env.*
+!.env.example
 
 # Built packages. A .wgt built locally from .env.production has the Stash API
 # key compiled in, so these must never be committed.

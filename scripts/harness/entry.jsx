@@ -141,7 +141,14 @@ const likes = () => {
   return m ? Number(m[1]) : 0;
 };
 
+// Report a missing lookup as one failed check and carry on: a TypeError here
+// would abort run() and collapse the whole suite into HARNESS CRASHED.
+function missingTarget(action) {
+  check(`${action}: the target element exists`, false, 'lookup returned null');
+}
+
 function press(el, key = 'Enter', keyCode = 13) {
+  if (!el) { missingTarget(`press(${key})`); return undefined; }
   el.dispatchEvent(new KeyboardEvent('keydown', {
     key, keyCode, which: keyCode, bubbles: true, cancelable: true,
   }));
@@ -157,6 +164,7 @@ const keyEvent = (type) => new KeyboardEvent(type, {
  * it expires, so the long-press path cannot be faked with a bare keydown.
  */
 async function hold(el, ms = 900) {
+  if (!el) { missingTarget('hold()'); return; }
   el.dispatchEvent(keyEvent('keydown'));
   await sleep(ms);
   el.dispatchEvent(keyEvent('keyup'));
@@ -168,6 +176,7 @@ async function hold(el, ms = 900) {
  * a keydown-only "press" just arms a timer and reads 0 forever.
  */
 async function tap(el, ms = 60) {
+  if (!el) { missingTarget('tap()'); return; }
   el.dispatchEvent(keyEvent('keydown'));
   await sleep(ms);
   el.dispatchEvent(keyEvent('keyup'));

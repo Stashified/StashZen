@@ -6,9 +6,11 @@
  * fragments so this file never contains a JWT-shaped literal.
  */
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseDotenv, scanBundle, checkBundle, readViteEnv } from './check-bundle.mjs';
 
 let passed = 0;
@@ -375,7 +377,21 @@ try {
     check('the unarmed changelog failure says how to arm',
       off.lines.some(l => l.includes('VITE_CHANGELOG_URL')), off.lines.join(' | '));
 
-    const on = checkBundle({ distDir: rawDist, changelogUrl: CHANGELOG });
+    // The pair is armed together, so a changelog URL with the update check off
+    // is still an unarmed build. This used to fall through to "ok changelog".
+    const unarmedUrl = checkBundle({ distDir: rawDist, changelogUrl: CHANGELOG });
+    check('a changelog URL without the update check fails',
+      unarmedUrl.ok === false, unarmedUrl.lines.join(' | '));
+    // The right failure, not just any failure: this is the branch the reorder
+    // moved, and an unrelated red would pass the check above.
+    check('the unarmed-URL failure names the arming pair',
+      unarmedUrl.lines.some(l => l.includes('VITE_UPDATE_CHECK')), unarmedUrl.lines.join(' | '));
+
+    const UPDATE = 'https://api.github.com/repos/x/y/releases/latest';
+    writeFileSync(join(rawDist, 'app.js'), `const u = "${UPDATE}"; const c = "${CHANGELOG}";`);
+    const on = checkBundle({
+      distDir: rawDist, updateCheckEnabled: true, updateCheckUrl: UPDATE, changelogUrl: CHANGELOG,
+    });
     check('the exact changelog URL passes an armed build',
       on.ok === true, on.lines.join(' | '));
     check('the armed changelog message is an ok line',
@@ -383,6 +399,8 @@ try {
 
     const wrong = checkBundle({
       distDir: rawDist,
+      updateCheckEnabled: true,
+      updateCheckUrl: UPDATE,
       changelogUrl: 'https://raw.githubusercontent.com/Stashified/StashZen/main/other.json',
     });
     check('an armed changelog with another endpoint fails',
@@ -390,7 +408,6 @@ try {
 
     // The public pair cannot drift: an update-armed build with no changelog
     // URL is refused even though its own endpoint is present.
-    const UPDATE = 'https://api.github.com/repos/x/y/releases/latest';
     const bothDist = join(root, 'public-pair');
     mkdirSync(bothDist, { recursive: true });
     writeFileSync(join(bothDist, 'app.js'), `const u = "${UPDATE}"; const c = "${CHANGELOG}";`);
@@ -404,6 +421,55 @@ try {
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
+}
+
+// ── the script itself: env precedence, symlinked invocation ─
+// Importing the helpers cannot cover these, and each one was a silent green.
+{
+  const bin = fileURLToPath(new URL('./check-bundle.mjs', import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), 'stashzen-bundle-cli-'));
+  try {
+    const dist = join(dir, 'dist');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, 'app.js'), 'const k = "process-only-key-1234";');
+    writeFileSync(join(dir, '.env'), 'VITE_STASH_API_KEY=file-only-key-5678\n');
+
+    const env = { ...process.env, VITE_STASH_API_KEY: 'process-only-key-1234' };
+    delete env.ALLOW_BAKED_KEY;
+    delete env.CI;
+    env.VITE_UPDATE_CHECK = '';
+    const run = spawnSync(process.execPath, [bin], {
+      cwd: dir, env, encoding: 'utf8', timeout: 60_000,
+    });
+    check('the process environment wins over the env file', run.status === 1,
+      `status=${run.status} ${run.stdout}`);
+    check('...and the refusal names the inlined key',
+      run.stdout.includes('A Stash API key is inlined'), run.stdout);
+
+    // The guard must run when the entry point is a symlink, not exit 0.
+    const linkDir = join(dir, 'link');
+    mkdirSync(linkDir);
+    const link = join(linkDir, 'guard.mjs');
+    // Creating a symlink needs a privilege Windows does not grant by default;
+    // that is no reason to fail the whole test chain.
+    let linked = null;
+    try {
+      symlinkSync(bin, link);
+      linked = spawnSync(process.execPath, [link], {
+        cwd: linkDir, env, encoding: 'utf8', timeout: 60_000,
+      });
+    } catch (err) {
+      console.log(`  skip symlink checks (${err.code || err.message})`);
+    }
+    if (linked) {
+      check('a symlinked invocation still runs the guard', linked.status === 1,
+        `status=${linked.status} ${linked.stdout}`);
+      check('...and reports the missing dist',
+        linked.stdout.includes('dist/ does not exist'), linked.stdout);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 console.log(`\n${passed}/${passed + failed} checks passed`);

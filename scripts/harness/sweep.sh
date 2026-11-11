@@ -33,6 +33,14 @@ set -o pipefail
 MODE=full
 if [ "${1:-}" = "--quick" ]; then MODE=quick; shift; fi
 LABEL=${1:?usage: sweep.sh [--quick] <label>}
+# The label names a directory this script deletes recursively. Restrict it so
+# the cleanup below cannot be pointed at /tmp or outside it.
+case "$LABEL" in
+  .|..|*[!A-Za-z0-9._-]*)
+    echo "sweep.sh: invalid label '$LABEL' (letters, digits, dot, underscore, dash)" >&2
+    exit 2
+    ;;
+esac
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=/tmp/diff/$LABEL
@@ -40,10 +48,10 @@ BASE_PORT=8850
 # Far enough above the pool that adding a driver cannot land on it.
 SERIAL_PORT=$((BASE_PORT + 100))
 WORKERS=${WORKERS:-6}
+# Only the lint log's directory, for now. Clearing the previous round waits
+# until lint has passed: a tree CI would reject must not also destroy the last
+# round's results, which is what they would be compared against.
 mkdir -p "$OUT"
-# Leftovers from an interrupted round of the same label. Safe because sweeps
-# are run one at a time; never while one is in flight.
-rm -rf /tmp/diff-"$LABEL"-*
 
 # name|entry|query|update-check|serial[|server-version]
 FULL_JOBS=(
@@ -103,6 +111,11 @@ FULL_JOBS=(
   "detail|entry.jsx||0|0"
   "performer|performer-entry.jsx||0|0"
   "performerback|performerback-entry.jsx||0|0"
+  # A performer opened from a scene detail: Back must return to the Scenes
+  # listing on the scene card, not the first card. The performer page lists
+  # their scenes under the same `video-` ids, so the cross-tab restore has to
+  # start after the tab commits or it settles on the outgoing screen's copy.
+  "sceneback|sceneback-entry.jsx||0|0"
   # The performer page as a hub (spoke → filtered tab → Back), the quick-filter
   # chips per tab, and Surprise. App-level: the wiring is the subject.
   "hub|hub-entry.jsx||0|0"
@@ -168,15 +181,24 @@ run_one() {  # run_one <port> <name> <entry> [query] [update] [version]
     "$HERE/run.sh" >"$OUT/$name.log" 2>&1
   if [ -f "/tmp/diff-$LABEL-$name/result.json" ]; then
     cp "/tmp/diff-$LABEL-$name/result.json" "$OUT/$name.json"
+    # argv, not string splicing: a quote in OUT or the name used to break or
+    # inject into the Python source.
     local n
-    n=$(python3 -c "import json;r=json.load(open('$OUT/$name.json'));print(f\"{sum(1 for x in r if x['pass'])}/{len(r)}\")")
-    printf '%s\n' "$n" > "$OUT/$name.tally"
-    # Green drivers give back their 50–160 MB as they finish; a red one keeps
-    # its dir for post-mortem. `0/0` is not green: it means the driver
-    # collected nothing, so the run covered no checks.
-    if [ "${n%%/*}" = "${n##*/}" ] && [ "${n##*/}" != "0" ]; then
-      rm -rf "/tmp/diff-$LABEL-$name"
-    fi
+    n=$(python3 "$HERE/tally.py" "$OUT/$name.json")
+    case "$n" in
+      [0-9]*/[0-9]*)
+        printf '%s\n' "$n" > "$OUT/$name.tally"
+        # Green drivers give back their 50–160 MB as they finish; a red one
+        # keeps its dir for post-mortem. `0/0` is not green: it means the
+        # driver collected nothing, so the run covered no checks.
+        if [ "${n%%/*}" = "${n##*/}" ] && [ "${n##*/}" != "0" ]; then
+          rm -rf "/tmp/diff-$LABEL-$name"
+        fi
+        ;;
+      *)
+        printf 'NO RESULTS\n' > "$OUT/$name.tally"
+        ;;
+    esac
   else
     printf 'NO RESULTS\n' > "$OUT/$name.tally"
   fi
@@ -208,6 +230,14 @@ if [ "${SKIP_LINT:-}" != "1" ]; then
     exit 1
   fi
 fi
+
+# This round is going to run: stale .json/.tally/.log files from a previous
+# round would be read as this round's results, and leftovers from an
+# interrupted run of the same label would be reused. Safe because sweeps run
+# one at a time, never while one is in flight.
+rm -rf "$OUT"
+mkdir -p "$OUT"
+rm -rf /tmp/diff-"$LABEL"-*
 
 PARALLEL=()
 SERIAL=()

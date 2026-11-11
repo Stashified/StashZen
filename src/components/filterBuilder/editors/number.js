@@ -18,17 +18,26 @@ export const chainIds = (field, desc, criterion) => {
   return ids;
 };
 
+// DATE/TIMESTAMP keep the format hint; a numeric box names the unit it counts
+// rather than a bare "Number". The unit is shown as supplied, so SI symbols
+// (`cm`, `fps`) keep their case and match the row label.
+const placeholderFor = (desc, numeric) => {
+  if (!numeric) return 'YYYY-MM-DD';
+  return desc.unit || 'Number';
+};
+
 export const parts = (field, desc, criterion) => {
   const inner = innerOf(criterion);
   const numeric = desc.editor === EDITOR.NUMBER
     || desc.editor === EDITOR.HIERARCHICAL_COUNT;
+  const hint = placeholderFor(desc, numeric);
   const out = [{
     kind: 'text',
     id: `fb-val-${field}`,
     apply: 'value',
     numeric,
     value: inner.value ?? '',
-    placeholder: numeric ? 'Number' : 'YYYY-MM-DD',
+    placeholder: hint,
   }];
   if (isRange(desc, criterion)) {
     out.push({

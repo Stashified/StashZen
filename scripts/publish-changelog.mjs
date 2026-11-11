@@ -13,7 +13,8 @@
  *                                              [--out FILE]
  */
 
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, existsSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareVersions } from '../src/utils/updateCheck.js';
@@ -83,6 +84,21 @@ export function parseDraft(text) {
 
 /** Insert or replace one release, newest first. */
 export function addRelease(payload, release, { replace = false } = {}) {
+  // A corrupt `releases` field used to be read as an empty list, so publish
+  // rewrote the file with only the new entry. Refuse instead of discarding.
+  // `null` is valid JSON but not an object; a missing file arrives as
+  // `undefined` and is the only absence this may treat as empty.
+  if (payload === null
+      || (payload !== undefined && (typeof payload !== 'object' || Array.isArray(payload)))) {
+    return { ok: false, errors: ['changelog.json is not a JSON object.'] };
+  }
+  if (payload?.releases !== undefined && !Array.isArray(payload.releases)) {
+    return { ok: false, errors: ['changelog.json "releases" is not an array.'] };
+  }
+  // An entry that is not an object crashes addRelease; refuse it here.
+  if (payload?.releases?.some(r => !r || typeof r !== 'object' || Array.isArray(r))) {
+    return { ok: false, errors: ['changelog.json "releases" has a non-object entry.'] };
+  }
   const releases = Array.isArray(payload?.releases) ? payload.releases.slice() : [];
   const index = releases.findIndex(
     r => compareVersions(r.version, release.version) === 0,
@@ -99,7 +115,12 @@ export function addRelease(payload, release, { replace = false } = {}) {
     releases.push(release);
   }
   releases.sort((a, b) => compareVersions(b.version, a.version) ?? 0);
-  return { ok: true, errors: [], payload: { schemaVersion: 1, releases } };
+  // Merge, so metadata this script does not know about survives a publish.
+  return {
+    ok: true,
+    errors: [],
+    payload: { ...(payload || {}), schemaVersion: payload?.schemaVersion ?? 1, releases },
+  };
 }
 
 /** Markdown body for one release, the same text the app renders. */
@@ -176,18 +197,33 @@ function publish(args) {
     return;
   }
 
-  const text = `${JSON.stringify(
-    { schemaVersion: 1, releases: checked.releases },
-    null,
-    2,
-  )}\n`;
+  // Serialize the merged payload, not a fresh object: metadata this script
+  // does not know about (and the file's schemaVersion) must survive a publish.
+  // Validation strips unknown fields from each release too, so merge it back
+  // onto its raw entry; the validated copy wins for the fields it owns.
+  const releases = checked.releases.map((release) => {
+    const raw = added.payload.releases.find(
+      r => compareVersions(r.version, release.version) === 0,
+    );
+    return raw ? { ...raw, ...release } : release;
+  });
+  const text = `${JSON.stringify({ ...added.payload, releases }, null, 2)}\n`;
   if (args['dry-run']) {
     console.log(text);
     return;
   }
-  const temp = `${CHANGELOG}.tmp`;
-  writeFileSync(temp, text);
-  renameSync(temp, CHANGELOG);
+  // Unique per run: a fixed name lets two concurrent publishes rename each
+  // other's partial file. Removed on every path (a successful rename already
+  // moved it).
+  const temp = `${CHANGELOG}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temp, text);
+    renameSync(temp, CHANGELOG);
+  } finally {
+    // Cleanup must never replace the real error: a failure to delete the temp
+    // file is not a failed publish.
+    try { rmSync(temp, { force: true }); } catch { /* best effort */ }
+  }
   console.log(`Published ${version} (${date}) to changelog.json.`);
 }
 
@@ -230,19 +266,20 @@ function body(args) {
 }
 
 function main() {
-  let args;
+  // The dispatch is inside the try too: readJson, writeFileSync and renameSync
+  // all throw (missing/malformed changelog.json, ENOSPC), and a raw stack was
+  // the wrong answer from a script with its own `x …` error path.
   try {
-    args = parseArgs(process.argv.slice(2));
+    const args = parseArgs(process.argv.slice(2));
+    const command = args._[0];
+    if (command === 'publish') publish(args);
+    else if (command === 'validate') validate(args);
+    else if (command === 'body') body(args);
+    else {
+      fail(['x Usage: publish-changelog.mjs publish|validate|body [options]']);
+    }
   } catch (e) {
     fail([`x ${e.message}`]);
-    return;
-  }
-  const command = args._[0];
-  if (command === 'publish') publish(args);
-  else if (command === 'validate') validate(args);
-  else if (command === 'body') body(args);
-  else {
-    fail(['x Usage: publish-changelog.mjs publish|validate|body [options]']);
   }
 }
 

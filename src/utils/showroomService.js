@@ -24,7 +24,7 @@ import { fetchPerformers, normalizePerformer } from './performerService.js';
 import { fetchGalleries, normalizeGallery } from './galleryService.js';
 
 // Five cards plus the See-all tile make six equal columns, see ShowroomRow.
-const ROW_SIZE = 5;
+export const ROW_SIZE = 5;
 
 // The document's aliased roots, in the order a partial answer is checked for
 // anything at all.

@@ -50,6 +50,10 @@ import { dataSourceKey } from '../utils/settings.js';
 // without turning a persistent failure into a request loop.
 const MAX_PAGE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
+// A listCache abort is not this attempt's verdict, but a fetch layer that
+// aborts every time must still terminate. Small, since a legitimate cache
+// abort happens once per reset, not in a loop.
+const MAX_ABORT_RETRIES = 3;
 
 // The last page 1 each listing showed, kept *outside* listCache on purpose:
 // moving between tabs clears that cache so a server-side change is read again,
@@ -252,11 +256,13 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     // Page 1 gets the same bounded retry as page N: its failure used to be a
     // dead end only a remount cleared. The error is not shown until the budget
     // is spent, a retry already on its way is not something to read about.
+    let abortRetries = 0;
     const attemptFirstPage = () => {
       fetchPageRef.current(1, signal)
         .then(data => {
           if (cancelled || reqId !== requestIdRef.current) return;
           attemptsRef.current = 0;
+          abortRetries = 0;
           setRetrying(false);
           seenIdsRef.current = new Set(data.items.map(it => it.id));
           itemsLenRef.current = data.items.length;
@@ -272,9 +278,17 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
           // A reset aborted a request this identity then joined through
           // listCache's in-flight map. That abort is not this attempt's verdict:
           // our own signal is live, so start again without spending the budget.
-          if (e?.name === 'AbortError') {
-            attemptFirstPage();
-            return;
+          // If our own signal did abort, the identity is dead and the retry
+          // would spin; and a fetch layer that aborts unconditionally still
+          // has to terminate, so the re-issue is capped.
+          // `signal` is undefined when AbortController itself is unavailable
+          // (see abortRef above), so guard the read.
+          if (e?.name === 'AbortError' && !signal?.aborted) {
+            if (abortRetries < MAX_ABORT_RETRIES) {
+              abortRetries += 1;
+              attemptFirstPage();
+              return;
+            }
           }
           attemptsRef.current += 1;
           if (attemptsRef.current >= MAX_PAGE_ATTEMPTS) {
@@ -291,7 +305,11 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
             totalRef.current = 0;
             seededRef.current = false;
             setRetrying(false);
-            setError(e.message);
+            // A spent abort budget would otherwise surface "Aborted", which
+            // reads as a crash rather than a list that did not load.
+            setError(e?.name === 'AbortError'
+              ? 'The list did not load.'
+              : e?.message || 'The list did not load.');
             setLoading(false);
             setItems([]);
             setTotal(0);

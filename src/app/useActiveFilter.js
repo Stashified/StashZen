@@ -33,7 +33,10 @@ export function useActiveFilter({ controls, filterMode, dataKey, quickFilterDefs
 
   // The list the hook delivered, with a just-saved filter's echo standing in
   // until the refetch carries it. See mergeFilterEcho.
-  const filterChoices = mergeFilterEcho(savedFilters, savedFilterEcho, filterMode, dataKey);
+  const filterChoices = useMemo(
+    () => mergeFilterEcho(savedFilters, savedFilterEcho, filterMode, dataKey),
+    [savedFilters, savedFilterEcho, filterMode, dataKey],
+  );
 
   // Resolve filterId → objectFilter (the JSON for the GraphQL filter
   // argument); null when none is selected or the list has not loaded yet.
@@ -62,7 +65,15 @@ export function useActiveFilter({ controls, filterMode, dataKey, quickFilterDefs
   const userSearch = controls.search || '';
   const activeSearchQuery = userSearch || activeFilter?.findFilter?.q || '';
 
-  const filterOptions = buildFilterOptions(filterMode, controls, filterChoices);
+  const filterOptions = useMemo(
+    () => buildFilterOptions(
+      filterMode,
+      controls.workingFilter,
+      controls.workingFilterLabel,
+      filterChoices,
+    ),
+    [filterMode, controls.workingFilter, controls.workingFilterLabel, filterChoices],
+  );
 
   return {
     savedFilters,

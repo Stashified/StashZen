@@ -6,13 +6,14 @@
  * trigger (a sentinel observed inside the scroll container).
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useStableListing } from '../hooks/useStableListing.js';
 import VideoCard from './VideoCard.jsx';
 import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { useSentinelLoadMore } from '../hooks/useSentinelLoadMore.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoGrid.module.css';
 
@@ -49,23 +50,7 @@ export default function VideoGrid({ controls, objectFilter, searchQuery, onVideo
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const root = scrollRef.current;
-    if (!sentinel || !root) return;
-
-    // Three rows of lead, not one: the request plus forty covers takes a
-    // moment on the TV's Wi-Fi, and asking when the sentinel is already
-    // visible is what puts "Loading more…" on screen at every page edge.
-    const observer = new IntersectionObserver(
-      entries => { if (entries[0].isIntersecting) loadMore(); },
-      { root, rootMargin: '1200px 0px', threshold: 0 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
+  useSentinelLoadMore(sentinelRef, scrollRef, loadMore);
 
   if (loading && !videos.length) return (
     <ListingState

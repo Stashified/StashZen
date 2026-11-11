@@ -184,17 +184,18 @@ wait "$FF" 2>/dev/null
 if [ -f /tmp/$NAME/result.json ]; then
   echo
   echo "── results ──"
-  python3 - "$NAME" <<'PY'
-import json, sys
-rows = json.load(open(f'/tmp/{sys.argv[1]}/result.json'))
-passed = sum(1 for r in rows if r['pass'])
-for r in rows:
-    print(f"  {'PASS' if r['pass'] else 'FAIL'}  {r['name']}")
-    if r['detail']:
-        print(f"          {r['detail']}")
-print(f"\n{passed}/{len(rows)} passed")
-PY
+  # Same parser as the sweep; exit 2 is "the file is not check rows", exit 1
+  # is a red run.
+  python3 "$HARNESS/tally.py" --print "/tmp/$NAME/result.json"
+  STATUS=$?
+  if [ "$STATUS" = 2 ]; then
+    echo
+    echo "NO RESULTS — firefox.log tail:"
+    tail -25 /tmp/$NAME/firefox.log
+  fi
+  exit "$STATUS"
 else
   echo "NO RESULTS — firefox.log tail:"
   tail -25 /tmp/$NAME/firefox.log
+  exit 1
 fi

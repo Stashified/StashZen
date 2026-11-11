@@ -949,6 +949,30 @@ async function run() {
     `error row=${partialRow} healthy shelves=${partialShelves}`);
   await setMode({ findStudios: 'ok' });
 
+  // ── H26  a short shelf still reaches its See-all tile ───
+  // Four cards leave an empty column in the six-column strip. Geometry scores
+  // the next shelf's cards as nearer than the tile across that gap, so Right
+  // jumped down; the last card carries a declared edge over it.
+  await setMode({ showroomShort: 'studios' });
+  focus('nav-scenes');
+  await sleep(120);
+  await tapEnter();
+  await sleep(400);
+  focus('nav-home');
+  await sleep(120);
+  await tapEnter();
+  const shortShelf = await waitFor(
+    () => liveIds('studio').filter(id => /^studio-\d+$/.test(id)).length === 4, 6000);
+  focus('studio-4');
+  await sleep(120);
+  await press('ArrowRight');
+  const shortTile = focusedId() === 'showroom-seeall-recent-studios';
+  check("H26 Right from a short shelf's last card reaches its See-all tile",
+    shortShelf && shortTile,
+    `cards=${liveIds('studio').filter(id => /^studio-\d+$/.test(id)).length} `
+    + `Right → ${focusedId()}`);
+  await setMode({ showroomShort: '' });
+
   // ── H12  nothing threw ──────────────────────────────────
   check('H12 no uncaught error during the run', errors.length === 0, errorTail());
 }

@@ -20,6 +20,7 @@
  * there is no server.
  */
 
+import { throwIfAborted } from './abort.js';
 import { getSettings } from './settings.js';
 import { runQuery, withoutCount } from './stashQuery.js';
 import { createListCache, listCacheKey } from './listCache.js';
@@ -63,6 +64,8 @@ export function createEntityService({
   async function load({ sort, order, filter, q, page, limit, query: selectedQuery, signal }) {
     if (getSettings().useMock) {
       await new Promise(r => setTimeout(r, 400));
+      // A superseded or unmounted request must not regenerate the catalogue.
+      throwIfAborted(signal);
 
       // `mock` is async: the generators import their catalogue module on
       // first use so a Live launch never parses it.

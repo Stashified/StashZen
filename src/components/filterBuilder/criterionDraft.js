@@ -251,6 +251,19 @@ export function storedCriterion(desc, c) {
       // though the request form is the bare string. A bare string saved here
       // loaded back as an empty criterion in Stash's web UI.
       return { modifier: 'EQUALS', value: inner.value ?? '' };
+    case EDITOR.STASH_ID:
+    case EDITOR.STASH_IDS: {
+      // Stash stores this criterion flat (`endpoint` and `stash_id` beside the
+      // modifier), not in the builder's nested envelope. Saving the envelope
+      // left Stash's own UI unable to read the criterion back.
+      const out = {
+        modifier: c.modifier,
+        endpoint: inner.endpoint ?? '',
+      };
+      if (desc.editor === EDITOR.STASH_IDS) out.stash_ids = inner.stashIDs ?? '';
+      else out.stash_id = inner.stashID ?? '';
+      return out;
+    }
     case EDITOR.HIERARCHICAL_COUNT:
       // A nullary count takes no operand. Writing `''` here reached GraphQL as
       // `value: ""` against `value: Int!`, a coercion error; an empty object

@@ -172,8 +172,17 @@ export default function PinPad({
 
   useEffect(() => {
     const handler = (e) => {
-      // Never steal keys from a text field. Unreachable in practice since the
-      // pad takes focus on open, a safety net, not a path.
+      // Escape and Back close the pad even from a text field: that guard is
+      // only about digits and Backspace, and a stranded focus must not trap.
+      if (e.key === 'Escape' || isBackCode(e.keyCode)) {
+        e.preventDefault();
+        e.stopPropagation();
+        cbRef.current.onCancel?.();
+        return;
+      }
+
+      // Never steal text input. Unreachable in practice since the pad takes
+      // focus on open, a safety net, not a path.
       if (isTextInput(e.target)) return;
 
       const digit = digitFromEvent(e);
@@ -195,12 +204,6 @@ export default function PinPad({
         setError('');
         update(pinRef.current.slice(0, -1));
         return;
-      }
-
-      if (e.key === 'Escape' || isBackCode(e.keyCode)) {
-        e.preventDefault();
-        e.stopPropagation();
-        cbRef.current.onCancel?.();
       }
     };
 

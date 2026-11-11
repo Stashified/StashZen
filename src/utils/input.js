@@ -12,6 +12,8 @@
  * user.
  */
 
+import { claimArrowSwallow, isRestorePending } from './restorePending.js';
+
 /** Hardware Back on a Samsung remote (as delivered to JS by hwkey-event). */
 export const TIZEN_BACK = 10009;
 /** Back as some remotes send it: a raw key code, not Tizen's constant. */
@@ -19,6 +21,48 @@ export const TIZEN_BACK_ALT = 413;
 
 /** Either Back code. Every Back predicate must use this, not just 10009. */
 export const isBackCode = (code) => code === TIZEN_BACK || code === TIZEN_BACK_ALT;
+
+/**
+ * Arrow presses, for *guards* (the restore's keyboard hold), not for direction
+ * mapping. Only the codes useKeyHandler navigates: Tizen's 412/417 are the
+ * player's own left/right, and the player is a dialog, where this guard yields.
+ */
+const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+const ARROW_KEY_CODES = new Set([37, 38, 39, 40]);
+const isArrowKey = (e) => ARROW_KEYS.has(e.key) || ARROW_KEY_CODES.has(e.keyCode);
+
+// One verdict per event: focus.js (settle) and useKeyHandler (navigate) both
+// ask, and the first ask may spend the restore's free swallow.
+const verdicts = new WeakMap();
+
+/**
+ * An arrow pressed while a restore owns the empty-focus window: the press has
+ * nowhere to move from yet, so the immediate one must neither move focus nor
+ * settle the restore. Shared by focus.js and useKeyHandler so the two halves
+ * cannot drift into a dead key.
+ *
+ * One free press per restore: Back then one quick press is the case this
+ * exists for, but a second fresh press is the user asking to move now, so the
+ * restore settles instead of leaving the remote inert. Held-key repeats are
+ * the same press and stay swallowed. The hold itself gives up after a few
+ * seconds, and Back, Escape and Enter are not arrows and still cancel.
+ */
+export function isRestoreArrowHold(e) {
+  const decided = verdicts.get(e);
+  if (decided !== undefined) return decided;
+
+  const ae = document.activeElement;
+  let hold = false;
+  // A dialog can be up while focus sits on <body> (the player blurs its closed
+  // rail there), so it must yield. An open dropdown trap holds focus itself,
+  // which the test above already catches.
+  if (!(ae && ae !== document.body) && isArrowKey(e)
+      && isRestorePending() && !dialogOpen()) {
+    hold = e.repeat || claimArrowSwallow();
+  }
+  verdicts.set(e, hold);
+  return hold;
+}
 
 /**
  * The nearest ancestor that confines D-pad navigation, or null.
@@ -50,6 +94,29 @@ export function focusScopeOf(el) {
 }
 
 /**
+ * Is this element actually on screen?
+ *
+ * `getClientRects().length > 0`, not `offsetParent`: a position:fixed element
+ * has no offsetParent, and the viewer overlay is fixed. Both reject
+ * display:none and detached nodes; only this accepts fixed positioning.
+ */
+export function isRendered(el) {
+  return el.getClientRects().length > 0;
+}
+
+/**
+ * Newest rendered match, or null. Rendered first, so a layer still mounted but
+ * hidden is not mistaken for the one on top.
+ */
+export function lastRenderedLayer(selector) {
+  const layers = document.querySelectorAll(selector);
+  for (let i = layers.length - 1; i >= 0; i--) {
+    if (isRendered(layers[i])) return layers[i];
+  }
+  return null;
+}
+
+/**
  * True when any modal layer is open, wherever focus is.
  *
  * `focusScopeOf` answers "what confines focus"; this asks "is a modal layer up
@@ -58,13 +125,12 @@ export function focusScopeOf(el) {
  * nothing, closed the page underneath, and left the user on the listing when
  * the player's Back then closed it.
  *
- * Presence is the right test for a page: anything with `role="dialog"` is above
- * it. `data-focus-trap` dropdowns are excluded, a layer inside the page, not a
- * modal over it, and they take focus, which the caller checks with
- * `focusScopeOf`.
+ * Anything with a rendered `role="dialog"` is above a page. `data-focus-trap`
+ * dropdowns are excluded, a layer inside the page, not a modal over it, and
+ * they take focus, which the caller checks with `focusScopeOf`.
  */
 export function dialogOpen() {
-  return document.querySelector('[role="dialog"]') !== null;
+  return lastRenderedLayer('[role="dialog"]') !== null;
 }
 
 /**

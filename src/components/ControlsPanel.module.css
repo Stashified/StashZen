@@ -273,21 +273,19 @@
 }
 
 .stepperBtn:not([aria-disabled="true"]):hover,
-.stepperBtn.focused {
+.stepperBtn:not([aria-disabled="true"]).focused {
   background: var(--bg-card-hover);
   color: var(--accent);
 }
 
-.stepperBtn:not([aria-disabled="true"]):active {
-  transform: scale(0.88);
-  transition: transform 0.05s ease-out;
-}
-
+/* A disabled button still keeps the ring: it is a focus stop, and the cursor
+   must stay visible. Only the interactive accent is withheld. */
 .stepperBtn.focused {
   box-shadow: var(--focus-ring);
 }
 
-.stepperBtn:active {
+/* One rule: the second of the old copies shadowed the first. */
+.stepperBtn:not([aria-disabled="true"]):active {
   transform: scale(0.92);
   transition: transform 0.05s ease-out;
 }

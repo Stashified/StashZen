@@ -25,12 +25,21 @@
 import { useSyncExternalStore } from 'react';
 import { sha256Hex } from './sha256.js';
 
-const LS_KEY = 'tvapp.lock.v1';
+// Exported so the tests point at the same key this module reads.
+export const LS_KEY = 'tvapp.lock.v1';
 
 /** Digits required. Shared with the keypad and the settings section. */
 export const PIN_LENGTH = 4;
 
 const PIN_RE = /^\d{4}$/;
+
+// Digest sizes, shared by the producers below and the blob validator. Both
+// must be declared before `state` is loaded: loadFromStorage reaches them at
+// module init.
+const SALT_HEX = 32;
+const HASH_HEX = 64;
+const SALT_RE = new RegExp(`^[0-9a-f]{${SALT_HEX}}$`);
+const HASH_RE = new RegExp(`^[0-9a-f]{${HASH_HEX}}$`);
 
 // ── In-memory state ──────────────────────────────────────
 let state = loadFromStorage();   // { v, salt, hash } | null
@@ -62,8 +71,14 @@ function loadFromStorage() {
   }
 
   if (!blob || typeof blob !== 'object') return null;
-  if (typeof blob.salt !== 'string' || !blob.salt) return null;
-  if (typeof blob.hash !== 'string' || !blob.hash) return null;
+  // Shape, not just presence: a truncated or partially overwritten blob used
+  // to count as "lock set" while no PIN could ever match it, and there is no
+  // in-app recovery. Accepting anything else would brick the app, which the
+  // FAIL OPEN promise above rules out. A missing `v` predates the version
+  // field and is v1.
+  if (blob.v !== undefined && blob.v !== 1) return null;
+  if (typeof blob.salt !== 'string' || !SALT_RE.test(blob.salt)) return null;
+  if (typeof blob.hash !== 'string' || !HASH_RE.test(blob.hash)) return null;
 
   return { v: 1, salt: blob.salt, hash: blob.hash };
 }
@@ -94,7 +109,7 @@ function digest(salt, pin) {
  */
 function randomSalt() {
   try {
-    const bytes = new Uint8Array(16);
+    const bytes = new Uint8Array(SALT_HEX / 2);
     crypto.getRandomValues(bytes);
     let out = '';
     for (let i = 0; i < bytes.length; i++) {
@@ -103,7 +118,7 @@ function randomSalt() {
     return out;
   } catch (e) {
     let out = '';
-    for (let i = 0; i < 32; i++) out += Math.floor(Math.random() * 16).toString(16);
+    for (let i = 0; i < SALT_HEX; i++) out += Math.floor(Math.random() * 16).toString(16);
     return out;
   }
 }

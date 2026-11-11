@@ -199,8 +199,18 @@ async function run() {
 
   // Settle A while B's page is in flight: A's `finally` must clear only its
   // own slot, or B's is freed and a second trigger refetches B:2.
-  heldResolvers.get('A:2')?.({ items: rowsFor('A', 2), total: KEY_TOTAL });
-  await aPending;
+  const settleA = heldResolvers.get('A:2');
+  check('L9 the in-flight A:2 request can be settled', typeof settleA === 'function',
+    `resolvers: ${[...heldResolvers.keys()].join(' ') || '(none)'}`);
+  settleA?.({ items: rowsFor('A', 2), total: KEY_TOTAL });
+  // A missing resolver would leave this pending forever and hang the runner
+  // before finish(), so the wait is bounded and reported.
+  const aSettled = await Promise.race([
+    aPending.then(() => true, () => true),
+    sleep(3000).then(() => false),
+  ]);
+  check('L9 the settled A:2 request completes', aSettled,
+    'aPending did not settle within 3 s');
   const secondTrigger = keyProbe.list.loadMore();
 
   // 60 rows is B's whole listing: page 1 (40) plus page 2 (20).

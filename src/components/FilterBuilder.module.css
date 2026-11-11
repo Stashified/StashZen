@@ -1,8 +1,9 @@
 /*
  * FilterBuilder and EntityPicker/FieldPicker all import this file, so the
- * `.pick*` block below is shared by every nested layer. The nesting is DOM
- * nesting (no portal, see EntityPicker), so inner layers size against the
- * outer panel, not the viewport.
+ * `.pick*` block below is shared by every nested layer. The pickers are
+ * siblings of the builder's `.panel` (no portal, see EntityPicker), so their
+ * sheets size against the fixed `.overlay` and use the viewport, not the
+ * builder's content-driven height.
  */
 
 .overlay {
@@ -119,6 +120,11 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+
+/* The unit inside a row label keeps its case: cm and kg are wrong in caps. */
+.unit {
+  text-transform: none;
 }
 
 .rowRemove {
@@ -353,8 +359,9 @@
   font-size: 14px;
 }
 
-/* DOM children of `.panel`, so they cover it rather than the viewport, which
-   is also what makes `focusScopeOf` find them as the nearest dialog. */
+/* Siblings of `.panel`: the nearest positioned ancestor is the fixed
+   `.overlay`, so the sheet covers the viewport and is not squeezed by a short
+   filter. Each is its own `role="dialog"` focus scope. */
 .pickOverlay {
   position: absolute;
   inset: 0;

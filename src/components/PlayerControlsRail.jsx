@@ -144,11 +144,15 @@ const OptionsIcon = () => (
  * A missing handler disables the button too, so an unbuilt action cannot ship
  * as a dead-looking control.
  */
-function RailButton({ id, label, disabled = false, active = false, onEnter, children }) {
-  const { ref, focused } = useFocusable({ id, zone: ZONE, onEnter });
+const RailButton = forwardRef(function RailButton(
+  { id, label, disabled = false, active = false, onEnter, children }, ref,
+) {
+  const { ref: btnRef, focused, focus } = useFocusable({ id, zone: ZONE, onEnter });
+  // Exposes focus to a caller that must move the cursor here programmatically.
+  useImperativeHandle(ref, () => ({ focus }), [focus]);
   return (
     <button
-      ref={ref}
+      ref={btnRef}
       type="button"
       className={[
         styles.railBtn,
@@ -162,7 +166,7 @@ function RailButton({ id, label, disabled = false, active = false, onEnter, chil
       {children}
     </button>
   );
-}
+});
 
 const PlayerControlsRail = forwardRef(function PlayerControlsRail({
   playing,
@@ -191,13 +195,9 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
     zone: ZONE,
     onEnter: onPlayPause,
   });
-  // Its own hook rather than a RailButton so the queue panel can put the
-  // cursor back on it when it closes.
-  const queueBtn = useFocusable({
-    id: 'player-rail-queue',
-    zone: ZONE,
-    onEnter: onOpenQueue,
-  });
+  // Its own component so the hook mounts with the button (`showQueue` can flip
+  // after the rail did); the ref lets the queue panel put the cursor back.
+  const queueBtnRef = useRef(null);
   // Same for the options menu's close landing.
   const optionsBtn = useFocusable({
     id: 'player-rail-options',
@@ -209,7 +209,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
 
   useImperativeHandle(ref, () => ({
     focusPlayPause: playPause.focus,
-    focusQueue: queueBtn.focus,
+    focusQueue: () => queueBtnRef.current?.focus(),
     focusOptions: optionsBtn.focus,
     /**
      * True while the cursor is anywhere on the rail. The player uses it to
@@ -217,7 +217,7 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
      * knowing its DOM.
      */
     holdsFocus: () => !!railElRef.current?.contains(document.activeElement),
-  }), [playPause.focus, queueBtn.focus, optionsBtn.focus]);
+  }), [playPause.focus, optionsBtn.focus]);
 
   return (
     <div ref={railElRef} className={styles.rail} role="toolbar" aria-label="Player controls">
@@ -258,15 +258,16 @@ const PlayerControlsRail = forwardRef(function PlayerControlsRail({
         <>
           <span className={styles.sep} aria-hidden="true" />
 
-          <button
-            ref={queueBtn.ref}
-            type="button"
-            className={[styles.railBtn, queueBtn.focused ? styles.focused : ''].join(' ')}
-            onClick={onOpenQueue}
-            aria-label="Up next"
+          {/* A component of its own, so `useFocusable` registers with the
+              button: the rail can flip `showQueue` after its first render. */}
+          <RailButton
+            ref={queueBtnRef}
+            id="player-rail-queue"
+            label="Up next"
+            onEnter={onOpenQueue}
           >
             <QueueIcon />
-          </button>
+          </RailButton>
         </>
       )}
 

@@ -43,6 +43,9 @@ export default function Carousel({
   controls, objectFilter, searchQuery, view, onSelect, onLongPress,
 }) {
   const { sort, order } = controls;
+  // One identity for the list and the focus reset, so a filter object rebuilt
+  // with the same contents cannot reset the focused slot.
+  const requestKey = pageRequestKey(sort, order, objectFilter, searchQuery);
   const { Card, service, itemsKey, focusPrefix, noun, ariaLabel, hero, slotWidth, entity } = view;
 
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -66,7 +69,7 @@ export default function Carousel({
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list and the focus with it.
-    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    requestKey,
     focusPrefix,
     entity,
   });
@@ -78,12 +81,21 @@ export default function Carousel({
 
   // Reset the focused slot when the list is replaced, or the strip centres an
   // index that no longer exists.
-  useEffect(() => { setFocusedIndex(0); }, [sort, order, objectFilter, searchQuery]);
+  useEffect(() => { setFocusedIndex(0); }, [requestKey]);
 
   useEffect(() => {
     if (items.length === 0) return;
     if (items.length - focusedIndex <= LOAD_MORE_THRESHOLD) loadMore();
   }, [focusedIndex, items.length, loadMore]);
+
+  // Keep the state in range as well as the render: a row that shrinks in place
+  // would otherwise leave the load-more check negative, and re-centre the
+  // stale slot as soon as the next page grows the list back.
+  useEffect(() => {
+    if (items.length && focusedIndex > items.length - 1) {
+      setFocusedIndex(items.length - 1);
+    }
+  }, [focusedIndex, items.length]);
 
   // Read inside the listener, not a dependency: focus moves once per keypress,
   // and a stale closure would only ever re-subscribe.
@@ -151,8 +163,11 @@ export default function Carousel({
   );
 
   // Fixed-width slots; the strip translates to centre the focused one, and CSS
-  // scales the off-centre cards via the depth indices.
-  const focused = items[focusedIndex] || items[0];
+  // scales the off-centre cards via the depth indices. The index is clamped so
+  // a row that shrinks in place (a removed card, a stale restore) never
+  // centres a slot that no longer exists.
+  const index = Math.min(focusedIndex, items.length - 1);
+  const focused = items[index];
   const { title, meta = [], blurb = null } = hero(focused);
 
   return (
@@ -179,7 +194,7 @@ export default function Carousel({
             depending on the focused row. */}
         {blurb && <p className={styles.heroBlurb}>{blurb}</p>}
         <div className={styles.heroCounter}>
-          <span className={styles.heroCounterCur}>{focusedIndex + 1}</span>
+          <span className={styles.heroCounterCur}>{index + 1}</span>
           <span className={styles.heroCounterSep}>/</span>
           <span className={styles.heroCounterTotal}>{total || items.length}</span>
         </div>
@@ -191,12 +206,12 @@ export default function Carousel({
           className={styles.track}
           style={{
             // The track's origin is the stage centre (`left: 50%`), so shift
-            // left by (focusedIndex + 0.5) slots to centre the focused one.
-            transform: `translateX(calc(-1 * ${focusedIndex + 0.5} * var(--slot-w)))`,
+            // left by (index + 0.5) slots to centre the focused one.
+            transform: `translateX(calc(-1 * ${index + 0.5} * var(--slot-w)))`,
           }}
         >
           {items.map((item, i) => {
-            const offset = i - focusedIndex;
+            const offset = i - index;
             const abs = Math.abs(offset);
             // Beyond 4 away is off-screen and would only hold preview videos
             // open.
@@ -209,10 +224,10 @@ export default function Carousel({
                 style={{
                   // Fade and shrink with distance from centre.
                   opacity: visible ? Math.max(0.2, 1 - abs * 0.2) : 0,
-                  transform: `scale(${i === focusedIndex ? 2 : 0.82})`,
+                  transform: `scale(${i === index ? 2 : 0.82})`,
                   zIndex: 100 - abs,
                 }}
-                aria-hidden={i !== focusedIndex}
+                aria-hidden={i !== index}
               >
                 {visible && (
                   <Card

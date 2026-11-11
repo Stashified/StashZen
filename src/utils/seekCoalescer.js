@@ -80,6 +80,9 @@ export function createSeekCoalescer({
   let active = false;
   let target = null;
   let issuedAt = 0;
+  // Set only by issue(), not by the settle-window reset: a seek issued just
+  // before the deadline still gets a chance to land.
+  let issuedFreshAt = 0;
   let issuedPosition = null;
   // Distance to travel at issue time: the difference between a slow seek and
   // an ignored one; null when the position was unreadable at issue.
@@ -143,6 +146,7 @@ export function createSeekCoalescer({
   function issue(next) {
     target = next;
     issuedAt = now();
+    issuedFreshAt = issuedAt;
     closeSince = 0;
     // Where the engine was at issue: tells "still working" (frozen) from
     // "ignored" (playback ran on *away* from the target).
@@ -185,14 +189,17 @@ export function createSeekCoalescer({
       if (!active) {
         burstRequests = 0;
         deadlineExtended = false;
+        // Burst-scoped, not request-scoped: resetting them here re-armed the
+        // one-shot re-issue on every press and restarted the deadline, so an
+        // overlapped burst could re-issue repeatedly and never expire.
+        burstReissued = false;
+        burstStartedAt = now();
       }
       active = true;
       degraded = false;
       retries = 0;
       closeSince = 0;
       burstRequests += 1;
-      burstReissued = false;
-      burstStartedAt = now();
       if (issue(next)) return;
 
       // The native call threw before the seek ever started. Three throws in a
@@ -241,6 +248,12 @@ export function createSeekCoalescer({
       // the window to re-elapse after it passed added up to one more window
       // (3 s) of dead air before recovery (a 4 s deadline fired at 6.2 s).
       const expired = now() - burstStartedAt >= maxWaitWindow();
+      // A replacement issued just before the deadline has had no chance yet,
+      // so it must not be judged stuck *or* ignored on the next tick. Burst-
+      // scoped: a single request still ends at the deadline.
+      if (expired && burstRequests > 1 && now() - issuedFreshAt < settleWindow()) return;
+      // Not debounced by the settle window: waiting for it to re-elapse added
+      // up to 3 s of dead air before recovery.
       if (!expired && now() - issuedAt < settleWindow()) return;
 
       // The position is at the target and only the engine's playing state is
@@ -282,7 +295,7 @@ export function createSeekCoalescer({
         // overlapped burst that left the engine at the pre-burst position lost
         // the final target; one fresh re-issue recovers it. A slow single seek
         // never qualifies (burstRequests > 1 is the tell, not time).
-        if (!moved && burstRequests > 1 && !burstReissued) {
+        if (!moved && readable && issuedPosition != null && burstRequests > 1 && !burstReissued) {
           burstReissued = true;
           if (!issue(target)) degrade(target, 'threw');
           return;

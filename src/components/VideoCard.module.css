@@ -83,7 +83,9 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  animation: imgFade 0.14s ease-out;
+  /* No entrance animation: every cover mounts together, which restarts the old
+     fade on ~10 full-HD decodes at once. The page-level fade covers first
+     paint, as the `.card` rule above already notes. */
 }
 /* No focus scale on the cover itself: the card already scales, and stacking
    another 1.05 made it 1.1025 and re-sampled the full-HD texture for a zoom
@@ -264,11 +266,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 60%;
-}
-
-@keyframes imgFade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 /* Bottom edge of the thumbnail; the accent fill reads as "your progress"

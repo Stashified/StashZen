@@ -246,11 +246,15 @@ async function runKeys() {
   await holdEnter(900, { repeatEvery: 90, withRepeatFlag: false });
   await sleep(900);          // long enough for a stray second timer to fire
   const sixStillThere = !!cardEl('6');
+  // Sample the open menu before the cleanup Escape closes it. The restore is
+  // the discriminator: a stray second timer would have re-recorded the return
+  // target from a menu row, so focus would land on the fallback, not card 6.
+  const menuWasOpen = ONLY_MENU();
   press('Escape', 27);
   await sleep(300);
   check('K3 unflagged repeats do not arm a second long press',
-    sixStillThere && NO_OVERLAY() && active() === cardEl('6'),
-    `${overlayState()}, card 6 present: ${sixStillThere}, focus: ${focusLabel()}`);
+    menuWasOpen && sixStillThere && NO_OVERLAY() && active() === cardEl('6'),
+    `menu ${menuWasOpen} → ${overlayState()} after Escape, card 6 present: ${sixStillThere}, focus: ${focusLabel()}`);
 
   // ── Details from the menu ────────────────────────────────
   // The row has to open the same page a card press does. Checking only that

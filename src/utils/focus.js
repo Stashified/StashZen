@@ -1,4 +1,5 @@
 import { registry } from '../hooks/useFocusable.js';
+import { isRestoreArrowHold } from './input.js';
 import { beginRestore, endRestore } from './restorePending.js';
 
 /** Focus a card by id, waiting for it to exist.
@@ -31,17 +32,19 @@ const listings = new Map();
 
 // Restore requests, for listings that only mount the slots near the centre
 // (the Carousel). The last request is kept so a listener that mounts after the
-// call, a tab remount, still hears it.
+// call, a tab remount, still hears it. Every id is replayed: a late shelf may
+// know only the second candidate (`showroom-…-video-x`), and replaying just
+// `video-x` left it ignoring the request.
 const restoreListeners = new Set();
-let pendingRestoreId = null;
+let pendingRestoreIds = [];
 let restoreSeq = 0;
 
 /** Subscribe to focus-restore requests. Returns the unsubscribe function. */
-// A listener receives the id to restore, or null when the request ends
+// A listener receives an id to restore, or null when the request ends
 // without landing (a user key or the deadline).
 export function onFocusRestoreRequest(fn) {
   restoreListeners.add(fn);
-  if (pendingRestoreId) fn(pendingRestoreId);
+  for (const id of pendingRestoreIds) fn(id);
   return () => { restoreListeners.delete(fn); };
 }
 
@@ -102,8 +105,19 @@ export function focusOriginCard(tab, focusId, { defer = false } = {}) {
 export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
   const ids = (Array.isArray(id) ? id : [id]).filter(Boolean);
   if (!ids.length) return;
-  const prefix = prefixOf(ids[0]);
   const deadline = Date.now() + MAX_RESTORE_MS;
+  // Any candidate's prefix can own the listing to page; `video-x` may have a
+  // driver while the shelf id that actually mounts does not.
+  const listingFor = () => {
+    let fallbackDriver = null;
+    for (const fid of ids) {
+      const d = listings.get(prefixOf(fid));
+      if (!d) continue;
+      if (d.canLoad?.()) return d;
+      fallbackDriver = fallbackDriver || d;
+    }
+    return fallbackDriver;
+  };
   let pages = 0;
   let settled = false;
   let timer = null;
@@ -113,13 +127,14 @@ export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
 
   // Let a virtualising strip render the target before the poll looks for it.
   const token = ++restoreSeq;
-  pendingRestoreId = ids[0];
+  pendingRestoreIds = ids.slice();
   for (const fid of ids) {
     for (const listener of restoreListeners) listener(fid);
   }
 
   // Tell the listings to hold their first-card auto-focus until this lands.
-  beginRestore();
+  // The token pairs the release with this restore, not whichever is newest.
+  const holdToken = beginRestore();
 
   const clearTimer = () => {
     clearTimeout(timer);
@@ -129,32 +144,53 @@ export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
     if (settled) return;
     settled = true;
     if (token === restoreSeq) {
-      pendingRestoreId = null;
+      pendingRestoreIds = [];
       // A null tells listeners the request is over. Without it a strip keeps
       // a target that may never arrive and re-centres on it pages later.
       for (const listener of restoreListeners) listener(null);
     }
     clearTimer();
     window.removeEventListener('keydown', onUserKey, true);
-    endRestore();
+    endRestore(holdToken);
   };
   // The user outranks a restore: a page-4 card can take seconds, and without
   // this a D-pad press during the wait would be yanked back when it lands. The
   // listener is added after Back's keydown has dispatched, so it never cancels
   // the restore it caused.
-  const onUserKey = () => settle();
+  //
+  // Settling on an idle arrow hands the cursor to the listing's first card
+  // rather than the card being restored, so `isRestoreArrowHold` spares it; the
+  // key handler spares the same press. A modal layer up means the user is
+  // navigating that instead, so the restore settles to keep its focus out of
+  // the dialog.
+  const onUserKey = (e) => {
+    if (isRestoreArrowHold(e)) return;
+    settle();
+  };
   window.addEventListener('keydown', onUserKey, true);
+
+  // A driver that throws must not strand the restore: log it, settle so the
+  // flag is released, and place focus like the deadline branch does.
+  const runAttempt = () => {
+    try {
+      attempt();
+    } catch (err) {
+      console.error('[StashZen] focus restore failed:', err);
+      settle();
+      if (!(focusedEl && document.contains(focusedEl))) fallback?.();
+    }
+  };
 
   // One timer at a time; overlapping poll chains would pile up near the
   // deadline.
   const schedule = (ms) => {
     clearTimer();
-    timer = setTimeout(attempt, ms);
+    timer = setTimeout(runAttempt, ms);
   };
 
   function attempt() {
     if (settled) return;
-    const driver = prefix ? listings.get(prefix) : null;
+    const driver = listingFor();
     for (const fid of ids) {
       const el = registry.get(fid)?.el;
       if (el && document.contains(el)) {
@@ -191,7 +227,16 @@ export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
     // can be in flight (a Back pressed twice), and they must not fetch the
     // same page twice.
     driver.pending = true;
-    Promise.resolve(driver.loadMore?.())
+    let load;
+    try {
+      load = driver.loadMore?.();
+    } catch (err) {
+      // Reset before the outer handler settles: a stuck `pending` would make
+      // every later restore on this listing wait out the deadline.
+      driver.pending = false;
+      throw err;
+    }
+    Promise.resolve(load)
       .then((started) => {
         driver.pending = false;
         if (settled) return;
@@ -214,5 +259,5 @@ export function focusByIdWhenReady(id, { fallback, defer = false } = {}) {
   // and settle on an element the reset replaces, leaving the cursor on the
   // first card. `beginRestore` is already up, so first-card autofocus waits.
   if (defer) schedule(RETRY_MS);
-  else attempt();
+  else runAttempt();
 }

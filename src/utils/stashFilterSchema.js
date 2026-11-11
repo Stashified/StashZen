@@ -13,7 +13,6 @@
  *
  * Generated:   2026-10-16
  * Stash:       v0.31.1
- * Endpoint:    http://192.168.1.10:8087
  * Filter types walked: 11
  * Enums captured: 4
  *

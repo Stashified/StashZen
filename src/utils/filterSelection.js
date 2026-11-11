@@ -54,14 +54,14 @@ export function mergeFilterEcho(savedFilters, echo, filterMode, dataKey) {
  * its own name when activating a tag or studio did, otherwise landing on
  * Scenes under a filter looks like the app acting on its own.
  */
-export function buildFilterOptions(filterMode, controls, filterChoices) {
+export function buildFilterOptions(filterMode, workingFilter, workingFilterLabel, filterChoices) {
   if (!filterMode) return null;
   return [
     { value: '', label: 'All' },
-    ...(controls.workingFilter
+    ...(workingFilter
       ? [{
           value: WORKING_FILTER_ID,
-          label: controls.workingFilterLabel || 'Custom filter',
+          label: workingFilterLabel || 'Custom filter',
         }]
       : []),
     ...filterChoices.map(f => ({ value: String(f.id), label: f.name })),

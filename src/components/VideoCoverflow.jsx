@@ -31,6 +31,9 @@ const RENDER_RANGE = 5    // cards to render on each side of focus
 export default function VideoCoverflow({ controls, objectFilter, searchQuery, onVideoSelect, onVideoLongPress }) {
 
   const { sort, order } = controls;
+  // One identity for the list and the focus reset, so a filter object rebuilt
+  // with the same contents cannot reset the focused slot.
+  const requestKey = pageRequestKey(sort, order, objectFilter, searchQuery);
 
   const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -49,7 +52,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   } = usePagedList({
     fetchPage,
     // A new request identity resets the list, and the focus along with it.
-    requestKey: pageRequestKey(sort, order, objectFilter, searchQuery),
+    requestKey,
     // A restore by `video-<id>` must page forward past the first page, see
     // utils/focus.js.
     focusPrefix: 'video',
@@ -65,14 +68,29 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
   // Reset the focused slot when the list is replaced, or the rail would centre
   // an index that no longer exists.
-  useEffect(() => { setFocusedIndex(0); }, [sort, order, objectFilter, searchQuery]);
+  useEffect(() => { setFocusedIndex(0); }, [requestKey]);
 
   useEffect(() => {
     if (videos.length === 0) return;
     if (videos.length - focusedIndex <= LOAD_MORE_THRESHOLD) loadMore();
   }, [focusedIndex, videos.length, loadMore]);
 
+  // Same shrink guard as Carousel: the state must leave the removed slot, not
+  // just the render, or the load-more arithmetic goes negative.
+  useEffect(() => {
+    if (videos.length && focusedIndex > videos.length - 1) {
+      setFocusedIndex(videos.length - 1);
+    }
+  }, [focusedIndex, videos.length]);
+
   const [isFocusInGrid, setIsFocusInGrid] = useState(false);
+
+  // The listener reads the list and the current slot at event time. Depending
+  // on them would tear it down and re-add it on every focus change and page.
+  const videosRef = useRef(videos);
+  videosRef.current = videos;
+  const focusedIndexRef = useRef(focusedIndex);
+  focusedIndexRef.current = focusedIndex;
 
   useEffect(() => {
     const onFocus = () => {
@@ -81,12 +99,12 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
       setIsFocusInGrid(inGrid);
       if (!inGrid) return;
       const id = fid.slice('video-'.length);
-      const idx = videos.findIndex(v => String(v.id) === String(id));
-      if (idx >= 0 && idx !== focusedIndex) setFocusedIndex(idx);
+      const idx = videosRef.current.findIndex(v => String(v.id) === String(id));
+      if (idx >= 0 && idx !== focusedIndexRef.current) setFocusedIndex(idx);
     };
     document.addEventListener('focusin', onFocus);
     return () => document.removeEventListener('focusin', onFocus);
-  }, [videos, focusedIndex]);
+  }, []);
 
   // Only ±RENDER_RANGE slots are mounted, so a restore naming a card outside
   // that window has no element to reach. Move the window to it, now or when
@@ -131,7 +149,13 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
     <ListingState id="state-videos" styles={styles} text="No videos found." />
   );
 
-  const focused = videos[focusedIndex] || videos[0];
+  // A replaced list can leave the index past the end for a frame; clamp it so
+  // the counter and the window never point outside the rail.
+  const index = Math.min(focusedIndex, videos.length - 1);
+  const focused = videos[index] || videos[0];
+  // The window's first index; also the offset for the absolute index of a
+  // sliced entry.
+  const windowStart = Math.max(0, index - RENDER_RANGE);
 
   return (
     <div className={styles.wrapper}>
@@ -144,7 +168,7 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
           {focused.rating && <span className={styles.heroRating}>★ {focused.rating}</span>}
         </div>
         <div className={styles.heroCounter}>
-          <span className={styles.heroCounterCur}>{focusedIndex + 1}</span>
+          <span className={styles.heroCounterCur}>{index + 1}</span>
           <span className={styles.heroCounterSep}>/</span>
           <span className={styles.heroCounterTotal}>{total || videos.length}</span>
         </div>
@@ -152,10 +176,12 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
       <div className={styles.stage}>
         <div className={styles.scene}>
-          {videos.map((video, i) => {
-            const offset = i - focusedIndex;
+          {/* Slice before mapping: the rail accumulates pages, and mapping all
+              of it just to return null past the window is work per frame. */}
+          {videos.slice(windowStart, index + RENDER_RANGE + 1).map((video, n) => {
+            const i = windowStart + n;
+            const offset = i - index;
             const abs = Math.abs(offset);
-            if (abs > RENDER_RANGE) return null;
 
             const sign = Math.sign(offset);
             // 0 at centre, ±SIDE_ROT for first neighbours, capped near 70°.

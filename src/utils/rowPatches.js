@@ -21,7 +21,15 @@ export function onRowPatch(entity, fn) {
 /** Announce the fields a write changed, for rows of this entity. */
 export function publishRowPatch(entity, id, patch) {
   if (id == null) return;
-  for (const fn of listeners.get(entity) || []) fn(String(id), patch);
+  // Snapshot and isolate: a listener that throws must not skip the rest or
+  // bubble into the caller, where it would report a landed write as failed.
+  for (const fn of [...(listeners.get(entity) || [])]) {
+    try {
+      fn(String(id), patch);
+    } catch (e) {
+      console.warn('[rowPatches] patch listener failed:', e);
+    }
+  }
 }
 
 /** Subscribe to deletions for one entity. Returns the unsubscribe function. */
@@ -34,5 +42,11 @@ export function onRowRemove(entity, fn) {
 /** Announce that a row no longer exists. */
 export function publishRowRemove(entity, id) {
   if (id == null) return;
-  for (const fn of removers.get(entity) || []) fn(String(id));
+  for (const fn of [...(removers.get(entity) || [])]) {
+    try {
+      fn(String(id));
+    } catch (e) {
+      console.warn('[rowPatches] remove listener failed:', e);
+    }
+  }
 }

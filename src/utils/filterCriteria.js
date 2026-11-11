@@ -323,6 +323,30 @@ export function labelFor(field) {
   return LABELS[field] || humanise(field);
 }
 
+// What a numeric value counts. A bare "Number" reads as minutes for a
+// duration and megabytes for a size, so the row says which.
+//
+// rating100 is deliberately absent: the box takes the wire scale (0 to 100)
+// while the app shows ratings out of 10, so a "0 to 100" hint invites a
+// fractional entry that IntCriterionInput rejects.
+export const VALUE_UNITS = {
+  duration: 'seconds',
+  play_duration: 'seconds',
+  resume_time: 'seconds',
+  height_cm: 'cm',
+  penis_length: 'cm',
+  weight: 'kg',
+  age: 'years',
+  performer_age: 'years',
+  framerate: 'fps',
+  bitrate: 'bps',
+};
+
+/** The unit a numeric value box expects, or null when the label says enough. */
+function unitFor(field) {
+  return VALUE_UNITS[field] || null;
+}
+
 // ── Entity sources for multi-selects ──────────────────────
 //
 // Which list the picker draws from, derived from the field name with the
@@ -428,7 +452,7 @@ function isMissingFor(filterTypeName, version) {
 
 /**
  * Every field of `filterTypeName`, as a descriptor:
- *   { field, type, editor, label, common, reason, modifierOptions,
+ *   { field, type, editor, label, unit, common, reason, modifierOptions,
  *     enumOptions, entity, hierarchical }
  *
  * `reason` is set exactly when `editor` is null; the builder renders those in
@@ -450,12 +474,17 @@ export function criteriaFor(filterTypeName, version = getServerVersion()) {
     const vocabulary = editor === EDITOR.IS_MISSING
       ? isMissingFor(filterTypeName, version)
       : null;
+    // A unit names a measured value; counts and ids take none, and the table
+    // holds no entries for them.
+    const unit = editor === EDITOR.NUMBER ? unitFor(field) : null;
 
     return {
       field,
       type,
       editor,
+      // The unit is separate so a row can keep its case; see CriterionRow.
       label: labelFor(field),
+      unit,
       common: common.includes(field),
       reason: editor ? null : unreachableReason(field, type),
       modifierOptions: editor ? modifiersFor(field, type, CRITERION_FIELDS) : [],

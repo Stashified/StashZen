@@ -342,12 +342,11 @@ async function run() {
     const t = homeRow()?.textContent.trim().toLowerCase();
     return t ? `nav-${t}` : null;
   };
-  const leftFromCards = ['video-1', 'video-5', 'video-9']
-    .filter(id => registry.has(id))
-    .map(id => `${id} ← ${edges[id]?.ArrowLeft}`);
+  const cards = ['video-1', 'video-5', 'video-9'].filter(id => registry.has(id));
+  const leftFromCards = cards.map(id => `${id} ← ${edges[id]?.ArrowLeft}`);
+  // An empty candidate set would make every() vacuously true.
   check('R7 Left from a card lands on the active rail row',
-    ['video-1', 'video-5', 'video-9'].filter(id => registry.has(id))
-      .every(id => edges[id]?.ArrowLeft === activeRowId()),
+    cards.length > 0 && cards.every(id => edges[id]?.ArrowLeft === activeRowId()),
     `${leftFromCards.join('   ')}   (active row is ${activeRowId()})`);
 
   // Left from the bar's leftmost control returns to the rail. From the middle,
@@ -365,13 +364,13 @@ async function run() {
   // The mirror half the `verticalOnly` flag exists for. With the bar in the
   // grid's zone, Right from video-2 went to the mute toggle 21 px right and
   // 166 px up (score 269), beating video-3 at 276 px right (282).
-  const sidewaysIntoCards = ['video-1', 'video-2', 'video-4']
-    .filter(id => registry.has(id))
+  const sidewaysCards = ['video-1', 'video-2', 'video-4'].filter(id => registry.has(id));
+  const sidewaysIntoCards = sidewaysCards
     .map(id => `${id}: →${edges[id]?.ArrowRight} ←${edges[id]?.ArrowLeft}`)
     .join('   ');
   check('R7 no card reaches the bar sideways',
-    ['video-1', 'video-2', 'video-4'].filter(id => registry.has(id))
-      .every(id => !inBar(edges[id]?.ArrowRight) && !inBar(edges[id]?.ArrowLeft)),
+    sidewaysCards.length > 0
+      && sidewaysCards.every(id => !inBar(edges[id]?.ArrowRight) && !inBar(edges[id]?.ArrowLeft)),
     sidewaysIntoCards);
 
   // Right from the rail must not reach the bar's search box, which sits

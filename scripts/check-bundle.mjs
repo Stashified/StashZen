@@ -26,8 +26,9 @@
 
 import {
   readdirSync, readFileSync, statSync, existsSync, openSync, readSync, closeSync,
+  realpathSync,
 } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDotenv } from './parse-dotenv.mjs';
 
@@ -285,17 +286,20 @@ export function checkBundle({
   let changelogBlocked = false;
   const changelogFound = !!changelogUrl && scan.changelogFiles.some(rel =>
     readFileSync(join(distDir, rel), 'utf8').includes(changelogUrl));
-  if (updateCheckEnabled && !changelogUrl) {
+  // Branch on the armed flag first: a URL set without the update check is an
+  // unarmed build, and the old order let its raw.githubusercontent.com marker
+  // fall through to "ok changelog".
+  if (!updateCheckEnabled) {
+    if (scan.changelogFiles.length > 0) {
+      changelogBlocked = true;
+      lines.push('x A raw.githubusercontent.com URL is inlined into dist/ but the update check is not armed.');
+      lines.push(`  Found in: ${scan.changelogFiles.join(', ')}`);
+      lines.push('  Only the public build may carry it: set VITE_UPDATE_CHECK=true and VITE_CHANGELOG_URL.');
+    }
+  } else if (!changelogUrl) {
     changelogBlocked = true;
     lines.push('x The update check is armed but the changelog URL is not set.');
     lines.push('  Set VITE_CHANGELOG_URL to the public changelog endpoint.');
-  } else if (!changelogUrl) {
-    if (scan.changelogFiles.length > 0) {
-      changelogBlocked = true;
-      lines.push('x A raw.githubusercontent.com URL is inlined into dist/ but the changelog is not armed.');
-      lines.push(`  Found in: ${scan.changelogFiles.join(', ')}`);
-      lines.push('  Only the public build may carry it: set VITE_CHANGELOG_URL.');
-    }
   } else if (!changelogFound) {
     changelogBlocked = true;
     lines.push('x The changelog is armed but its endpoint is not in dist/.');
@@ -314,10 +318,11 @@ export function checkBundle({
 function main() {
   const root = process.cwd();
   const { files: envFiles, env, text: envText } = readViteEnv(root);
-  // Vite merges the process environment too, so an inline
-  // `VITE_STASH_API_KEY=… npm run build` would be inlined and this targeted
-  // search would miss it.
-  const secret = env.VITE_STASH_API_KEY || process.env.VITE_STASH_API_KEY || '';
+  // Vite merges the process environment over the env files, so this guard has
+  // to read the merged map or it searches for a stale key while an inline
+  // VITE_STASH_API_KEY=… npm run build inlines the real one.
+  const merged = { ...env, ...process.env };
+  const secret = merged.VITE_STASH_API_KEY || '';
   const isCI = !!process.env.CI;
   const allowBaked = !isCI && process.env.ALLOW_BAKED_KEY === '1';
 
@@ -328,16 +333,28 @@ function main() {
     secret,
     allowBaked,
     isCI,
-    updateCheckEnabled: process.env.VITE_UPDATE_CHECK === 'true',
-    updateCheckUrl: process.env.VITE_UPDATE_CHECK_URL || '',
-    changelogUrl: process.env.VITE_CHANGELOG_URL || '',
+    updateCheckEnabled: merged.VITE_UPDATE_CHECK === 'true',
+    updateCheckUrl: merged.VITE_UPDATE_CHECK_URL || '',
+    changelogUrl: merged.VITE_CHANGELOG_URL || '',
   });
 
   for (const line of lines) console.log(line);
   process.exit(ok ? 0 : 1);
 }
 
-// Only run when invoked directly; the test imports the functions above.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Only run when invoked directly; the test imports the functions above. Real
+// paths, so a symlinked invocation still runs the guard instead of exiting 0.
+function invokedDirectly() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  const here = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(here) === realpathSync(arg);
+  } catch {
+    return resolve(here) === resolve(arg);
+  }
+}
+
+if (invokedDirectly()) {
   main();
 }

@@ -61,7 +61,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  animation: imgFade 0.14s ease-out;
+  /* No entrance animation: same reason as VideoCard. */
 }
 /* No inner focus scale; see VideoCard.module.css. */
 
@@ -149,9 +149,4 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--rating);
-}
-
-@keyframes imgFade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }

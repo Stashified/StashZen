@@ -802,12 +802,19 @@ async function run() {
 
   // ── MK8: the player yields every key while the form is up ──
   await seekTo(30.7);
+  // The arrow normally skims and raises the controls. Start from a hidden bar:
+  // measured from 1, a rise is indistinguishable from the maximum.
+  const hiddenBeforeArrow = await waitFor(() => controlsOpacity() === 0, 3400);
+  const controlsBeforeArrow = controlsOpacity();
   press(document.activeElement, 'ArrowRight', 39);
   await sleep(140);
   check('MK8 an arrow while the form is up does not seek the scene',
     Math.abs(v.currentTime - 30.7) < 0.5, `currentTime=${v.currentTime.toFixed(2)} (was 30.7)`);
-  check('MK8 the controls stayed hidden behind the form',
-    controlsOpacity() === 1, 'the form draws its own panel; this is the player not acting');
+  const controlsAfterArrow = controlsOpacity();
+  check('MK8 setup: the bar was hidden before the arrow', hiddenBeforeArrow,
+    `opacity ${controlsBeforeArrow} after a 3.4 s wait`);
+  check('MK8 ...and does not raise the player\'s controls',
+    controlsAfterArrow === 0, `opacity ${controlsBeforeArrow} → ${controlsAfterArrow}`);
 
   // ── MK4: the nudge moves the form's number, not the playhead ──
   // Both halves: "the playhead did not move" alone passes on a nudge that

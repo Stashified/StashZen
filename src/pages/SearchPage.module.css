@@ -3,6 +3,9 @@
 
 .page {
   flex: 1;
+  /* Load-bearing: a flex item's min-height:auto refuses to shrink below its
+     content, so overflow-y never engaged and the page grew instead. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 32px 48px 48px;

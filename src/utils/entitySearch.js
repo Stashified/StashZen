@@ -11,6 +11,7 @@
  * never needs an entity's body to let the user pick one.
  */
 
+import { throwIfAborted } from './abort.js';
 import { getSettings } from './settings.js';
 import { runQuery } from './stashQuery.js';
 
@@ -145,14 +146,18 @@ async function mockRows(entity, q) {
  * fragment, which is what `q` already matches.
  *
  * Returns `[{id, label}]` capped at `limit`; an unknown entity yields nothing
- * (ask `isSearchable` first) rather than throwing.
+ * (ask `isSearchable` first) rather than throwing. `signal` aborts the query
+ * in both Live and Test mode, rejecting with `AbortError`.
  */
-export async function searchEntities(entity, q = '', limit = 40) {
+export async function searchEntities(entity, q = '', limit = 40, { signal } = {}) {
   const src = SOURCES[entity];
   if (!src) return [];
 
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 120));
+    // The live path aborts inside runQuery; the mock must look the same to
+    // callers that treat AbortError as "closed, not failed".
+    throwIfAborted(signal);
     return await mockRows(entity, q);
   }
 
@@ -168,7 +173,7 @@ export async function searchEntities(entity, q = '', limit = 40) {
   const data = await runQuery(query, {
     filter: { q, page: 1, per_page: limit, sort: src.label, direction: 'ASC' },
     entity_filter: {},
-  });
+  }, { signal });
 
   const rows = data?.[src.root]?.[src.rows] || [];
   return rows.map((r) => {

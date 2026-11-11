@@ -8,11 +8,14 @@
 }
 
 /* Shown for a moment after a chunk fails, before the gate closes. Same panel
-   as PlayerErrorBoundary: the subtree that threw is already gone. */
+   as PlayerErrorBoundary: the subtree that threw is already gone.
+   Above the player (1000) and the 900 detail scrim under it: this gate mounts
+   at app level, so PlayerErrorBoundary's 300 would sit behind both and the
+   message would never be seen. */
 .fallback {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 1100;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -10,7 +10,7 @@
  * "Blonde" when a filter is reopened, without a round trip.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
 import { useBackKey } from '../hooks/useBackKey.js';
@@ -55,24 +55,27 @@ export default function EntityPicker({ title, entity, selected = [], onDone, onC
     autoFocus: true,
   });
 
-  // Re-fetched per keystroke. The guard is a request id, not a debounce: a
-  // debounce still lets a slow first response land after a fast second one.
-  const reqRef = useRef(0);
+  // Re-fetched per keystroke. The abort stops an older request outright, and
+  // the cleanup runs before the next effect, so `alive` alone keeps an older
+  // response from overwriting a newer one and keeps a burst of keystrokes from
+  // leaving a queue of doomed queries on the wire.
   useEffect(() => {
-    const id = ++reqRef.current;
+    const controller = new AbortController();
+    let alive = true;
     setLoading(true);
     setError(null);
-    searchEntities(entity, query)
+    searchEntities(entity, query, undefined, { signal: controller.signal })
       .then((list) => {
-        if (reqRef.current !== id) return;
+        if (!alive) return;
         setRows(list);
         setLoading(false);
       })
       .catch((e) => {
-        if (reqRef.current !== id) return;
-        setError(e.message || 'Could not reach Stash');
+        if (!alive || e?.name === 'AbortError') return;
+        setError(e?.message || 'Could not reach Stash');
         setLoading(false);
       });
+    return () => { alive = false; controller.abort(); };
   }, [entity, query]);
 
   // Back closes the picker, not the builder: this listener registers after the

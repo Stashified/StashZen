@@ -7,9 +7,9 @@
  *
  * A driver is needed because the navigator scores rectangles, so row order is
  * usually correct by construction, and "usually" hides the exceptions: a
- * control registered in another zone is skipped sideways, a wrapped row's
- * second line sits left of where the first ends, and a `verticalOnly` card is
- * an invisible hole. None throws, and each looks fine on a static screen.
+ * control registered in another zone is skipped sideways, and a `verticalOnly`
+ * card is an invisible hole. Neither throws, and each looks fine on a static
+ * screen.
  *
  * A line is visible registry entries clustered by vertical overlap (more than
  * half the shorter rect), not "same top": a chip and a button on one row can
@@ -20,8 +20,8 @@
  *  - A declared edge (`nextId[direction]`) replaces the geometric search; the
  *    rail's Settings row is the case. The walk expects the declared target, so
  *    a broken declaration still fails. A self-reference means blocked.
- *  - A wrapped flex row is one logical line: at the end of a physical line,
- *    Right continues at the next line's leftmost item. Grids stop at the edge.
+ *  - Sideways past the end of a line is not checked here: the navigator moves
+ *    geometrically and may leave the zone (the rail), which rail-entry covers.
  *  - `verticalOnly` entries are left out rather than counted as holes.
  *  - Lines with fewer than two participants are not rows to walk.
  *
@@ -136,43 +136,12 @@ function linesOf(items) {
 
 const inViewport = (line) => line.bottom > 0 && line.top < window.innerHeight;
 
-function wrapContainerOf(el) {
-  let n = el?.parentElement;
-  while (n && n !== document.body && n !== document.documentElement) {
-    const cs = getComputedStyle(n);
-    if (cs.display === 'flex' && (cs.flexWrap === 'wrap' || cs.flexWrap === 'wrap-reverse')) {
-      return n;
-    }
-    n = n.parentElement;
-  }
-  return null;
-}
-
 function declaredNext(cur, dir) {
   const forced = cur.entry.nextId?.[dir];
   if (!forced) return undefined;
   if (forced === cur.id) return null;             // a blocked direction
   const target = registry.get(forced);
   return target?.el && target.el.offsetParent && !target.el.disabled ? forced : undefined;
-}
-
-// Reading order in a wrapped row: the next physical line's leftmost (or, going
-// left, rightmost) item. Derived from the visual lines, not the navigator's
-// score, so the driver checks the layout rather than itself.
-function wrapNext(cur, dir, items) {
-  const container = wrapContainerOf(cur.el);
-  if (!container) return null;
-  const inContainer = items.filter(i => container.contains(i.el)
-    && i.entry.zone === cur.entry.zone && !i.entry.verticalOnly);
-  const containerLines = linesOf(inContainer).sort((a, b) => a.top - b.top);
-  const idx = containerLines.findIndex(l => l.items.some(i => i.id === cur.id));
-  if (idx < 0) return null;
-  const next = containerLines[dir === 'right' ? idx + 1 : idx - 1];
-  if (!next) return null;
-  const candidates = next.items
-    .filter(i => !i.entry.verticalOnly)
-    .sort((a, b) => (dir === 'right' ? a.r.left - b.r.left : b.r.left - a.r.left));
-  return candidates[0]?.id ?? null;
 }
 
 function describe(fails) {
@@ -182,19 +151,17 @@ function describe(fails) {
 }
 
 // ── The walk ───────────────────────────────────────────────
-async function walkLine(pts, key, fails, items) {
+async function walkLine(pts, key, fails) {
   const dir = key === 'ArrowRight' ? 'right' : 'left';
+  // The last item has no neighbour in this line, and sideways focus past a row
+  // end can leave the zone (the rail); rail-entry covers the rail's exits.
   for (let i = 0; i < pts.length - 1; i++) {
     const cur = pts[i];
     const want = pts[i + 1].id;
     const declared = declaredNext(cur, dir);
-    // Reading-order continuation applies only at the END of a physical line.
-    // Mid-line it would expect the next line instead of the neighbour beside
-    // it, reporting a good action row as broken.
     let expected = want;
     if (declared === null) expected = cur.id;
     else if (typeof declared === 'string') expected = declared;
-    else if (i === pts.length - 1) expected = wrapNext(cur, dir, items) ?? want;
 
     if (!focus(cur.id)) {
       fails.push(`${cur.id} not focusable`);
@@ -255,8 +222,8 @@ async function auditScreen(label) {
   const rows = groups.length;
 
   for (const pts of groups) {
-    await walkLine(pts, 'ArrowRight', right, items);
-    await walkLine([...pts].reverse(), 'ArrowLeft', left, items);
+    await walkLine(pts, 'ArrowRight', right);
+    await walkLine([...pts].reverse(), 'ArrowLeft', left);
   }
 
   check(`${label}: rows walk left → right`, right.length === 0,
@@ -326,7 +293,6 @@ async function run() {
   }
 
   // ── Scene detail: the marker row and the action row ─────
-  // Both are flex-wrap rows, and this is the screen the wrap rule exists for.
   const inScenes = await switchTab('scenes', 'video');
   if (inScenes && await openDetail('video', 'scene-play')) {
     await auditScreen('scene detail');

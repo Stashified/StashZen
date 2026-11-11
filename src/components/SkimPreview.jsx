@@ -20,26 +20,60 @@ import { formatTime } from '../utils/format.js';
 
 const TILE_DISPLAY_WIDTH = 200; // px on screen
 
-// Natural dimensions per sprite URL
-const sheetSizeCache = new Map(); // src → { w, h }
+// Natural dimensions per sprite URL, or a failure entry. Bounded: the key holds
+// host and API key, so one per scene across a long session would grow without
+// limit. Failures are cached too, or a library without sprites re-requests
+// every 404 on each hover, but only briefly: Stash's Generate → Sprites makes
+// the same URL work, and the viewer must pick that up without a restart.
+const SHEET_CACHE_MAX = 64;
+const SHEET_FAILURE_TTL_MS = 60_000;
+const sheetSizeCache = new Map(); // src → { w, h } | { failedAt }
+
+function cacheSheetSize(src, entry) {
+  sheetSizeCache.delete(src);
+  sheetSizeCache.set(src, entry);
+  while (sheetSizeCache.size > SHEET_CACHE_MAX) {
+    sheetSizeCache.delete(sheetSizeCache.keys().next().value);
+  }
+}
+
+// `{ hit, size }`, or undefined for a miss. Pure: this also runs from a
+// useState initializer, and deleting there is a render-phase side effect. The
+// next write or the eviction above removes an expired failure.
+function cachedSheetSize(src) {
+  const entry = sheetSizeCache.get(src);
+  if (!entry) return undefined;
+  if (entry.failedAt !== undefined) {
+    if (Date.now() - entry.failedAt < SHEET_FAILURE_TTL_MS) return { hit: true, size: null };
+    return undefined;
+  }
+  return { hit: true, size: entry };
+}
 
 function useSheetSize(src) {
-  const [size, setSize] = useState(() => sheetSizeCache.get(src) || null);
+  const [size, setSize] = useState(() => {
+    const cached = src ? cachedSheetSize(src) : undefined;
+    return cached?.hit ? cached.size : null;
+  });
 
   useEffect(() => {
     if (!src) { setSize(null); return; }
-    const cached = sheetSizeCache.get(src);
-    if (cached) { setSize(cached); return; }
+    const cached = cachedSheetSize(src);
+    if (cached?.hit) { setSize(cached.size); return; }
 
     let cancelled = false;
     const img = new Image();
+    // Both handlers cache before the cancel check: the cache is module-level,
+    // so an answer that arrived after the hover ended is still worth keeping.
     img.onload = () => {
-      if (cancelled) return;
       const dims = { w: img.naturalWidth, h: img.naturalHeight };
-      sheetSizeCache.set(src, dims);
-      setSize(dims);
+      cacheSheetSize(src, dims);
+      if (!cancelled) setSize(dims);
     };
-    img.onerror = () => { if (!cancelled) setSize(null); };
+    img.onerror = () => {
+      cacheSheetSize(src, { failedAt: Date.now() });
+      if (!cancelled) setSize(null);
+    };
     img.src = src;
 
     return () => { cancelled = true; };

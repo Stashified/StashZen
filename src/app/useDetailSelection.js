@@ -8,7 +8,7 @@
  * be able to close it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { useRestoreFocus } from '../hooks/useRestoreFocus.js';
 import { focusByIdWhenReady, focusFirstControl, focusOriginCard } from '../utils/focus.js';
@@ -151,7 +151,12 @@ export function useDetailSelection({
   // card unmounts with the switch, so the origin names the tab and card by id.
   // A scene detail passes its own card: the origin tab has no performer card,
   // and this is where Back should land.
-  const openPerformerFrom = (performer, tab, focusId = null) => {
+  // Only a press reads `controls`, and the Home/Search origins never snapshot
+  // it, so a ref keeps these callbacks stable for the memoised cards without
+  // capturing a stale value at the press.
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+  const openPerformerFrom = useCallback((performer, tab, focusId = null) => {
     const originTab = tab || 'home';
     const config = TAB_CONTROL_CONFIG[originTab];
     setPerformerOrigin({
@@ -160,15 +165,21 @@ export function useDetailSelection({
       // The tab change clears the origin's search, chips, sort and filter, and
       // Back must undo that: keep the snapshot only for tabs that have a bar.
       controls: config && config.showControls !== false
-        ? snapshotControls(controls)
+        ? snapshotControls(controlsRef.current)
         : null,
     });
     setSelectedPerformer(performer);
     changeTab('performers');
-  };
+  }, [changeTab]);
 
-  const handleShowroomPerformerSelect = (performer) => openPerformerFrom(performer, 'home');
-  const handleSearchPerformerSelect = (performer) => openPerformerFrom(performer, 'search');
+  const handleShowroomPerformerSelect = useCallback(
+    (performer) => openPerformerFrom(performer, 'home'),
+    [openPerformerFrom],
+  );
+  const handleSearchPerformerSelect = useCallback(
+    (performer) => openPerformerFrom(performer, 'search'),
+    [openPerformerFrom],
+  );
 
   // From a scene detail: the performer chip closes the detail, since the page
   // is not stacked over the new destination and Back has to find a real
@@ -193,8 +204,11 @@ export function useDetailSelection({
       changeTab(dest);
       if (snapshot) restoreControls(setControls, snapshot, dest);
       // The origin tab remounts and refetches, so the card does not exist yet;
-      // retry as `activateFiltered`'s Back does.
-      focusOriginCard(dest, focusId);
+      // retry as `activateFiltered`'s Back does. Deferred past the commit: the
+      // performer page lists their scenes as `video-<id>`, so an attempt now
+      // can find that screen's copy of the card and settle on an element the
+      // tab change replaces, leaving the cursor on the first card.
+      focusOriginCard(dest, focusId, { defer: true });
       return;
     }
     // The Performers grid remounts in this commit and fetches page 1, so the

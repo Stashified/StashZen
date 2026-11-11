@@ -80,6 +80,9 @@ const DEFAULT_DETAIL_CONTROLS = {
 // `autoFocusWhenIdle`: the page remounts when Back returns from a hub spoke,
 // and a plain autoFocus would fire 50 ms after mount and steal the cursor from
 // the restore already on its way to the counts/tag control.
+// `autoFocusFallback`: this is only a resting place. The grid's first card,
+// which mounts after its fetch, replaces it, so opening a performer lands on
+// their first scene; a performer with none keeps Back.
 function BackButton({ onClick, nextId }) {
   const { ref, focused } = useFocusable({
     id: 'detail-back',
@@ -87,6 +90,7 @@ function BackButton({ onClick, nextId }) {
     onEnter: onClick,
     autoFocus: true,
     autoFocusWhenIdle: true,
+    autoFocusFallback: true,
     nextId,
   });
   return (
@@ -252,6 +256,19 @@ export default function PerformerDetailPage({
   }));
   const [notice, flash] = useFlash();
 
+  // A swap (a scene's cast chip) keeps this instance, so the previous
+  // performer's profile and rating would paint under the new name until the
+  // fetch effects below ran. Reset before the commit, as with `controls`.
+  const [detailsFor, setDetailsFor] = useState(String(performer.id));
+  if (detailsFor !== String(performer.id)) {
+    setDetailsFor(String(performer.id));
+    setProfile(null);
+    setProfileStatus('loading');
+    setProfileError(null);
+    setSceneTags([]);
+    setEdits({ rating100: ratingFromCard(performer), favorite: !!performer.favorite });
+  }
+
   // The header's Play all and Shuffle. The queue's first page is fetched here
   // rather than reusing the grid's rows, because the grid can be sorted or
   // filtered differently from what the buttons promise (Shuffle always is).
@@ -370,11 +387,17 @@ export default function PerformerDetailPage({
         const server = await updatePerformer(performer.id, { rating100: next });
         // A clear echoes back 0 or null; either way the confirmed value is 0.
         const confirmed = Number(server.rating100) > 0 ? server.rating100 : 0;
+        // Writes are serialised, so Stash has stored this even when a newer
+        // press owns the screen. Only the screen update is newest-wins.
+        if (performerIdRef.current !== String(performer.id)) return;
         ratingConfirmed.current = confirmed;
         if (attempt === ratingAttempt.current) {
           setEdits(e => ({ ...e, rating100: confirmed }));
         }
       } catch (e) {
+        // A write for a performer no longer on screen must not paint its
+        // failure into the new one's hero.
+        if (performerIdRef.current !== String(performer.id)) return;
         // Only the newest press owns the screen: an older failure is already
         // superseded, and reverting it would undo a later press.
         if (attempt !== ratingAttempt.current) return;
@@ -392,13 +415,16 @@ export default function PerformerDetailPage({
     favoriteQueue.current = favoriteQueue.current.then(async () => {
       try {
         const server = await updatePerformer(performer.id, { favorite: next });
-        if (server.favorite != null) {
-          favoriteConfirmed.current = !!server.favorite;
-          if (attempt === favoriteAttempt.current) {
-            setEdits(e => ({ ...e, favorite: !!server.favorite }));
-          }
+        if (server.favorite == null) return;
+        // Serialised like the rating queue: the write landed, only the screen
+        // update is newest-wins.
+        if (performerIdRef.current !== String(performer.id)) return;
+        favoriteConfirmed.current = !!server.favorite;
+        if (attempt === favoriteAttempt.current) {
+          setEdits(e => ({ ...e, favorite: !!server.favorite }));
         }
       } catch (e) {
+        if (performerIdRef.current !== String(performer.id)) return;
         if (attempt !== favoriteAttempt.current) return;
         setEdits(prev => ({ ...prev, favorite: favoriteConfirmed.current }));
         flash(`Favourite not saved: ${e.message}`);

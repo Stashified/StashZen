@@ -10,7 +10,7 @@ import styles from '../FilterBuilder.module.css';
 // What each editor renders comes from the registry (editors/index.js); the row
 // owns the D-pad chain that ties the controls together.
 export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntities }) {
-  const { field, label } = desc;
+  const { field, label, unit } = desc;
 
   const modifierOptions = desc.modifierOptions.map(m => ({ value: m, label: MODIFIER_LABELS[m] || m }));
 
@@ -150,7 +150,12 @@ export function CriterionRow({ desc, criterion, onChange, onRemove, onPickEntiti
   return (
     <div className={styles.row}>
       <div className={styles.rowHead}>
-        <span className={styles.rowLabel}>{label}</span>
+        <span className={styles.rowLabel}>
+          {label}
+          {/* Own span: the label is uppercased as a whole, and SI symbols
+              (cm, kg) must keep their case. */}
+          {unit && <span className={styles.unit}> ({unit})</span>}
+        </span>
         <button
           ref={removeRef}
           type="button"

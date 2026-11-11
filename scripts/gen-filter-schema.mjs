@@ -54,12 +54,27 @@ if (!env.VITE_STASH_URL) {
 const ENDPOINT = env.VITE_STASH_URL.replace(/\/+$/, '') + '/graphql';
 
 async function gql(query, variables) {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(env.VITE_STASH_API_KEY ? { ApiKey: env.VITE_STASH_API_KEY } : {}) },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${ENDPOINT}`);
+  // Serialised before the try: a payload error is not a network failure.
+  const body = JSON.stringify({ query, variables });
+  let res;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(env.VITE_STASH_API_KEY ? { ApiKey: env.VITE_STASH_API_KEY } : {}) },
+      body,
+    });
+  } catch (e) {
+    // undici prints the cause, which can name the private host; the code
+    // (ENOTFOUND, ECONNREFUSED, …) does not, and tells a DNS problem from a
+    // misconfigured URL.
+    const code = e?.cause?.code ? ` (${e.cause.code})` : '';
+    // The cause itself can name the host, so it is deliberately not attached.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(`Could not reach the configured endpoint${code}`);
+  }
+  // No host in the message: this text ends up in a terminal log, and the
+  // endpoint is a private address that does not belong in anything shared.
+  if (!res.ok) throw new Error(`HTTP ${res.status} from the configured endpoint`);
   const json = await res.json();
   if (json.errors) throw new Error(json.errors.map(e => e.message).join('; '));
   return json.data;
@@ -173,7 +188,6 @@ const banner = `/**
  *
  * Generated:   ${capturedAt}
  * Stash:       ${version}
- * Endpoint:    ${env.VITE_STASH_URL}
  * Filter types walked: ${Object.keys(filterTypes).length}
  * Enums captured: ${Object.keys(enums).length}
  *

@@ -96,6 +96,20 @@ export function useFilterBuilder({
       ? controls.filterId
       : undefined;
     const existing = id ? activeFilter : null;
+    // The saved-filter list loads asynchronously and stays empty if the fetch
+    // fails or the row was removed in Stash. Replacing the row from `null`
+    // would send only { sort, direction } and drop its q, page, per_page and
+    // object_filter. Abort instead: a save that overwrites silently is worse
+    // than one that asks the user to reopen the builder.
+    if (id && !existing) {
+      // A failed fetch leaves the list empty and useSavedFilters only re-runs
+      // on the epoch, so ask again before throwing or Save repeats the error
+      // forever. The prompt stays open, so Save is the natural retry. A row
+      // deleted in Stash never arrives, and reopening the builder keeps the
+      // same stale id, so Clear is the way out.
+      setFiltersEpoch(e => e + 1);
+      throw new Error('This saved filter has not loaded yet or no longer exists. Press Save again in a moment; if it still fails, press Clear to drop it and save a new filter.');
+    }
     // An update replaces the whole row, so keep the parts the builder does not
     // show: `q` is the only condition in many saved filters, and per_page and
     // ui_options are the user's display choices. The sort on screen wins: it

@@ -478,6 +478,31 @@ async function run() {
     !!b8 && !rowLabels(b8).includes('Tags'),
     `rows: ${b8 ? rowLabels(b8).join(', ') : '<no builder>'}`);
 
+  // ── F10j  a numeric row says what the value counts ───────
+  // The unit is its own span so the uppercase row label keeps "cm" in lower
+  // case; this is the only check that reads the rendered row.
+  if (b8) {
+    btnByText(b8, '+ Add criterion').click();
+    await sleep(200);
+    const durEntry = registry.get('fp-duration');
+    check('F10j the field picker offers Duration', !!durEntry,
+      `fp- entries: ${Array.from(registry.keys()).filter(k => k.startsWith('fp-')).join(', ')}`);
+    if (durEntry) {
+      durEntry.el.focus();
+      await tapEnter();
+      await sleep(250);
+    }
+    const b10 = dialogNamed(/^Filter scenes/);
+    const durRow = (b10 ? rowLabels(b10) : []).find(l => /^Duration/.test(l)) ?? '<none>';
+    const durInput = registry.get('fb-val-duration')?.el.querySelector('input');
+    check('F10k a duration row names its unit, in the row and the empty box',
+      durRow === 'Duration (seconds)' && durInput?.placeholder === 'seconds',
+      `row "${durRow}", placeholder "${durInput?.placeholder ?? '<none>'}"`);
+  } else {
+    check('F10k a duration row names its unit, in the row and the empty box', false,
+      'the builder closed before the row could be added');
+  }
+
   // Leave the builder as F4 left it: its edits are local until Apply, so a
   // Back here discards the Tags row and F6 onwards still see the working
   // filter that F4 applied.

@@ -76,6 +76,11 @@ check('avplayLikelyDirect: unknown video codec is not expected', avplayLikelyDir
 check('preferBrowserDirect: pcm_s32le is browser-first', preferBrowserDirect(PCM) === true);
 check('preferBrowserDirect: case and space tolerated', preferBrowserDirect({ audioCodec: ' PCM_S32LE ' }) === true);
 check('preferBrowserDirect: aac is not', preferBrowserDirect(H264) === false);
+// The measured case is a specific file, not "any file with this audio".
+check('preferBrowserDirect: pcm_s32le in an FLV is not',
+  preferBrowserDirect({ videoCodec: 'h263', audioCodec: 'pcm_s32le', container: 'flv' }) === false);
+check('preferBrowserDirect: a browser-refused container is not, even with H.264',
+  preferBrowserDirect({ videoCodec: 'h264', audioCodec: 'pcm_s32le', container: 'flv' }) === false);
 
 // ── Browser setting: exactly today's plan ───────────────────
 {

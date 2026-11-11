@@ -289,10 +289,6 @@ export function useFocusable({
     // back from where the user navigated.
     let autoFocusTimer = null;
     let autoFocusFired = false;
-    // A restore is on its way to a card here: hold first-card focus so the
-    // cursor does not land on the wrong one and then jump. The cap still
-    // leaves the D-pad somewhere to move after 1.5 s.
-    const autoFocusDeferUntil = Date.now() + 1500;
     if (!disabled && autoFocus && !autoFocusedRef.current) {
       autoFocusedRef.current = true;
       const runAutoFocus = () => {
@@ -309,7 +305,12 @@ export function useFocusable({
             const replaceable = currentEntry?.el === ae && currentEntry.focusOrigin === 'fallback';
             if (!replaceable) return;
           }
-          if (isRestorePending() && Date.now() < autoFocusDeferUntil) {
+          // A restore is on its way to a card here: hold first-card focus until
+          // it lands, so a deep restore cannot flash this card in and then
+          // jump. The hold gives up after a few seconds, so a restore that
+          // cannot land still leaves a focus target. Arrows stay held
+          // meanwhile, and Back/Enter cancel the restore.
+          if (isRestorePending()) {
             autoFocusTimer = setTimeout(runAutoFocus, 200);
             return;
           }

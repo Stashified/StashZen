@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { queueOf, queueItemFromMarker } from '../utils/playQueue.js';
 import { focusByIdWhenReady, focusFirstControl } from '../utils/focus.js';
+import { dialogOpen } from '../utils/input.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { getSettings } from '../utils/settings.js';
 import { publishRowPatch } from '../utils/rowPatches.js';
@@ -271,12 +272,12 @@ export function usePlayback({
     // panel's prompt) owns focus, and restoring would steal it.
     if (focusId) {
       setTimeout(() => {
-        if (!document.querySelector('[role="dialog"]')) focusByIdWhenReady(focusId, { fallback });
+        if (!dialogOpen()) focusByIdWhenReady(focusId, { fallback });
       }, 50);
       return;
     }
     setTimeout(() => {
-      if (!document.querySelector('[role="dialog"]')) fallback();
+      if (!dialogOpen()) fallback();
     }, 50);
   };
 

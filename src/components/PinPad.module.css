@@ -12,6 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px;
   animation: overlayIn 0.18s var(--ease-tv);
 }
 
@@ -22,6 +23,10 @@
 
 .panel {
   width: min(420px, 86vw);
+  /* Bounds the vw width to the overlay's padded box, same as MarkerModal. */
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: 16px;

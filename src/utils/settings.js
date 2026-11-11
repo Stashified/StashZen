@@ -194,6 +194,23 @@ export function readGridCols(saved) {
   return out;
 }
 
+/**
+ * The first-run answer; null means "never asked", which the setup screen gates
+ * on. A device with an endpoint or key already saved is inferred to have
+ * answered `live`, without that, every configured device would be asked to
+ * re-enter a working connection. Only `live` can be inferred: nothing recorded
+ * could mean "sample data".
+ *
+ * Shared by load and patch so a live write and the next relaunch agree.
+ */
+export function readOnboarded(saved) {
+  if (saved?.onboarded === 'live' || saved?.onboarded === 'test') return saved.onboarded;
+  // An explicit null means "never asked" (what clearSettings writes and what
+  // the setup screen gates on), not an invalid answer to infer over.
+  if (saved?.onboarded === null) return null;
+  return (saved?.stashUrl || saved?.stashKey) ? 'live' : null;
+}
+
 function loadFromStorage() {
   let saved = {};
   try {
@@ -256,14 +273,8 @@ function loadFromStorage() {
     // The Search tab's history, newest first. Recorded when a search is
     // committed or a result is opened, never on every keystroke.
     recentSearches: readRecentSearches(saved.recentSearches),
-    // The first-run answer; null means "never asked", which the setup screen
-    // gates on. A device with an endpoint or key already saved is inferred to
-    // have answered `live`, without that, every configured device would be
-    // asked to re-enter a working connection. Only `live` can be inferred:
-    // nothing recorded could mean "sample data".
-    onboarded: saved.onboarded === 'live' || saved.onboarded === 'test'
-      ? saved.onboarded
-      : ((saved.stashUrl || saved.stashKey) ? 'live' : null),
+    // See readOnboarded.
+    onboarded: readOnboarded(saved),
     // Set by "Run setup again". Separate from `onboarded` rather than blanking
     // it, so Back can cancel a re-run and return to the running app.
     setupRequested: !!saved.setupRequested,
@@ -348,18 +359,87 @@ export function dataSourceKey(s = state) {
   return s.useMock ? 'mock' : `live:${s.stashUrl}:${s.stashKey ? `k${fingerprint(s.stashKey)}` : 'nk'}`;
 }
 
+/**
+ * Run a patch through the same boundary `loadFromStorage` uses.
+ *
+ * Without this, `{ theme: 'dark' }` or `{ seekStep: 7 }` entered live state,
+ * was persisted, and only snapped back on the next launch, so the UI and the
+ * store disagreed in between. `undefined` is dropped rather than merged: a
+ * stray `{ theme: undefined }` must not wipe a setting.
+ */
+function normalizePatch(patch) {
+  const out = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value === undefined) continue;
+    switch (key) {
+      case 'theme': out.theme = readTheme(value); break;
+      case 'viewModes': out.viewModes = readViewModes(value); break;
+      case 'gridCols': out.gridCols = readGridCols(value); break;
+      case 'seekStep': out.seekStep = readSeekStep(value); break;
+      case 'transcodeQuality': out.transcodeQuality = readTranscodeQuality(value); break;
+      case 'playbackEngine': out.playbackEngine = readPlaybackEngine(value); break;
+      case 'recentSearches': out.recentSearches = readRecentSearches(value); break;
+      case 'stashUrl':
+      case 'stashKey':
+        if (typeof value === 'string') out[key] = value;
+        break;
+      case 'updateLatestVersion':
+        if (typeof value === 'string') out.updateLatestVersion = value;
+        break;
+      case 'lastUpdateCheckAt':
+        out.lastUpdateCheckAt = Number.isFinite(value) ? value : 0;
+        break;
+      case 'onboarded':
+        // Finished in setSettings, after the merge: the inference needs the
+        // endpoint from the same patch.
+        break;
+      case 'previewMuted':
+      case 'previewsEnabled':
+      case 'useMock':
+      case 'reduceMotion':
+      case 'setupRequested':
+      case 'updateCheckEnabled':
+        out[key] = !!value;
+        break;
+      case 'hasSavedEndpoint':
+        // Derived, so a caller cannot make it contradict the endpoint.
+        break;
+      default:
+        // Unknown keys keep the old pass-through behaviour; they are not part
+        // of the persisted contract and `persistToStorage` ignores them.
+        out[key] = value;
+    }
+  }
+  return out;
+}
+
 export function setSettings(patch) {
   const before = dataSourceKey(state);
-  state = { ...state, ...patch };
+  state = { ...state, ...normalizePatch(patch) };
   // A new source retires every answer still in flight. Done here, not in an
   // effect: the new source's first requests start from child effects, before
   // App's effects run, and they would carry the old number.
   if (dataSourceKey(state) !== before) noteSourceChanged();
-  // Recomputed, never set by callers, so it cannot drift from its two source
-  // fields. A just-saved connection counts as saved, so revisiting the setup
-  // screen does not clear a field the user already filled.
-  if ('stashUrl' in patch || 'stashKey' in patch) {
+  // Recomputed when its sources are written: derived, never set by callers, so
+  // it cannot drift. Only a string in the patch counts, or a rejected value
+  // would derive from the env fallback. A just-saved connection counts as
+  // saved, so revisiting setup does not clear a field already filled.
+  const urlPatch = typeof patch?.stashUrl === 'string' ? patch.stashUrl : undefined;
+  const keyPatch = typeof patch?.stashKey === 'string' ? patch.stashKey : undefined;
+  if (urlPatch !== undefined || keyPatch !== undefined) {
     state.hasSavedEndpoint = !!(state.stashUrl || state.stashKey);
+  }
+  // Same inference as loadFromStorage, run when the answer is written, so this
+  // session and the next launch agree. An endpoint-only patch needs no run: the
+  // current answer is already the one readOnboarded would derive again. An
+  // explicit null or a `test` answer is kept; only an invalid value is inferred
+  // over.
+  if (patch?.onboarded !== undefined) {
+    state.onboarded = readOnboarded({
+      onboarded: patch.onboarded,
+      stashUrl: state.stashUrl,
+      stashKey: state.stashKey,
+    });
   }
   // Every persisted field must be in this list, or a change works for the
   // session and vanishes on the next launch.

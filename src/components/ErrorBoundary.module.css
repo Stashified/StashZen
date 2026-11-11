@@ -14,6 +14,10 @@
 
 .panel {
   width: min(760px, 100%);
+  /* The detail can be a long stack trace; the centered cover must keep the
+     title and the retry button on screen. */
+  max-height: 100%;
+  overflow-y: auto;
   padding: 40px 44px;
   background: var(--bg-surface);
   border: 1.5px solid var(--border-strong);

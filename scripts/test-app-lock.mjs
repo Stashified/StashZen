@@ -72,5 +72,55 @@ for (let i = 0; i < EXPECTED.length; i++) {
 
 check('clearing the PIN unlocks', lock.clearPin() && !lock.isLockSet());
 
+// ── producer and validator agree ────────────────────────
+// A real blob must pass the shape check its own module applies on load.
+{
+  check('a PIN can be set for the round trip', lock.setPin('2468'));
+  const reloaded = await import('../src/utils/appLock.js?case=roundtrip');
+  check('a blob written here counts as locked after reload', reloaded.isLockSet());
+  check('and the same PIN verifies after reload', reloaded.verifyPin('2468'));
+  check('and a wrong PIN does not', !reloaded.verifyPin('1357'));
+  // The validator treats a missing `v` as v1 (see the legacy case), so only
+  // this pins the writer's version field.
+  check('setPin writes v1', JSON.parse(store.get(lock.LS_KEY))?.v === 1,
+    store.get(lock.LS_KEY));
+  lock.clearPin();
+}
+
+// ── corrupt / future blobs fail open ────────────────────
+// `state` is loaded at import time, so each case re-imports the module with a
+// unique query to get a fresh copy reading the blob just written.
+async function freshLockWith(blob, tag) {
+  store.set(lock.LS_KEY, JSON.stringify(blob));
+  return import(`../src/utils/appLock.js?case=${tag}`);
+}
+
+{
+  const salt = 'a'.repeat(32);
+  const hash = 'b'.repeat(64);
+  const ok = await freshLockWith({ v: 1, salt, hash }, 'valid');
+  check('a shape-valid blob counts as locked', ok.isLockSet());
+}
+{
+  const bad = await freshLockWith(
+    { v: 1, salt: 'a'.repeat(32), hash: 'b'.repeat(63) }, 'badhash');
+  check('a truncated hash fails open', !bad.isLockSet());
+}
+{
+  const bad = await freshLockWith(
+    { v: 1, salt: 'z'.repeat(32), hash: 'b'.repeat(64) }, 'badsalt');
+  check('a non-hex salt fails open', !bad.isLockSet());
+}
+{
+  const bad = await freshLockWith(
+    { v: 2, salt: 'a'.repeat(32), hash: 'b'.repeat(64) }, 'badver');
+  check('an unknown version fails open', !bad.isLockSet());
+}
+{
+  const legacy = await freshLockWith(
+    { salt: 'a'.repeat(32), hash: 'b'.repeat(64) }, 'legacy');
+  check('a blob without v is still v1', legacy.isLockSet());
+}
+
 console.log(`\n${passed}/${passed + failed} checks passed`);
 process.exit(failed === 0 ? 0 : 1);

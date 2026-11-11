@@ -9,11 +9,12 @@
  * belong to scenes and to cards that scrub on focus.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { useStableListing } from '../hooks/useStableListing.js';
+import { useSentinelLoadMore } from '../hooks/useSentinelLoadMore.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './EntityGrid.module.css';
 
@@ -52,20 +53,7 @@ export default function EntityGrid({
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const root = scrollRef.current;
-    if (!sentinel || !root) return;
-
-    const observer = new IntersectionObserver(
-      entries => { if (entries[0].isIntersecting) loadMore(); },
-      { root, rootMargin: '400px 0px', threshold: 0 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
+  useSentinelLoadMore(sentinelRef, scrollRef, loadMore);
 
   if (loading && !items.length) return (
     <ListingState

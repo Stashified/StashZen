@@ -77,6 +77,10 @@ const STORED = {
   tags: { modifier: 'INCLUDES', value: { items: [{ id: '1', label: 'tag' }], excluded: [] } },
   studios: { modifier: 'INCLUDES', value: { items: [{ id: '1', label: 'studio' }], excluded: [], depth: 1 } },
   details: { modifier: 'IS_NULL', value: {} },
+  // Flat, not the builder's envelope: this is the shape `storedCriterion`
+  // writes for a Stash ID criterion and the one the round-trip must settle.
+  stash_id_endpoint: { modifier: 'EQUALS', endpoint: '/scenes', stash_id: 'probe' },
+  stash_ids_endpoint: { modifier: 'EQUALS', endpoint: '/scenes', stash_ids: '4,2' },
 };
 
 /**

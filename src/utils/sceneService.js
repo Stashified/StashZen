@@ -323,10 +323,14 @@ export async function updateSceneRating(id, rating100) {
   const clamped = Math.max(0, Math.min(100, Math.round(rating100)));
   const next = clamped > 0 ? clamped : null;
   const result = await sceneUpdate({ id: String(id), rating100: next });
+  // The mutation echoes the field precisely so the client can trust it. A null
+  // scene means the resolver failed to write; reporting `next` here showed a
+  // rating the server never stored and told the caller it had saved.
+  if (!result) throw new Error('the server did not save the rating');
   // A zero the server echoes back is still "unrated" to this app.
-  const saved = result
-    ? (Number.isFinite(result.rating100) && result.rating100 > 0 ? result.rating100 : null)
-    : next;
+  const saved = Number.isFinite(result.rating100) && result.rating100 > 0
+    ? result.rating100
+    : null;
   // The card draws the display string normalizeVideo builds.
   publishRowPatch('scene', id, {
     rating: saved != null ? (saved / 10).toFixed(1) : null,
@@ -336,7 +340,8 @@ export async function updateSceneRating(id, rating100) {
 
 export async function setSceneOrganized(id, organized) {
   const result = await sceneUpdate({ id: String(id), organized: !!organized });
-  const saved = result?.organized ?? !!organized;
+  if (!result) throw new Error('the server did not save the organised mark');
+  const saved = !!result.organized;
   // The grid card now carries the organised mark.
   publishRowPatch('scene', id, { organized: saved });
   return saved;

@@ -118,10 +118,11 @@ export default function MarkerModal({
   // modal remounts per open, so "once" is "fresh".
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const fallback = defaultTagRef.current;
     Promise.all([
-      fetchTagOptions(),
-      fetchRecentMarkerTags().catch(() => []),
+      fetchTagOptions(undefined, { signal: controller.signal }),
+      fetchRecentMarkerTags(undefined, { signal: controller.signal }).catch(() => []),
     ])
       .then(([{ tags: list }, recent]) => {
         if (cancelled) return;
@@ -137,7 +138,7 @@ export default function MarkerModal({
         setTagId(prev => prev || withDefault[0]?.id || null);
       })
       .catch(() => { if (!cancelled) setTagsFailed(true); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, []);
 
   // What the form can actually offer. When the lookup fails, the scene's own

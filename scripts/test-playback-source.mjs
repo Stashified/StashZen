@@ -91,11 +91,20 @@ const label = (url, list = REAL) => list.find((e) => e.url === url)?.url ?? '(no
   check('a server offering only the original and its remux yields nothing',
     onlyDirect.length === 0, `chose ${onlyDirect.map((u) => label(u)).join(', ') || '(none)'}`);
 
+  // Probe the two filters separately: the mime filter has to reject DASH on an
+  // mp4 URL, the extension filter on a video/mp4 mime.
+  const mp4 = ENDPOINT(MP4, '/stream.mp4', 'STANDARD');
+  // A distinct URL, or dropping the mime filter would return this row and its
+  // URL would match mp4's, leaving the mime half unable to fail.
+  const dashMime = { ...ENDPOINT('application/dash+xml', '/stream.mp4', 'STANDARD'), url: `${mp4.url}&probe=dash` };
+  const dashExt = ENDPOINT(MP4, '/stream.mpd', 'STANDARD');
+  const mimeProbe = [dashMime, mp4];
+  const mimeKept = pickTranscodeUrls(mimeProbe, 'standard');
+  const extKept = pickTranscodeUrls([dashExt], 'standard');
   check('DASH is not a candidate, mime and extension alike',
-    pickTranscodeUrls([
-      ENDPOINT('application/dash+xml', '/stream.mpd', 'STANDARD'),
-      ENDPOINT(MP4, '/stream.mp4', 'STANDARD'),
-    ], 'standard').length === 1);
+    eq(mimeKept, [mp4.url]) && extKept.length === 0,
+    `mime: ${mimeKept.map((u) => label(u, mimeProbe)).join(', ') || '(none)'}; `
+      + `extension: ${extKept.map((u) => label(u, [dashExt])).join(', ') || '(none)'}`);
 }
 
 // ── A missing tier falls back instead of losing the format ──
@@ -141,6 +150,16 @@ const label = (url, list = REAL) => list.find((e) => e.url === url)?.url ?? '(no
   }];
   check('a percent-encoded resolution is decoded before matching',
     pickTranscodeUrls(encoded, 'standard')[0] === encoded[0].url);
+
+  // A malformed escape used to throw out of pickTranscodeUrls; it must read as
+  // an unusable tier and leave the real sibling to win.
+  const malformed = [
+    { mime_type: MP4, url: 'http://x/scene/1/stream.mp4?apikey=K&resolution=%ZZ' },
+    ENDPOINT(MP4, '/stream.mp4', 'LOW'),
+  ];
+  check('a malformed resolution escape is skipped, not thrown',
+    eq(pickTranscodeUrls(malformed, 'low'), [malformed[1].url]),
+    pickTranscodeUrls(malformed, 'low').map((u) => label(u, malformed)).join(', '));
 
   // "low" in a filename or a title is not a tier; only the query parameter is.
   const named = [
@@ -209,8 +228,12 @@ const label = (url, list = REAL) => list.find((e) => e.url === url)?.url ?? '(no
 
   check('a NaN rate prefers 1x when the engine offers it',
     clampSpeed(NaN, BROWSER) === 1 && clampSpeed(undefined, AVPLAY) === 1);
+  // The non-1 rate is first so the two behaviours differ: falling back to the
+  // ladder's first entry returns 2, while defaulting to 1x and clamping would
+  // return 0.5.
   check('...and the first rate when it does not',
-    clampSpeed(NaN, [0.5, 2]) === 0.5 && clampSpeed('fast', [0.5, 2]) === 0.5);
+    clampSpeed(NaN, [2, 0.5]) === 2 && clampSpeed('fast', [2, 0.5]) === 2,
+    `${clampSpeed(NaN, [2, 0.5])}, ${clampSpeed('fast', [2, 0.5])}`);
   check('the ladder\'s own values are returned, not the wanted input',
     Number.isFinite(clampSpeed(1.6, AVPLAY))
       && [1, 2].includes(clampSpeed(1.6, AVPLAY)));

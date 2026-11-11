@@ -52,8 +52,21 @@ function press(key, keyCode) {
     key, keyCode, which: keyCode, bubbles: true, cancelable: true,
   }));
 }
-const enter = async (el) => {
-  el?.focus();
+const enter = async (el, what = 'control') => {
+  // A missing control must be a failed check: pressing whatever holds focus
+  // would activate an unrelated control and corrupt every later check.
+  if (!el) {
+    check(`enter(${what}): the target control exists`, false, 'lookup returned null');
+    return;
+  }
+  el.focus();
+  // A press goes to whatever holds focus, so an unfocusable target would
+  // activate an unrelated control.
+  if (document.activeElement !== el) {
+    check(`enter(${what}): focus lands on the target`, false,
+      `activeElement is ${document.activeElement?.tagName ?? 'none'}`);
+    return;
+  }
   await sleep(60);
   press('Enter', 13);
   await sleep(180);
@@ -132,7 +145,7 @@ async function runSettings() {
   // Reduce motion switch below it.
   const toggle = registry.get('settings-previews')?.el;
   const before = toggle?.getAttribute('aria-pressed');
-  await enter(toggle);
+  await enter(toggle, 'previews toggle');
   const after = toggle?.getAttribute('aria-pressed');
   // A flip, not a direction: the default belongs to preview-entry's P0, and
   // asserting "off → on" would fail on a default change for the wrong reason.
@@ -153,21 +166,19 @@ async function runSettings() {
     `adaptive=${seekOn('settings-seek-adaptive')} `
       + `ids=${[5, 10, 15, 30].filter(v => registry.get(`settings-seek-${v}`)).join(',')}`);
 
-  await enter(byLabel('15 s'));
+  await enter(byLabel('15 s'), '15 s');
   check('B2 choosing a step moves the radio and not the store',
     seekOn('settings-seek-15') && !seekOn('settings-seek-adaptive')
       && getSettings().seekStep === 'adaptive',
     `15=${seekOn('settings-seek-15')} adaptive=${seekOn('settings-seek-adaptive')} `
       + `store=${JSON.stringify(getSettings().seekStep)}`);
 
-  const motionBtn = () => {
-    const el = registry.get('settings-reduce-motion')?.el;
-    if (!el) throw new Error('settings-reduce-motion is missing');
-    return el;
-  };
-  const motionBefore = motionBtn().getAttribute('aria-pressed') === 'true';
-  await enter(motionBtn());
-  const motionAfter = motionBtn().getAttribute('aria-pressed') === 'true';
+  // Return null rather than throwing: `enter` reports a missing control as one
+  // failed check, a throw would take the whole driver down.
+  const motionBtn = () => registry.get('settings-reduce-motion')?.el ?? null;
+  const motionBefore = motionBtn()?.getAttribute('aria-pressed') === 'true';
+  await enter(motionBtn(), 'reduce motion');
+  const motionAfter = motionBtn()?.getAttribute('aria-pressed') === 'true';
   check('B3 Reduce motion flips in the panel and pauses the previews line',
     motionAfter === !motionBefore
       && new RegExp(motionAfter
@@ -176,7 +187,7 @@ async function runSettings() {
       && getSettings().reduceMotion === motionBefore,
     `before=${motionBefore} after=${motionAfter} `
       + `store=${getSettings().reduceMotion} `
-      + `label=${JSON.stringify(motionBtn().textContent)}`);
+      + `label=${JSON.stringify(motionBtn()?.textContent)}`);
   check('B3b ...and the document still moves until it is saved',
     !document.documentElement.hasAttribute('data-reduce-motion'),
     `attribute=${document.documentElement.hasAttribute('data-reduce-motion')}`);
@@ -184,7 +195,7 @@ async function runSettings() {
   // ── A3  Enter on Test connection reaches the server ──────
   // The request left and the result rendered. The fake answers `version`,
   // which testStashConnection asks for; a button wired to nothing stays empty.
-  await enter(byLabel('Test connection'));
+  await enter(byLabel('Test connection'), 'Test connection');
   await sleep(900);
   const resultText = document.querySelector('[role="dialog"]')?.textContent || '';
   check('A3 Test connection reported a result',
@@ -197,13 +208,13 @@ async function runSettings() {
   // either side, so a handler wired to the wrong action saves the refused
   // draft.
   const urlBefore = getSettings().stashUrl;
-  await enter(byLabel('Cancel'));
+  await enter(byLabel('Cancel'), 'Cancel');
   const asked = await waitFor(() =>
     !!byLabel('Keep editing') && !!byLabel('Discard') && !!byLabel('Save & close'), 2000);
   check('A4 Cancel with an unsaved draft asks first',
     asked && window.__closed !== true,
     `prompt=${asked} onClose called: ${window.__closed === true}`);
-  await enter(byLabel('Discard'));
+  await enter(byLabel('Discard'), 'Discard');
   await sleep(200);
   check('A4 Discard asked the panel to close', window.__closed === true,
     `onClose called: ${window.__closed === true}`);
@@ -240,7 +251,7 @@ async function runSettings() {
     `url ${!!registry.get('settings-url')}, key ${!!registry.get('settings-key')}, `
     + `test ${!!registry.get('settings-test')}`);
 
-  await enter(byLabel('Test'));
+  await enter(byLabel('Test'), 'Test');
   await sleep(250);
   check('C1 Test mode takes the live fields out of the focus order',
     !registry.get('settings-url') && !registry.get('settings-key')
@@ -248,7 +259,7 @@ async function runSettings() {
     `url ${!!registry.get('settings-url')}, key ${!!registry.get('settings-key')}, `
     + `test ${!!registry.get('settings-test')}`);
 
-  await enter(byLabel('Live'));
+  await enter(byLabel('Live'), 'Live');
   await sleep(250);
   check('C2 flipping back to Live restores them',
     !!registry.get('settings-url') && !!registry.get('settings-test'),
@@ -263,11 +274,11 @@ async function runSettings() {
   // The panel stays mounted while the test is in flight: the mode switch must
   // invalidate the question, not just hide its answer.
   await setMode({ connection: 'slow' });
-  await enter(byLabel('Test connection'));
+  await enter(byLabel('Test connection'), 'Test connection');
   await sleep(150);              // the request is in flight
-  await enter(byLabel('Test'));  // ...and the mode is changed under it
+  await enter(byLabel('Test'), 'Test');  // ...and the mode is changed under it
   await sleep(2000);             // the held answer lands here
-  await enter(byLabel('Live'));
+  await enter(byLabel('Live'), 'Live');
   await sleep(300);
   check('C3 a late answer does not paint a result for a mode that replaced it',
     !(document.querySelector('[role="dialog"]')?.textContent || '').includes('Connected — Stash'),
@@ -275,7 +286,7 @@ async function runSettings() {
   await setMode({ connection: 'ok' });
 
   // ── D: the scan notice points at where the job appears ──
-  await enter(byLabel('Scan library'));
+  await enter(byLabel('Scan library'), 'Scan library');
   await sleep(700);
   check('D1 a started scan says the progress is below the notice',
     statusSays(/progress appears below/),
@@ -290,7 +301,7 @@ async function runSettings() {
   clearPin();
   await sleep(150);
 
-  await enter(byLabel('Set PIN'));
+  await enter(byLabel('Set PIN'), 'Set PIN');
   await sleep(400);
   check('P0 Set PIN opens the keypad', !!pad(),
     `pad ${pad()?.getAttribute('aria-label') ?? '<none>'}`);
@@ -312,12 +323,12 @@ async function runSettings() {
     !!removeEntry && document.contains(removeEntry.el),
     `registry entry ${!!removeEntry}, connected ${!!removeEntry && document.contains(removeEntry.el)}`);
 
-  await enter(removeEntry?.el);
+  await enter(removeEntry?.el, 'remove PIN');
   check('P4 the first press only arms the confirmation',
     isLockSet() && /Press again to confirm/.test(removeEntry?.el?.textContent || ''),
     `isLockSet ${isLockSet()}, label ${JSON.stringify(removeEntry?.el?.textContent)}`);
 
-  await enter(removeEntry?.el);
+  await enter(removeEntry?.el, 'remove PIN');
   await sleep(200);
   check('P5 the second press removes the PIN', !isLockSet(),
     `isLockSet ${isLockSet()}`);
@@ -340,8 +351,8 @@ async function runSettings() {
     return realRemoveItem.call(this, name);
   };
   try {
-    await enter(removeAgain);
-    await enter(removeAgain);
+    await enter(removeAgain, 'remove PIN again');
+    await enter(removeAgain, 'remove PIN again');
     await sleep(150);
     check('Q1 a failed removal says why',
       statusSays(/Could not remove the PIN/),
@@ -357,10 +368,10 @@ async function runSettings() {
   // ── S: Save commits both new settings ────────────────────
   // Last, because Save starts the panel's close timer. Reduce motion is the
   // one setting whose effect is on the document rather than in the panel.
-  await enter(byLabel('30 s'));
+  await enter(byLabel('30 s'), '30 s');
   // Whatever B3 left, Save must commit Reduce motion as on.
-  if (motionBtn().getAttribute('aria-pressed') !== 'true') await enter(motionBtn());
-  await enter(byLabel('Save'));
+  if (motionBtn()?.getAttribute('aria-pressed') !== 'true') await enter(motionBtn(), 'reduce motion');
+  await enter(byLabel('Save'), 'Save');
   await sleep(300);
   check('S1 Save commits the seek step and applies Reduce motion to the document',
     getSettings().seekStep === 30
@@ -383,7 +394,7 @@ async function runExit() {
   check('E1 focus starts on the safe action', focusedLabel() === 'Cancel',
     `focused: ${focusedLabel() ?? '<none>'}`);
 
-  await enter(byLabel('Cancel'));
+  await enter(byLabel('Cancel'), 'Cancel');
   await sleep(200);
   check('E2 Cancel asked the prompt to close', window.__cancelled === true,
     `onCancel called: ${window.__cancelled === true}`);

@@ -189,6 +189,42 @@ function rig({ throwSeek = false, playing = true } = {}) {
     eq(r.degraded, [25]) && eq(r.reasons, ['stuck']));
 }
 
+// ── The one-shot re-issue is burst-scoped, not per press ───
+{
+  // A third press used to re-arm the one-shot and restart the deadline, so an
+  // overlapped burst could be re-issued again and again.
+  const r = rig();
+  r.coalescer.request(10);
+  r.coalescer.request(25);
+  r.moveTo(0);
+  r.advance(SEEK_SETTLE_MS);
+  r.coalescer.tick();
+  check('precondition: the first re-issue happened', eq(r.seeks, [10, 25, 25]));
+
+  r.advance(4500);
+  r.coalescer.request(30);           // a third press after the re-issue
+  r.advance(3500);                   // past the burst's original deadline
+  r.coalescer.tick();
+  check('a later press does not re-arm the re-issue', eq(r.seeks, [10, 25, 25, 30]));
+  check('...nor restart the burst deadline',
+    eq(r.degraded, [30]) && eq(r.reasons, ['stuck']));
+}
+
+// ── An unreadable position never triggers a re-issue ───────
+{
+  // Without a position at issue there is nothing to compare against, so a
+  // frozen engine and a lost target are indistinguishable, and the safe answer
+  // is to leave the seek alone.
+  const r = rig();
+  r.coalescer.request(10);
+  r.coalescer.request(25);
+  r.moveTo(NaN);
+  r.advance(SEEK_SETTLE_MS);
+  r.coalescer.tick();
+  check('a frozen burst with no readable position is not re-issued',
+    eq(r.seeks, [10, 25]));
+}
+
 // ── A single frozen seek is never re-issued ────────────────
 {
   // The control: one request is the engine scanning (a 4K AV1 seek takes
@@ -487,6 +523,33 @@ function rig({ throwSeek = false, playing = true } = {}) {
   c.tick();
   check('the deadline alone ends the burst, without waiting for another window',
     eq(reasons, ['arrived']));
+}
+
+// ── A replacement seek is not judged at once ───────────────
+{
+  // A press just before the deadline used to fall into the stuck branch with
+  // no chance to land, and the backend reopened the native session for it.
+  let now = 0;
+  const seeks = [];
+  const degraded = [];
+  const c = createSeekCoalescer({
+    seekTo: (s) => seeks.push(s),
+    getTime: () => 0, // frozen: the engine has not moved
+    now: () => now,
+    maxWaitMs: 4000,
+    onDegraded: (t, reason) => degraded.push(reason),
+  });
+  c.request(30);
+  now = 3900;
+  c.request(60);
+  now = 4000;
+  c.tick();
+  check('a replacement at the deadline is still given its window',
+    degraded.length === 0 && c.isSeeking() === true, `degraded=${degraded}`);
+  now = 6900;
+  c.tick();
+  check('...and is judged stuck once that window ends', eq(degraded, ['stuck']));
+  check('...without re-issuing it', eq(seeks, [30, 60]));
 }
 
 console.log(`\n${passed}/${passed + failed} checks passed`);

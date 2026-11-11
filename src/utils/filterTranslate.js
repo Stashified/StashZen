@@ -128,8 +128,11 @@ function coerceScalar(typeName, v, schema) {
   // wrapped. A value already in list form goes through `toIds`, which also
   // unwraps `{id,label}` entries.
   if (schema.LIST_VALUED_CRITERIA.has(typeName)) {
-    if (Array.isArray(v)) return toIds(v).map(map);
-    return [map(v)];
+    // A null or blank entry is no member: `[Enum!]` rejects it and it would
+    // otherwise survive the empty-value drop as a non-empty list.
+    const kept = (x) => x != null && x !== '';
+    if (Array.isArray(v)) return toIds(v).map(map).filter(kept);
+    return [map(v)].filter(kept);
   }
   return map(v);
 }
@@ -303,6 +306,7 @@ function translateCriterion(c, typeName, schema) {
   // there are no exclusions either, `items: []` beside a non-empty `excluded`
   // does constrain, and dropping it showed rows the user had excluded.
   const emptyValue = out.value === ''
+    || out.value === null
     || (Array.isArray(out.value) && out.value.length === 0);
   const hasExcludes = Array.isArray(out.excludes) && out.excludes.length > 0;
   if (!NULLARY_MODIFIERS.has(out.modifier) && emptyValue && !hasExcludes) return undefined;

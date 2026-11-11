@@ -14,7 +14,10 @@
 
 import { useEffect, useRef } from 'react';
 import { registry, getCurrentFocusId } from './useFocusable.js';
-import { isBackCode, isTextInput, focusScopeOf } from '../utils/input.js';
+import {
+  isBackCode, isTextInput, focusScopeOf, isRendered, lastRenderedLayer,
+  isRestoreArrowHold,
+} from '../utils/input.js';
 import { scrollContainerOf } from '../utils/scroll.js';
 
 const CROSS_ZONE_PENALTY = 100000;
@@ -45,19 +48,6 @@ function getCachedRect(el) {
     rectCacheRef.current.set(el, r);
   }
   return r;
-}
-
-/**
- * Is this element actually on screen?
- *
- * `getClientRects().length > 0`, not `offsetParent`: a position:fixed element
- * has no offsetParent, and the viewer overlay is fixed. Both reject
- * display:none and detached nodes; only this accepts fixed positioning. Every
- * reachability check goes through here so the forced-edge path and the
- * geometric search cannot disagree.
- */
-function isRendered(el) {
-  return el.getClientRects().length > 0;
 }
 
 /**
@@ -133,8 +123,13 @@ function findBestCandidate(direction, currentEl, currentEntry) {
   // dialog fallback keeps behaving exactly as it did before traps existed.
   let scope = focusScopeOf(currentEl);
   if (!scope) {
-    scope = document.querySelector('[role="dialog"]')
-         || document.querySelector('[data-focus-trap]');
+    // Rendered layers only, newest last: a layer still mounted but hidden
+    // (`display:none`, not yet entered) would become the scope and reject every
+    // candidate, killing the D-pad, and stacked layers put the top one last.
+    // Dialogs outrank traps as before, so an open dropdown later in the DOM
+    // cannot become the scope and strand the D-pad in it.
+    scope = lastRenderedLayer('[role="dialog"]')
+      || lastRenderedLayer('[data-focus-trap]');
   }
 
   let bestEl = null;
@@ -239,6 +234,8 @@ function findBestCandidate(direction, currentEl, currentEntry) {
     } else if (score < bestScore) { bestScore = score; bestEl = el; }
   });
 
+  // The top of a one-column list beats the facing-row candidate: that candidate
+  // is the row beside the tab's height, which skips the rows above it.
   if (listTopEl) return listTopEl;
 
   // End of a wrapped line: continue at the start of the next, chosen by line
@@ -308,6 +305,18 @@ export function useKeyHandler({ onBack } = {}) {
 
         // A TEXTAREA does move the caret between lines, so Up/Down stay native.
         if (inText && ae.tagName === 'TEXTAREA') return;
+
+        // A restore is about to place focus on a card that is not mounted yet
+        // (Back out of a detail). With nothing focused there is no move to
+        // make; geometry from <body> would pick the listing's first card and
+        // fight the restore. `activeElement`, not `getCurrentFocusId()`: the
+        // latter is not cleared on blur. focus.js spares the same press, so
+        // this is the swallow that stops the move, not a fallback; the two
+        // halves must stay in step. preventDefault marks the press claimed.
+        if (isRestoreArrowHold(e)) {
+          e.preventDefault();
+          return;
+        }
 
         e.preventDefault();
 

@@ -20,16 +20,24 @@
  * and the harness looks for it as the strip's last element.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import VideoCard from './VideoCard.jsx';
 import EntityCard from './EntityCard.jsx';
 import PerformerCard from './PerformerCard.jsx';
 import { useFocusable } from '../hooks/useFocusable.js';
+import { ROW_SIZE } from '../utils/showroomService.js';
 import styles from '../pages/ShowroomPage.module.css';
 
 // Module constant, not a render literal: a fresh `nextId` object each render
 // would defeat the memoized cards and re-render every shelf.
 const TOP_EDGE = { up: 'nav-home' };
+
+// The id each card family registers, so a short shelf can name its last one.
+function cardFocusId(row, item) {
+  if (row.kind === 'scene') return `${row.focusIdPrefix}-${item.id}`;
+  if (row.kind === 'performer') return `performer-${item.id}`;
+  return `${row.view.focusPrefix}-${item.id}`;
+}
 
 function SeeAllTile({ row, onSelect, nextId }) {
   const { ref, focused } = useFocusable({
@@ -86,6 +94,34 @@ export default function ShowroomRow({
     [items, row.focusIdPrefix],
   );
 
+  // EntityCard hands back `(item, index, items)`, and the app's studio/gallery
+  // handlers read the second argument as an origin focus id, so the arity has
+  // to be narrowed there. The performer handler takes one argument and is
+  // memoised at the source, so it is passed straight through.
+  const selectStudio = useCallback((studio) => onStudioSelect?.(studio), [onStudioSelect]);
+  const selectGallery = useCallback((gallery) => onGallerySelect?.(gallery), [onGallerySelect]);
+
+  // Up out of the top shelf leaves for the rail's active row, mirroring Left.
+  // Without the edge the geometry picks the *nearest* row above, Scenes, the
+  // row the user is not on, one Down press from the wrong part of the rail.
+  // Measured at 1920x1080 in showroom-entry's H11.
+  const topEdge = isTop ? TOP_EDGE : null;
+
+  // A short shelf leaves empty tracks between its last card and the tile. The
+  // geometry scores the next shelf's cards as nearer than that gap, so Right
+  // jumped down instead of reaching the tile. Declared edges cross it; a full
+  // shelf flows into the tile by geometry and keeps its old props.
+  const shortShelf = items.length > 0 && items.length < ROW_SIZE;
+  const lastCardId = shortShelf ? cardFocusId(row, items[items.length - 1]) : null;
+  const lastCardEdge = useMemo(
+    () => (lastCardId ? { ...(topEdge || {}), right: row.seeAllFocusId } : topEdge),
+    [lastCardId, topEdge, row.seeAllFocusId],
+  );
+  const tileEdge = useMemo(
+    () => (lastCardId ? { ...(topEdge || {}), left: lastCardId } : topEdge),
+    [lastCardId, topEdge],
+  );
+
   // An empty row is not a shelf and not an error, a library with no galleries
   // legitimately has no gallery shelf, so it does not exist.
   //
@@ -103,12 +139,6 @@ export default function ShowroomRow({
     );
   }
 
-  // Up out of the top shelf leaves for the rail's active row, mirroring Left.
-  // Without the edge the geometry picks the *nearest* row above, Scenes, the
-  // row the user is not on, one Down press from the wrong part of the rail.
-  // Measured at 1920x1080 in showroom-entry's H11.
-  const topEdge = isTop ? TOP_EDGE : null;
-
   return (
     <section className={styles.row} data-showroom-row={row.key}>
       <h2 className={styles.rowTitle}>{row.heading}</h2>
@@ -124,7 +154,7 @@ export default function ShowroomRow({
               // Only one card on Home may claim focus on mount, or all four
               // shelves race for it.
               autoFocus={isTop && i === 0}
-              nextId={topEdge}
+              nextId={i === items.length - 1 ? lastCardEdge : topEdge}
               onSelect={onVideoSelect}
               onLongPress={onVideoLongPress}
             />
@@ -137,8 +167,8 @@ export default function ShowroomRow({
               index={i}
               fill
               autoFocus={isTop && i === 0}
-              nextId={topEdge}
-              onSelect={(performer) => onPerformerSelect?.(performer)}
+              nextId={i === items.length - 1 ? lastCardEdge : topEdge}
+              onSelect={onPerformerSelect}
             />
           </div>
         ))}
@@ -151,16 +181,12 @@ export default function ShowroomRow({
               view={row.view}
               fill
               autoFocus={isTop && i === 0}
-              nextId={topEdge}
-              // EntityCard calls `(item, index, items)`; these wrap the app's
-              // existing one-argument handlers.
-              onSelect={row.kind === 'studio'
-                ? (studio) => onStudioSelect?.(studio)
-                : (gallery) => onGallerySelect?.(gallery)}
+              nextId={i === items.length - 1 ? lastCardEdge : topEdge}
+              onSelect={row.kind === 'studio' ? selectStudio : selectGallery}
             />
           </div>
         ))}
-        <SeeAllTile row={row} onSelect={onSeeAll} nextId={topEdge} />
+        <SeeAllTile row={row} onSelect={onSeeAll} nextId={tileEdge} />
       </div>
     </section>
   );

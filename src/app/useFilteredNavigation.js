@@ -13,7 +13,7 @@
  * straight through.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORKING_FILTER_ID } from './tabConfig.js';
 import { snapshotControls } from './controlRestore.js';
 
@@ -64,9 +64,12 @@ export function useFilteredNavigation({ activeTab, dataKey, controls, changeTab,
   //
   // The handlers below are useCallback'd because they reach memoised cards
   // through App's entity dispatcher: a fresh identity per App render would
-  // re-render every card for nothing. `controls` is a state object, so the
-  // callbacks still change when it does, which is when their meaning changes.
-  const filterAtOrigin = useCallback(() => snapshotControls(controls), [controls]);
+  // re-render every card for nothing. `controls` changes on every keystroke and
+  // page turn, so it is read from a ref at activation time; depending on it
+  // would hand every card a new handler for values only activation reads.
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+  const filterAtOrigin = useCallback(() => snapshotControls(controlsRef.current), []);
 
   // A gallery lands on Images and a tag or studio on Scenes, so the two
   // handlers differ in destination *and* in the tab Back returns to; the

@@ -298,6 +298,16 @@ check('storedCriteria keeps a hierarchical multi nested',
   { tags: { modifier: 'INCLUDES', value: { items: [], excluded: [{ id: '2', label: 'x' }], depth: -1 } } });
 check('is_missing keeps its stored modifier envelope',
   storedOut.is_missing, { modifier: 'EQUALS', value: 'url' });
+check('a stash id saves flat, as Stash itself stores it',
+  storedCriteria(['stash_id'],
+    { stash_id: { modifier: 'EQUALS', value: { endpoint: '/scenes', stashID: '42' } } },
+    new Map([['stash_id', stashIdDesc]])),
+  { stash_id: { modifier: 'EQUALS', endpoint: '/scenes', stash_id: '42' } });
+check('a stash ids criterion saves stash_ids',
+  storedCriteria(['stash_ids'],
+    { stash_ids: { modifier: 'EQUALS', value: { endpoint: '/scenes', stashIDs: '4,2' } } },
+    new Map([['stash_ids', stashIdsDesc]])),
+  { stash_ids: { modifier: 'EQUALS', endpoint: '/scenes', stash_ids: '4,2' } });
 check('an unknown field is carried as it came', storedOut.gone, { kept: true });
 
 console.log('\n── hierarchical counts (0.32)');

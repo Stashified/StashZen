@@ -5,12 +5,13 @@
  * the trigger.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import PerformerCard from './PerformerCard.jsx';
 import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchPerformers } from '../utils/performerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
+import { useSentinelLoadMore } from '../hooks/useSentinelLoadMore.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './PerformerGrid.module.css';
 
@@ -39,20 +40,7 @@ export default function PerformerGrid({ controls, onPerformerSelect, objectFilte
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const root = scrollRef.current;
-    if (!sentinel || !root) return;
-
-    const observer = new IntersectionObserver(
-      entries => { if (entries[0].isIntersecting) loadMore(); },
-      { root, rootMargin: '400px 0px', threshold: 0 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
+  useSentinelLoadMore(sentinelRef, scrollRef, loadMore);
 
   if (loading && !performers.length) return (
     <ListingState

@@ -1569,6 +1569,10 @@ class Handler(SimpleHTTPRequestHandler):
                 "performers": {"performers": rows_of(listing_performer, 1, PERFORMER_COUNT)},
                 "galleries": {"galleries": rows_of(listing_gallery, 1, GALLERY_COUNT)},
             }
+            # A shelf that ended early: four cards leave a gap before the
+            # See-all tile, which is where geometry alone sent Right downward.
+            if MODE.get("showroomShort") == "studios":
+                payload["studios"]["studios"] = payload["studios"]["studios"][:4]
             # `partial` is the shape a real answer has when one aliased root
             # throws: errors beside the data for the roots that resolved. Home
             # must keep the four healthy shelves and report only this one.

@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.44.1",
+      "date": "2026-11-11",
+      "sections": [
+        {
+          "title": "Fixes",
+          "items": [
+            "Skipping forward or back no longer stalls on the old frame when the TV misses a seek; recovery begins as soon as the new position is given its chance to land.",
+            "Opening a performer starts on their first scene when they have one.",
+            "Back from a performer opened on a scene returns to that scene's card in the listing, not the first card.",
+            "Numeric filters name what the value counts, so duration reads \"seconds\" and height reads \"cm\" instead of a bare number.",
+            "Minor bug fixes."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.44.0",
       "date": "2026-11-10",
       "sections": [

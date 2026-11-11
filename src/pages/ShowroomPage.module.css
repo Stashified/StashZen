@@ -76,6 +76,12 @@
    flexes to the row's fixed card height, so the tile and the five cards share
    one bottom edge. */
 .seeAll {
+  /* Pinned to the last track, not wherever auto-flow lands: a shelf with fewer
+     than five cards used to leave the tile mid-row and empty tracks after it.
+     Cards flow into columns 1..n and the tile keeps the declared right edge. */
+  /* Second-to-last line, i.e. the right-most track, without repeating the
+     track count declared in `.strip`. */
+  grid-column: -2;
   display: flex;
   flex-direction: column;
   width: 100%;

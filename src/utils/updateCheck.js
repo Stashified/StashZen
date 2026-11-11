@@ -6,6 +6,7 @@
  * shared timeout wrapper, so every branch is testable offline.
  */
 
+import { readCappedText } from './cappedBody.js';
 import { fetchWithTimeout, StashError } from './stashClient.js';
 
 export const UPDATE_TIMEOUT_MS = 8000;
@@ -98,13 +99,15 @@ export async function fetchLatestRelease({
         }
         let text;
         try {
-          text = await res.text();
-        } catch {
+          // The header can be absent or wrong, so the body is measured too;
+          // in bytes, or a multi-byte body could pass a code-unit count.
+          text = await readCappedText(
+            res, UPDATE_MAX_BYTES,
+            () => new StashError('Unexpected response from GitHub.', 'size'),
+          );
+        } catch (err) {
+          if (err instanceof StashError) throw err;
           throw new StashError('Unexpected response from GitHub.', 'parse');
-        }
-        // The header can be absent or wrong, so measure the body too.
-        if (text.length > UPDATE_MAX_BYTES) {
-          throw new StashError('Unexpected response from GitHub.', 'size');
         }
         try {
           return JSON.parse(text);

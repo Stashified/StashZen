@@ -35,7 +35,22 @@ function check(name, pass, detail) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-const calls = () => fetch('/graphqlcalls').then(r => r.json()).catch(() => []);
+// A failed read must not become an empty call list: "no request was made"
+// checks would then pass on a dead endpoint.
+const calls = () => fetch('/graphqlcalls').then(r => {
+  if (!r.ok) throw new Error(`GET /graphqlcalls: HTTP ${r.status}`);
+  return r.json();
+});
+// A read failure becomes one failed check, not a crash that hides every later
+// phase.
+async function readCalls(label) {
+  try {
+    return await calls();
+  } catch (e) {
+    check(`${label}: the call log is readable`, false, e.message);
+    return null;
+  }
+}
 const clearLog = () => fetch('/clear', { method: 'POST' }).catch(() => {});
 
 /** Patch the fake server's behaviour, as every other driver does. */
@@ -216,10 +231,12 @@ async function run() {
   check('A11 Up from Skip returns to Connect',
     getCurrentFocusId() === 'firstrun-connect', `landed on ${getCurrentFocusId()}`);
 
-  const phaseA = await calls();
-  check('A4 no request of any kind was sent',
-    phaseA.length === 0,
-    `logged: ${JSON.stringify(phaseA)}`);
+  const phaseA = await readCalls('A4');
+  if (phaseA) {
+    check('A4 no request of any kind was sent',
+      phaseA.length === 0,
+      `logged: ${JSON.stringify(phaseA)}`);
+  }
 
   // A4 is only as good as this: on an empty URL the app fails its own config
   // check and sends nothing whatever the gate does. With a working endpoint the
@@ -227,10 +244,12 @@ async function run() {
   setSettings({ stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
   await sleep(900);
 
-  const phaseA2 = await calls();
-  check('A5 still nothing, with a working endpoint configured',
-    phaseA2.length === 0 && !registered('nav-home'),
-    `logged: ${JSON.stringify(phaseA2)}, nav-home ${registered('nav-home')}`);
+  const phaseA2 = await readCalls('A5');
+  if (phaseA2) {
+    check('A5 still nothing, with a working endpoint configured',
+      phaseA2.length === 0 && !registered('nav-home'),
+      `logged: ${JSON.stringify(phaseA2)}, nav-home ${registered('nav-home')}`);
+  }
 
   // ── B: Skip reaches the PIN step, and commits nothing ───
   // Pressed by id, so the check is on the same path the remote takes.
@@ -294,9 +313,11 @@ async function run() {
 
     // Sample data is generated locally. If this fires, "Test mode" has started
     // reaching for a server it does not have.
-    const phaseC = await calls();
-    check('C5 sample data is offline',
-      phaseC.length === 0, `logged: ${JSON.stringify(phaseC)}`);
+    const phaseC = await readCalls('C5');
+    if (phaseC) {
+      check('C5 sample data is offline',
+        phaseC.length === 0, `logged: ${JSON.stringify(phaseC)}`);
+    }
   }
 
   // ── D: control, the same log does see traffic ──────────
@@ -311,16 +332,21 @@ async function run() {
 
   await sleep(1500);
 
-  const phaseD = await calls();
-  check('D1 with the gate open, the app does talk to the server',
-    phaseD.length > 0,
-    `logged: ${JSON.stringify(phaseD)} — A4 is only meaningful because this is non-empty`);
+  const phaseD = await readCalls('D1');
+  if (phaseD) {
+    check('D1 with the gate open, the app does talk to the server',
+      phaseD.length > 0,
+      `logged: ${JSON.stringify(phaseD)}; A4 is only meaningful because this is non-empty`);
+  }
 
   // Home's five shelves are one document named Showroom, whose roots are
   // findScenes/findStudios/...; a listing op name or that document both count.
-  check('D2 the live library request is among them',
-    phaseD.some(op => /findScenes|showroom/i.test(op)),
-    `logged: ${JSON.stringify(phaseD)}`);
+  // Skipped on a failed read, which D1 already reports.
+  if (phaseD) {
+    check('D2 the live library request is among them',
+      phaseD.some(op => /findScenes|showroom/i.test(op)),
+      `logged: ${JSON.stringify(phaseD)}`);
+  }
 
   check('D3 the gate stays open once answered',
     !setupDialog() && registered('nav-home'),

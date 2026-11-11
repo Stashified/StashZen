@@ -6,13 +6,14 @@
  * the trigger.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import MarkerCard from './MarkerCard.jsx';
 import ListingState from './ListingState.jsx';
 import ListStats from './ListStats.jsx';
 import { fetchMarkers } from '../utils/markerService.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { useStableListing } from '../hooks/useStableListing.js';
+import { useSentinelLoadMore } from '../hooks/useSentinelLoadMore.js';
 import { pageRequestKey } from '../utils/requestKey.js';
 import styles from './VideoGrid.module.css'; // grid layout is shared
 
@@ -49,20 +50,7 @@ export default function MarkerGrid({
 
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const root = scrollRef.current;
-    if (!sentinel || !root) return;
-
-    const observer = new IntersectionObserver(
-      entries => { if (entries[0].isIntersecting) loadMore(); },
-      { root, rootMargin: '400px 0px', threshold: 0 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
+  useSentinelLoadMore(sentinelRef, scrollRef, loadMore);
 
   if (loading && !markers.length) return (
     <ListingState

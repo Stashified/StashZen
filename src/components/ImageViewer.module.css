@@ -34,9 +34,9 @@
   object-fit: contain;
   opacity: 0;
   transform-origin: center center;
-  transition:
-    opacity   0.18s ease-out,
-    transform 0.14s ease-out;
+  /* Opacity only: pan writes `transform` on every D-pad press, and a
+     transition there makes each step chase the last instead of following it. */
+  transition: opacity 0.18s ease-out;
   user-select: none;
 }
 

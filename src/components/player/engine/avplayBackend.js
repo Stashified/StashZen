@@ -866,6 +866,11 @@ export function createAvplayBackend({
     seekDegraded = false;
     seekAwaitingPlay = false;
     lastPlayReassert = 0;
+    // The previous scene's seek times say nothing about this one: leaving them
+    // let a first play() failure look like a failed seek and be reopened, and
+    // made this scene's first seek read as a burst repeat.
+    lastNativeSeekAt = 0;
+    lastSeekRequestAt = 0;
     lastActionAt = now();
     cachedPosition = startAt;
 

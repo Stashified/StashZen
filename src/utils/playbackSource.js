@@ -165,7 +165,14 @@ const urlPath = (u) => String(u).split('?')[0].split('#')[0];
 // contain the word "low" and must not be mistaken for a tier.
 const resolutionOf = (u) => {
   const m = /[?&]resolution=([^&#]*)/i.exec(String(u));
-  return m ? decodeURIComponent(m[1]).toUpperCase() : '';
+  if (!m) return '';
+  try {
+    return decodeURIComponent(m[1]).toUpperCase();
+  } catch (e) {
+    // A malformed escape is a URL with no usable tier, not a reason to fail
+    // every candidate for this scene.
+    return m[1].toUpperCase();
+  }
 };
 
 // Per-quality preference, best first. `original` is the old rule; the others

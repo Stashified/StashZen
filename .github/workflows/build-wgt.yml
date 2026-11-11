@@ -121,8 +121,10 @@ jobs:
             echo "Tizen Studio restored from cache."
           else
             if [ ! -s "$INSTALLER" ]; then
-              # --proto restricts redirects to HTTPS as well as the URL itself.
-              curl -fL --proto '=https' --retry 3 --retry-delay 2 \
+              # --proto covers the first request only; redirects have their own
+              # switch, and its default still allows a downgrade to HTTP on a
+              # download that is chmod +x'd and run.
+              curl -fL --proto '=https' --proto-redir '=https' --retry 3 --retry-delay 2 \
                 -o "$INSTALLER" "$TIZEN_URL"
             fi
             # Verify before executing, cached installer included. `sha256sum -c`
@@ -274,6 +276,9 @@ jobs:
           SIGNING_MODE: ${{ inputs.signing || 'real' }}
         run: |
           set -euo pipefail
+          # The profile holds both passwords and the keys are unencrypted; the
+          # default 0644 would leave them readable to anything later in the job.
+          umask 077
 
           echo "mode=$SIGNING_MODE" >> "$GITHUB_OUTPUT"
 
@@ -402,6 +407,20 @@ jobs:
           grep -q 'config.xml' <<<"$LISTING" || { echo "::error::.wgt has no config.xml"; exit 1; }
           grep -q 'index.html' <<<"$LISTING" || { echo "::error::.wgt has no index.html"; exit 1; }
 
+      # The keys and profiles.xml are past their use once packaging is done.
+      # `always()` so a failed package cannot leave them for later steps.
+      - name: Remove signing material
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/signing"
+          PROFILES_PATH="$(tizen cli-config -l 2>/dev/null \
+            | sed -n 's/^default\.profiles\.path=//p' | tr -d '\r' || true)"
+          if [ -n "$PROFILES_PATH" ]; then
+            rm -f "$PROFILES_PATH"
+          fi
+          rm -f "$HOME/tizen-studio-data/profile/profiles.xml"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: StashZen-${{ env.VERSION }}${{ env.VARIANT_SUFFIX }}-wgt
@@ -416,12 +435,13 @@ jobs:
     name: Publish GitHub Release
     needs: build
     # Belt and braces: the signing step refuses test mode on a tag, and this
-    # keeps a future edit to that step from publishing the result.
+    # keeps a future edit to that step from publishing the result. Positive
+    # assertions, so an unset output blocks rather than passes.
     if: >-
       github.event_name == 'push'
       && github.ref_type == 'tag'
-      && needs.build.outputs.signing != 'test'
-      && needs.build.outputs.variant != 'test'
+      && needs.build.outputs.signing == 'real'
+      && needs.build.outputs.variant == 'main'
     # Same image as the build job: an artifact produced there is downloaded and
     # unzipped here, so the two must not drift onto different Ubuntu releases.
     runs-on: ubuntu-24.04

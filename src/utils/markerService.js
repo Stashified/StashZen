@@ -10,6 +10,7 @@
  * server (29 of 30 sampled 404). `preview` likewise; see `normalizeMarker`.
  */
 
+import { throwIfAborted } from './abort.js';
 import { getSettings } from './settings.js';
 import { withApiKey } from './stashUrl.js';
 import { runQuery, withoutCount } from './stashQuery.js';
@@ -161,6 +162,8 @@ async function loadMarkers({
 } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 400));
+    // A superseded page must not build and sort the catalogue either.
+    throwIfAborted(signal);
     let markers = await generateMockMarkers(60);
 
     // Same filter as the scene mock, so the Search tab's marker section can
@@ -239,9 +242,11 @@ const FIND_TAGS_QUERY = `
  */
 export const MARKER_TAG_LIMIT = 60;
 
-export async function fetchTagOptions(limit = MARKER_TAG_LIMIT) {
+export async function fetchTagOptions(limit = MARKER_TAG_LIMIT, { signal } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 200));
+    // Same abort shape as the live path.
+    throwIfAborted(signal);
     const { MARKER_TAGS } = await import('./mockLibrary.js');
     return {
       tags: MARKER_TAGS.slice(0, limit).map((name, i) => ({
@@ -256,7 +261,7 @@ export async function fetchTagOptions(limit = MARKER_TAG_LIMIT) {
   try {
     const data = await runQuery(FIND_TAGS_QUERY, {
       filter: { page: 1, per_page: limit, sort: 'scene_markers_count', direction: 'DESC' },
-    });
+    }, { signal });
     return {
       tags: (data?.findTags?.tags || []).map(t => ({
         id: t.id,
@@ -266,9 +271,8 @@ export async function fetchTagOptions(limit = MARKER_TAG_LIMIT) {
       total: data?.findTags?.count || 0,
     };
   } catch (e) {
-    // Not swallowed into an empty list: an empty picker and a failed request
-    // look identical, and the form cannot be completed without a tag.
-    console.warn('[fetchTagOptions] failed:', e.message);
+    // An abort is the modal closing, not a failure to report.
+    if (e?.name !== 'AbortError') console.warn('[fetchTagOptions] failed:', e?.message);
     throw e;
   }
 }
@@ -305,9 +309,11 @@ const RECENT_TAGS_QUERY = `
 export const MARKER_RECENT_TAG_LIMIT = 12;
 const RECENT_TAG_SCAN = 60;
 
-export async function fetchRecentMarkerTags(limit = MARKER_RECENT_TAG_LIMIT) {
+export async function fetchRecentMarkerTags(limit = MARKER_RECENT_TAG_LIMIT, { signal } = {}) {
   if (getSettings().useMock) {
     await new Promise(r => setTimeout(r, 150));
+    // Same abort shape as the live path.
+    throwIfAborted(signal);
     // Same ids as fetchTagOptions' mock so the two rows agree in mock mode:
     // which is also where the real duplicate-chip case gets exercised.
     const { MARKER_TAGS } = await import('./mockLibrary.js');
@@ -316,7 +322,7 @@ export async function fetchRecentMarkerTags(limit = MARKER_RECENT_TAG_LIMIT) {
 
   const data = await runQuery(RECENT_TAGS_QUERY, {
     filter: { page: 1, per_page: RECENT_TAG_SCAN, sort: 'created_at', direction: 'DESC' },
-  });
+  }, { signal });
 
   const seen = new Set();
   const recent = [];

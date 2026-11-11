@@ -98,8 +98,12 @@ export function avplayLikelyDirect({ videoCodec, container } = {}) {
  * MP4. AVPlay refused it in ~140 ms; the browser plays it. Only matters under
  * `tv`, `auto` already starts on the browser.
  */
-export function preferBrowserDirect({ audioCodec } = {}) {
-  return norm(audioCodec) === 'pcm_s32le';
+export function preferBrowserDirect({ videoCodec, container, audioCodec } = {}) {
+  // Only the measured case: the container and video codec must also be ones
+  // the browser takes, or an exotic file with pcm_s32le audio would be
+  // handed to the browser the doc above says cannot demux it.
+  return norm(audioCodec) === 'pcm_s32le'
+    && !needsTranscode({ videoCodec, container });
 }
 
 /**

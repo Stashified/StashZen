@@ -19,8 +19,8 @@ import { isBackKey } from '../utils/input.js';
  * nested one checks for it inside its own handler, see the `pinFlowRef` and
  * `focusScopeOf` guards at the call sites.
  *
- * `isBack` should be stable (the default is); an inline predicate re-registers
- * the listener on every render.
+ * Every option is held in a ref, so an inline predicate or a changing flag
+ * cannot re-register the listener and move it behind an overlay.
  */
 export function useBackKey(onBack, {
   capture = true,
@@ -30,14 +30,24 @@ export function useBackKey(onBack, {
   stopPropagation = true,
 } = {}) {
   const handlerRef = useRef(onBack);
-  useEffect(() => { handlerRef.current = onBack; });
+  const isBackRef = useRef(isBack);
+  const preventRef = useRef(preventDefault);
+  const stopRef = useRef(stopPropagation);
+  const enabledRef = useRef(enabled);
+  useEffect(() => {
+    handlerRef.current = onBack;
+    isBackRef.current = isBack;
+    preventRef.current = preventDefault;
+    stopRef.current = stopPropagation;
+    enabledRef.current = enabled;
+  });
 
   useEffect(() => {
-    if (!enabled) return undefined;
     const onKey = (e) => {
-      if (!isBack(e)) return;
-      if (preventDefault) e.preventDefault();
-      if (stopPropagation) e.stopPropagation();
+      if (!enabledRef.current) return;
+      if (!isBackRef.current(e)) return;
+      if (preventRef.current) e.preventDefault();
+      if (stopRef.current) e.stopPropagation();
       // A held Back repeats, and each repeat reaches whichever layer is on top
       // by then, one press could close the layer that owned it and every one
       // behind it. Only the first keydown is the press; it is still swallowed
@@ -47,5 +57,5 @@ export function useBackKey(onBack, {
     };
     window.addEventListener('keydown', onKey, capture);
     return () => window.removeEventListener('keydown', onKey, capture);
-  }, [capture, enabled, isBack, preventDefault, stopPropagation]);
+  }, [capture]);
 }

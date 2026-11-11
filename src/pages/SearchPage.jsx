@@ -14,7 +14,7 @@
  * previous round so a fast typist cannot be answered out of order.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { useEditableField } from '../hooks/useEditableField.js';
 import { isRestorePending } from '../utils/restorePending.js';
@@ -203,25 +203,40 @@ export default function SearchPage({
   }, [query, attempt]);
 
   const trimmed = (query || '').trim();
+  // App rebuilds these callbacks on every render (typing goes through it), so
+  // depending on them directly would make every handler below new on every
+  // keystroke. The refs keep the memoized cards' props identical instead.
+  const callbacksRef = useRef({});
+  callbacksRef.current = {
+    onSceneSelect, onMarkerSelect, onPerformerSelect, onTagSelect,
+    onStudioSelect, onGroupSelect, onGallerySelect, onImageSelect,
+    onRememberSearch,
+  };
+  const trimmedRef = useRef(trimmed);
+  trimmedRef.current = trimmed;
+
   // A search worth keeping is one that was committed or led somewhere, not
   // every paused keystroke the debounce happened to send.
-  const remember = () => {
-    if (trimmed) onRememberSearch?.(trimmed);
-  };
+  const remember = useCallback(() => {
+    const q = trimmedRef.current;
+    if (q) callbacksRef.current.onRememberSearch?.(q);
+  }, []);
 
-  const select = {
-    scenes: (item) => { remember(); onSceneSelect?.(item); },
-    markers: (item) => { remember(); onMarkerSelect?.(item); },
-    performers: (item) => { remember(); onPerformerSelect?.(item); },
-    tags: (item) => { remember(); onTagSelect?.(item); },
-    studios: (item) => { remember(); onStudioSelect?.(item); },
-    groups: (item) => { remember(); onGroupSelect?.(item); },
-    galleries: (item) => { remember(); onGallerySelect?.(item); },
+  // One stable handler per section: the cards are memoized, and a fresh
+  // closure per parent render would re-render every result.
+  const select = useMemo(() => ({
+    scenes: (item) => { remember(); callbacksRef.current.onSceneSelect?.(item); },
+    markers: (item) => { remember(); callbacksRef.current.onMarkerSelect?.(item); },
+    performers: (item) => { remember(); callbacksRef.current.onPerformerSelect?.(item); },
+    tags: (item) => { remember(); callbacksRef.current.onTagSelect?.(item); },
+    studios: (item) => { remember(); callbacksRef.current.onStudioSelect?.(item); },
+    groups: (item) => { remember(); callbacksRef.current.onGroupSelect?.(item); },
+    galleries: (item) => { remember(); callbacksRef.current.onGallerySelect?.(item); },
     images: (item, index, items) => {
       remember();
-      onImageSelect?.(item, index, items);
+      callbacksRef.current.onImageSelect?.(item, index, items);
     },
-  };
+  }), [remember]);
 
   const byKey = new Map((results || []).map(row => [row.key, row]));
   // Down from the field would otherwise land on the second card: the field is
@@ -366,6 +381,9 @@ function SearchField({ value, onChange, onCommit, downTo, focusRef }) {
   // characters typed since the timer was armed.
   useEffect(() => {
     if (document.activeElement === inputRef.current) return;
+    // An in-flight debounce belongs to the text being replaced; letting it
+    // fire would put the old query back on the server.
+    clearTimeout(debounceRef.current);
     setDraft(value || '');
   }, [value, inputRef]);
 
@@ -424,7 +442,9 @@ function SearchField({ value, onChange, onCommit, downTo, focusRef }) {
 function SearchSection({ section, row, query, onSelect, onSeeAll }) {
   const { key, heading, noun, one, Card } = section;
   const canSeeAll = row.total > row.items.length;
-  const list = { items: row.items, total: row.total };
+  // Cards take this as a prop and are memoized: a literal here would re-render
+  // the whole section on every parent render.
+  const list = useMemo(() => ({ items: row.items, total: row.total }), [row.items, row.total]);
 
   return (
     <section className={styles.section} aria-labelledby={`search-${key}-heading`}>

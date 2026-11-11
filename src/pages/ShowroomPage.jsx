@@ -132,7 +132,10 @@ export default function ShowroomPage({
       let changed = false;
       const next = {};
       for (const [key, row] of Object.entries(prev)) {
-        if (!row.items.some(it => String(it.id) === id)) {
+        // Ids are per entity kind, so a scene's 5 is not a performer's 5.
+        // The kind lives on the row descriptor, not on the fetched data.
+        const kind = SHOWROOM_ROWS.find(r => r.key === key)?.kind;
+        if (kind !== 'scene' || !row.items.some(it => String(it.id) === id)) {
           next[key] = row;
           continue;
         }

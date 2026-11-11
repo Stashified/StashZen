@@ -105,6 +105,11 @@ export function useEditableField({
   const inputHandlers = {
     onKeyDown: (e) => {
       if (e.key !== 'Enter') return;
+      // Not the Enter that confirms an IME composition (the composed character
+      // has not landed yet, and the keyboard would close mid-word) and not a
+      // held remote's auto-repeat. React's synthetic event has no
+      // `isComposing`, only the native one does.
+      if (e.nativeEvent?.isComposing || e.keyCode === 229 || e.repeat) return;
       commitRef.current?.();
       finishEdit();
     },

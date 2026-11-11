@@ -11,6 +11,7 @@
  * fails closed because its shape is unknown.
  */
 
+import { readCappedText } from './cappedBody.js';
 import { fetchWithTimeout, StashError } from './stashClient.js';
 import { compareVersions, isNewerVersion, parseVersionTag } from './updateCheck.js';
 
@@ -224,6 +225,10 @@ export function selectChangelogReleases(releases, installedVersion) {
     : { mode: 'none', releases: [] };
 }
 
+function tooLargeError() {
+  return new StashError('The changelog is too large.', 'size');
+}
+
 /**
  * Fetch and parse the changelog. `fetchImpl` is injectable for the tests.
  *
@@ -248,13 +253,9 @@ export async function fetchChangelog({
         }
         const declared = Number(res.headers?.get?.('content-length'));
         if (Number.isFinite(declared) && declared > CHANGELOG_MAX_BYTES) {
-          throw new StashError('The changelog is too large.', 'size');
+          throw tooLargeError();
         }
-        const body = await res.text();
-        if (body.length > CHANGELOG_MAX_BYTES) {
-          throw new StashError('The changelog is too large.', 'size');
-        }
-        return body;
+        return readCappedText(res, CHANGELOG_MAX_BYTES, tooLargeError);
       },
     );
 

@@ -265,6 +265,13 @@ async function finish() {
 }
 
 async function run() {
+  // Without the port every URL becomes :undefined, and the fake server's
+  // absence would read as an app failure. Fail as one check instead of
+  // throwing before `/result` exists: the runner would wait out its 100 s.
+  if (!PORT) {
+    check('datalayer: window.__PORT__ is set', false, 'the driver bundle lost its port');
+    return;
+  }
   await runMockSorts();
   await runQueue();
   await runListCache();

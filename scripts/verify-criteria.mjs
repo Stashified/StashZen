@@ -17,8 +17,13 @@
  * Exits non-zero on the first failure.
  */
 
-import { coverage, criteriaFor, COMMON, EDITOR } from '../src/utils/filterCriteria.js';
-import { ENUMS, FILTER_TYPES, CRITERION_FIELDS } from '../src/utils/stashFilterSchema.js';
+import {
+  coverage, criteriaFor, labelFor, COMMON, EDITOR, VALUE_UNITS,
+} from '../src/utils/filterCriteria.js';
+import { editorParts } from '../src/components/filterBuilder/editors/index.js';
+import {
+  ENUMS, FILTER_TYPES, CRITERION_FIELDS, CRITERIA_WITHOUT_MODIFIER,
+} from '../src/utils/stashFilterSchema.js';
 import { schemaFor } from '../src/utils/filterSchema.js';
 import { translateFilter } from '../src/utils/filterTranslate.js';
 
@@ -40,12 +45,17 @@ function eq(label, actual, expected) {
 
 // ── 1. Coverage ───────────────────────────────────────────
 //
-// Every filter type the three services can send, the ones App.jsx reaches
-// through TAB_CONTROL_CONFIG.
+// Every filter type the tabs can send: the ones TAB_CONTROL_CONFIG maps each
+// tab to.
 const SENDABLE = [
   'SceneFilterType',
   'SceneMarkerFilterType',
   'PerformerFilterType',
+  'TagFilterType',
+  'StudioFilterType',
+  'GroupFilterType',
+  'GalleryFilterType',
+  'ImageFilterType',
 ];
 
 console.log('Coverage');
@@ -92,11 +102,56 @@ for (const [ft, fields] of Object.entries(COMMON)) {
   eq(`${ft}: every Common field is buildable`, buildable.length, fields.length);
 }
 
+// ── 2b. Units name real numeric fields ────────────────────
+//
+// A typo here silently drops the unit and leaves the bare "Number" back, with
+// nothing failing.
+console.log('\nValue units');
+
+const allDescs = SENDABLE.flatMap(ft => criteriaFor(ft));
+for (const [field, unit] of Object.entries(VALUE_UNITS)) {
+  const found = allDescs.filter(c => c.field === field && c.editor === EDITOR.NUMBER);
+  const desc = found.find(c => c.unit === unit);
+  // The two strings a user sees: the unit rides beside the label (its own span,
+  // so it keeps its case) and in the empty box. The label itself stays bare, or
+  // the row would print the unit twice.
+  const label = desc?.label ?? '<none>';
+  const placeholder = desc ? editorParts(field, desc, {})[0]?.placeholder : '<none>';
+  // The rendered row is asserted by the filter harness; here it is the
+  // descriptor and the empty box.
+  ok(`unit "${unit}" reaches the ${field} descriptor and empty box`,
+    found.length > 0 && placeholder === unit && label === labelFor(field),
+    `numeric descriptors ${found.length}, label ${label}, placeholder ${placeholder}`);
+}
+
+// The other side: values with no unit must not grow one. A count is a count,
+// and rating100 takes the wire scale while the app shows ratings out of 10, so
+// a hint would invite a fractional entry the criterion rejects.
+for (const field of ['play_count', 'rating100']) {
+  const desc = allDescs.find(c => c.field === field && c.editor === EDITOR.NUMBER);
+  const placeholder = desc ? editorParts(field, desc, {})[0]?.placeholder : '<none>';
+  ok(`${field} keeps the bare Number placeholder`,
+    !!desc && !desc.unit && placeholder === 'Number',
+    `unit ${String(desc?.unit)}, placeholder ${placeholder}`);
+}
+
 // ── 3. Modifiers are real, and legal for their type ───────
 console.log('\nModifiers');
 
 for (const ft of SENDABLE) {
   for (const c of criteriaFor(ft)) {
+    const base = String(c.type).replace(/[[\]!]/g, '');
+    // Both directions in one: a type with no modifier field must offer none,
+    // and a buildable type must offer some, or its editor has no MODIFIERS
+    // entry and would render nothing. `is_missing` is the second kind: its bare
+    // String carries the whole condition.
+    const noModifierField = CRITERIA_WITHOUT_MODIFIER.has(base) || c.field === 'is_missing';
+    ok(`${ft}.${c.field}: modifiers exactly where the type supports them`,
+      c.modifierOptions.length > 0
+        ? !noModifierField
+        : !c.editor || noModifierField,
+      `type ${base}, buildable ${!!c.editor}, offered ${c.modifierOptions.join(', ')}`);
+
     if (!c.editor) continue;
 
     ok(`${ft}.${c.field}: every modifier is a real CriterionModifier`,
@@ -105,7 +160,6 @@ for (const ft of SENDABLE) {
 
     // BETWEEN needs a second operand; offering it where `value2` is undeclared
     // produces a criterion the translator drops as empty, silently widening.
-    const base = String(c.type).replace(/[[\]!]/g, '');
     const declaresValue2 = (CRITERION_FIELDS[base] || []).includes('value2');
     const offersRange = c.modifierOptions.some(m => m === 'BETWEEN' || m === 'NOT_BETWEEN');
     ok(`${ft}.${c.field}: a range modifier only where the type declares value2`,
@@ -119,14 +173,6 @@ for (const ft of SENDABLE) {
         c.modifierOptions.join(',') === 'EQUALS,NOT_EQUALS,GREATER_THAN,LESS_THAN',
         c.modifierOptions.join(','));
     }
-
-    // A type with no modifier field must offer none. `is_missing` is a bare
-    // String whose value carries the whole condition.
-    ok(`${ft}.${c.field}: no modifiers where the criterion declares none`,
-      !ENUMS.CriterionModifier.length || c.modifierOptions.length > 0 ||
-      c.field === 'is_missing' ||
-      ['DuplicationCriterionInput', 'FileDuplicationCriterionInput', 'OrientationCriterionInput']
-        .includes(base));
   }
 }
 

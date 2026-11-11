@@ -77,8 +77,11 @@ export function useAppBack({
         }
         // The restored filter commits on this render; starting the restore
         // before that would find the outgoing listing's cards. A cross-tab
-        // restore waits for the mount anyway, so only the same-tab case defers.
-        focusOriginCard(tab, focusId, { defer: sameTab });
+        // restore defers too: the screen being left can hold a card under the
+        // same id (a performer page lists its scenes as `video-<id>`), and
+        // settling on that copy hands the cursor to the returning listing's
+        // first card.
+        focusOriginCard(tab, focusId, { defer: true });
         return;
       }
       // Top-level tab: confirm before exit. Remember what had focus so

@@ -26,16 +26,26 @@ export function ChangelogOverlay({ onClose }) {
     zone: 'settings-changelog',
     autoFocus: true,
     // Close sits above the pane, so Up leaves for it once the pane is at the
-    // top. Sideways and Down stay put; a self-reference blocks those edges.
+    // top. Sideways stay put. Down reaches the retry row in the error state;
+    // otherwise a self-reference keeps it from leaving the pane.
     nextId: {
       up: 'settings-changelog-close',
       left: 'settings-changelog-panel',
       right: 'settings-changelog-panel',
-      down: 'settings-changelog-panel',
+      down: status === 'error'
+        ? 'settings-changelog-retry'
+        : 'settings-changelog-panel',
     },
   });
 
   useBackKey(onClose);
+
+  // Retrying unmounts the retry row the ring sits on, so move focus into the
+  // pane first; it stays mounted through loading and ready.
+  const retry = () => {
+    paneRef.current?.focus();
+    reload();
+  };
 
   // Up/Down scroll only while the pane can move that way. At the top, Up is
   // left to the focus handler, which goes to Close; when the notes fit, both
@@ -134,7 +144,7 @@ export function ChangelogOverlay({ onClose }) {
             <ActionButton
               id="settings-changelog-retry"
               label="Try again"
-              onClick={reload}
+              onClick={retry}
               zone="settings-changelog"
             />
           </footer>

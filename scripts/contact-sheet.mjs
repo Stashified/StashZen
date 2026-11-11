@@ -38,14 +38,33 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
+    const value = () => {
+      const v = argv[i + 1];
+      // A `--flag` here is a forgotten value, not one: `--out --portrait`
+      // would otherwise write a file named `--portrait`.
+      if (v === undefined || v.startsWith('--')) {
+        console.error(`${a} needs a value\nSee the header of this file.`);
+        process.exit(2);
+      }
+      i += 1;
+      return v;
+    };
     if (a === '--portrait') opts.portrait = true;
-    else if (a === '--seed') opts.seed = argv[++i];
-    else if (a === '--count') opts.count = Number(argv[++i]);
-    else if (a === '--only') opts.only = argv[++i];
-    else if (a === '--out') opts.out = argv[++i];
-    else if (a === '--cols') opts.cols = Number(argv[++i]);
+    else if (a === '--seed') opts.seed = value();
+    else if (a === '--count') opts.count = Number(value());
+    else if (a === '--only') opts.only = value();
+    else if (a === '--out') opts.out = value();
+    else if (a === '--cols') opts.cols = Number(value());
     else {
       console.error(`unknown argument: ${a}\nSee the header of this file.`);
+      process.exit(2);
+    }
+  }
+  // A NaN count never satisfies the loop's bounds, so the tile planner would
+  // spin until it ran out of memory.
+  for (const [flag, key] of [['--count', 'count'], ['--cols', 'cols']]) {
+    if (!Number.isInteger(opts[key]) || opts[key] < 1) {
+      console.error(`${flag} needs a positive whole number, got ${opts[key]}`);
       process.exit(2);
     }
   }

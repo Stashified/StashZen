@@ -25,6 +25,7 @@ import { createRoot } from 'react-dom/client';
 import App from '../../src/App.jsx';
 import { registry, getCurrentFocusId } from '../../src/hooks/useFocusable.js';
 import { setSettings } from '../../src/utils/settings.js';
+import { isRestorePending } from '../../src/utils/restorePending.js';
 
 const PORT = window.__PORT__;
 const results = [];
@@ -36,8 +37,9 @@ function check(name, pass, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const active = () => document.activeElement || document.body;
 
+// Returns dispatchEvent's result: false means a handler called preventDefault.
 function press(key, keyCode) {
-  active().dispatchEvent(new KeyboardEvent('keydown', {
+  return active().dispatchEvent(new KeyboardEvent('keydown', {
     key, keyCode, which: keyCode, bubbles: true, cancelable: true,
   }));
 }
@@ -71,11 +73,12 @@ async function pressBack() {
   await sleep(400);
 }
 
-async function waitFor(fn, ms = 6000) {
+// `step` matters for the restore window, which closes in well under 50 ms.
+async function waitFor(fn, ms = 6000, step = 50) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     try { if (fn()) return true; } catch { /* still settling */ }
-    await sleep(50);
+    await sleep(step);
   }
   return false;
 }
@@ -146,10 +149,21 @@ async function run() {
   const gridScroller = () => performerGrid()?.parentElement;
   const statsText = () => document.querySelector('[data-list-stats]')?.textContent || '';
 
-  if (gridScroller()) gridScroller().scrollTop = gridScroller().scrollHeight;
-  const pageTwo = await waitFor(() => registry.has('performer-60'));
-  if (gridScroller()) gridScroller().scrollTop = gridScroller().scrollHeight;
-  const pageThree = await waitFor(() => registry.has('performer-90'), 6000);
+  // Re-assert the scroll while waiting: the sentinel only loads once the rows
+  // have laid out, and a single assignment can land before there is anything
+  // to scroll, leaving the grid on page 1 forever.
+  const scrollToEnd = () => {
+    const el = gridScroller();
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+  const pageTwo = await waitFor(() => {
+    scrollToEnd();
+    return registry.has('performer-60');
+  });
+  const pageThree = await waitFor(() => {
+    scrollToEnd();
+    return registry.has('performer-90');
+  }, 6000);
   check('P0b scrolling the grid reaches the third page',
     pageTwo && pageThree,
     `page 2 card ${pageTwo}, page 3 card ${pageThree}, `
@@ -165,7 +179,26 @@ async function run() {
     await tapEnter();
     await waitFor(() => performerPageOpen());
     press('Escape', 27);
-    const tDeep = Date.now();
+    // The page-3 restore spends several fetches paging forward, so there is a
+    // real window with nothing focused. A sideways press there has nowhere to
+    // move from; settling on it would strand the cursor on the first card.
+    // Captured inside the poll: by report time the restore has landed, so the
+    // detail would otherwise describe the wrong moment.
+    let windowSeen = '';
+    const earlyWindow = await waitFor(() => {
+      windowSeen = `focus ${getCurrentFocusId() ?? '<none>'}, `
+        + `body ${document.activeElement === document.body}, `
+        + `pending ${isRestorePending()}`;
+      return isRestorePending() && document.activeElement === document.body;
+    }, 2000, 5);
+    // The swallow itself: a claimed press (preventDefault) that settles the
+    // restore would clear the pending flag, and a move would leave <body>.
+    const claimed = earlyWindow && !press('ArrowRight', 39);
+    const stillPending = earlyWindow && isRestorePending();
+    const stillOnBody = earlyWindow && document.activeElement === document.body;
+    // Measured from here, not from Back: the probe above can burn its budget
+    // when the window is missed, and the number is about the restore.
+    const tLand = Date.now();
     const deepBack = await waitFor(() => {
       const el = registry.get('performer-85')?.el;
       return !performerPageOpen()
@@ -173,7 +206,19 @@ async function run() {
     }, 9000);
     check('P0b Back returns to a performer from the third page',
       deepBack,
-      `focus ${getCurrentFocusId() ?? '<none>'}, ${Date.now() - tDeep} ms`);
+      `focus ${getCurrentFocusId() ?? '<none>'}, ${Date.now() - tLand} ms`);
+    // The window is a precondition, so it is its own check: a miss means the
+    // mechanism changed (Back no longer raises a restore, or autofocus claims
+    // the first card instantly), not bad luck. The poll runs every 5 ms and
+    // the restore's first attempt waits at least one 50 ms retry, so body
+    // focus is never skippable.
+    check('P0d the restore still opens an empty-focus window', earlyWindow,
+      earlyWindow ? windowSeen : `missed: ${windowSeen}`);
+    check('P0d a sideways press during the restore does not divert it',
+      claimed && stillPending && stillOnBody && deepBack,
+      `window=${earlyWindow} claimed=${claimed} pending=${stillPending} `
+      + `body=${stillOnBody} landed=${deepBack}, `
+      + `focus ${getCurrentFocusId() ?? '<none>'}`);
     // The listing, not just the focus: the bug stranded the grid at the rows
     // it had, losing the server's total.
     check('P0b …and the count line still reports the whole library',
@@ -182,6 +227,11 @@ async function run() {
   } else {
     check('P0b Back returns to a performer from the third page', false,
       'performer-85 never mounted');
+    // Reported on this path too, so every run lists the same checks.
+    check('P0d the restore still opens an empty-focus window', false,
+      'performer-85 never mounted, so no restore ran');
+    check('P0d a sideways press during the restore does not divert it', false,
+      'performer-85 never mounted, so no press was exercised');
   }
 
   // ── A gallery chip from a scene opened on a performer page ──

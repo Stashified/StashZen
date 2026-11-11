@@ -73,6 +73,27 @@ function blankFontFaces(css) {
   }
 }
 
+// Run doiuse's own entry script through this Node binary rather than the
+// node_modules/.bin shim: hardened Node refuses to spawn a Windows .cmd without
+// a shell (CVE-2024-27980), and a shell would need quoting for temp paths that
+// can contain spaces. Resolved before the temp dir exists, so a missing install
+// exits without leaving one behind.
+const doiusePkgPath = path.join(root, 'node_modules', 'doiuse', 'package.json');
+if (!existsSync(doiusePkgPath)) {
+  console.error('doiuse is not installed: run `npm install` first, then retry.');
+  process.exit(1);
+}
+const doiusePkg = JSON.parse(readFileSync(doiusePkgPath, 'utf8'));
+const doiuseBin = typeof doiusePkg.bin === 'string'
+  ? doiusePkg.bin
+  : (doiusePkg.bin?.doiuse ?? Object.values(doiusePkg.bin ?? {})[0]);
+if (!doiuseBin) {
+  console.error('doiuse package.json has no bin entry; reinstalling the dependency may fix it.');
+  process.exit(1);
+}
+const doiuseCli = path.join(root, 'node_modules', 'doiuse', doiuseBin);
+const baseArgs = ['--browsers', COMPAT_TARGET, '--ignore', COMPAT_CSS_IGNORES.join(',')];
+
 // doiuse needs complete files, so the blanked copies go in a temp dir. Findings
 // name that path and its columns; columns still match the original bundle.
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'stashzen-compat-'));
@@ -83,9 +104,6 @@ const scanned = cssFiles.map(name => {
   return { name, source, copy };
 });
 
-const binary = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'doiuse.cmd' : 'doiuse');
-const baseArgs = ['--browsers', COMPAT_TARGET, '--ignore', COMPAT_CSS_IGNORES.join(',')];
-
 // One process per file. doiuse's CLI pipes every input into one shared output
 // stream and ends it when the first input finishes, so a single run drops the
 // findings of files still being parsed. main-*.css is last in readdir order,
@@ -93,7 +111,7 @@ const baseArgs = ['--browsers', COMPAT_TARGET, '--ignore', COMPAT_CSS_IGNORES.jo
 const findings = [];
 let scanError = null;
 for (const file of scanned) {
-  const result = spawnSync(binary, [...baseArgs, file.copy], { encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [doiuseCli, ...baseArgs, file.copy], { encoding: 'utf8' });
   if (result.error) {
     scanError = [`Could not run doiuse: ${result.error.message}`];
     break;
