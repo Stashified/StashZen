@@ -193,10 +193,15 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
 
             // The slot's CSS anchors it at top:50%; this transform is applied
             // relative to that centre.
+            //
+            // The centred card stays 2D and its perspective sits on the rotated
+            // neighbours instead of `.scene`: Tizen draws a <video> inside a
+            // 3D-transformed layer as a black plane, and the centred card is
+            // the only one that previews. See the note in the CSS.
             const transform =
               abs === 0
-                ? `translateY(-50%) translate3d(${x}px, 0, ${z}px) scale(${cardScale})`
-                : `translateY(-50%) translate3d(${x}px, 0, ${z}px) rotateY(${-rotY}deg) scale(${cardScale})`;
+                ? `translateY(-50%) translate(${x}px, 0) scale(${cardScale})`
+                : `translateY(-50%) perspective(1400px) translate3d(${x}px, 0, ${z}px) rotateY(${-rotY}deg) scale(${cardScale})`;
 
             return (
               <div

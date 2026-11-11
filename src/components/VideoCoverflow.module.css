@@ -103,11 +103,12 @@
      they rotate; if they do not, clip a parent instead. */
 }
 
+/* The perspective lives on each rotated slot, not here: a <video> under a 3D
+   ancestor renders as a black plane on Tizen, and the centred card is the only
+   one that previews. Its transform is 2D, so it never enters 3D space. */
 .scene {
   position: absolute;
   inset: 0;
-  perspective: 1400px;
-  transform-style: preserve-3d; /* `flat` is faster but less accurate */
 }
 
 /* Anchored at the stage's centre. The inline transform composes:

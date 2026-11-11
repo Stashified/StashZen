@@ -9,6 +9,8 @@
  *   scene 2  preview served        → mounts, plays, becomes visible
  *   scene 3  preview 404s          → cover stays, nothing visible ever mounts
  *   scene 3  focused a second time → no second request (the failure is learned)
+ *   scene 7  ~100 fps source       → no preview requested at all (Tizen flash)
+ *   scene 8  179 fps source        → still previews (outside the flash band)
  *
  * Cover assertions use `getComputedStyle(...).opacity`, not class names:
  * CSS-module names are hashed, and opacity is what the user sees.
@@ -233,6 +235,29 @@ async function run() {
   await sleep(SETTLE_MS);
   check('P6 turning it back off lets the same card preview again',
     videoVisible(6), `opacity=${opacityOf(videoEl(6))}`);
+
+  // ── P7: a ~100 fps source keeps its cover ───────────────────
+  // Previews made from 100 fps sources blank the whole TV screen on Tizen
+  // (measured 2026-11-11), so the card must not even request one.
+  await clearLog();
+  focusCard(7);
+  await sleep(SETTLE_MS);
+  const fastFetches = await previewFetches();
+  check('P7 a ~100 fps scene mounts no preview and asks for none',
+    !videoEl(7) && countFetches(fastFetches, 7) === 0,
+    `video=${!!videoEl(7)} fetches=[${fastFetches.join(',')}]`);
+  check('P7 its cover is still on screen',
+    !!coverEl(7) && opacityOf(coverEl(7)) === 1,
+    `cover=${coverEl(7)?.tagName} opacity=${opacityOf(coverEl(7))}`);
+
+  // ── P8: above the band still previews ───────────────────────
+  // The library's 179.58 fps source generated a 59.94 preview and never
+  // flashed, so "anything fast" was the wrong guard; only the ~100 fps band.
+  await clearLog();
+  focusCard(8);
+  await sleep(SETTLE_MS);
+  check('P8 a source above the band still previews',
+    videoVisible(8), `opacity=${opacityOf(videoEl(8))}`);
 
   await fetch('/result', {
     method: 'POST',

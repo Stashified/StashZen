@@ -111,6 +111,7 @@ const SCENE_ROW_FIELDS = `
       duration
       width
       height
+      frame_rate
       video_codec
       audio_codec
       format
@@ -198,6 +199,9 @@ export function normalizeScene(scene) {
     tags: scene.tags?.map(t => t.name) || [],
     width: file?.width,
     height: file?.height,
+    // VideoCard skips the focus preview above ~90 fps: previews generated from
+    // such sources blank the whole TV screen on Tizen. See its `canTry`.
+    frameRate: file?.frame_rate ?? null,
     // Carried for the *player*, not the card: see playbackSource.js for how
     // these decide a transcode, and why "unknown" differs from "known bad".
     videoCodec: file?.video_codec || null,

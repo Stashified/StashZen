@@ -2,6 +2,19 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.44.2",
+      "date": "2026-11-11",
+      "sections": [
+        {
+          "title": "Fixes",
+          "items": [
+            "Some focus previews (~100 fps files) flashed the whole screen black; those cards now keep their cover and preview doesn't play.",
+            "Coverflow focus previews play instead of covering the card with a black tile."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.44.1",
       "date": "2026-11-11",
       "sections": [

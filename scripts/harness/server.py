@@ -337,8 +337,12 @@ def listing_scene(n):
         "resume_time": 0,
         # h264/mp4/aac — what 94% of the real library is, and what the direct
         # stream is for. Unplayable-codec cases are built in codec-entry.jsx.
+        # Scene 7 is the ~100 fps source whose preview must never mount
+        # (preview-entry P7); scene 8 is the 179.58 fps source whose preview
+        # must still mount (P8); every other row is an ordinary 29.97.
         "files": [{
             "duration": 120.0, "width": 1920, "height": 1080,
+            "frame_rate": 100.0 if n == 7 else 179.58 if n == 8 else 29.97,
             "video_codec": "h264", "audio_codec": "aac", "format": "mp4",
         }],
         # A real playable file (run.sh's silent WAV) so the player harness has

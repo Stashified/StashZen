@@ -52,7 +52,7 @@ const SHOWROOM_QUERY = `
         play_count
         o_counter
         organized
-        files { duration width height video_codec audio_codec format }
+        files { duration width height frame_rate video_codec audio_codec format }
         resume_time
         paths { screenshot stream sprite vtt preview }
         studio { id name }
@@ -68,7 +68,7 @@ const SHOWROOM_QUERY = `
         play_count
         o_counter
         organized
-        files { duration width height video_codec audio_codec format }
+        files { duration width height frame_rate video_codec audio_codec format }
         resume_time
         paths { screenshot stream sprite vtt preview }
         studio { id name }

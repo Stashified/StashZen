@@ -32,6 +32,12 @@ import styles from './VideoCard.module.css';
 const PREVIEW_ARM_DELAY_MS = 400;
 // No `playing` within this window → stop trying for this focus.
 const PREVIEW_WATCHDOG_MS = 1200;
+// Sources in this band produce previews that blank the whole TV screen on
+// Tizen (measured 2026-11-11: six at 99.8-100 fps flash, 50 and 60 fps are
+// clean). It is a band, not "anything fast": the one 179 fps file in the
+// library generated a 59.94 preview and never flashed.
+const PREVIEW_FLASH_FPS_MIN = 90;
+const PREVIEW_FLASH_FPS_MAX = 120;
 // A preview is 1-3 MB, a cover around 10 KB. Wait for every cover on the page
 // before starting one, or the preview competes with the grid. Cards register
 // their own cover while it is in flight; the set is module-level because what
@@ -144,14 +150,18 @@ function VideoCard({
     nextId,
   });
 
-  // All five must hold: previews enabled, motion not reduced (autoplay is the
+  // All six must hold: previews enabled, motion not reduced (autoplay is the
   // motion this setting mainly exists for), not mock data (null previews,
-  // external thumbnails), a URL to try, and no earlier failure.
+  // external thumbnails), a URL to try, no earlier failure, and a preview this
+  // TV can survive. Missing metadata counts as fine: no frame rate is not
+  // "known bad".
+  const fps = Number(item.frameRate) || 0;
   const canTry = settings.previewsEnabled
     && !settings.reduceMotion
     && !settings.useMock
     && !!item.preview
-    && !isBad(source, item.id);
+    && !isBad(source, item.id)
+    && (fps < PREVIEW_FLASH_FPS_MIN || fps > PREVIEW_FLASH_FPS_MAX);
 
   const [armed, setArmed] = useState(false);
   const [playing, setPlaying] = useState(false);
