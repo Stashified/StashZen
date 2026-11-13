@@ -95,6 +95,26 @@ export function readSeekStep(value) {
 }
 
 /**
+ * How long each picture holds in the image viewer's slideshow, in ms. 6 s is
+ * the pace that shipped; the setting only changes how long it waits.
+ *
+ * Declared above `state` like the other validated vocabularies, because
+ * `loadFromStorage` reaches it at module init.
+ */
+export const SLIDESHOW_INTERVAL_OPTIONS = [
+  { value: 3000, label: '3 s' },
+  { value: 6000, label: '6 s' },
+  { value: 10000, label: '10 s' },
+  { value: 15000, label: '15 s' },
+  { value: 30000, label: '30 s' },
+];
+
+export function readSlideshowInterval(value) {
+  const n = Number(value);
+  return SLIDESHOW_INTERVAL_OPTIONS.some(o => o.value === n) ? n : 6000;
+}
+
+/**
  * Which transcode tier to ask Stash for when a scene cannot play directly.
  * `original` keeps the old behaviour: the source resolution, no downscale.
  *
@@ -255,6 +275,8 @@ function loadFromStorage() {
     reduceMotion: !!saved.reduceMotion,
     // Adaptive is the existing tap-5s-hold-to-climb behaviour.
     seekStep: readSeekStep(saved.seekStep),
+    // How long a slideshow picture holds, in ms.
+    slideshowInterval: readSlideshowInterval(saved.slideshowInterval),
     // Which tier a transcode asks for. Original on a device that has never
     // chosen: an upgrade must not start downscaling unasked.
     transcodeQuality: readTranscodeQuality(saved.transcodeQuality),
@@ -301,6 +323,7 @@ function persistToStorage() {
       theme: state.theme,
       reduceMotion: state.reduceMotion,
       seekStep: state.seekStep,
+      slideshowInterval: state.slideshowInterval,
       transcodeQuality: state.transcodeQuality,
       playbackEngine: state.playbackEngine,
       viewModes: state.viewModes,
@@ -376,6 +399,9 @@ function normalizePatch(patch) {
       case 'viewModes': out.viewModes = readViewModes(value); break;
       case 'gridCols': out.gridCols = readGridCols(value); break;
       case 'seekStep': out.seekStep = readSeekStep(value); break;
+      case 'slideshowInterval':
+        out.slideshowInterval = readSlideshowInterval(value);
+        break;
       case 'transcodeQuality': out.transcodeQuality = readTranscodeQuality(value); break;
       case 'playbackEngine': out.playbackEngine = readPlaybackEngine(value); break;
       case 'recentSearches': out.recentSearches = readRecentSearches(value); break;
@@ -446,6 +472,7 @@ export function setSettings(patch) {
   if ('stashUrl' in patch || 'stashKey' in patch || 'previewMuted' in patch
       || 'previewsEnabled' in patch || 'useMock' in patch || 'theme' in patch
       || 'reduceMotion' in patch || 'seekStep' in patch
+      || 'slideshowInterval' in patch
       || 'transcodeQuality' in patch
       || 'playbackEngine' in patch
       || 'viewModes' in patch || 'gridCols' in patch || 'recentSearches' in patch
@@ -571,6 +598,9 @@ export function clearSettings() {
     theme: 'standard',
     reduceMotion: false,
     seekStep: 'adaptive',
+    // A missing interval would arm the slideshow at 0 ms for the rest of
+    // this session, and leave the Settings toggle with nothing selected.
+    slideshowInterval: 6000,
     transcodeQuality: 'original',
     // `auto` is the safe default on an unknown device: it degrades to the
     // browser without AVPlay, where `browser` would silently disable AVPlay.

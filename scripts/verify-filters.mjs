@@ -16,6 +16,10 @@
  * translator, is wrong. (videoService imports under Node: settings.js catches
  * the missing `localStorage`, and `import.meta.env` is undefined here.)
  *
+ * A stored filter the server still accepts must also select the same rows
+ * after translation. A different count is a criterion that silently changed
+ * meaning, and fails the run like any other error.
+ *
  * Dev-only: never imported by src/, so never in the .wgt bundle.
  *
  * Only `count` is selected and only field *presence* is asserted, never a
@@ -173,6 +177,7 @@ let checked = 0;
 let rescued = 0;
 let appChecks = 0;
 let notIdempotent = 0;
+let drifted = 0;
 
 for (const spec of MODES) {
   const { status, json } = await post(
@@ -241,8 +246,16 @@ for (const spec of MODES) {
     }
 
     const ok = after.status === 200 && !after.error;
+    // The stored filter errored on the old shape: translation rescued it and
+    // there is no count to compare. Otherwise both queries answered, and the
+    // same filter must select the same rows.
+    const rescuedNow = ok && (before.error || before.status !== 200);
+    // A stored filter that matched 0 is the quoting trap translation repairs
+    // (0 quoted, 385 de-quoted), so a 0 -> N change is the fix, not drift.
+    const drift = ok && !rescuedNow && before.count > 0 && before.count !== after.count;
     if (!ok) failures++;
-    if (ok && (before.error || before.status !== 200)) rescued++;
+    if (drift) { drifted++; failures++; }
+    if (rescuedNow) rescued++;
 
     // End-to-end through the app's own code, for the mode that has real filters.
     let appTxt = '';
@@ -260,10 +273,11 @@ for (const spec of MODES) {
       }
     }
 
-    const mark = ok ? (before.error || before.status !== 200 ? '✓✓' : '✓ ') : '✗ ';
+    const mark = !ok || drift ? '✗ ' : rescuedNow ? '✓✓' : '✓ ';
     const beforeTxt = before.error ? `before: ${before.error}` : `before: ${before.count}`;
     const afterTxt = after.error ? `after: ${after.error}` : `after: ${after.count}`;
-    console.log(`  ${mark} ${f.name.padEnd(24)} ${beforeTxt.padEnd(44)} ${afterTxt}${appTxt}`);
+    const driftTxt = drift ? '   ✗ the stored filter selects a different set' : '';
+    console.log(`  ${mark} ${f.name.padEnd(24)} ${beforeTxt.padEnd(44)} ${afterTxt}${appTxt}${driftTxt}`);
 
     if (VERBOSE) {
       console.log(`        translated = ${JSON.stringify(translated)}`);
@@ -282,6 +296,7 @@ if (!checked && !failures) {
   console.log(`${checked} saved filters with criteria · ${checked - failures}/${checked} pass · ${rescued} rescued by translation`);
   if (appChecks) console.log(`${appChecks} end-to-end checks through the app's own fetchVideos`);
   if (notIdempotent) console.log(`${notIdempotent} filters are not idempotent under a second translation`);
+  if (drifted) console.log(`${drifted} stored filters select different rows after translation`);
 }
 if (failures) {
   console.log(`${failures} still failing — see above.`);

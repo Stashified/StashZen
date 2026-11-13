@@ -14,17 +14,18 @@
  * only exists while the rail is up:
  *
  *   OK         open the rail focused on ⏯, then activate the focused button
- *   ↓ / ↑      next/previous scene; from the seek bar ↓ goes to the buttons
- *              first, and ↑ from the buttons goes to the seek bar (←/→ skim)
+ *   ↓ / ↑      next/previous scene; with the bar hidden they first raise it to
+ *              the seek bar. From the seek bar ↓ goes to the buttons first,
+ *              and ↑ from the buttons goes to the seek bar (←/→ skim)
  *   ← / →      skim back or forward by the configured seek step, and reveal
  *              the rail (adaptive 5 s by default, or a fixed 5/10/15/30 s)
  *   Back/Esc   leave the rail if it is up, else close the player
  *   Space, ⏯   instant transport in every state; the remote's play/pause key
  *              (10252) toggles, pause (19) and play (415) do only their name
  *
- * A one-scene queue has nowhere to step, so ↑/↓ raise the rail there instead.
- * With a foreign dialog up (add-marker, resume prompt, detail page) the player
- * owns no keys, see foreignDialogOpen.
+ * A one-scene queue has nowhere to step, so the ladder's ends are inert. With a
+ * foreign dialog up (add-marker, resume prompt, detail page) the player owns no
+ * keys, see foreignDialogOpen.
  *
  * ## Writes
  *
@@ -120,8 +121,15 @@ function PlayerTimeline({
 export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneChange }) {
   const {
     items, total, index, current: video, goNext, goPrev, hasPrev, hasNext,
-    goTo, removeAt,
+    goTo, removeAt, nextError, clearNextError,
   } = usePlayQueue(queue);
+
+  // Otherwise a failed Next is indistinguishable from the end of the queue.
+  useEffect(() => {
+    if (!nextError) return undefined;
+    const t = setTimeout(clearNextError, 3000);
+    return () => clearTimeout(t);
+  }, [nextError, clearNextError]);
 
   // Report the scene on screen so the screen underneath can restore the cursor
   // to *that* card, not the one the queue started on. Read through refs: App
@@ -332,8 +340,8 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
 
   // Whether the rail is up, and the timer that puts it away.
   const {
-    controlsVisible, showControls, revealRail, leaveRail, leaveRailToSeek,
-    hideControls,
+    controlsVisible, showControls, revealRail, revealSeek, leaveRail,
+    leaveRailToSeek, hideControls,
   } = useControlsVisibility({ railRef });
 
   // Opening the drawer raises the rail too, so closing it lands back on a
@@ -612,6 +620,14 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     markerModal, markerNotice, openMarkerModal, closeMarkerModal, handleMarkerCreated,
   } = useMarkerOverlay({ mediaRef, addMarkers, showControls });
 
+  // Marker confirmations and a failed scene step share the toast slot, and the
+  // newer one belongs on screen: neither may hide behind the other.
+  const toastText = nextError
+    ? (markerNotice && markerNotice.at > nextError.at
+      ? markerNotice.message
+      : nextError.message)
+    : (markerNotice?.message || null);
+
   const {
     detailsOpen, statsOpen, openDetails, closeDetails, toggleStats,
     playFromDetails, playAtFromDetails,
@@ -649,6 +665,7 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
     mediaTransport,
     skim,
     revealRail,
+    revealSeek,
     leaveRail,
     leaveRailToSeek,
     hideControls,
@@ -779,9 +796,10 @@ export default function VideoPlayer({ queue, onClose, onActivityChange, onSceneC
       )}
 
       {/* Outside `.controls` so the confirmation survives the rail hiding, the
-          notice is the only evidence that a write landed. */}
-      {markerNotice && (
-        <p className={styles.toast} role="status" aria-live="polite">{markerNotice}</p>
+          notice is the only evidence that a write landed. A failed scene step
+          shares the slot: one toast, the newest event. */}
+      {toastText && (
+        <p className={styles.toast} role="status" aria-live="polite">{toastText}</p>
       )}
 
       {/* Near the end of a scene with a queue behind it. It takes the cursor

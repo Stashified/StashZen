@@ -20,11 +20,15 @@
  *               what a selection means.
  *   noun        plural, for the loading and empty strings.
  *   ariaLabel   for the strip's `role="region"`.
- *   hero        `(item) => ({ title, meta })`, each meta entry `{ text, kind }`
- *               with kind 'tag' | 'rating' | undefined. Fields, not markup: the
- *               strip owns how a tag looks, the page owns which fields exist.
+ *   hero        `(item) => ({ title, meta, details, blurb })`, each meta entry
+ *               `{ text, kind }` with kind 'tag' | 'rating' | undefined.
+ *               `details` is an array of strings drawn as one line, `blurb` a
+ *               paragraph; both are optional per section. Fields, not markup:
+ *               HeroInfo owns how a field looks, the page owns which exist.
  *   slotWidth   optional px slot width when the art is not 16:9. See `--slot-w`
  *               in Carousel.module.css.
+ *   seedVariant optional key partition for the stale page-1 seed, for a view
+ *               whose rows differ from the grid's (see SCENE_VIEW).
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -34,6 +38,7 @@ import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { onFocusRestoreRequest } from '../utils/focus.js';
 import { pageRequestKey } from '../utils/requestKey.js';
+import HeroInfo from './HeroInfo.jsx';
 import styles from './Carousel.module.css';
 
 const PAGE_SIZE = 40;
@@ -46,7 +51,10 @@ export default function Carousel({
   // One identity for the list and the focus reset, so a filter object rebuilt
   // with the same contents cannot reset the focused slot.
   const requestKey = pageRequestKey(sort, order, objectFilter, searchQuery);
-  const { Card, service, itemsKey, focusPrefix, noun, ariaLabel, hero, slotWidth, entity } = view;
+  const {
+    Card, service, itemsKey, focusPrefix, noun, ariaLabel, hero, slotWidth, entity,
+    seedVariant,
+  } = view;
 
   const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -72,6 +80,9 @@ export default function Carousel({
     requestKey,
     focusPrefix,
     entity,
+    // The strip fetches the heavier hero rows; their seed cannot come from a
+    // grid's page 1, which carries no description.
+    seedVariant,
   });
 
   // Stable identity with current values (see useStableListing): every card gets
@@ -168,7 +179,9 @@ export default function Carousel({
   // centres a slot that no longer exists.
   const index = Math.min(focusedIndex, items.length - 1);
   const focused = items[index];
-  const { title, meta = [], blurb = null } = hero(focused);
+  // `undefined` means the section has no such field; null means it has one
+  // that is empty. Only the former skips the line.
+  const { title, meta = [], details, blurb } = hero(focused);
 
   return (
     <div
@@ -176,29 +189,14 @@ export default function Carousel({
       style={slotWidth ? { '--slot-w': `${slotWidth}px` } : undefined}
     >
       {/* Hero info above the strip */}
-      <div className={styles.hero}>
-        <h2 className={styles.heroTitle}>{title}</h2>
-        <div className={styles.heroMeta}>
-          {meta.map((m, i) => (
-            <span
-              key={i}
-              className={m.kind === 'tag' ? styles.heroTag
-                : m.kind === 'rating' ? styles.heroRating
-                  : undefined}
-            >
-              {m.text}
-            </span>
-          ))}
-        </div>
-        {/* Clamped to two lines in CSS, which keeps the strip's height from
-            depending on the focused row. */}
-        {blurb && <p className={styles.heroBlurb}>{blurb}</p>}
-        <div className={styles.heroCounter}>
-          <span className={styles.heroCounterCur}>{index + 1}</span>
-          <span className={styles.heroCounterSep}>/</span>
-          <span className={styles.heroCounterTotal}>{total || items.length}</span>
-        </div>
-      </div>
+      <HeroInfo
+        title={title}
+        meta={meta}
+        details={details}
+        blurb={blurb}
+        index={index}
+        total={total || items.length}
+      />
 
       {/* The strip, shifted so the focused slot lands in the middle */}
       <div className={styles.stage} role="region" aria-label={ariaLabel}>
@@ -236,6 +234,9 @@ export default function Carousel({
                     list={listing}
                     onSelect={onSelect}
                     onLongPress={onLongPress}
+                    // The focused slot is scaled 2x; the cards that support it
+                    // drop their text a notch so it does not dominate the card.
+                    compact
                   />
                 )}
               </div>

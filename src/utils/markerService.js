@@ -50,7 +50,7 @@ async function generateMockMarkers(count = 60) {
       tags: [],
       // Named and identified as the scene grid does it, so activating a marker
       // in Test mode lands on a scene that exists.
-      scene: { ...scene, performers: [] },
+      scene,
     };
   });
 }
@@ -70,7 +70,11 @@ const FIND_MARKERS_QUERY = `
           id
           title
           paths { stream screenshot sprite vtt }
-          files { video_codec audio_codec format duration }
+          # The player's overlay, not the card: the parent scene's cast, studio
+          # and file height.
+          studio { name }
+          performers { name }
+          files { video_codec audio_codec format duration width height }
         }
         primary_tag { id name }
       }
@@ -109,6 +113,13 @@ function normalizeMarker(m) {
       videoCodec: m.scene?.files?.[0]?.video_codec || null,
       audioCodec: m.scene?.files?.[0]?.audio_codec || null,
       container: m.scene?.files?.[0]?.format || null,
+      // The player's overlay names the cast and studio, and shows the file's
+      // height. A marker queue item is built by hand rather than from a grid
+      // row, so these have to be carried explicitly.
+      studio: m.scene?.studio?.name || null,
+      performers: (m.scene?.performers || []).map(p => p.name),
+      width: m.scene?.files?.[0]?.width ?? null,
+      height: m.scene?.files?.[0]?.height ?? null,
       // Duration, for the same reason: without it a marker-opened scene has
       // `durationSeconds: 0`, which the player reads as "unknown", the
       // timeline falls back to the element's (0 for an MP4 transcode) and the

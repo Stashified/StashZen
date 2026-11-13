@@ -38,8 +38,8 @@ export function foreignDialogOpen(ownOverlay) {
  *
  * Returns `{ action, prevent, stop }`. `action` is one of:
  *   yield, media, step-prev, step-next, leave-rail, leave-rail-seek,
- *   hide-controls, close, reveal-rail, skim-back, skim-forward, rail-pass,
- *   enter-upnext, hide-upnext, none
+ *   hide-controls, close, reveal-rail, reveal-seek, skim-back, skim-forward,
+ *   rail-pass, enter-upnext, hide-upnext, none
  *
  * `leave-rail` and `leave-rail-seek` both exit, differing in the bar: Back
  * dismisses it (one level up); ↑ leaves the cursor on a bar that stays up so
@@ -47,8 +47,8 @@ export function foreignDialogOpen(ownOverlay) {
  *
  * The vertical keys walk a ladder: on the buttons ↓ steps to the next scene and
  * ↑ goes to the seek bar; on the seek bar ↓ returns to the buttons and ↑ steps
- * to the previous scene. With the bar hidden there is no middle stop, and both
- * step directly.
+ * to the previous scene. With the bar hidden both keys raise it to the seek
+ * stop instead, so a lone vertical press cannot change what is playing.
  *
  * The Up next card (the last 30 s of a scene) adds a stop on top: it takes the
  * cursor when it appears and owns every key while it is visible, because the
@@ -145,16 +145,22 @@ export function routePlayerKey(
   if (key === 'ArrowLeft' || code === 37 || code === 412) return { action: 'skim-back', prevent: true, stop: true };
   if (key === 'ArrowRight' || code === 39 || code === 417) return { action: 'skim-forward', prevent: true, stop: true };
 
-  // Off the buttons, ↑ steps the scene on the seek bar too: the seek bar is the
-  // *bottom* stop of the upward ladder. ↓ is buttons when the bar is up and a
-  // step when it is hidden. A one-scene queue has nowhere to step, so ↑/↓ raise
-  // the controls instead, doing nothing reads as a dropped key.
+  // With the bar hidden, ↑/↓ only raise it, to the seek stop. A vertical press
+  // must be a deliberate one: the scene does not change until the user has the
+  // ladder on screen and has walked it.
+  if ((key === 'ArrowUp' || code === 38 || key === 'ArrowDown' || code === 40)
+    && !controlsVisible) {
+    return { action: 'reveal-seek', prevent: true, stop: true };
+  }
+
+  // On the seek stop, ↑ steps the scene back and ↓ is the way down to the
+  // buttons. A one-scene queue has nowhere to step, so ↑ is consumed rather
+  // than jumping to the buttons, which ↓ already does.
   if (key === 'ArrowUp' || code === 38) {
-    return { action: singleScene ? 'reveal-rail' : 'step-prev', prevent: true, stop: true };
+    return { action: singleScene ? 'none' : 'step-prev', prevent: true, stop: true };
   }
   if (key === 'ArrowDown' || code === 40) {
-    if (singleScene) return { action: 'reveal-rail', prevent: true, stop: true };
-    return { action: controlsVisible ? 'reveal-rail' : 'step-next', prevent: true, stop: true };
+    return { action: 'reveal-rail', prevent: true, stop: true };
   }
 
   return { action: 'none', prevent: false, stop: true };

@@ -1188,6 +1188,17 @@ async function run() {
     try { return JSON.parse(localStorage.getItem('tvapp.settings.v1') || '{}').gridCols || {}; }
     catch { return {}; }
   };
+  // The registry entry is replaced on every settings write, so each press has
+  // to look the button up again rather than hold the element it started with.
+  const pressStepper = async (which) => {
+    const entry = registry.get(`grid-cols-${which}`);
+    if (!entry) return false;
+    entry.el.focus();
+    await sleep(60);
+    await tapEnter();
+    await sleep(220);
+    return true;
+  };
 
   await goto('performers');
   await waitFor(() => has('performer-1'));
@@ -1195,14 +1206,9 @@ async function run() {
   check('S15 Performers defaults to six columns', gridCols() === 6,
     `rendered ${gridCols()} columns`);
 
-  const dec = registry.get('grid-cols-dec');
-  check('S15b the Columns stepper is reachable from the D-pad', !!dec);
-  if (dec) {
-    dec.el.focus();
-    await sleep(60);
-    await tapEnter();
-    await sleep(250);
-  }
+  check('S15b the Columns stepper is reachable from the D-pad',
+    !!registry.get('grid-cols-dec'));
+  await pressStepper('dec');
   check('S15c the stepper changes the rendered grid', gridCols() === 5,
     `rendered ${gridCols()} columns`);
   check('S15d the count was written to the section’s setting',
@@ -1224,12 +1230,25 @@ async function run() {
   check('S15f Performers reopens at the remembered count', gridCols() === 5,
     `rendered ${gridCols()} columns`);
 
-  // Restore the default so a re-run starts clean; storage is per-driver, but
-  // leave the tab as S14 expects to find it.
-  if (dec) {
-    const inc = registry.get('grid-cols-inc');
-    if (inc) { inc.el.focus(); await sleep(60); await tapEnter(); await sleep(250); }
-  }
+  // Bounds: the stepper clamps instead of wrapping, and the pressed button
+  // keeps the focus. Losing it at the limit drops the D-pad out of the bar.
+  for (let i = 0; i < 4; i++) await pressStepper('dec');   // 5 → 1
+  await pressStepper('dec');                               // one past the floor
+  check('S15g one column is the floor, and focus stays on the stepper',
+    gridCols() === 1 && focusedId() === 'grid-cols-dec',
+    `rendered ${gridCols()} columns, focus ${focusedId()}`);
+
+  for (let i = 0; i < 7; i++) await pressStepper('inc');   // 1 → 8
+  await pressStepper('inc');                               // one past the ceiling
+  check('S15h eight columns is the ceiling, and focus stays on the stepper',
+    gridCols() === 8 && focusedId() === 'grid-cols-inc',
+    `rendered ${gridCols()} columns, focus ${focusedId()}`);
+
+  // Back to the Performers default, so a re-run starts clean and S14 finds the
+  // tab as it expects.
+  for (let i = 0; i < 2; i++) await pressStepper('dec');   // 8 → 6
+  check('S15i the stepper is back at the Performers default', gridCols() === 6,
+    `rendered ${gridCols()} columns`);
 
   // ── S13  nothing threw ──────────────────────────────────
   check('S13 no uncaught error during the run', errors.length === 0, errorTail());

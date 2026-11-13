@@ -21,6 +21,7 @@ import { ModeToggle } from './settings/ModeToggle.jsx';
 import { ThemeToggle } from './settings/ThemeToggle.jsx';
 import { EngineToggle } from './settings/EngineToggle.jsx';
 import { SeekStepToggle } from './settings/SeekStepToggle.jsx';
+import { SlideshowIntervalToggle } from './settings/SlideshowIntervalToggle.jsx';
 import { TranscodeQualityToggle } from './settings/TranscodeQualityToggle.jsx';
 import { TextField } from './settings/TextField.jsx';
 import { AppLockSection } from './settings/AppLockSection.jsx';
@@ -62,6 +63,7 @@ export default function SettingsPanel({ onClose }) {
     previewsEnabled, setPreviewsEnabled,
     reduceMotion, setReduceMotion,
     seekStep, setSeekStep,
+    slideshowInterval, setSlideshowInterval,
     transcodeQuality, setTranscodeQuality,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,
@@ -455,6 +457,17 @@ export default function SettingsPanel({ onClose }) {
               <strong>Adaptive</strong> starts at 5 seconds and climbs to 10,
               30 and 60 when you keep pressing. A fixed step moves the same
               distance on every press. Applies the next time a scene is opened.
+            </p>
+          </div>
+
+          <div className={styles.section}>
+            <SlideshowIntervalToggle
+              value={slideshowInterval}
+              onChange={setSlideshowInterval}
+            />
+            <p className={styles.hint}>
+              How long each picture holds before a slideshow steps on. Manual
+              browsing is not affected.
             </p>
           </div>
 

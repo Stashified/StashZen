@@ -40,7 +40,8 @@ const MOCK_SORT_ALIAS = {
 // Loaded on demand: Test mode is the only caller, and the catalogue plus the
 // art generator are ~26 KB of code a Live TV would otherwise parse at startup.
 async function generateMockVideos(count = 48) {
-  const { SCENE_TITLES, STUDIOS } = await import('./mockLibrary.js');
+  const { SCENE_TITLES, STUDIOS, MOCK_HEIGHTS, MOCK_DETAILS, mockScenePerformers } =
+    await import('./mockLibrary.js');
   const { coverArt, makeRng } = await import('./mockArt.js');
   const now = Date.now();
   return Array.from({ length: count }, (_, i) => {
@@ -49,7 +50,7 @@ async function generateMockVideos(count = 48) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.round((seconds % 3600) / 60);
     const plays = Math.floor(rng() * 14);
-    const height = [2160, 1080, 1080, 720, 480][Math.floor(rng() * 5)];
+    const height = MOCK_HEIGHTS[Math.floor(rng() * MOCK_HEIGHTS.length)];
     const bitrate = Math.round(height * (1.6 + rng() * 3.4));   // kbps
 
     return {
@@ -83,6 +84,13 @@ async function generateMockVideos(count = 48) {
       // above keeps every pinned fixture value where it was.
       production_date: `${1962 + ((i * 7) % 60)}-01-01`,
       category: STUDIOS[i % STUDIOS.length],
+      // What the player's overlay names. Derived from `i`, not the RNG, so
+      // every pinned fixture value above stays put.
+      studio: STUDIOS[i % STUDIOS.length],
+      performers: mockScenePerformers(i % SCENE_TITLES.length),
+      // The carousel hero's blurb, so Test mode draws the two-line slot. From
+      // `i`, not the RNG, for the same reason as the fields above.
+      details: MOCK_DETAILS[i % MOCK_DETAILS.length],
       thumbnail: coverArt(`scene-${i}`),
       stream: null,
       sprite: null,
@@ -128,10 +136,25 @@ const SCENE_ROW_FIELDS = `
       id
       name
     }
+    # The player's overlay names the cast. Cards do not draw it, but the row is
+    # the player's only input, and a scene has a handful of performers.
+    performers {
+      id
+      name
+    }
     tags {
       id
       name
     }
+  }
+`;
+
+// Scene details are a paragraph and only the carousel hero draws them, so the
+// heavier query is a separate fragment: grids do not pay for the text.
+const SCENE_HERO_FIELDS = `
+  fragment SceneHeroFields on Scene {
+    ...SceneRowFields
+    details
   }
 `;
 
@@ -147,6 +170,26 @@ const FIND_SCENES_QUERY = `
 
 // Pages after the first do not read the total, see withoutCount.
 const FIND_SCENES_PAGE_QUERY = withoutCount(FIND_SCENES_QUERY);
+
+const FIND_SCENES_HERO_QUERY = `
+  query FindScenes($filter: FindFilterType, $scene_filter: SceneFilterType) {
+    findScenes(filter: $filter, scene_filter: $scene_filter) {
+      count
+      scenes { ...SceneHeroFields }
+    }
+  }
+  ${SCENE_ROW_FIELDS}
+  ${SCENE_HERO_FIELDS}
+`;
+
+const FIND_SCENES_HERO_PAGE_QUERY = withoutCount(FIND_SCENES_HERO_QUERY);
+
+// Two axes: does the caller want scene details, and is this the first page
+// (the only one that reads the total).
+const SCENE_QUERIES = {
+  base: { first: FIND_SCENES_QUERY, next: FIND_SCENES_PAGE_QUERY },
+  hero: { first: FIND_SCENES_HERO_QUERY, next: FIND_SCENES_HERO_PAGE_QUERY },
+};
 
 function formatDuration(seconds) {
   if (!seconds) return '–';
@@ -175,6 +218,8 @@ export function normalizeScene(scene) {
   return {
     id: scene.id,
     title: scene.title || `Scene ${scene.id}`,
+    // Only the hero query selects it; the carousel draws it as the blurb.
+    details: scene.details || null,
     duration: formatDuration(duration),
     durationSeconds: duration,
     year,
@@ -196,6 +241,7 @@ export function normalizeScene(scene) {
     o_counter: scene.o_counter || 0,
     organized: !!scene.organized,
     studio: scene.studio?.name,
+    performers: (scene.performers || []).map(p => p.name),
     tags: scene.tags?.map(t => t.name) || [],
     width: file?.width,
     height: file?.height,
@@ -245,6 +291,7 @@ export async function fetchVideos({
   q = '',
   page = 1,
   limit = 40,
+  hero = false,
   signal,
 } = {}) {
   // `random` re-shuffles server-side on every request, so page 2 would overlap
@@ -252,8 +299,11 @@ export async function fetchVideos({
   // listing's identity, never the page number. See randomSort.js.
   const requestSort = stableSort(sort, 'scenes', mode, filter, q);
   return sceneCache.get(
-    listCacheKey('scenes', mode, requestSort, order, filter, q, page, limit),
-    () => loadVideos({ mode, sort: requestSort, order, filter, q, page, limit, signal }),
+    // A hero page carries details a grid page does not, so they cannot share
+    // a cache entry.
+    listCacheKey('scenes', mode, requestSort, order, filter, q, page, limit,
+      hero ? 'hero' : 'base'),
+    () => loadVideos({ mode, sort: requestSort, order, filter, q, page, limit, hero, signal }),
   );
 }
 
@@ -265,6 +315,7 @@ async function loadVideos({
   q = '',
   page = 1,
   limit = 40,
+  hero = false,
   signal,
 } = {}) {
 
@@ -305,11 +356,9 @@ async function loadVideos({
     scene_filter: translateFilter(filter, 'SceneFilterType'),
   };
 
-  const data = await runQuery(
-    page > 1 ? FIND_SCENES_PAGE_QUERY : FIND_SCENES_QUERY,
-    variables,
-    { signal },
-  );
+  const { first, next } = SCENE_QUERIES[hero ? 'hero' : 'base'];
+  const query = page > 1 ? next : first;
+  const data = await runQuery(query, variables, { signal });
   const scenes = data?.findScenes?.scenes || [];
 
   return {

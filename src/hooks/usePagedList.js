@@ -63,7 +63,7 @@ const MAX_ABORT_RETRIES = 3;
 const STALE_MAX = 24;
 const stalePage1 = new Map();
 
-function stalePageKey(focusPrefix, entity, requestKey) {
+function stalePageKey(focusPrefix, entity, requestKey, variant) {
   // NUL-separated like listCacheKey: no value can forge a part boundary.
   //
   // `focusPrefix` is the listing's identity, and it is load-bearing: the
@@ -71,7 +71,11 @@ function stalePageKey(focusPrefix, entity, requestKey) {
   // requestKey (name/asc) exactly as Galleries/Images share another. Without
   // it a tab switch seeded the new tab with the previous tab's rows, and Enter
   // opened one of them.
-  return [dataSourceKey(), focusPrefix || '', entity || '', requestKey].join('\u0000');
+  //
+  // `variant` separates one listing fetched with a different query shape: the
+  // Carousel's scenes carry `details` and a grid's do not, so their seeds must
+  // not stand in for each other.
+  return [dataSourceKey(), focusPrefix || '', entity || '', variant || '', requestKey].join('\u0000');
 }
 
 function rememberPage1(key, items, total) {
@@ -82,7 +86,9 @@ function rememberPage1(key, items, total) {
   }
 }
 
-export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity = null }) {
+export function usePagedList({
+  fetchPage, requestKey, focusPrefix = null, entity = null, seedVariant = '',
+}) {
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -116,6 +122,18 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
   const attemptsRef = useRef(0);
   const retryPendingRef = useRef(false);
   const retryTimerRef = useRef(null);
+  // The delete backfill runs on a timer too; left untracked it fired after an
+  // identity change or unmount and fetched against the wrong list.
+  const backfillTimerRef = useRef(null);
+  // Best effort: also re-armed when a page that was already in flight lands,
+  // since that page was fetched against the offsets from before the delete.
+  const scheduleBackfill = () => {
+    clearTimeout(backfillTimerRef.current);
+    backfillTimerRef.current = setTimeout(() => {
+      backfillTimerRef.current = null;
+      loadMoreRef.current?.();
+    }, 0);
+  };
 
   // Re-entrancy guard held in a ref, not `loadingMore` state: two triggers can
   // ask for the next page in the same tick (the sentinel observer and a focus
@@ -138,6 +156,15 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
   const itemsLenRef = useRef(0);
   const totalRef = useRef(0);
   const loadingRef = useRef(true);
+  // The page size `fetchPage` bakes in, learned from the widest page seen.
+  const pageSizeRef = useRef(0);
+  // A delete shifts later rows up, so the held rows stop ending on a page
+  // boundary and the next page would start one row late, skipping the row
+  // that moved. This is the held count at the delete: the server index of the
+  // first missing row, which is the page the next fetch must reseat. A count
+  // rather than a flag, because a page already in flight lands against the
+  // old offsets and moves the boundary out from under a recount. -1 = no seam.
+  const seamRef = useRef(-1);
   // The current identity's abort controller. A replaced identity's requests
   // must free their sockets now: on a slow server, superseded page 1s queue
   // the newest request behind them.
@@ -170,18 +197,25 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     const offRemove = onRowRemove(entity, (id) => {
       if (!seenIdsRef.current.has(id)) return;
       seenIdsRef.current.delete(id);
+      // Synchronously: the backfill runs on a timer and must not wait for
+      // React to render this state.
+      itemsLenRef.current = Math.max(0, itemsLenRef.current - 1);
+      if (totalRef.current > 0) totalRef.current = Math.max(0, totalRef.current - 1);
       setItems((prev) => {
         const next = prev.filter(it => String(it.id) !== id);
-        if (next.length === prev.length) return prev;
         itemsLenRef.current = next.length;
-        return next;
+        return next.length === prev.length ? prev : next;
       });
-      setTotal((prev) => {
-        if (!prev) return prev;
-        const next = Math.max(0, prev - 1);
-        totalRef.current = next;
-        return next;
-      });
+      setTotal((prev) => (prev ? Math.max(0, prev - 1) : prev));
+      // Rows remain unloaded, so there is a seam. Keep the earliest: two
+      // deletes before the fetch both have to be covered. The call is best
+      // effort; the count is what keeps the next request correct.
+      if (itemsLenRef.current < totalRef.current) {
+        seamRef.current = seamRef.current >= 0
+          ? Math.min(seamRef.current, itemsLenRef.current)
+          : itemsLenRef.current;
+        scheduleBackfill();
+      }
     });
     return () => {
       offPatch();
@@ -215,6 +249,11 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     clearTimeout(retryTimerRef.current);
     retryTimerRef.current = null;
     retryPendingRef.current = false;
+    // The delete backfill and its seam belong to the old identity: left set,
+    // the new list would fetch a page picked for a seam it does not have.
+    clearTimeout(backfillTimerRef.current);
+    backfillTimerRef.current = null;
+    seamRef.current = -1;
     attemptsRef.current = 0;
     seenIdsRef.current = new Set();
     blockedRef.current = false;
@@ -232,7 +271,7 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     // these are only what the eye sees until it lands, and neither is
     // remembered under `key`. Seeding the refs keeps `loadMore`'s arithmetic
     // honest meanwhile.
-    const key = stalePageKey(focusPrefix, entity, requestKey);
+    const key = stalePageKey(focusPrefix, entity, requestKey, seedVariant);
     const seed = stalePage1.get(key);
     const carried = seed?.items || shown;
     const carriedTotal = seed?.total ?? shownTotal;
@@ -264,9 +303,15 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
           attemptsRef.current = 0;
           abortRetries = 0;
           setRetrying(false);
+          if (data.items.length > pageSizeRef.current) {
+            pageSizeRef.current = data.items.length;
+          }
           seenIdsRef.current = new Set(data.items.map(it => it.id));
           itemsLenRef.current = data.items.length;
           totalRef.current = data.total;
+          // Page 1 replaces the whole list, so a delete that landed while it
+          // was in flight has no row left to reseat: the seam is spent.
+          seamRef.current = -1;
           loadingRef.current = false;
           rememberPage1(key, data.items, data.total);
           setItems(data.items);
@@ -330,13 +375,15 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
       cancelled = true;
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
+      clearTimeout(backfillTimerRef.current);
+      backfillTimerRef.current = null;
       retryPendingRef.current = false;
       abortRef.current?.abort();
       abortRef.current = null;
     };
-    // `entity` and `focusPrefix` are part of the stale-page key; both are
-    // fixed per component, so including them costs no extra resets.
-  }, [requestKey, entity, focusPrefix]);
+    // `entity`, `focusPrefix` and `seedVariant` are part of the stale-page key;
+    // all are fixed per component, so including them costs no extra resets.
+  }, [requestKey, entity, focusPrefix, seedVariant]);
 
   // ── Load the next page ────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -352,15 +399,31 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
     // the new one, and its `finally` clears the flag only when it still owns it.
     if (inFlightRef.current === reqId || loadingMore || loading || loadingRef.current
         || blockedRef.current || retryPendingRef.current) return false;
-    if (itemsLenRef.current >= totalRef.current && totalRef.current > 0) return false;
+    if (seamRef.current < 0 && itemsLenRef.current >= totalRef.current
+        && totalRef.current > 0) return false;
 
-    const nextPage = pageRef.current + 1;
+    let nextPage = pageRef.current + 1;
+    // The page covering the seam, not the one after the last: the delete pulled
+    // every later row up by one. Consumed here, restored if the fetch fails.
+    const seam = seamRef.current;
+    let consumedSeam = -1;
+    if (seam >= 0) {
+      const size = pageSizeRef.current;
+      if (size > 0) {
+        nextPage = Math.floor(seam / size) + 1;
+        consumedSeam = seam;
+        seamRef.current = -1;
+      }
+    }
 
     inFlightRef.current = reqId;
     setLoadingMore(true);
     try {
       const data = await fetchPageRef.current(nextPage, abortRef.current?.signal);
       if (reqId !== requestIdRef.current) return true;
+      if (data.items.length > pageSizeRef.current) {
+        pageSizeRef.current = data.items.length;
+      }
 
       // Collect before touching state: the seen-set is a ref, and refs must
       // not be mutated inside a state updater (StrictMode runs updaters
@@ -399,6 +462,14 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
         totalRef.current = data.total;
         setTotal(data.total);
       }
+      // A delete landed while this page was in flight. Its rows start at the
+      // seam, so they bridge the gap rather than reseating the old page; the
+      // boundary is now whatever is still missing.
+      if (seamRef.current >= 0) {
+        seamRef.current = itemsLenRef.current < totalRef.current
+          ? itemsLenRef.current
+          : -1;
+      }
     } catch (e) {
       // An aborted request was cancelled on purpose (a new identity, or an
       // unmount); its failure is not something to report or retry.
@@ -406,6 +477,14 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
       setError(e.message);
       attemptsRef.current += 1;
       if (attemptsRef.current < MAX_PAGE_ATTEMPTS) {
+        // The retry must ask for the seam again; the default next page would
+        // start one row late and leave the hole this resync exists for. A
+        // delete during the fetch may have set a nearer seam; keep that one.
+        if (consumedSeam >= 0) {
+          seamRef.current = seamRef.current >= 0
+            ? Math.min(seamRef.current, consumedSeam)
+            : consumedSeam;
+        }
         retryPendingRef.current = true;
         retryTimerRef.current = setTimeout(() => {
           retryTimerRef.current = null;
@@ -423,7 +502,15 @@ export function usePagedList({ fetchPage, requestKey, focusPrefix = null, entity
       // Only when this request still owns the slot; a reset may have started a
       // new fetch whose guard an unconditional clear would drop.
       if (inFlightRef.current === reqId) inFlightRef.current = null;
-      if (reqId === requestIdRef.current) setLoadingMore(false);
+      if (reqId === requestIdRef.current) {
+        setLoadingMore(false);
+        // A delete landed while this page was in flight, so the page predates
+        // it and the seam still needs a fetch of its own. Not while a retry is
+        // queued or the budget is spent: both have their own way back.
+        if (seamRef.current >= 0 && !blockedRef.current && !retryPendingRef.current) {
+          scheduleBackfill();
+        }
+      }
     }
     // `true` means a fetch was started. `focus.js` counts its page budget off
     // this: an early return (blocked, retrying, already loading) is not a page

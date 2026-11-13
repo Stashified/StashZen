@@ -6,17 +6,20 @@
  * `focusin` and recentres, like the carousel.
  *
  * Paging lives in usePagedList; this component supplies the request and the
- * trigger (the focused index nearing the end of the rail).
+ * trigger (the focused index nearing the end of the rail). The hero comes from
+ * SCENE_VIEW, so the two scene views cannot drift.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import VideoCard from './VideoCard.jsx';
+import { SCENE_VIEW } from './carouselViews.js';
 import ListingState from './ListingState.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { getCurrentFocusId } from '../hooks/useFocusable.js';
 import { onFocusRestoreRequest } from '../utils/focus.js';
 import { usePagedList } from '../hooks/usePagedList.js';
 import { pageRequestKey } from '../utils/requestKey.js';
+import HeroInfo from './HeroInfo.jsx';
 import styles from './VideoCoverflow.module.css';
 
 const PAGE_SIZE = 40;
@@ -153,26 +156,21 @@ export default function VideoCoverflow({ controls, objectFilter, searchQuery, on
   // the counter and the window never point outside the rail.
   const index = Math.min(focusedIndex, videos.length - 1);
   const focused = videos[index] || videos[0];
+  const { title, meta = [], details } = SCENE_VIEW.hero(focused);
   // The window's first index; also the offset for the absolute index of a
   // sliced entry.
   const windowStart = Math.max(0, index - RENDER_RANGE);
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.hero}>
-        <h2 className={styles.heroTitle}>{focused.title}</h2>
-        <div className={styles.heroMeta}>
-          {focused.year && <span>{focused.year}</span>}
-          {focused.duration && <span>{focused.duration}</span>}
-          {focused.category && <span className={styles.heroTag}>{focused.category}</span>}
-          {focused.rating && <span className={styles.heroRating}>★ {focused.rating}</span>}
-        </div>
-        <div className={styles.heroCounter}>
-          <span className={styles.heroCounterCur}>{index + 1}</span>
-          <span className={styles.heroCounterSep}>/</span>
-          <span className={styles.heroCounterTotal}>{total || videos.length}</span>
-        </div>
-      </div>
+      <HeroInfo
+        title={title}
+        meta={meta}
+        details={details}
+        index={index}
+        total={total || videos.length}
+        variant="coverflow"
+      />
 
       <div className={styles.stage}>
         <div className={styles.scene}>

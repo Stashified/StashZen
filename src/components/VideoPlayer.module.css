@@ -188,7 +188,15 @@
   font-size: 15px;
   color: rgba(255,255,255,0.65);
   margin-top: 2px;
+  /* One line: a long cast ellipsises instead of wrapping the bar. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+.performers { color: rgba(255,255,255,0.82); }
+.studio { color: rgba(255,255,255,0.55); }
+.metaSep { color: rgba(255,255,255,0.28); }
 
 /* Position within the play queue, shown only when there is one. */
 .queueCounter {
@@ -360,6 +368,21 @@
   border: 1px solid rgba(255,120,120,0.5);
   background: rgba(200,40,40,0.55);
   color: #ffd9d9;
+}
+
+/* The scene file's height, beside the source chip: both describe this
+   playback rather than the scene. Neutral, unlike the transcode chip. */
+.resolutionChip {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.6);
+  white-space: nowrap;
 }
 
 /* Direct or transcoded. Worded first, coloured second: the tint is for a

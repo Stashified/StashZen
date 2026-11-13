@@ -68,11 +68,17 @@ export function useControlsVisibility({ railRef }) {
     showControls();
   }, [showControls]);
 
+  // The same landing, reached from the hidden bar: ↑/↓ raise the controls to
+  // the seek stop rather than stepping the scene on a lone vertical press.
+  // The cursor is already out of the rail when the bar is down; the blur is a
+  // guard against a stray focus.
+  const revealSeek = leaveRailToSeek;
+
   // The timer must not outlive the player.
   useEffect(() => () => clearTimeout(hideTimerRef.current), []);
 
   return {
     controlsVisible, showControls, revealRail,
-    leaveRail, leaveRailToSeek, hideControls,
+    leaveRail, leaveRailToSeek, revealSeek, hideControls,
   };
 }

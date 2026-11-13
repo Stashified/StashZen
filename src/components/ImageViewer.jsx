@@ -19,8 +19,9 @@
  *
  * ## Slideshow
  *
- * `autoPlay` advances every SLIDE_MS, preloading the next picture. It stops at
- * the last image rather than looping, and any manual Left/Right stops it,
+ * `autoPlay` advances on the configured slideshow interval, preloading the next
+ * picture. It stops at the last image rather than looping, and any manual
+ * Left/Right stops it,
  * browsing is a decision, not a nudge to the timer. The info panel does not
  * pause it: the panel follows the picture that is on screen, and the header
  * button reads Stop slideshow while it runs. In gallery mode it holds on the
@@ -60,16 +61,13 @@ import {
 import { buildImageInfoRows } from '../utils/imageInfo.js';
 import { ratingLabel, nextRating } from '../utils/format.js';
 import { stableSort } from '../utils/randomSort.js';
+import { useSettings } from '../utils/settings.js';
 import styles from './ImageViewer.module.css';
 
 // Collapses a held arrow's key repeat into one request while still feeling
 // immediate; stepping changes `item` at repeat rate and the cache only helps
 // on the way back.
 const INFO_FETCH_DELAY_MS = 180;
-
-// Long enough to read a photograph, short enough not to feel stalled. Not
-// configurable: one sensible pace, not one more Settings entry.
-const SLIDE_MS = 6000;
 
 // Enter cycles these. Pan is in pixels, bounded per axis by how much the
 // scaled picture actually overflows the stage: a portrait picture at 2× may
@@ -244,6 +242,8 @@ export default function ImageViewer({
   initialInfoOpen = false,
   onClose,
 }) {
+  // The slideshow pace is a setting; 6 s is the default that shipped.
+  const { slideshowInterval: slideMs } = useSettings();
   // Which picture has arrived, not a bare flag: a preloaded next image can fire
   // its load event before React runs the effect that used to clear the flag,
   // which left the spinner up over an invisible picture for good.
@@ -252,7 +252,7 @@ export default function ImageViewer({
   const [playing, setPlaying] = useState(!!autoPlay);
   // Milliseconds until the next slide, for the footer readout. Recomputed from
   // the clock rather than decremented so a stalled interval cannot drift.
-  const [slideLeft, setSlideLeft] = useState(SLIDE_MS);
+  const [slideLeft, setSlideLeft] = useState(slideMs);
   // 1 is fit-to-screen. Enter cycles 1 → 2 → 3 → 1, and Back resets before it
   // closes. `pan` is a pixel offset from centre.
   const [zoom, setZoom] = useState(1);
@@ -657,21 +657,21 @@ export default function ImageViewer({
       setPlaying(false);
       return undefined;
     }
-    const timer = setTimeout(() => goTo(currentIndex + 1), SLIDE_MS);
+    const timer = setTimeout(() => goTo(currentIndex + 1), slideMs);
     return () => clearTimeout(timer);
-  }, [playing, itemId, canNext, currentIndex, gallery, galleryDone, goTo]);
+  }, [playing, itemId, canNext, currentIndex, gallery, galleryDone, goTo, slideMs]);
 
   // The countdown only exists while the timer does: same conditions, same
   // reset points, so the number on screen is the wait that is actually armed.
   useEffect(() => {
-    setSlideLeft(SLIDE_MS);
+    setSlideLeft(slideMs);
     if (!playing || !itemId || !canNext) return undefined;
     const startedAt = Date.now();
     const tick = setInterval(() => {
-      setSlideLeft(Math.max(0, SLIDE_MS - (Date.now() - startedAt)));
+      setSlideLeft(Math.max(0, slideMs - (Date.now() - startedAt)));
     }, 250);
     return () => clearInterval(tick);
-  }, [playing, itemId, canNext, currentIndex]);
+  }, [playing, itemId, canNext, currentIndex, slideMs]);
 
   // Warm the next picture while the current one is up. Only while running:
   // manual browsing should not pull a full-resolution file per step. Held in a

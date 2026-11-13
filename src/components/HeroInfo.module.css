@@ -1,0 +1,126 @@
+/* The hero above a centred strip or a coverflow. Shared by both views so a new
+   field is added once; the coverflow adds tighter bottom padding and must keep
+   its height when the rail's flex box squeezes. */
+.hero {
+  padding: 0 48px 24px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+}
+
+.heroCoverflow {
+  padding-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* Column 1 holds the text block, so detail and blurb lines can be added
+   without renumbering grid rows. */
+.heroText {
+  grid-column: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.heroTitle {
+  font-family: var(--font-condensed);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  margin-bottom: 8px;
+}
+
+.heroMeta {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* One line, whatever the cast's length. */
+.heroDetails {
+  width: 100%;
+  min-height: 21px;
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 21px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Two lines of 14px/1.5, held even when there is no blurb. */
+.infoSlot {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 6px;
+}
+
+.heroBlurb {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  /* Two lines is the whole height budget for a tag description or studio
+     details; without this the strip moves whenever focus changes section. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.heroTag {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 3px 9px;
+  border-radius: 3px;
+}
+
+.heroRating {
+  color: var(--rating);
+  font-weight: 600;
+}
+
+.heroCounter {
+  align-self: end;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-condensed);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.heroCounterCur {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.heroCounterSep {
+  font-size: 22px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.heroCounterTotal {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}

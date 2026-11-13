@@ -18,6 +18,7 @@ export function usePlayerKeys({
   mediaTransport,
   skim,
   revealRail,
+  revealSeek,
   leaveRail,
   leaveRailToSeek,
   hideControls,
@@ -57,6 +58,7 @@ export function usePlayerKeys({
         case 'hide-controls': hideControls(); break;
         case 'close': onClose?.(); break;
         case 'reveal-rail': revealRail(); break;
+        case 'reveal-seek': revealSeek(); break;
         case 'skim-back': skim(-1, e.repeat); break;
         case 'skim-forward': skim(1, e.repeat); break;
         case 'enter-upnext': focusByIdWhenReady('upnext-play'); break;
@@ -68,8 +70,8 @@ export function usePlayerKeys({
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [
-    onClose, mediaTransport, skim, revealRail, leaveRail, leaveRailToSeek,
-    hideControls, controlsVisible, stepScene, singleScene, upNextVisible,
-    hideUpNext, containerRef, railRef,
+    onClose, mediaTransport, skim, revealRail, revealSeek, leaveRail,
+    leaveRailToSeek, hideControls, controlsVisible, stepScene, singleScene,
+    upNextVisible, hideUpNext, containerRef, railRef,
   ]);
 }

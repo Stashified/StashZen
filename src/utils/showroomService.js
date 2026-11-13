@@ -56,6 +56,7 @@ const SHOWROOM_QUERY = `
         resume_time
         paths { screenshot stream sprite vtt preview }
         studio { id name }
+        performers { id name }
         tags { id name }
       }
     }
@@ -72,6 +73,7 @@ const SHOWROOM_QUERY = `
         resume_time
         paths { screenshot stream sprite vtt preview }
         studio { id name }
+        performers { id name }
         tags { id name }
       }
     }

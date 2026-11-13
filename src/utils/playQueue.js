@@ -52,7 +52,11 @@ export function queueItemFromMarker(marker) {
     // The timeline and the resume end threshold both read this. See the
     // same field in markerService's normalizer.
     durationSeconds: marker.scene.durationSeconds,
-    studio: null,
+    // What the player's overlay names, plus the file height it prints.
+    studio: marker.scene.studio || null,
+    performers: marker.scene.performers || [],
+    width: marker.scene.width ?? null,
+    height: marker.scene.height ?? null,
   };
 }
 

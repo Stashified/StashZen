@@ -25,6 +25,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { useFocusable } from '../hooks/useFocusable.js';
 import { usePreviewSettings } from '../utils/settings.js';
+import { resolutionLabel } from '../utils/format.js';
 import styles from './VideoCard.module.css';
 
 // How long focus must rest on this card before the preview is mounted. Long
@@ -88,23 +89,6 @@ function markBad(source, id) {
 }
 
 /**
- * The resolution half of the bottom-right badge, from `file.height`.
- *
- * Buckets are coarse on purpose: at ten feet "1080P" vs "720P" is the
- * distinction anyone can make, and exact height belongs on the detail page.
- * 2160 gets a name because nobody calls it "2160P".
- */
-function resolutionLabel(height) {
-  if (!height) return null;
-  if (height >= 2160) return '4K';
-  if (height >= 1440) return '1440P';
-  if (height >= 1080) return '1080P';
-  if (height >= 720) return '720P';
-  if (height >= 480) return '480P';
-  return `${height}P`;
-}
-
-/**
  * `list` is the listing this card belongs to, array, total, page and fetch
  * closure. Opaque here: the card hands it back up on select/long-press so a
  * queue opened here continues in the order the user was looking at. See
@@ -132,6 +116,9 @@ function VideoCard({
   // whatever the info bar leaves instead of holding 16:9, so the scene shelf
   // matches the three overlay card families. Listings keep their aspect ratio.
   fill = false,
+  // The carousel scales its focused slot 2x, which doubles the card's text too.
+  // See `.compact` in the stylesheet.
+  compact = false,
 }) {
   const [imgError, setImgError] = useState(false);
   // Only the preview settings, not the whole store: a card is memoised, but a
@@ -255,7 +242,7 @@ function VideoCard({
   return (
     <button
       ref={ref}
-      className={`${styles.card} ${fill ? styles.fill : ''} ${focused ? styles.focused : ''}`}
+      className={`${styles.card} ${fill ? styles.fill : ''} ${compact ? styles.compact : ''} ${focused ? styles.focused : ''}`}
       onClick={() => onSelect?.(item, list)}
       aria-label={`${item.title}${item.year ? `, ${item.year}` : ''}${item.rating ? `, rated ${item.rating}` : ''}`
         + `${item.play_count ? ', watched' : ''}${item.organized ? ', organised' : ''}`

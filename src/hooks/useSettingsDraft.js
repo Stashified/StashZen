@@ -27,6 +27,7 @@ const snapshot = (s) => ({
   previewsEnabled: !!s.previewsEnabled,
   reduceMotion: !!s.reduceMotion,
   seekStep: s.seekStep,
+  slideshowInterval: s.slideshowInterval,
   transcodeQuality: s.transcodeQuality,
   theme: s.theme,
   playbackEngine: s.playbackEngine,
@@ -39,6 +40,8 @@ export function useSettingsDraft(initial) {
   const [previewsEnabled, setPreviewsEnabled] = useState(initial.previewsEnabled);
   const [reduceMotion, setReduceMotion] = useState(initial.reduceMotion);
   const [seekStep, setSeekStep] = useState(initial.seekStep);
+  // How long a slideshow picture holds, in ms.
+  const [slideshowInterval, setSlideshowInterval] = useState(initial.slideshowInterval);
   // Applies only when Stash transcodes; direct play is untouched.
   const [transcodeQuality, setTranscodeQuality] = useState(initial.transcodeQuality);
   // Appearance is a draft like everything else, see above.
@@ -78,6 +81,7 @@ export function useSettingsDraft(initial) {
       previewsEnabled,
       reduceMotion,
       seekStep,
+      slideshowInterval,
       transcodeQuality,
       theme,
       playbackEngine,
@@ -102,6 +106,7 @@ export function useSettingsDraft(initial) {
     setPreviewsEnabled(fresh.previewsEnabled);
     setReduceMotion(fresh.reduceMotion);
     setSeekStep(fresh.seekStep);
+    setSlideshowInterval(fresh.slideshowInterval);
     setTranscodeQuality(fresh.transcodeQuality);
     setTheme(fresh.theme);
     setPlaybackEngine(fresh.playbackEngine);
@@ -110,7 +115,7 @@ export function useSettingsDraft(initial) {
 
   const current = snapshot({
     useMock, stashUrl, stashKey, previewsEnabled, reduceMotion, seekStep,
-    transcodeQuality, theme, playbackEngine,
+    slideshowInterval, transcodeQuality, theme, playbackEngine,
   });
   const dirty = Object.keys(baseline).some(key => baseline[key] !== current[key]);
 
@@ -121,6 +126,7 @@ export function useSettingsDraft(initial) {
     previewsEnabled, setPreviewsEnabled,
     reduceMotion, setReduceMotion,
     seekStep, setSeekStep,
+    slideshowInterval, setSlideshowInterval,
     transcodeQuality, setTranscodeQuality,
     theme, setTheme,
     playbackEngine, setPlaybackEngine,

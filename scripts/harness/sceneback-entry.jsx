@@ -7,6 +7,8 @@
  * caches), so the card is restored by id through focus.js, not by element.
  *
  * The first card is where the fallback lands, so the scene opened is not 1.
+ * The second round repeats it in Carousel mode on card 7, which is outside the
+ * strip's four-slot window; that restore has to move the window to succeed.
  *
  * A headless driver cannot prove the TV's remote sends the same keydown; that
  * is the TV pass.
@@ -16,7 +18,7 @@ import '../../src/index.css';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App.jsx';
 import { registry, getCurrentFocusId } from '../../src/hooks/useFocusable.js';
-import { setSettings } from '../../src/utils/settings.js';
+import { setSettings, getSettings } from '../../src/utils/settings.js';
 import { isRestorePending } from '../../src/utils/restorePending.js';
 
 const PORT = window.__PORT__;
@@ -51,6 +53,13 @@ async function pressBack() {
   active().dispatchEvent(new KeyboardEvent('keydown', {
     keyCode: 10009, key: 'Escape', bubbles: true, cancelable: true,
   }));
+}
+
+async function press(key) {
+  active().dispatchEvent(new KeyboardEvent('keydown', {
+    key, bubbles: true, cancelable: true,
+  }));
+  await sleep(150);
 }
 
 async function waitFor(fn, ms = 6000, step = 50) {
@@ -121,6 +130,48 @@ async function run() {
     `focus ${focusId} after ${Date.now() - t0} ms; `
     + JSON.stringify(timeline.slice(0, 14)));
 
+  // ── The same Back, from a card outside the strip's window ──
+  // A carousel mounts only four slots either side of the focus, so card 7 has
+  // no element when the listing remounts on index 0. The restore has to move
+  // the window before it can find it.
+  setSettings({ viewModes: { ...getSettings().viewModes, scenes: 'carousel' } });
+  const stripUp = await waitFor(
+    () => !!document.querySelector('[role="region"][aria-label$="carousel"]')
+      && String(getCurrentFocusId() || '').startsWith('video-'),
+    4000,
+  );
+  check('S-6 Scenes reopens as a carousel', stripUp, `focus ${getCurrentFocusId()}`);
+
+  let onSeventh = getCurrentFocusId() === 'video-7';
+  for (let i = 0; i < 12 && !onSeventh; i++) {
+    await press('ArrowRight');
+    onSeventh = getCurrentFocusId() === 'video-7';
+  }
+  const mounted = [...registry.keys()].filter(k => k.startsWith('video-')).length;
+  check('S-7 focus walked to the seventh card, past the initial window',
+    onSeventh, `focus ${getCurrentFocusId()}, ${mounted} cards mounted`);
+
+  await tapEnter();
+  const seventhDetail = await waitFor(() => registry.has('scene-performer-1'), 6000);
+  check('S-8 the seventh scene opens its detail', seventhDetail,
+    `focus ${getCurrentFocusId()}`);
+  focus('scene-performer-1');
+  await sleep(120);
+  await tapEnter();
+  const performerUpAgain = await waitFor(performerPageOpen, 6000);
+  check('S-9 the chip opens the performer page', performerUpAgain,
+    `rail ${railActive()}, focus ${getCurrentFocusId()}`);
+
+  await sleep(250);
+  const t1 = Date.now();
+  await pressBack();
+  const backOnSeventh = await waitFor(
+    () => railActive() === 'Scenes' && getCurrentFocusId() === 'video-7',
+    4000,
+  );
+  check('S-10 Back lands on the card that was off-screen',
+    backOnSeventh,
+    `focus ${getCurrentFocusId()} after ${Date.now() - t1} ms`);
 }
 
 async function finish() {

@@ -52,9 +52,14 @@ export function useMarkerOverlay({ mediaRef, addMarkers, showControls }) {
   // attached to the create rather than the close.
   const handleMarkerCreated = useCallback((created) => {
     addMarkers([{ id: created.id, seconds: created.seconds, primaryTag: created.primaryTag }]);
-    setMarkerNotice(
-      created.primaryTag?.name ? `Marker added · ${created.primaryTag.name}` : 'Marker added',
-    );
+    // Timestamped so the player can pick the newer of two notices sharing
+    // its toast slot.
+    setMarkerNotice({
+      message: created.primaryTag?.name
+        ? `Marker added · ${created.primaryTag.name}`
+        : 'Marker added',
+      at: Date.now(),
+    });
   }, [addMarkers]);
 
   useEffect(() => {

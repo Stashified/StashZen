@@ -5,10 +5,14 @@
  * generalize, because scenes and performers have different fields and art.
  * Kept together so the differences are visible side by side.
  *
- * Each `hero` returns fields, not markup: `{ title, meta: [{ text, kind }] }`
- * with `kind` in 'tag' | 'rating' | undefined. The strip owns what a tag or
+ * Each `hero` returns fields, not markup: `{ title, meta: [{ text, kind }],
+ * details, blurb }` with `kind` in 'tag' | 'rating' | undefined. `details` is
+ * an array of strings drawn as one line (joined with ' · '); absent means the
+ * section has no such field, while an empty array reserves the line.
+ * `blurb` is a paragraph. The strip owns what a tag or
  * rating looks like; the descriptor owns which fields a section has, so a new
- * section is one descriptor and nothing else.
+ * section is one descriptor and nothing else. `rowMeta` adds fields only the
+ * wider list row has room for.
  *
  * They live in `components/` rather than `utils/` because they name card
  * components, the same reason `tvActions.jsx` is here.
@@ -21,13 +25,23 @@ import MarkerCard from './MarkerCard.jsx';
 import { fetchVideos } from '../utils/videoService.js';
 import { fetchPerformers } from '../utils/performerService.js';
 import { fetchMarkers } from '../utils/markerService.js';
-import { formatTime } from '../utils/format.js';
+import { formatTime, resolutionLabel } from '../utils/format.js';
+
+/** Cast, then the file's height: the detail line a row and a hero both fit. */
+function sceneDetails(scene) {
+  return [
+    scene.performers?.length ? scene.performers.join(', ') : null,
+    resolutionLabel(scene.height),
+  ].filter(Boolean);
+}
 
 export const SCENE_VIEW = {
   Card: VideoCard,
   service: fetchVideos,
   itemsKey: 'videos',
   focusPrefix: 'video',
+  // The strip asks for the hero query, so its page 1 cannot seed from a grid's.
+  seedVariant: 'hero',
   // Rows to patch in place when a write changes a scene. See rowPatches.js.
   entity: 'scene',
   noun: 'videos',
@@ -51,7 +65,12 @@ export const SCENE_VIEW = {
       scene.category && { text: scene.category, kind: 'tag' },
       scene.rating && { text: `★ ${scene.rating}`, kind: 'rating' },
     ].filter(Boolean),
+    // Always an array, so the hero reserves the line with no cast.
+    details: sceneDetails(scene),
+    // The hero query selects details; grids and lists leave it null.
+    blurb: scene.details || null,
   }),
+  rowMeta: sceneDetails,
 };
 
 export const PERFORMER_VIEW = {

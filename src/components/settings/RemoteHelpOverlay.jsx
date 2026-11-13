@@ -36,7 +36,7 @@ const SECTIONS = [
       ['OK', 'Show the controls. Back puts them away.'],
       ['Left / Right', 'Seek by the step chosen in Settings. Hold to keep scrubbing.'],
       ['Play / Pause', 'Play or pause, wherever the focus is.'],
-      ['Up / Down', 'With the controls hidden, jump to the previous or next scene. With the seek bar up, Down returns to the buttons and Up jumps to the previous scene.'],
+      ['Up / Down', 'With the controls hidden, raise them to the seek bar. From there, Up jumps to the previous scene, while Down returns to the buttons and a second Down goes to the next scene.'],
       ['Back', 'Hide the controls, then close the player.'],
     ],
   },

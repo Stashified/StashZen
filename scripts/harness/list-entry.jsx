@@ -210,6 +210,12 @@ async function runGrid() {
     check(`${t}1 rows keep the scene focus ids the queue and the harness use`,
       !!registry.get(`${V.focus}1`) && !!registry.get(`${V.focus}2`),
       `${V.focus}1=${!!registry.get(`${V.focus}1`)} ${V.focus}2=${!!registry.get(`${V.focus}2`)}`);
+    // The list-only fields: the cast and the file height, which the narrower
+    // carousel hero has no room for.
+    const metaText = rows[0]?.textContent || '';
+    check(`${t}1 a scene row names the cast and the file height`,
+      metaText.includes('Ava Kane') && metaText.includes('1080P'),
+      `row="${metaText}"`);
   }
 
   // ── Reaching the bottom loads exactly one more page ──────

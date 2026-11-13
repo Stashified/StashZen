@@ -302,6 +302,7 @@ async function run() {
   // blurb moves the strip, full aliases push everything off screen. Fixture rows
   // 1–4 and 10 cover each populated/empty combination and the overlong clamp.
   const metaText = () => document.querySelector('[class*="heroMeta"]')?.textContent || '';
+  const detailsText = () => document.querySelector('[class*="heroDetails"]')?.textContent || '';
   const blurbEl = () => document.querySelector('[class*="heroBlurb"]');
   const blurbText = () => blurbEl()?.textContent || '';
 
@@ -388,6 +389,32 @@ async function run() {
   check('V8 a long studio details blurb is clamped the same way',
     /VERIFY long studio details/.test(blurbText()) && bounded(studioClamp),
     `${JSON.stringify(studioClamp)}`);
+
+  // ── 9. Scene hero: cast, height and the details blurb ──
+  // The height and cast live in the row fragment; details only in the hero
+  // query, so the fake server drops them from a query that does not select
+  // them and an unheroed fetch shows up as a missing blurb.
+  const droveSceneCarousel = await heroFor('scenes', 'video-1');
+  check('V11 Scenes opens a carousel', droveSceneCarousel,
+    `strip=${!!stripEl()} control="${modeControlText()}"`);
+  focus('video-1');
+  await sleep(250);
+  check('V11 the scene hero names the cast and the file height',
+    heroTitle() === 'VERIFY scene 1'
+      && /Ava Kane, Mia Wells/.test(detailsText()) && /1080P/.test(detailsText()),
+    `title="${heroTitle()}" details="${detailsText()}"`);
+  check('V11 the scene details are drawn as the blurb',
+    /VERIFY scene 1 details/.test(blurbText()),
+    `blurb="${blurbText().slice(0, 80)}"`);
+
+  const sceneCoverflow = await driveMode('coverflow');
+  const coverflowDetails = await waitFor(
+    () => isCoverflow() && /Ava Kane, Mia Wells/.test(detailsText()), 4000);
+  check('V11 Coverflow shows the same cast line as the carousel',
+    sceneCoverflow && coverflowDetails && /1080P/.test(detailsText()),
+    `control="${modeControlText()}" details="${detailsText()}"`);
+  check('V11 Coverflow draws no blurb line', !blurbEl(),
+    `blurb=${!!blurbEl()}`);
 
   // ── 10. Right out of a low tab enters a List at its first row ──
   // Groups, Galleries and Images sit low in the rail, beside rows 2-3 of a

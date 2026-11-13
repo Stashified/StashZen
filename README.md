@@ -87,8 +87,8 @@ under **Settings → Connection setup → Run setup again**.
 | Key | Action |
 |---|---|
 | ← / → | Seek by **Settings → Seek step**, 5 seconds by default; Adaptive climbs to 10, 30 and 60 on repeated presses. |
-| ↓ | Buttons → next scene. Seek bar → back to the buttons first, then **↓** again steps. Controls hidden → steps directly. |
-| ↑ | Buttons → seek bar (← / → skim), scene unchanged; **↑** again steps to the previous scene. Controls hidden → steps directly. |
+| ↓ | Buttons → next scene. Seek bar → back to the buttons first, then **↓** again steps. Controls hidden → raises the controls to the seek bar. |
+| ↑ | Buttons → seek bar (← / → skim), scene unchanged; **↑** again steps to the previous scene. Controls hidden → raises the controls to the seek bar. |
 | Back | Controls on screen: first press hides them, second closes the player. |
 
 **Image viewer**
@@ -111,8 +111,9 @@ under **Settings → Connection setup → Run setup again**.
 - **Card marks and actions**: cards show watched, organised and O count. Hold OK for quick edits:
   **Mark played**, **Add O**, **Clear resume** and **Mark organised**.
 - **Eight sections**: Scenes, Performers, Markers, Tags, Studios, Groups, Galleries and Images,
-  each with search, sort, filters and a view mode remembered per tab. Tags and Studios open as
-  lists. Selecting a group opens its scenes filtered to it.
+  each with search, sort, filters and a view mode remembered per tab. Carousel and Coverflow
+  name the performers and resolution above the strip; List rows carry the same line. Tags and
+  Studios open as lists. Selecting a group opens its scenes filtered to it.
 - **Filters**: build one on the TV or load a saved one, and save it back to Stash. A **Quick**
   row adds one-press chips like Unwatched, Rated 4+ and Has markers; Performers, Tags and
   Studios carry their own (Favourites, Rated 4+).
@@ -133,11 +134,13 @@ under **Settings → Connection setup → Run setup again**.
 - **Info sheets**: hold OK on a tag, studio, group or gallery for its description, aliases,
   tags and counts; a group also shows its synopsis and related groups, a gallery its performers.
   Each count with a listing behind it opens that filtered listing.
-- **Image viewer**: a slideshow, pan and zoom, and an info panel over the full-size image.
+- **Image viewer**: a slideshow at the interval set in Settings, pan and zoom, and an info panel
+  over the full-size image.
 
 **Playback**
 - **Player**: resumes where you stopped, queues the listing, writes progress back to Stash, and
-  shows **Direct play** or **Transcoded**.
+  shows **Direct play** or **Transcoded**. The top bar names the cast and studio, with the
+  file's resolution beside the source.
 - **Queue**: a player button opens the queue; OK jumps to a scene, holding OK removes it.
 - **Up next**: a card in the last 30 seconds offers the next scene, with **Play now** and
   **Hide**.

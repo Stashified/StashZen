@@ -368,7 +368,10 @@ async function runSettings() {
   // ── S: Save commits both new settings ────────────────────
   // Last, because Save starts the panel's close timer. Reduce motion is the
   // one setting whose effect is on the document rather than in the panel.
-  await enter(byLabel('30 s'), '30 s');
+  // By id, not by label: "30 s" is an option in both the seek step and the
+  // slideshow interval groups now.
+  await enter(registry.get('settings-seek-30')?.el, 'seek step 30 s');
+  await enter(registry.get('settings-slideshow-3000')?.el, 'slideshow 3 s');
   // Whatever B3 left, Save must commit Reduce motion as on.
   if (motionBtn()?.getAttribute('aria-pressed') !== 'true') await enter(motionBtn(), 'reduce motion');
   await enter(byLabel('Save'), 'Save');
@@ -380,6 +383,9 @@ async function runSettings() {
     `seekStep=${JSON.stringify(getSettings().seekStep)} `
       + `reduceMotion=${getSettings().reduceMotion} `
       + `attribute=${document.documentElement.hasAttribute('data-reduce-motion')}`);
+  check('S2 Save commits the slideshow interval',
+    getSettings().slideshowInterval === 3000,
+    `slideshowInterval=${String(getSettings().slideshowInterval)}`);
 }
 
 // ── ExitPrompt ──────────────────────────────────────────────

@@ -45,6 +45,9 @@ export function usePlayQueue(queue) {
   const [ended, setEnded] = useState(false);
   const endedRef = useRef(false);
   const [index, setIndexState] = useState(startIndex);
+  // A page fetch that failed after its retry. Without it a failed Next looked
+  // exactly like the end of the queue: a keypress that did nothing.
+  const [nextError, setNextError] = useState(null);
   // The page is deliberately *not* state: nothing renders it, and it is only
   // ever read to work out which page to ask for next.
 
@@ -61,6 +64,9 @@ export function usePlayQueue(queue) {
   // the extension's own dedupe only knows what is still held; without this the
   // removed row reappears the next time the queue grows.
   const removedIdsRef = useRef(new Set());
+  // The last extension's verdict, read by `goNext`. A failed prefetch is
+  // recorded but not shown; only a press that needed the page speaks.
+  const extendErrorRef = useRef(null);
 
   const setIndex = useCallback((next) => {
     indexRef.current = next;
@@ -70,59 +76,74 @@ export function usePlayQueue(queue) {
   const exhausted = ended || (total > 0 && items.length >= total);
 
   const extend = useCallback(() => {
-    if (!fetchPage) return Promise.resolve(false);
-    if (endedRef.current) return Promise.resolve(false);
+    if (!fetchPage) { extendErrorRef.current = null; return Promise.resolve(false); }
+    if (endedRef.current) { extendErrorRef.current = null; return Promise.resolve(false); }
     if (inFlightRef.current) return inFlightRef.current;
 
     const before = stateRef.current;
-    if (before.total > 0 && before.items.length >= before.total) return Promise.resolve(false);
+    if (before.total > 0 && before.items.length >= before.total) {
+      extendErrorRef.current = null;
+      return Promise.resolve(false);
+    }
+
+    // More than one page per call because a single page can yield nothing
+    // new: Stash's ordering shifts between requests, so a "next" page can
+    // repeat rows already held. It still advanced the cursor, so ask for the
+    // one after. Bounded so a server repeating one page cannot spin forever.
+    const pull = async () => {
+      let requestedPage = stateRef.current.page;
+      for (let attempt = 0; attempt <= MAX_DUPLICATE_PAGES; attempt++) {
+        const cur = stateRef.current;
+        if (cur.total > 0 && cur.items.length >= cur.total) return false;
+
+        const data = await fetchPage(requestedPage + 1);
+        requestedPage++;
+
+        // Re-read: another render could have appended during the await, and
+        // `stateRef` holds its last write.
+        const after = stateRef.current;
+        const seen = new Set(after.items.map(it => String(it.id)));
+        const fresh = (data.items || []).filter(it => (
+          !seen.has(String(it.id)) && !removedIdsRef.current.has(String(it.id))
+        ));
+
+        const next = {
+          items: [...after.items, ...fresh],
+          page: after.page + 1,
+          total: data.total || after.total,
+        };
+        stateRef.current = next;
+        setItems(next.items);
+        setTotal(next.total);
+        if (fresh.length > 0) return true;
+      }
+      // Nothing new after the whole budget: this queue is done. `total`
+      // becomes what we hold, because the server's marker count would
+      // promise rows that resolve to scenes already in the list. The latch
+      // stops the next press from asking again.
+      const cur = stateRef.current;
+      endedRef.current = true;
+      setEnded(true);
+      setTotal(cur.items.length);
+      return false;
+    };
 
     const run = (async () => {
       try {
-        // More than one page per call because a single page can yield nothing
-        // new: Stash's ordering shifts between requests, so a "next" page can
-        // repeat rows already held. It still advanced the cursor, so ask for
-        // the one after, returning false stranded playback at the boundary.
-        // Bounded so a server repeating one page cannot spin here forever.
-        let requestedPage = before.page;
-        for (let attempt = 0; attempt <= MAX_DUPLICATE_PAGES; attempt++) {
-          const cur = stateRef.current;
-          if (cur.total > 0 && cur.items.length >= cur.total) return false;
-
-          const data = await fetchPage(requestedPage + 1);
-          requestedPage++;
-
-          // Re-read: another render could have appended during the await, and
-          // `stateRef` holds its last write.
-          const after = stateRef.current;
-          const seen = new Set(after.items.map(it => String(it.id)));
-          const fresh = (data.items || []).filter(it => (
-            !seen.has(String(it.id)) && !removedIdsRef.current.has(String(it.id))
-          ));
-
-          const next = {
-            items: [...after.items, ...fresh],
-            page: after.page + 1,
-            total: data.total || after.total,
-          };
-          stateRef.current = next;
-          setItems(next.items);
-          setTotal(next.total);
-          if (fresh.length > 0) return true;
-        }
-        // Nothing new after the whole budget: this queue is done. `total`
-        // becomes what we hold, because the server's marker count would
-        // promise rows that resolve to scenes already in the list. The latch
-        // stops the next press from asking again.
-        const cur = stateRef.current;
-        endedRef.current = true;
-        setEnded(true);
-        setTotal(cur.items.length);
-        return false;
+        const grew = await pull();
+        extendErrorRef.current = null;
+        return grew;
       } catch {
-        // Not worth interrupting playback for, and not the end of the queue:
-        // one timeout would truncate the sitting. The next press retries.
-        return false;
+        // One retry rides out a dropped request. A second failure is
+        // recorded, not shown.
+        try {
+          const grew = await pull();
+          extendErrorRef.current = null;
+          return grew;
+        } catch {
+          extendErrorRef.current = 'The next scene did not load. Press Next to try again.';
+          return false;
+        }
       }
     })();
 
@@ -151,16 +172,29 @@ export function usePlayQueue(queue) {
   // the value from the render that set up the handler.
   const goNext = useCallback(async () => {
     if (indexRef.current + 1 < stateRef.current.items.length) {
+      extendErrorRef.current = null;
+      // A prefetch may have succeeded since the last failure; the old toast
+      // must not keep claiming the next scene did not load.
+      setNextError(null);
       setIndex(indexRef.current + 1);
       return true;
     }
     const grew = await extend();
     if (grew && indexRef.current + 1 < stateRef.current.items.length) {
+      setNextError(null);
       setIndex(indexRef.current + 1);
       return true;
     }
+    // A failed page says so; the true end of the queue stays quiet. An object,
+    // so a repeat failure restarts the toast's timer instead of being the same
+    // state value React can skip.
+    if (extendErrorRef.current) {
+      setNextError({ message: extendErrorRef.current, at: Date.now() });
+    }
     return false;
   }, [extend, setIndex]);
+
+  const clearNextError = useCallback(() => setNextError(null), []);
 
   /**
    * Jump to a loaded row. The panel only lists rows that are here, so there is
@@ -210,6 +244,8 @@ export function usePlayQueue(queue) {
     hasPrev,
     hasNext,
     exhausted,
+    nextError,
+    clearNextError,
     goPrev,
     goNext,
     goTo,

@@ -332,7 +332,9 @@ def listing_scene(n):
         "title": f"VERIFY scene {n}",
         "date": "2024-03-09",
         "rating100": 50,
-        "details": None,
+        # Present so the carousel hero's blurb has text; the hero query is the
+        # only one that selects it.
+        "details": f"VERIFY scene {n} details for the carousel blurb.",
         "play_count": 0,
         "resume_time": 0,
         # h264/mp4/aac — what 94% of the real library is, and what the direct
@@ -360,23 +362,37 @@ def listing_scene(n):
         },
         "studio": {"id": "1", "name": "Harness Studio"},
         "tags": [],
-        "performers": [],
+        # Named so the list row's cast line has something to draw; the player
+        # overlay already reads the same fields from this fixture.
+        "performers": [
+            {"id": "1", "name": "Ava Kane"},
+            {"id": "2", "name": "Mia Wells"},
+        ],
     }
 
 
 def selected_scene_rows(rows, query):
-    """Real Stash answers only the fields a query selects. frame_rate is the one
-    whose absence matters here: the preview guard reads it, so dropping it from
-    a card fragment must fail a check, not pass on a fixture that answers anyway."""
-    if "frame_rate" in query:
+    """Real Stash answers only the fields a query selects. frame_rate and details
+    are the two whose absence matters: the preview guard reads the former, the
+    carousel blurb the latter, so dropping either from a fragment must fail a
+    check, not pass on a fixture that answers anyway."""
+    select_details = "details" in query
+    select_frame_rate = "frame_rate" in query
+    if select_details and select_frame_rate:
         return rows
-    return [
-        {**row, "files": [
-            {k: v for k, v in entry_file.items() if k != "frame_rate"}
-            for entry_file in row.get("files") or []
-        ]}
-        for row in rows
-    ]
+    out = []
+    for row in rows:
+        selected = {
+            k: v for k, v in row.items()
+            if k != "details" or select_details
+        }
+        if not select_frame_rate and "files" in row:
+            selected["files"] = [
+                {k: v for k, v in f.items() if k != "frame_rate"}
+                for f in row.get("files") or []
+            ]
+        out.append(selected)
+    return out
 
 
 # ── The same listing shape for the two grids ──

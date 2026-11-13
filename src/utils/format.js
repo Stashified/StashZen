@@ -52,6 +52,25 @@ export function nextRating(rating100, direction) {
   return Math.max(0, Math.ceil(value / 10) * 10 - 10);
 }
 
+/**
+ * A file height as the badge, the player's chip and a list row print.
+ *
+ * Buckets are coarse on purpose: at ten feet "1080P" vs "720P" is the
+ * distinction anyone can make, and exact height belongs on the detail page.
+ * 2160 gets a name because nobody calls it "2160P". Zero or junk returns
+ * null, so callers hide the field.
+ */
+export function resolutionLabel(height) {
+  const h = Math.round(Number(height));
+  if (!h || h < 0) return null;
+  if (h >= 2160) return '4K';
+  if (h >= 1440) return '1440P';
+  if (h >= 1080) return '1080P';
+  if (h >= 720) return '720P';
+  if (h >= 480) return '480P';
+  return `${h}P`;
+}
+
 export function formatTime(seconds, { padMinutes = false } = {}) {
   if (!isFinite(seconds) || seconds < 0) return padMinutes ? '00:00' : '0:00';
 

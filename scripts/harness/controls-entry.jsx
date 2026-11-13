@@ -48,6 +48,11 @@ const SCENE = {
   thumbnail: null,
   durationSeconds: 60,
   resume_time: 0,
+  // What the top bar prints: the cast, the studio and the file height.
+  studio: 'Harness Studio',
+  performers: ['Ava Kane', 'Mia Wells'],
+  width: 1920,
+  height: 1080,
 };
 
 // A one-scene queue: the ordinary case (detail-page Play, marker activation).
@@ -429,6 +434,15 @@ async function run() {
     !resumePrompt(), `prompt=${!!resumePrompt()}`);
   if (!playing) { await finish(); return; }
 
+  // The top bar is the scene's identity and this playback's facts: the cast
+  // and studio under the title, the file height beside the source chip.
+  const topBarText = () =>
+    player()?.querySelector('[class*="_topBar_"]')?.textContent || '';
+  check('T1 the overlay names the cast, the studio and the file height',
+    /Ava Kane/.test(topBarText()) && /Harness Studio/.test(topBarText())
+      && /1080P/.test(topBarText()),
+    `top bar="${topBarText()}"`);
+
   // ── Precondition: the controls hide on their own ────────
   // This makes R1's and R4's reveals differentials rather than claims about an
   // always-visible bar; it is the same 3 s timer R9 tests.
@@ -645,30 +659,40 @@ async function run() {
   // MK2's marker arithmetic assumes a still playhead; leave the state found.
   await setPlaying(false);
 
-  // ── R11: on a lone scene, ↑/↓ raise the rail ────────────
-  // With no neighbouring scene both keys were claimed and did nothing. They
-  // open the transport instead; S2/S3 show they still step when there is one.
+  // ── R11: with the bar hidden, ↑/↓ raise it ──────────────
+  // They land on the seek stop, not the transport, and change nothing: one
+  // vertical press must not change what is playing. On a lone scene the
+  // ladder's ends are inert; S2 onward steps a queue.
   await sleep(3400);                              // let the timers hide the rail
   check('R11 setup: the rail is hidden again', controlsOpacity() === 0,
     `opacity=${controlsOpacity()}`);
+  const loneTitle = playingTitle();
   press(document.body, 'ArrowDown', 40);
   await sleep(160);
-  check('R11 ↓ on a one-scene queue raises the rail and lands on ⏯',
-    controlsOpacity() === 1 && inRail()
-      && document.activeElement === (byLabel('Play', rail()) || byLabel('Pause', rail())),
-    `opacity=${controlsOpacity()}, activeElement="${document.activeElement?.getAttribute('aria-label')}"`);
+  check('R11 ↓ on a one-scene queue raises the bar to the seek stop',
+    controlsOpacity() === 1 && !inRail() && !!progressTrack()
+      && playingTitle() === loneTitle,
+    `opacity=${controlsOpacity()} inRail=${inRail()} track=${!!progressTrack()} title="${playingTitle()}"`);
 
-  press(document.activeElement, 'Backspace', 10009);   // leave the rail
-  await sleep(3400);                              // and let it hide again
-  check('R11 setup: hidden again before ↑', controlsOpacity() === 0,
+  // ↑ at the seek stop is the ladder's end here: there is no scene to step to,
+  // and it must not fall through to the buttons (↓ finds those).
+  press(document.body, 'ArrowUp', 38);
+  await sleep(160);
+  check('R11 ↑ at the seek stop on a lone scene stays put',
+    controlsOpacity() === 1 && !inRail() && playingTitle() === loneTitle,
+    `opacity=${controlsOpacity()} inRail=${inRail()} title="${playingTitle()}"`);
+
+  press(document.body, 'Backspace', 10009);   // put the bar away
+  const hiddenBeforeUp = await waitFor(() => controlsOpacity() === 0, 1000);
+  check('R11 setup: hidden again before ↑', hiddenBeforeUp,
     `opacity=${controlsOpacity()}`);
   press(document.body, 'ArrowUp', 38);
   await sleep(160);
-  check('R11 ↑ on a one-scene queue raises the rail too',
-    controlsOpacity() === 1 && inRail(),
-    `opacity=${controlsOpacity()}, activeElement="${document.activeElement?.getAttribute('aria-label')}"`);
+  check('R11 ↑ on a one-scene queue raises the bar to the seek stop too',
+    controlsOpacity() === 1 && !inRail() && playingTitle() === loneTitle,
+    `opacity=${controlsOpacity()} inRail=${inRail()} title="${playingTitle()}"`);
   // Leave the cursor behind the rail, the state R8 starts from.
-  press(document.activeElement, 'Backspace', 10009);
+  press(document.body, 'Backspace', 10009);
   await sleep(140);
 
   // ── R8: the player claims the keys it handles ───────────
@@ -1029,18 +1053,55 @@ async function run() {
     `opacity=${controlsOpacity()} closed=${closedCount}`);
 
   press(document.body, 'ArrowDown', 40);
-  await sleep(500);
-  check('S2 ↓ steps to the next scene with the rail down',
+  const revealedDown = await waitFor(
+    () => controlsOpacity() === 1 && !inRail()
+      && playingTitle() === 'VERIFY scene one', 1000);
+  check('S2 ↓ with the rail down raises the bar to the seek stop, and does not step',
+    revealedDown,
+    `opacity=${controlsOpacity()} inRail=${inRail()} title="${playingTitle()}"`);
+
+  // ↑ is the same reveal, not a step back.
+  press(document.body, 'Backspace', 10009);
+  const backHidden = await waitFor(() => controlsOpacity() === 0, 1000);
+  press(document.body, 'ArrowUp', 38);
+  const revealedUp = await waitFor(
+    () => controlsOpacity() === 1 && !inRail()
+      && playingTitle() === 'VERIFY scene one', 1000);
+  check('S2a ↑ with the rail down raises the bar too, and does not step',
+    backHidden && revealedUp,
+    `hidden=${backHidden} opacity=${controlsOpacity()} inRail=${inRail()} title="${playingTitle()}"`);
+
+  // From the seek stop the ladder descends: ↓ to the buttons, then ↓ steps.
+  press(document.body, 'ArrowDown', 40);
+  const toButtons = await waitFor(() => inRail(), 1000);
+  check('S2b ↓ from the seek stop returns to the buttons without stepping',
+    toButtons && playingTitle() === 'VERIFY scene one',
+    `inRail=${inRail()} title="${playingTitle()}"`);
+
+  press(document.activeElement, 'ArrowDown', 40);
+  await sleep(900);
+  check('S2c ↓ from the buttons steps to the next scene',
     playingTitle() === 'VERIFY scene two', `title="${playingTitle()}"`);
 
-  // The step showed the controls, so the cursor is on the seek bar; ↑ there is
-  // the scene step (the seek bar is the ladder's lower stop).
+  // The step left the cursor on the button that was pressed. The ladder back
+  // up is ↑ to the seek stop, then ↑ steps back to the previous scene.
   check('S3 setup: the step showed the bar', controlsOpacity() === 1,
     `opacity=${controlsOpacity()}`);
+  // The cursor must be in the rail before this ↑, or the press would be an
+  // ordinary step from the player and the seek stop never exercised.
+  const inRailBefore = inRail();
+  press(document.activeElement, 'ArrowUp', 38);
+  await sleep(250);
+  const atSeek = inRailBefore && !inRail() && controlsOpacity() === 1
+    && !!progressTrack();
+  const beforeStepBack = playingTitle();
   press(document.body, 'ArrowUp', 38);
   await sleep(900);
-  check('S3 ↑ from the seek bar steps back to the previous scene',
-    playingTitle() === 'VERIFY scene one', `title="${playingTitle()}"`);
+  check('S3 ↑ from the buttons reaches the seek stop, then ↑ steps back',
+    atSeek && beforeStepBack === 'VERIFY scene two'
+      && playingTitle() === 'VERIFY scene one',
+    `railBefore=${inRailBefore} atSeek=${atSeek} mid="${beforeStepBack}" ` +
+    `title="${playingTitle()}"`);
 
   // ── S3b: the outgoing playhead is not inherited ──────────
   // A fallback source reloads the same scene and resumes; a different scene
@@ -1576,6 +1637,35 @@ async function run() {
     `title="${playingTitle()}" after the join`);
   check('Q8 ...without asking the server for the page twice',
     pageFetches === 1, `${pageFetches} page fetch(es)`);
+
+  // ── Q9: a page that never arrives ────────────────────────
+  // The extension retries once, then the press is reported instead of being
+  // dropped as if the queue had ended.
+  const FAIL_A = { ...SCENE, id: '9310', title: 'VERIFY stuck page' };
+  let failFetches = 0;
+  const FQ = {
+    items: [FAIL_A],
+    total: 2,
+    page: 1,
+    startIndex: 0,
+    startSeconds: 0,
+    fetchPage: async () => {
+      failFetches += 1;
+      throw new Error('VERIFY page refused');
+    },
+  };
+
+  await setMode({ resume: 0, save: 'ok', sceneAddPlay: 'ok' });
+  window.__mountQueue(FQ, 11);
+  const retried = await waitFor(() => failFetches >= 2, 3000);
+  check('Q9 the page fetch is retried once before giving up', retried,
+    `${failFetches} fetch(es)`);
+  video()?.dispatchEvent(new Event('ended'));
+  const spoke = await waitFor(() => /next scene did not load/i.test(notice() || ''), 3000);
+  check('Q9 a Next that cannot reach the page says so', spoke,
+    `notice="${notice()}"`);
+  check('Q9 ...and the player stays on its scene', playingTitle() === 'VERIFY stuck page',
+    `title="${playingTitle()}"`);
 
   // ── RS: resume, or start over ────────────────────────────
   // The thresholds are 10 s from the start and 30 s from the end of this 60 s

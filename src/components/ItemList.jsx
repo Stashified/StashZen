@@ -13,8 +13,8 @@
  *
  * Activation differs per section, so the descriptor supplies `rowSelect`:
  * scenes hand the whole listing up (a play queue needs `fetchPage`), entities
- * hand `(item, index, items)` to the image viewer. Hero model and art field
- * come from the descriptors too.
+ * hand `(item, index, items)` to the image viewer. Hero model, its list-only
+ * fields and the art field come from the descriptors too.
  */
 
 import { memo, useCallback, useRef, useState } from 'react';
@@ -50,7 +50,12 @@ const Row = memo(function Row({ item, index, list, onSelect, onLongPress, view }
   const hero = view.hero(item);
   const meta = hero.meta || [];
   const title = hero.title || view.getTitle?.(item) || 'Untitled';
-  const details = meta.filter(m => m.kind !== 'rating').map(m => m.text);
+  // A row has the width the hero does not: `rowMeta` adds the section's
+  // list-only fields, such as a scene's cast and file height.
+  const details = [
+    ...meta.filter(m => m.kind !== 'rating').map(m => m.text),
+    ...(view.rowMeta?.(item) || []),
+  ];
   const badge = meta.find(m => m.kind === 'rating')?.text || null;
 
   const src = view.rowImage ? view.rowImage(item) : view.getImage?.(item);

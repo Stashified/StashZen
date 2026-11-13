@@ -59,6 +59,10 @@ const card = {
   audioCodec: 'eac3',
   container: 'mkv',
   durationSeconds: 901.5,
+  studio: 'Studio X',
+  performers: ['Ava Kane', 'Mia Wells'],
+  width: 1920,
+  height: 1080,
 };
 
 const marker = {
@@ -90,7 +94,21 @@ check('the video codec is forwarded for the decode check', item.videoCodec, 'hev
 check('the audio codec is forwarded for the decode check', item.audioCodec, 'eac3');
 check('the container is forwarded for the decode check', item.container, 'mkv');
 check('the duration is forwarded for the timeline', item.durationSeconds, 901.5);
-check('a marker carries no studio', item.studio, null);
+check('the studio is forwarded for the overlay', item.studio, 'Studio X');
+check('the cast is forwarded for the overlay', item.performers, ['Ava Kane', 'Mia Wells']);
+check('the file height is forwarded for the overlay', item.height, 1080);
+
+// The marker query only selects these newer fields, so a marker from an older
+// path may still arrive without them: the overlay must read absence, not crash.
+const bare = {
+  ...marker,
+  scene: { ...card, performers: undefined, studio: undefined, width: undefined, height: undefined },
+};
+check('a marker without the overlay fields has empty ones',
+  queueItemFromMarker(bare), {
+    ...queueItemFromMarker(marker),
+    studio: null, performers: [], width: null, height: null,
+  });
 
 const noShot = { ...marker, screenshot: undefined };
 check('without a marker screenshot, the scene\'s is used',

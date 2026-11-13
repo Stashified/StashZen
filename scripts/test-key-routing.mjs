@@ -128,24 +128,34 @@ check('no rail: 412 skims back', is(ev('', 412), NO_RAIL, 'skim-back', true, tru
 check('no rail: ArrowRight skims forward', is(ev('ArrowRight', 39), NO_RAIL, 'skim-forward', true, true));
 check('no rail: 417 skims forward', is(ev('', 417), NO_RAIL, 'skim-forward', true, true));
 
-// With the bar hidden, ↑/↓ step a queue directly: there is no rail on screen
-// to return to. A lone scene has nowhere to step, and doing nothing would read
-// as a dropped key, so both raise the rail instead.
-check('no rail, multi: ArrowUp steps back', is(ev('ArrowUp', 38), NO_RAIL, 'step-prev', true, true));
-check('no rail, multi: ArrowDown steps forward', is(ev('ArrowDown', 40), NO_RAIL, 'step-next', true, true));
-// With the bar up, the seek bar is the lower stop: ↓ returns to the buttons and
-// the press after steps, while ↑ steps back at once. That makes the ladder
-// "seek bar → ↓ → controls → ↓ → next scene" and its mirror work.
+// With the bar hidden, ↑/↓ only raise it, to the seek stop: one vertical press
+// must not change what is playing. A lone scene behaves the same; the press
+// after is where the ladder's ends are.
+check('no rail: ArrowUp raises the bar to the seek stop',
+  is(ev('ArrowUp', 38), NO_RAIL, 'reveal-seek', true, true));
+check('no rail: ArrowDown raises the bar to the seek stop',
+  is(ev('ArrowDown', 40), NO_RAIL, 'reveal-seek', true, true));
+check('no rail: ArrowUp by code alone raises the bar to the seek stop',
+  is(ev('', 38), NO_RAIL, 'reveal-seek', true, true));
+check('no rail: ArrowDown by code alone raises the bar to the seek stop',
+  is(ev('', 40), NO_RAIL, 'reveal-seek', true, true));
+check('no rail, single: ArrowUp raises the bar to the seek stop',
+  is(ev('ArrowUp', 38), SINGLE, 'reveal-seek', true, true));
+check('no rail, single: ArrowDown raises the bar to the seek stop',
+  is(ev('ArrowDown', 40), SINGLE, 'reveal-seek', true, true));
+// With the bar up, the seek bar is the middle stop: ↓ returns to the buttons
+// and the press after steps, while ↑ steps back at once. That makes the ladder
+// "hidden → seek bar → ↓ → buttons → ↓ → next scene" and its mirror work.
 check('no rail, bar up: ArrowDown returns to the buttons',
   is(ev('ArrowDown', 40), VISIBLE, 'reveal-rail', true, true));
 check('no rail, bar up: ArrowUp steps back',
   is(ev('ArrowUp', 38), VISIBLE, 'step-prev', true, true));
-check('no rail, bar up, single: ArrowUp raises the rail',
-  is(ev('ArrowUp', 38), { ...VISIBLE, singleScene: true }, 'reveal-rail', true, true));
-check('no rail, bar up, single: ArrowDown raises the rail',
+// A one-scene queue has nowhere to step, so ↑ at the seek stop is consumed
+// rather than jumping to the buttons, which ↓ already does.
+check('no rail, bar up, single: ArrowUp has nowhere to step',
+  is(ev('ArrowUp', 38), { ...VISIBLE, singleScene: true }, 'none', true, true));
+check('no rail, bar up, single: ArrowDown still reaches the buttons',
   is(ev('ArrowDown', 40), { ...VISIBLE, singleScene: true }, 'reveal-rail', true, true));
-check('no rail, single: ArrowUp reveals the rail', is(ev('ArrowUp', 38), SINGLE, 'reveal-rail', true, true));
-check('no rail, single: ArrowDown reveals the rail', is(ev('ArrowDown', 40), SINGLE, 'reveal-rail', true, true));
 
 // ── The Up next card: a stop above the rail ────────────────
 // The card shows over the last 30 s and takes the cursor when it appears. ↑

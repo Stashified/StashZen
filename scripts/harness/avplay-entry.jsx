@@ -89,20 +89,18 @@ const press = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown'
 /** One ArrowRight is the ladder's first rung, not the old fixed skip. */
 const TAP_MS = SKIM_STEPS[0] * 1000;
 
-// The player's ↓ is a two-stop ladder: with the seek bar up and no cursor, the
-// first press returns to the buttons and only the second steps; with the bar
-// hidden, one press steps. The player opens with the bar up.
+// The player's ↓ is a ladder: hidden, the first press raises the bar to the
+// seek stop and the second walks to the buttons; a third steps. With the bar
+// up and no cursor, two presses are enough. The player opens with the bar up.
 const railFocused = () =>
   ['Play', 'Pause'].includes(document.activeElement?.getAttribute?.('aria-label'));
 
 async function stepNext() {
-  if (railFocused()) {
-    press('ArrowDown', 40);
-  } else {
+  for (let i = 0; i < 2 && !railFocused(); i += 1) {
     press('ArrowDown', 40);
     await sleep(150);
-    if (railFocused()) press('ArrowDown', 40);
   }
+  if (railFocused()) press('ArrowDown', 40);
   await sleep(150);
   document.activeElement?.blur?.();
 }

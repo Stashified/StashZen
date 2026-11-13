@@ -26,12 +26,31 @@
  * failure leaves them, every consumer hides the error (it renders only on an
  * empty list) and shows the replaced query's results under the new controls.
  * Red control: without the clear, L16 reports 40 rows still there.
+ *
+ * The fourth probe deletes a row from a two-page marker listing and pages on.
+ * A delete shifts every later row up one, so the held rows stop ending on a
+ * page boundary and page 3 starts at the old offset 80, silently skipping the
+ * row that moved to 79. Red control: without the seam refetch, L20 misses
+ * D-81 and the rows are not the server's.
+ *
+ * The fifth deletes while the next page is in flight. That page was requested
+ * at the old offsets and lands after the shift; its rows still start at the
+ * seam, so the seam has to move to the new boundary. Left at the delete count,
+ * the refetch reseats a page whose rows are all held and the no-progress stop
+ * ends the list at 79 rows.
+ *
+ * The sixth deletes a held row while a page-1 revalidation is in flight. Page 1
+ * replaces the whole list, so the seam that delete recorded is spent when it
+ * lands. Left set, the next loadMore asks for page 1 again, finds every row
+ * held and ends the list at 40 of 99. Red control: without clearing the seam on
+ * page-1 success, L29 asks page 1 and L30 reports 40 rows.
  */
 
 import { createRoot } from 'react-dom/client';
 import { useEffect, useRef, useState } from 'react';
 import { usePagedList } from '../../src/hooks/usePagedList.js';
 import { fetchPerformers } from '../../src/utils/performerService.js';
+import { publishRowRemove } from '../../src/utils/rowPatches.js';
 import { setSettings } from '../../src/utils/settings.js';
 
 const PORT = window.__PORT__;
@@ -146,6 +165,117 @@ function FailProbe() {
   return <div data-probe-fail>{`${key}: ${list.items.length} of ${list.total}`}</div>;
 }
 
+// ── Probe 4: a delete in a paged listing (R3) ────────────
+// A mutable array stands in for the server so the delete is real: removing a
+// row shifts every later one up, exactly as findSceneMarkers would answer
+// after App removed a marker. The listing is told the way App tells it.
+const DEL_SIZE = 40;
+const delServer = Array.from({ length: 100 }, (_, i) => ({ id: `D-${i + 1}` }));
+const delRequests = [];
+const delProbe = { list: null };
+
+function delFetch(page) {
+  delRequests.push(page);
+  const start = (page - 1) * DEL_SIZE;
+  return Promise.resolve({
+    items: delServer.slice(start, start + DEL_SIZE).map(it => ({ ...it })),
+    total: delServer.length,
+  });
+}
+
+function DeleteProbe() {
+  const list = usePagedList({
+    fetchPage: delFetch,
+    requestKey: 'delete-probe',
+    entity: 'marker',
+  });
+  delProbe.list = list;
+  return <div data-probe-delete>{`${list.items.length} of ${list.total}`}</div>;
+}
+
+// ── Probe 5: a delete while the next page is in flight (R4) ──
+// The first page-2 request is held open, with its rows captured before the
+// delete, so the landing page is exactly the stale-offset answer the seam
+// advance has to absorb.
+const RACE_SIZE = 40;
+const raceServer = Array.from({ length: 100 }, (_, i) => ({ id: `R-${i + 1}` }));
+const raceRequests = [];
+let raceHeldResolver = null;
+const raceProbe = { list: null };
+
+function raceFetch(page) {
+  raceRequests.push(page);
+  const start = (page - 1) * RACE_SIZE;
+  const rows = raceServer.slice(start, start + RACE_SIZE).map(it => ({ ...it }));
+  const total = raceServer.length;
+  if (page === 2 && !raceHeldResolver) {
+    return new Promise((resolve) => {
+      raceHeldResolver = () => resolve({ items: rows, total });
+    });
+  }
+  return Promise.resolve({ items: rows, total });
+}
+
+function RaceProbe() {
+  const list = usePagedList({
+    fetchPage: raceFetch,
+    requestKey: 'race-probe',
+    entity: 'marker',
+  });
+  raceProbe.list = list;
+  return <div data-probe-race>{`${list.items.length} of ${list.total}`}</div>;
+}
+
+// ── Probe 6: a delete during a page-1 revalidation (R5) ──
+// The identity changes while 40 rows stay on screen as the seed, and the new
+// page 1 is answered only when released, after one of those held rows was
+// deleted. Page 1 then replaces the whole list, so the seam the delete
+// recorded is spent.
+const REVAL_SIZE = 40;
+
+function makeRevalProbe(entity) {
+  const server = Array.from({ length: 100 }, (_, i) => ({ id: `V-${i + 1}` }));
+  const requests = [];
+  let heldResolver = null;
+  const probe = { key: 'A', list: null, setKey: null };
+
+  function fetchPage(page) {
+    requests.push(`${probe.key}:${page}`);
+    const start = (page - 1) * REVAL_SIZE;
+    const answer = () => ({
+      items: server.slice(start, start + REVAL_SIZE).map(it => ({ ...it })),
+      total: server.length,
+    });
+    if (probe.key === 'B' && page === 1 && !heldResolver) {
+      // Rows are read at release time, from the server as it stands then: the
+      // page already reflects the delete, which is the ordering that strands
+      // the seam.
+      return new Promise((resolve) => { heldResolver = () => resolve(answer()); });
+    }
+    return Promise.resolve(answer());
+  }
+
+  function Probe() {
+    const [key, setKey] = useState('A');
+    probe.key = key;
+    probe.setKey = setKey;
+    const list = usePagedList({
+      fetchPage,
+      requestKey: `reval-${entity}-${key}`,
+      entity,
+    });
+    probe.list = list;
+    return <div data-probe-reval={entity}>{`${key}: ${list.items.length} of ${list.total}`}</div>;
+  }
+
+  return { probe, server, requests, Probe, release: () => heldResolver?.() };
+}
+
+const revalControl = makeRevalProbe('reval-control');
+const revalDelete = makeRevalProbe('reval-delete');
+
+const ids = (list) => (list?.items || []).map(it => it.id).join(',');
+
 async function run() {
   // The listing has 100 rows at 40 per page: page 2 is full, page 3 is short.
   const settled = await waitFor(() => latest && !latest.loading && latest.items.length > 40, 8000);
@@ -248,6 +378,144 @@ async function run() {
     failProbe.list?.total === 0 && failProbe.list?.loading === false
       && failProbe.list?.retrying === false,
     `total ${failProbe.list?.total}, loading ${failProbe.list?.loading}, retrying ${failProbe.list?.retrying}`);
+
+  // ── R3: delete a row, then page on ──
+  const delFirst = await waitFor(() => delProbe.list?.items.length === 40 && !delProbe.list.loading);
+  check('L18 the delete listing loads its first page', delFirst,
+    `${delProbe.list?.items.length} rows`);
+  delProbe.list?.loadMore();
+  const delSecond = await waitFor(() => delProbe.list?.items.length === 80);
+  check('L19 two pages are held before the delete', delSecond,
+    `${delProbe.list?.items.length} rows, total ${delProbe.list?.total}`);
+
+  // Delete D-6, the sixth row, from the server array and the listing.
+  const [gone] = delServer.splice(5, 1);
+  publishRowRemove('marker', gone.id);
+  // The backfill runs on a timer; the seam row is the server's index 79, D-81.
+  const backfilled = await waitFor(
+    () => delProbe.list?.items.length === 80 && delProbe.list.items[79]?.id === 'D-81',
+    3000,
+  );
+  check('L20 the delete refetches the seam instead of skipping the row that moved',
+    backfilled,
+    `${delProbe.list?.items.length} rows, last ${delProbe.list?.items[79]?.id}, requests ${delRequests.join(' ')}`);
+
+  const expected = delServer.map(it => it.id).join(',');
+  check('L21 the held rows are the server\'s, in order, with no hole',
+    ids(delProbe.list) === delServer.slice(0, 80).map(it => it.id).join(','),
+    `${delProbe.list?.items.length} rows held`);
+
+  delProbe.list?.loadMore();
+  const delAll = await waitFor(
+    () => delProbe.list?.items.length === 99 && delProbe.list.exhausted,
+    3000,
+  );
+  check('L22 paging on after the delete still reaches every remaining row',
+    delAll && ids(delProbe.list) === expected,
+    `${delProbe.list?.items.length} rows, total ${delProbe.list?.total}, last ${delProbe.list?.items[98]?.id}`);
+
+  // ── R4: a delete while the next page is in flight ──
+  const raceFirst = await waitFor(
+    () => raceProbe.list?.items.length === 40 && !raceProbe.list.loading,
+  );
+  check('L23 the race listing holds its first page', raceFirst,
+    `${raceProbe.list?.items.length} rows`);
+
+  raceProbe.list?.loadMore();
+  const raceStarted = await waitFor(() => raceRequests.includes(2), 3000);
+  check('L24 the next page is in flight', raceStarted,
+    `requests ${raceRequests.join(' ')}`);
+
+  const [raceGone] = raceServer.splice(5, 1);
+  publishRowRemove('marker', raceGone.id);
+  raceHeldResolver?.();
+
+  // The held page starts at the seam, so it bridges the shift and only the
+  // moved row is missing; the seam refetch is what brings it in.
+  const raceBackfilled = await waitFor(
+    () => raceProbe.list?.items.length === 80 && raceProbe.list.items[79]?.id === 'R-81',
+    3000,
+  );
+  check('L25 the landed page moves the seam, so the moved row still comes in',
+    raceBackfilled,
+    `${raceProbe.list?.items.length} rows, last ${raceProbe.list?.items[79]?.id}, `
+      + `requests ${raceRequests.join(' ')}`);
+
+  raceProbe.list?.loadMore();
+  const raceAll = await waitFor(
+    () => raceProbe.list?.items.length === 99 && raceProbe.list.exhausted,
+    3000,
+  );
+  check('L26 paging on reaches every row, in order, after the in-flight delete',
+    raceAll && ids(raceProbe.list) === raceServer.map(it => it.id).join(','),
+    `${raceProbe.list?.items.length} rows, total ${raceProbe.list?.total}, `
+      + `last ${raceProbe.list?.items[98]?.id}`);
+
+  // ── R5: a delete during a page-1 revalidation ──
+  // The control first, so the revalidation landing and paging on are known
+  // good without a delete in the way.
+  const cReady = await waitFor(
+    () => revalControl.probe.list?.items.length === 40 && !revalControl.probe.list.loading,
+  );
+  revalControl.probe.setKey('B');
+  const cHeld = await waitFor(() => revalControl.requests.includes('B:1'), 3000);
+  const cCarried = cHeld && revalControl.probe.list?.items.length === 40;
+  revalControl.release();
+  const cLanded = await waitFor(
+    () => revalControl.probe.list?.items.length === 40 && !revalControl.probe.list.loading,
+  );
+  revalControl.probe.list?.loadMore();
+  const cPaged = await waitFor(() => revalControl.probe.list?.items.length === 80, 3000);
+  check('L27 the carried rows survive the revalidation, and paging on reaches page 2',
+    cReady && cCarried && cLanded && cPaged
+      && revalControl.probe.list?.items[79]?.id === 'V-80',
+    `${revalControl.probe.list?.items.length} rows, last ${revalControl.probe.list?.items[79]?.id}, `
+      + `requests ${revalControl.requests.join(' ')}`);
+
+  const dReady = await waitFor(
+    () => revalDelete.probe.list?.items.length === 40 && !revalDelete.probe.list.loading,
+  );
+  revalDelete.probe.setKey('B');
+  await waitFor(() => revalDelete.requests.includes('B:1'), 3000);
+  // The delete lands while page 1 is held; the backfill it schedules is a
+  // no-op during the hold, as on a TV.
+  await sleep(80);
+  const [revalGone] = revalDelete.server.splice(5, 1);
+  publishRowRemove('reval-delete', revalGone.id);
+  const dDropped = await waitFor(
+    () => revalDelete.probe.list?.items.length === 39, 3000,
+  );
+  revalDelete.release();
+  const dLanded = await waitFor(
+    () => revalDelete.probe.list?.items.length === 40 && !revalDelete.probe.list.loading,
+    3000,
+  );
+  check('L28 the fresh page 1 lands after the delete held it open',
+    dReady && dDropped && dLanded && revalDelete.probe.list?.total === 99,
+    `${revalDelete.probe.list?.items.length} of ${revalDelete.probe.list?.total}, `
+      + `requests ${revalDelete.requests.join(' ')}`);
+
+  const revalBefore = revalDelete.requests.length;
+  revalDelete.probe.list?.loadMore();
+  const revalAsked = await waitFor(
+    () => revalDelete.requests.length > revalBefore, 3000,
+  );
+  const revalNext = revalDelete.requests.slice(revalBefore);
+  check('L29 paging on asks for page 2, not the page 1 that replaced the list',
+    revalAsked && revalNext.includes('B:2') && !revalNext.includes('B:1'),
+    `asked ${revalNext.join(' ') || '(nothing)'}`);
+
+  // Page 2 of the 99-row server starts at V-42 (V-6 was deleted), so the
+  // eightieth held row is V-81.
+  const revalPaged = await waitFor(
+    () => revalDelete.probe.list?.items.length === 80, 3000,
+  );
+  check('L30 the list pages on with the deleted row gone and no hole',
+    revalPaged
+      && revalDelete.probe.list?.items[79]?.id === 'V-81'
+      && !revalDelete.probe.list.items.some(it => it.id === revalGone.id),
+    `${revalDelete.probe.list?.items.length} rows, last ${revalDelete.probe.list?.items[79]?.id}, `
+      + `total ${revalDelete.probe.list?.total} (red control: 40 of 40)`);
 }
 
 async function finish() {
@@ -265,7 +533,10 @@ document.body.style.margin = '0';
 // Before the render, so the first fetch already sees the fake endpoint.
 setSettings({ useMock: false, stashUrl: `http://127.0.0.1:${PORT}`, stashKey: 'harness' });
 
-createRoot(root).render(<><Probe /><KeyProbe /><FailProbe /></>);
+createRoot(root).render(<>
+  <Probe /><KeyProbe /><FailProbe /><DeleteProbe /><RaceProbe />
+  <revalControl.Probe /><revalDelete.Probe />
+</>);
 
 run()
   .then(finish)

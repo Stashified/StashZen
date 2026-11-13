@@ -265,8 +265,17 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 60%;
+  /* The row, not a 60% slice: "Braless Forever" needs 127px and the old cap
+     clipped it to "Braless Fo..." on the narrower cards. The year keeps its
+     width; the badge shrinks (overflow hidden) only when it truly cannot fit. */
+  max-width: 100%;
 }
+
+/* The carousel scales its focused slot 2x, so text sized for the 1x grid reads
+   oversized there. Only that surface doubles, so only it dials the text back. */
+.compact .title { font-size: 10px; }
+.compact .year { font-size: 10px; }
+.compact .category { font-size: 8px; }
 
 /* Bottom edge of the thumbnail; the accent fill reads as "your progress"
    rather than noise. */

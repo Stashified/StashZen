@@ -2,6 +2,27 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.45.0",
+      "date": "2026-11-13",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "List, carousel and coverflow modes now show the scene's performers and resolution; carousel mode also shows a brief description of the scene.",
+            "The player's top bar now names the scene's cast and shows the file's resolution.",
+            "With the controls hidden, Up and Down raise the bar instead of changing scene.",
+            "Slideshow interval is now a setting: 3, 6, 10, 15 or 30 seconds."
+          ]
+        },
+        {
+          "title": "Fixes",
+          "items": [
+            "Minor bug fixes."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.44.2",
       "date": "2026-11-11",
       "sections": [
