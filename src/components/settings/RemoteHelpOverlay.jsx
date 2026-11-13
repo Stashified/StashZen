@@ -46,7 +46,8 @@ const SECTIONS = [
       ['Left / Right', 'Previous or next image. While zoomed, pan instead.'],
       ['OK', 'Zoom 2x and 3x, then back to full size.'],
       ['Up', 'Reach Info, then OK opens the image details.'],
-      ['Back', 'Close the info panel, then reset the zoom, then the viewer.'],
+      ['Left from Info', 'The slideshow interval chip; OK lists 3 to 30 s.'],
+      ['Back', 'Close the list, then the info panel, then reset the zoom, then the viewer.'],
     ],
   },
   {

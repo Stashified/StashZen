@@ -97,8 +97,9 @@ under **Settings → Connection setup → Run setup again**.
 |---|---|
 | ← / → | Previous or next image. An open info panel stays open and reloads. While zoomed, pan instead. |
 | ↑ | Reach **Info**; **OK** opens the image's metadata panel. |
+| ← from Info | The slideshow duration chip; **OK** lists 3, 6, 10, 15 and 30 s. The choice is global. |
 | OK | Zoom 2× and 3×, then back to full size. |
-| Back | Close an open info panel, then reset the zoom, then the viewer. |
+| Back | Close the slideshow list if it is open, then the info panel, then reset the zoom, then the viewer. |
 
 ## Features
 
@@ -134,8 +135,8 @@ under **Settings → Connection setup → Run setup again**.
 - **Info sheets**: hold OK on a tag, studio, group or gallery for its description, aliases,
   tags and counts; a group also shows its synopsis and related groups, a gallery its performers.
   Each count with a listing behind it opens that filtered listing.
-- **Image viewer**: a slideshow at the interval set in Settings, pan and zoom, and an info panel
-  over the full-size image.
+- **Image viewer**: a slideshow whose interval is set in Settings or changed from the viewer's
+  bar, pan and zoom, and an info panel over the full-size image.
 
 **Playback**
 - **Player**: resumes where you stopped, queues the listing, writes progress back to Stash, and

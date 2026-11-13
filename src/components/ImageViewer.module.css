@@ -130,6 +130,66 @@
   min-width: 92px;
 }
 
+/* The pace chip reads "6 s", not "6 S"; the column is pinned so a two- and a
+   three-character label do not shift the buttons beside it. */
+.intervalWrap {
+  position: relative;
+  display: inline-flex;
+  align-self: center;
+}
+
+.intervalBtn {
+  min-width: 58px;
+  padding: 8px 12px;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Anchored above the chip: the bar sits at the screen's foot, so a list below
+   it would run off the bottom edge. */
+.intervalMenu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* The transparent border keeps the row the same size once focused. */
+.intervalOption {
+  padding: 10px 14px;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s var(--ease-tv), border-color 0.15s var(--ease-tv);
+}
+
+.intervalOptionSelected {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.intervalOptionFocused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  background: var(--accent-fill);
+  color: #fff;
+}
+
 /* Inside `.stage`, whose `position: relative` otherwise only anchors the
    spinner. */
 .infoPanel {

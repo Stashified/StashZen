@@ -8,9 +8,9 @@
         {
           "title": "New",
           "items": [
-            "List, carousel and coverflow modes now show the scene's performers and resolution; carousel mode also shows a brief description of the scene.",
-            "The player's top bar now names the scene's cast and shows the file's resolution.",
-            "With the controls hidden, Up and Down raise the bar instead of changing scene.",
+            "List, carousel, and coverflow modes now display the scene's performer(s) and resolution. Carousel mode also includes a brief scene description.",
+            "The player's top bar now names the scene's performer(s) and shows the file's resolution.",
+            "With the controls hidden, up and down raise the bar instead of changing scene.",
             "Slideshow interval is now a setting: 3, 6, 10, 15 or 30 seconds."
           ]
         },

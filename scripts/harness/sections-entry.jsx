@@ -29,6 +29,8 @@
  *   S10b–S11d the info panel: one fetch per image, reopen and step-back are
  *          cache hits, a stale answer never lands, Back peels the panel first,
  *          failures are reported and not cached, and there are no focus stops.
+ *   S11b   the bar's duration chip: opens a trapped list on the current value,
+ *          saves a choice, relabels itself, and Back closes the list only.
  *
  * Control experiments: deleting `key={activeTab}` reddens S1's content checks,
  * S2 (three operations) and S3 while S1's counts stay green; deleting
@@ -40,7 +42,7 @@ import '../../src/index.css';
 import { createRoot } from 'react-dom/client';
 import App from '../../src/App.jsx';
 import { registry, getCurrentFocusId } from '../../src/hooks/useFocusable.js';
-import { setSettings } from '../../src/utils/settings.js';
+import { getSettings, setSettings } from '../../src/utils/settings.js';
 
 const PORT = window.__PORT__;
 
@@ -778,11 +780,15 @@ async function run() {
     `${info2.length} fetch(es): ${JSON.stringify(info2.map(f => f.id))}`);
 
   // The Info button holds focus here. Arrows belong to the D-pad, so Left
-  // moves the ring to the Slideshow button rather than stepping the picture
-  // behind it, which read as Info changing the image.
+  // moves the ring along the header rather than stepping the picture behind
+  // it, which read as Info changing the image.
   const beforeLeft = titleOf();
   await press('ArrowLeft');
-  check('S11b Left from Info moves focus to the Slideshow button',
+  check('S11b Left from Info moves focus to the duration chip',
+    focusedId() === 'image-viewer-interval' && titleOf() === beforeLeft && !!infoPanel(),
+    `focus: ${focusedId()}; "${beforeLeft}" → "${titleOf()}"; panel=${!!infoPanel()}`);
+  await press('ArrowLeft');
+  check('S11b Left again reaches the Slideshow button',
     focusedId() === 'image-viewer-play' && titleOf() === beforeLeft && !!infoPanel(),
     `focus: ${focusedId()}; "${beforeLeft}" → "${titleOf()}"; panel=${!!infoPanel()}`);
   check('S11b the header action is labelled Slideshow, not Play',
@@ -813,7 +819,8 @@ async function run() {
   await pressBack();
   await waitFor(() => !infoPanel(), 2000);
   await press('ArrowUp');               // surface → Info
-  await press('ArrowLeft');             // Info → Slideshow
+  await press('ArrowLeft');             // Info → Duration
+  await press('ArrowLeft');             // Duration → Slideshow
   await tapEnter();
   const countdown = () => (document.querySelector('[class*="nextIn"]')?.textContent || '');
   const playLabel = () => (registry.get('image-viewer-play')?.el?.textContent || '').trim();
@@ -848,7 +855,8 @@ async function run() {
   await press('ArrowUp');               // surface → Info
   await tapEnter();
   await waitFor(() => !!infoPanel(), 2000);
-  await press('ArrowLeft');             // Info → Slideshow
+  await press('ArrowLeft');             // Info → Duration
+  await press('ArrowLeft');             // Duration → Slideshow
   check('S11b Left from Info reaches Slideshow with the panel open',
     focusedId() === 'image-viewer-play' && !!infoPanel(),
     `focus: ${focusedId()}; panel=${!!infoPanel()}`);
@@ -885,6 +893,85 @@ async function run() {
   await pressBack();                    // close the panel
   await waitFor(() => !infoPanel(), 2000);
   check('S11b the picture has focus again for the next case',
+    focusedId() === 'image-viewer', focusedId());
+
+  // ── S11b  the slideshow pace is chosen from the bar ─────
+  // The chip opens a list on OK; choosing writes the global setting and closes
+  // it. Back closes the list only: the viewer's own panel/zoom/close ladder
+  // must wait behind it.
+  const chip = () => (registry.get('image-viewer-interval')?.el?.textContent || '').trim();
+  await press('ArrowUp');               // surface → Info
+  await press('ArrowLeft');             // Info → Duration
+  check('S11b Left from Info lands on the duration chip',
+    focusedId() === 'image-viewer-interval' && chip() === '6 s',
+    `focus: ${focusedId()}; chip "${chip()}"`);
+  await tapEnter();
+  const opened = await waitFor(
+    () => registry.has('image-viewer-interval-opt-6000')
+      && focusedId() === 'image-viewer-interval-opt-6000',
+    2000,
+  );
+  check('S11b OK on the chip opens the list on the current value',
+    opened, `focus: ${focusedId()}`);
+  check('S11b the viewer stays open behind the list',
+    registry.has('image-viewer') && registry.has('image-viewer-interval-opt-6000')
+      && !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+    `viewer=${registry.has('image-viewer')}`);
+  await press('ArrowUp');               // 6 s → 3 s
+  check('S11b the options above the selected one are D-pad reachable',
+    focusedId() === 'image-viewer-interval-opt-3000', focusedId());
+  // The trap is the claim: the list opens upward over the picture, and without
+  // the trap Up past its first option lands on the viewer surface, so the next
+  // press browses with the menu still open.
+  await press('ArrowUp');
+  check('S11b Up past the first option stays in the list',
+    focusedId() === 'image-viewer-interval-opt-3000', focusedId());
+  await press('ArrowDown');             // 3 s → 6 s
+  await press('ArrowDown');             // 6 s → 10 s
+  await press('ArrowDown');             // 10 s → 15 s
+  await press('ArrowDown');             // 15 s → 30 s
+  check('S11b the options below the selected one are D-pad reachable',
+    focusedId() === 'image-viewer-interval-opt-30000', focusedId());
+  await press('ArrowUp');               // 30 s → 15 s
+  await press('ArrowUp');               // 15 s → 10 s
+  await press('ArrowUp');               // 10 s → 6 s
+  await press('ArrowUp');               // 6 s → 3 s
+  check('S11b …and back to the top option',
+    focusedId() === 'image-viewer-interval-opt-3000', focusedId());
+  await tapEnter();
+  const chosen = await waitFor(
+    () => getSettings().slideshowInterval === 3000
+      && chip() === '3 s'
+      && focusedId() === 'image-viewer-interval',
+    2000,
+  );
+  check('S11b choosing a value saves it and relabels the chip',
+    chosen,
+    `setting=${getSettings().slideshowInterval}; focus: ${focusedId()}; chip "${chip()}"`);
+  await tapEnter();
+  await waitFor(() => registry.has('image-viewer-interval-opt-3000'), 2000);
+  await pressBack();
+  const menuGone = await waitFor(
+    () => !registry.has('image-viewer-interval-opt-3000'), 2000,
+  );
+  check('S11b Back closes the list without closing the viewer',
+    menuGone && focusedId() === 'image-viewer-interval' && registry.has('image-viewer'),
+    `menu=${!menuGone}; focus: ${focusedId()}; viewer=${registry.has('image-viewer')}`);
+
+  // Restore the default so the rest of the driver keeps its 6 s assumption.
+  await tapEnter();
+  await waitFor(() => registry.has('image-viewer-interval-opt-3000'), 2000);
+  await press('ArrowDown');             // 3 s → 6 s
+  await tapEnter();
+  const paceRestored = await waitFor(
+    () => getSettings().slideshowInterval === 6000 && chip() === '6 s',
+    2000,
+  );
+  check('S11b the default is restored for the rest of the run',
+    paceRestored,
+    `setting=${getSettings().slideshowInterval}; chip "${chip()}"`);
+  await press('ArrowDown');             // Duration → picture
+  check('S11b the picture has focus for the next case',
     focusedId() === 'image-viewer', focusedId());
 
   // ── S11c  a slow answer cannot land on the image stepped to ──

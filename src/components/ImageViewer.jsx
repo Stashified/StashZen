@@ -11,11 +11,12 @@
  * focus stayed on the card behind, Left/Right would move the grid's focus *and*
  * step this image, since the grid is still mounted underneath.
  *
- * The Slideshow and Info buttons are header buttons for the same reason: the
- * viewer opens on Enter, and a surface binding would let that press's
- * auto-repeat toggle them thirty times. Focus path is surface → Up → Info →
- * Left → Slideshow, so the D-pad never needs a letter key. The media keys
- * (play, pause, play/pause) work anywhere, like the player's.
+ * The Slideshow, Duration and Info buttons are header buttons for the same
+ * reason: the viewer opens on Enter, and a surface binding would let that
+ * press's auto-repeat toggle them thirty times. Focus path is surface → Up →
+ * Info → Left → Duration → Left → Slideshow, so the D-pad never needs a letter
+ * key. The media keys (play, pause, play/pause) work anywhere, like the
+ * player's.
  *
  * ## Slideshow
  *
@@ -61,7 +62,7 @@ import {
 import { buildImageInfoRows } from '../utils/imageInfo.js';
 import { ratingLabel, nextRating } from '../utils/format.js';
 import { stableSort } from '../utils/randomSort.js';
-import { useSettings } from '../utils/settings.js';
+import { SLIDESHOW_INTERVAL_OPTIONS, setSettings, useSettings } from '../utils/settings.js';
 import styles from './ImageViewer.module.css';
 
 // Collapses a held arrow's key repeat into one request while still feeling
@@ -263,6 +264,10 @@ export default function ImageViewer({
   // Read-only. A header button rather than a surface key: the viewer opens on
   // Enter, and a surface binding would let that press's repeats toggle it.
   const [infoOpen, setInfoOpen] = useState(!!initialInfoOpen);
+  // The slideshow pace is adjustable from the bar, so it does not need a trip
+  // to Settings mid-viewing.
+  const [intervalOpen, setIntervalOpen] = useState(false);
+  const intervalWrapRef = useRef(null);
   const [infoStatus, setInfoStatus] = useState('idle'); // idle | loading | ready | error
   const [infoData, setInfoData] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
@@ -327,6 +332,32 @@ export default function ImageViewer({
 
   const togglePlaying = () => setPlaying(p => !p);
 
+  // Writes the same global setting Settings shows, so the next slideshow and
+  // both readouts agree. The timer and countdown effects key on `slideMs`, so
+  // a running slideshow re-arms at the new pace.
+  const chooseInterval = (value) => {
+    if (value !== slideMs) setSettings({ slideshowInterval: value });
+    setIntervalOpen(false);
+  };
+
+  // Back belongs to the open list, not the viewer's panel/zoom/close ladder.
+  // The viewer's window handler yields while the list is open (see below), so
+  // the event reaches this listener.
+  useEffect(() => {
+    if (!intervalOpen) return undefined;
+    const el = intervalWrapRef.current;
+    if (!el) return undefined;
+    const handler = (e) => {
+      if (e.key === 'Escape' || e.key === 'Backspace' || isBackCode(e.keyCode)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIntervalOpen(false);
+      }
+    };
+    el.addEventListener('keydown', handler, true);
+    return () => el.removeEventListener('keydown', handler, true);
+  }, [intervalOpen]);
+
   // Memoized because the effect that preloads the next picture keys on it,
   // and the default `items = []` is a fresh array every render.
   const sourceItems = useMemo(
@@ -349,16 +380,35 @@ export default function ImageViewer({
   const playBtn = useFocusable({
     id: 'image-viewer-play',
     zone: 'image-viewer',
-    nextId: { right: 'image-viewer-info', down: 'image-viewer' },
+    nextId: { right: 'image-viewer-interval', down: 'image-viewer' },
     onEnter: togglePlaying,
   });
+  const intervalBtn = useFocusable({
+    id: 'image-viewer-interval',
+    zone: 'image-viewer',
+    // While the list is open the neighbours point into it: a declared nextId is
+    // followed before the focus trap filters candidates, so the closed-state
+    // edges would step straight out of the open menu. The list sits above the
+    // chip, hence Up.
+    nextId: intervalOpen
+      ? { up: `image-viewer-interval-opt-${slideMs}` }
+      : { left: 'image-viewer-play', right: 'image-viewer-info', down: 'image-viewer' },
+    onEnter: () => setIntervalOpen(o => !o),
+  });
+  // Closing unmounts the focused option, dropping focus to <body>. Put it back
+  // on the chip.
+  const intervalWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (intervalWasOpenRef.current && !intervalOpen) intervalBtn.ref.current?.focus();
+    intervalWasOpenRef.current = intervalOpen;
+  }, [intervalOpen, intervalBtn.ref]);
   const infoBtn = useFocusable({
     id: 'image-viewer-info',
     zone: 'image-viewer',
     // Down enters the first control once it exists; while loading it must
     // still reach the picture.
     nextId: {
-      left: 'image-viewer-play',
+      left: 'image-viewer-interval',
       down: infoOpen && detailForItem ? 'image-viewer-rating-dec' : 'image-viewer',
     },
     // `onEnter`, not just `onClick`: useFocusable prevents native button
@@ -695,6 +745,9 @@ export default function ImageViewer({
   // same tree, 36/40 vs 40/40).
   useLayoutEffect(() => {
     const handler = (e) => {
+      // The interval list owns the keys while it is open, Back included: the
+      // wrapper's own listener closes it, this one must not peel the viewer.
+      if (intervalOpen) return;
       // Media keys mean play/pause anywhere in the overlay, as in the player
       // (see usePlayerTransport for why 415 and 19 are split).
       if (e.keyCode === 10252) {
@@ -775,7 +828,7 @@ export default function ImageViewer({
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [currentIndex, canPrev, canNext, onClose, infoOpen, closeInfo, ref, goTo, zoom]);
+  }, [currentIndex, canPrev, canNext, onClose, infoOpen, closeInfo, ref, goTo, zoom, intervalOpen]);
 
   if (!gallery && !item) return null;
 
@@ -793,7 +846,9 @@ export default function ImageViewer({
   const empty = gallery && galleryStatus === 'ready' && !item;
   // One of the header buttons holds the D-pad; the footer then names its
   // neighbour instead of advertising a browse that the press will not do.
-  const headerFocused = playBtn.focused || infoBtn.focused;
+  const headerFocused = playBtn.focused || infoBtn.focused || intervalBtn.focused;
+  const intervalLabel = SLIDESHOW_INTERVAL_OPTIONS
+    .find(o => o.value === slideMs)?.label ?? '6 s';
 
   return (
     <div
@@ -895,6 +950,37 @@ export default function ImageViewer({
           >
             {playing ? 'Stop slideshow' : 'Slideshow'}
           </button>
+          {/* The trap covers the chip as well as the list, or Up from the first
+              option would be stranded. */}
+          <div
+            ref={intervalWrapRef}
+            className={styles.intervalWrap}
+            data-focus-trap={intervalOpen ? '' : undefined}
+          >
+            <button
+              ref={intervalBtn.ref}
+              className={`${styles.infoBtn} ${styles.intervalBtn} ${intervalBtn.focused ? styles.infoBtnFocused : ''}`}
+              onClick={() => setIntervalOpen(o => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={intervalOpen}
+              aria-label={`Slideshow interval, ${intervalLabel}`}
+            >
+              {intervalLabel}
+            </button>
+            {intervalOpen && (
+              <div className={styles.intervalMenu} role="listbox" aria-label="Slideshow interval">
+                {SLIDESHOW_INTERVAL_OPTIONS.map(opt => (
+                  <IntervalOption
+                    key={opt.value}
+                    value={opt.value}
+                    label={opt.label}
+                    selected={opt.value === slideMs}
+                    onSelect={() => chooseInterval(opt.value)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
           <button
             ref={infoBtn.ref}
             className={`${styles.infoBtn} ${infoBtn.focused ? styles.infoBtnFocused : ''}`}
@@ -922,11 +1008,23 @@ export default function ImageViewer({
           </span>
         )}
         <span className={styles.hint}>
-          {headerFocused ? (
+          {intervalOpen ? (
             <>
-              {infoBtn.focused
-                ? <><kbd>◀</kbd> {playing ? 'Stop' : 'Slideshow'}</>
-                : <><kbd>▶</kbd> Info</>}
+              <kbd>▲</kbd> <kbd>▼</kbd> Duration
+              <kbd>OK</kbd> Choose
+              <kbd>Back</kbd> Close
+            </>
+          ) : headerFocused ? (
+            <>
+              {playBtn.focused && <><kbd>▶</kbd> Duration</>}
+              {intervalBtn.focused && (
+                <>
+                  <kbd>◀</kbd> Slideshow
+                  <kbd>▶</kbd> Info
+                  <kbd>OK</kbd> Change
+                </>
+              )}
+              {infoBtn.focused && <><kbd>◀</kbd> Duration</>}
               <kbd>▼</kbd> Picture
               <kbd>Back</kbd> {infoOpen ? 'Close info' : 'Close'}
             </>
@@ -956,5 +1054,30 @@ export default function ImageViewer({
         </span>
       </footer>
     </div>
+  );
+}
+
+function IntervalOption({ value, label, selected, onSelect }) {
+  const { ref, focused } = useFocusable({
+    id: `image-viewer-interval-opt-${value}`,
+    zone: 'dropdown-image-viewer-interval',
+    onEnter: onSelect,
+  });
+  // Open on the current value: the list is its own surface, and without the
+  // focus the first D-pad press would still aim at the chip behind it.
+  useEffect(() => {
+    if (selected) ref.current?.focus();
+  }, [selected, ref]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`${styles.intervalOption} ${selected ? styles.intervalOptionSelected : ''} ${focused ? styles.intervalOptionFocused : ''}`}
+      onClick={onSelect}
+      role="option"
+      aria-selected={selected}
+    >
+      {label}
+    </button>
   );
 }
